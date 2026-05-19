@@ -40,6 +40,16 @@ const EnvSchema = z.object({
 
   // Audio-Retention — Phase 8
   AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+
+  // Auth — Phase 3
+  JWT_SECRET: z.string().min(32).default("dev-secret-bitte-in-production-ueberschreiben-mit-fly-secrets"),
+  /** Cookie-Name für Backoffice-Session. */
+  AUTH_COOKIE_NAME: z.string().default("hotdoc.session"),
+  /** Session-Lebensdauer in Sekunden (default 8h). */
+  SESSION_TTL_SEC: z.coerce.number().int().positive().default(8 * 60 * 60),
+  /** Initial-Admin-Anmeldung beim Server-Start auto-anlegen, falls keine Benutzer existieren. */
+  BOOTSTRAP_ADMIN_USERNAME: z.string().default("admin"),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().default("admin12345678"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

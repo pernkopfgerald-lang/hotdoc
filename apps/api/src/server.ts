@@ -8,7 +8,14 @@ import { env } from "./config.js";
 import { ensureDatabase } from "./couch/client.js";
 import { logger } from "./lib/logger.js";
 import { adminRouter } from "./routes/admin.js";
+import { authRouter } from "./routes/auth.js";
+import { devRouter } from "./routes/dev.js";
+import { einsaetzeRouter } from "./routes/einsaetze.js";
 import { healthRouter } from "./routes/health.js";
+import { pdfRouter } from "./routes/pdf.js";
+import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
+import { startAudioRetentionCron } from "./workers/audio-retention.js";
+import { startBlaulichtSmsPoller } from "./workers/blaulichtsms-poller.js";
 import { startSyBosSyncCron } from "./workers/sybos-sync.js";
 
 async function main(): Promise<void> {
@@ -23,17 +30,24 @@ async function main(): Promise<void> {
 
   // — Routes —
   app.use(healthRouter);
+  app.use(authRouter);
   app.use(adminRouter);
+  app.use(einsaetzeRouter);
+  app.use(pdfRouter);
+  app.use(devRouter);
 
   // — DB-Bootstrap —
   try {
     await ensureDatabase();
+    await bootstrapInitialAdminIfMissing();
   } catch (err) {
     logger.error({ err }, "CouchDB-Bootstrap fehlgeschlagen — Server startet trotzdem, /healthz bleibt grün");
   }
 
   // — Worker —
   startSyBosSyncCron();
+  startBlaulichtSmsPoller();
+  startAudioRetentionCron();
 
   // — Start —
   app.listen(env.PORT, () => {

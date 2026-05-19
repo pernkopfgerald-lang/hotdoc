@@ -37,3 +37,128 @@ button,
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* ─── Leaflet Marker Styles ─── */
+.fzg-self,
+.fzg-other {
+  width: auto !important;
+  height: auto !important;
+}
+.fzg-self-pin,
+.fzg-other-pin {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 5px;
+  border-radius: 99px;
+  white-space: nowrap;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fzg-self-pin {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border: 1.5px solid #fff;
+  color: #fff;
+  padding: 5px 10px 5px 6px;
+  box-shadow:
+    0 0 0 3px rgba(245, 158, 11, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.fzg-self-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+  animation: pulse-self 1.4s ease-in-out infinite;
+}
+@keyframes pulse-self {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
+  }
+  50% {
+    transform: scale(1.25);
+    box-shadow: 0 0 14px rgba(255, 255, 255, 1);
+  }
+}
+.fzg-other-pin {
+  background: var(--blue-bg);
+  border: 1.5px solid var(--blue);
+  color: var(--blue);
+}
+.fzg-other-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--blue);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.hydrant-marker {
+  width: auto !important;
+  height: auto !important;
+}
+.hydrant-pin {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 1.5px solid #fff;
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.einsatz-marker {
+  width: 36px !important;
+  height: 48px !important;
+  margin-left: -18px !important;
+  margin-top: -44px !important;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+[data-theme="dark"] .leaflet-tile {
+  filter: brightness(0.72) saturate(0.85) hue-rotate(-3deg);
+}
+.leaflet-control-zoom a {
+  background: var(--surface-1) !important;
+  color: var(--text-1) !important;
+  border: 1px solid var(--border) !important;
+}
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--surface-1) 80%, transparent) !important;
+  color: var(--text-3) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--text-2) !important;
+}

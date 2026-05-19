@@ -12,7 +12,13 @@ const url = env.COUCH_URL.replace("://", `://${auth}@`);
 
 export const couch = nano(url);
 
-export const db = couch.db.use(env.COUCH_DB);
+/**
+ * CouchDB-Handle.
+ * Wir typen es bewusst lose (`any`) — alle Domain-Schemas werden in der
+ * Anwendungsschicht via Zod validiert, nicht in nano.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const db = couch.db.use<any>(env.COUCH_DB);
 
 /**
  * Stellt sicher dass die DB existiert. Wird beim Server-Start aufgerufen.

@@ -1,6 +1,8 @@
 import { LogOut, FileText, Users, Settings, Activity } from "lucide-react";
 import { useState } from "react";
 import { apiCall, clearToken } from "../api/client";
+import { BerichteBrowser } from "../components/BerichteBrowser";
+import { Florianstation } from "./Florianstation";
 import type { AuthResponse } from "@hotdoc/shared";
 
 interface Props {
@@ -85,8 +87,8 @@ export function Verwaltung({ auth, onLogout }: Props) {
       </nav>
 
       <main className="mx-auto max-w-7xl px-6 py-6">
-        {tab === "berichte" && <BerichtePlaceholder />}
-        {tab === "florian" && <FlorianPlaceholder />}
+        {tab === "berichte" && <BerichteBrowser />}
+        {tab === "florian" && <Florianstation />}
         {tab === "personal" && <PersonalPanel onSyncSyBos={triggerSyBosSync} busy={syncBusy} result={syncResult} />}
         {tab === "stammdaten" && <StammdatenPlaceholder />}
       </main>
@@ -118,46 +120,6 @@ function TabButton({
       {icon}
       {children}
     </button>
-  );
-}
-
-function BerichtePlaceholder() {
-  return (
-    <section className="rounded-m border border-border bg-surface-1 p-6">
-      <h2 className="text-lg font-semibold">Bericht-Browser</h2>
-      <p className="mt-2 text-sm text-text-2">
-        Phase 1.6 (Skeleton). Hier kommt in Phase 6:
-      </p>
-      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-text-2">
-        <li>Liste aller Einsätze (aktiv + abgeschlossen) durchsuchbar</li>
-        <li>Filter nach Datum, Einsatzart, Fahrzeug, Personen</li>
-        <li>Bericht-Detail-Ansicht read-only</li>
-        <li>Reaktivieren-Knopf für abgeschlossene Berichte (mit Audit-Trail)</li>
-        <li>„Neuer Bericht (manuell)"-Knopf — FR-12</li>
-      </ul>
-    </section>
-  );
-}
-
-function FlorianPlaceholder() {
-  return (
-    <section className="rounded-m border border-border bg-surface-1 p-6">
-      <h2 className="text-lg font-semibold">Florianstation</h2>
-      <p className="mt-2 text-sm text-text-2">
-        Querformat-Ansicht für PC — kommt in Phase 6 (3-spaltig: Karte · Hauptbericht · Live-Stream der Fahrzeuge).
-      </p>
-      <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-text-3">
-        <div className="aspect-video rounded border border-dashed border-border p-3 font-mono">
-          Karte<br />Live-Positionen<br />Wasserkarte
-        </div>
-        <div className="aspect-video rounded border border-dashed border-border p-3 font-mono">
-          Hauptbericht-Formular<br />Tastatur-Eingabe<br />Kein Diktat
-        </div>
-        <div className="aspect-video rounded border border-dashed border-border p-3 font-mono">
-          Live-Stream<br />Fahrzeugberichte<br />Mannschaftszahlen
-        </div>
-      </div>
-    </section>
   );
 }
 

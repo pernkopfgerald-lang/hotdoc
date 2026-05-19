@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { db, getFahrzeugConfig } from "./db/pouch";
+import { seedIfEmpty } from "./db/seed";
 import { Dashboard } from "./pages/Dashboard";
+import { LfaBPage } from "./pages/LfaBPage";
 import { Setup } from "./pages/Setup";
 import type { FahrzeugId } from "@hotdoc/shared";
 
@@ -13,10 +15,11 @@ export function App() {
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
-    void loadConfig();
+    void boot();
   }, []);
 
-  async function loadConfig() {
+  async function boot() {
+    await seedIfEmpty();
     const doc = await getFahrzeugConfig();
     if (doc?.fahrzeugId) {
       setState({ kind: "ready", fahrzeugId: doc.fahrzeugId });
@@ -43,5 +46,11 @@ export function App() {
     return <Setup onSetupDone={(id) => setState({ kind: "ready", fahrzeugId: id })} />;
   }
 
+  // LFA-B-Tablet: volles Erfassungs-UI
+  if (state.fahrzeugId === "lfa-b") {
+    return <LfaBPage onResetSetup={resetSetup} />;
+  }
+
+  // Andere Fahrzeuge / Zentrale: zeigen vorerst das Dashboard
   return <Dashboard fahrzeugId={state.fahrzeugId} onResetSetup={resetSetup} />;
 }
