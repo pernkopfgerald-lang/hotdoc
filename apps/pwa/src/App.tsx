@@ -34,6 +34,28 @@ export function App() {
     setState({ kind: "setup" });
   }
 
+  /**
+   * In-App-Wechsel auf ein anderes Fahrzeug. Persistiert die neue Auswahl
+   * und remountet die Page durch State-Wechsel. Kein Reset-Setup nötig.
+   */
+  async function switchFahrzeug(id: FahrzeugId) {
+    const doc = await getFahrzeugConfig();
+    if (doc) {
+      await db.put({ ...doc, fahrzeugId: id, geaendertAm: new Date().toISOString() });
+    } else {
+      await db.put({
+        _id: "fahrzeug:self",
+        type: "fahrzeug-config",
+        fahrzeugId: id,
+        tabletDeviceId: crypto.randomUUID(),
+        setupAm: new Date().toISOString(),
+      });
+    }
+    // Loading-Zwischenschritt erzwingt Remount aller Pages mit frischer Page-ID
+    setState({ kind: "loading" });
+    setTimeout(() => setState({ kind: "ready", fahrzeugId: id }), 0);
+  }
+
   if (state.kind === "loading") {
     return (
       <div className="grid min-h-screen place-items-center text-text-3">
@@ -48,9 +70,22 @@ export function App() {
 
   // LFA-B-Tablet: volles Erfassungs-UI
   if (state.fahrzeugId === "lfa-b") {
-    return <LfaBPage onResetSetup={resetSetup} />;
+    return (
+      <LfaBPage
+        key={state.fahrzeugId}
+        onSwitchFahrzeug={switchFahrzeug}
+        onResetSetup={resetSetup}
+      />
+    );
   }
 
   // Andere Fahrzeuge / Zentrale: zeigen vorerst das Dashboard
-  return <Dashboard fahrzeugId={state.fahrzeugId} onResetSetup={resetSetup} />;
+  return (
+    <Dashboard
+      key={state.fahrzeugId}
+      fahrzeugId={state.fahrzeugId}
+      onSwitchFahrzeug={switchFahrzeug}
+      onResetSetup={resetSetup}
+    />
+  );
 }

@@ -59,7 +59,7 @@ export function PersonPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center md:items-center"
+      className="fixed inset-0 z-[2000] flex items-end justify-center md:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="picker-title"

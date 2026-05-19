@@ -1,16 +1,25 @@
-import { Radio } from "lucide-react";
+import { ChevronRight, Radio } from "lucide-react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
 interface Props {
   fahrzeugId: FahrzeugId;
+  /** Optional: macht die Bar klickbar → öffnet den VehicleSwitcher. */
+  onSwitch?: () => void;
 }
 
-export function RufnameBar({ fahrzeugId }: Props) {
+export function RufnameBar({ fahrzeugId, onSwitch }: Props) {
   const f = FAHRZEUGE[fahrzeugId];
+  const Wrapper = onSwitch ? "button" : ("div" as const);
+  const wrapperProps = onSwitch
+    ? { type: "button" as const, onClick: onSwitch, "aria-label": "Fahrzeug wechseln" }
+    : {};
   return (
     <div className="px-4 pt-2.5">
-      <div
-        className="relative flex items-center gap-3 overflow-hidden rounded-m border px-3.5 py-2"
+      <Wrapper
+        {...wrapperProps}
+        className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-m border px-3.5 py-2 text-left transition ${
+          onSwitch ? "hover:brightness-110 active:translate-y-px" : ""
+        }`}
         style={{
           borderColor: "var(--amber-border)",
           background:
@@ -50,7 +59,14 @@ export function RufnameBar({ fahrzeugId }: Props) {
         >
           {f.bezeichnung} · {f.besatzung.typ}
         </span>
-      </div>
+        {onSwitch ? (
+          <ChevronRight
+            size={16}
+            className="text-text-3 transition group-hover:text-amber"
+            aria-hidden
+          />
+        ) : null}
+      </Wrapper>
     </div>
   );
 }
