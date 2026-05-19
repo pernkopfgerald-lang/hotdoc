@@ -148,39 +148,75 @@ export function MapCard({ selfPos, einsatzPos, einsatzAdresse, fleet, hydranten 
   }
 
   return (
-    <section className="rounded-m border border-border bg-surface-1 p-3.5 pb-2.5">
+    <section
+      className="rounded-m border p-3.5 pb-2.5"
+      style={{
+        borderColor: "var(--border-strong)",
+        background: "var(--card-gradient)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
       <header className="mb-2.5 flex items-baseline justify-between">
         <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">
           Anfahrt &amp; Lage
         </h2>
-        <span className="inline-flex items-center gap-1.5 rounded border border-emerald/30 bg-emerald/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em]"
+          style={{
+            borderColor: "var(--emerald-border)",
+            background: "var(--emerald-bg)",
+            color: "var(--emerald)",
+            boxShadow: "0 0 18px -4px var(--emerald-glow)",
+          }}
+        >
           <span
-            className="h-1.5 w-1.5 rounded-full bg-emerald"
-            style={{ boxShadow: "0 0 8px var(--emerald-glow)", animation: "pulse 1.8s ease-in-out infinite" }}
+            className="h-1.5 w-1.5 rounded-full"
+            style={{
+              background: "var(--emerald)",
+              boxShadow: "0 0 8px var(--emerald-glow)",
+              animation: "pulse 1.8s ease-in-out infinite",
+            }}
           />
           Position-Sharing
         </span>
       </header>
 
-      <div className="relative overflow-hidden rounded-s border border-border">
+      <div
+        className="relative overflow-hidden rounded-s border"
+        style={{ borderColor: "var(--border-strong)" }}
+      >
         <div ref={elRef} className="h-[280px] bg-surface-2" />
 
         <button
           type="button"
           aria-label="Auf eigene Position zentrieren"
           onClick={recenter}
-          className="absolute bottom-[70px] right-2.5 z-[401] grid h-9 w-9 place-items-center rounded-full border border-border-strong bg-surface-1 text-text-1 shadow-md transition hover:scale-105"
+          className="absolute bottom-[70px] right-2.5 z-[401] grid h-9 w-9 place-items-center rounded-full border bg-surface-1 text-text-1 shadow-md transition hover:scale-105"
+          style={{ borderColor: "var(--amber-border)", color: "var(--amber)" }}
         >
           <Crosshair size={16} />
         </button>
 
         <div
-          className="absolute bottom-2 left-2 right-2 z-[401] flex gap-2 rounded-md border border-border px-3 py-2 backdrop-blur-md"
-          style={{ background: "color-mix(in srgb, var(--surface-1) 92%, transparent)" }}
+          className="absolute bottom-2 left-2 right-2 z-[401] flex gap-0 overflow-hidden rounded-md border backdrop-blur-md"
+          style={{
+            borderColor: "var(--border-strong)",
+            background: "color-mix(in srgb, var(--surface-1) 88%, transparent)",
+          }}
         >
-          <Stat label="Distanz" value={distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`} />
-          <Stat label="ETA" value={`${etaMin} min`} />
-          <Stat label="Hydranten in 250m" value={`${hydrantsNearby} · wkinfo`} align="right" />
+          <Stat
+            label="Distanz"
+            value={distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`}
+            tone="red"
+          />
+          <Stat label="ETA" value={`${etaMin} min`} tone="amber" divided />
+          <Stat
+            label={`Hydranten 250m`}
+            value={`${hydrantsNearby} · wkinfo`}
+            tone="blue"
+            divided
+            align="right"
+          />
         </div>
       </div>
 
@@ -189,7 +225,13 @@ export function MapCard({ selfPos, einsatzPos, einsatzAdresse, fleet, hydranten 
           href={navHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex flex-1 items-center justify-center gap-2.5 rounded-m border border-slate-700 bg-gradient-to-b from-slate-800 to-slate-950 px-4 py-3 text-sm font-semibold text-white shadow transition hover:-translate-y-0.5"
+          className="flex flex-1 items-center justify-center gap-2.5 rounded-m px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5"
+          style={{
+            background:
+              "linear-gradient(180deg, color-mix(in srgb, var(--blue) 80%, #000) 0%, color-mix(in srgb, var(--blue) 55%, #000) 100%)",
+            border: "1px solid color-mix(in srgb, var(--blue) 60%, #000)",
+            boxShadow: "0 10px 26px -10px var(--blue-glow), inset 0 1px 0 rgba(255,255,255,0.18)",
+          }}
         >
           <Navigation size={18} />
           <span>Route aktiv · Google Maps öffnen</span>
@@ -199,11 +241,21 @@ export function MapCard({ selfPos, einsatzPos, einsatzAdresse, fleet, hydranten 
           type="button"
           aria-pressed={waterOn}
           onClick={() => setWaterOn((v) => !v)}
-          className={`flex shrink-0 items-center gap-2 rounded-m border px-3.5 py-3 text-sm font-medium transition ${
+          className="flex shrink-0 items-center gap-2 rounded-m border px-3.5 py-3 text-sm font-semibold transition"
+          style={
             waterOn
-              ? "border-blue/30 bg-gradient-to-b from-sky-500 to-sky-700 text-white"
-              : "border-border-strong bg-surface-2 text-text-2"
-          }`}
+              ? {
+                  borderColor: "var(--blue-border)",
+                  background: "var(--blue-bg)",
+                  color: "var(--blue)",
+                  boxShadow: "0 0 16px -4px var(--blue-glow)",
+                }
+              : {
+                  borderColor: "var(--border-strong)",
+                  background: "var(--surface-2)",
+                  color: "var(--text-2)",
+                }
+          }
         >
           <Droplets size={18} />
           Löschwasser
@@ -213,13 +265,34 @@ export function MapCard({ selfPos, einsatzPos, einsatzAdresse, fleet, hydranten 
   );
 }
 
-function Stat({ label, value, align }: { label: string; value: string; align?: "right" }) {
+function Stat({
+  label,
+  value,
+  align,
+  tone,
+  divided,
+}: {
+  label: string;
+  value: string;
+  align?: "right";
+  tone?: "red" | "amber" | "blue";
+  divided?: boolean;
+}) {
   return (
-    <div className={`flex flex-col gap-px ${align === "right" ? "ml-auto text-right" : ""}`}>
-      <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.18em] text-text-3">
+    <div
+      className={`flex flex-1 flex-col gap-px px-2.5 py-2 ${align === "right" ? "text-right" : ""}`}
+      style={{ borderLeft: divided ? "1px solid var(--border)" : undefined }}
+    >
+      <span
+        className="font-mono text-[8px] font-bold uppercase tracking-[0.18em]"
+        style={{ color: tone ? `var(--${tone})` : "var(--text-3)", opacity: tone ? 0.9 : 1 }}
+      >
         {label}
       </span>
-      <span className="font-mono text-[14px] font-semibold tabular-nums tracking-wide text-text-1">
+      <span
+        className="font-mono text-[14px] font-bold tabular-nums tracking-wide text-text-1"
+        style={tone ? { textShadow: `0 0 12px var(--${tone}-glow)` } : undefined}
+      >
         {value}
       </span>
     </div>

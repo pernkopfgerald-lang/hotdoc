@@ -1,8 +1,10 @@
+/* @import MUSS vor allen anderen Regeln stehen (CSS-Spec).
+   PostCSS verwirft sonst still, dann fehlen alle Tokens. */
+@import "./theme/tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import "./theme/tokens.css";
 
 /* ─── Base ─── */
 html,
@@ -109,10 +111,10 @@ button,
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #0ea5e9;
+  background: var(--blue);
   border: 1.5px solid #fff;
   color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 10px var(--blue-glow), 0 2px 4px rgba(0, 0, 0, 0.35);
   font-family: "IBM Plex Mono", monospace;
   font-size: 9px;
   font-weight: 700;

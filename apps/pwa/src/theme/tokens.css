@@ -1,6 +1,10 @@
 /* ─────────────────────────────────────────────────────────────
-   HotDoc Theme Tokens — übernommen 1:1 aus prototype/lfa-b/style.css
-   Werden in tailwind.config.ts referenziert (var(--xxx)).
+   HotDoc Theme Tokens · Emergency-Services-Palette
+   ─────────────────────────────────────────────────────────────
+   Designprinzip: tiefes Anthrazit-Schwarz mit warmem Unterton,
+   ↳ FF-Rot als Hauptakzent (nicht nur als Mini-Dot),
+   ↳ High-Vis-Amber wie ein Feuerwehr-Helm,
+   ↳ klare Sichtbarkeitskanten.
    ───────────────────────────────────────────────────────────── */
 
 :root {
@@ -11,74 +15,133 @@
   --gap-xl: 14px;
   --pad-x: 16px;
   --pad-card: 14px;
+
+  /* Hazard-Streifen (gelb-schwarz wie Absperrband) — schicht über Cards */
+  --hazard-stripe: repeating-linear-gradient(
+    -45deg,
+    #fbbf24 0 12px,
+    #1a1410 12px 24px
+  );
+  /* Subtile Hazard-Variante für inline-Akzente */
+  --hazard-thin: repeating-linear-gradient(
+    -45deg,
+    rgba(251, 191, 36, 0.9) 0 6px,
+    rgba(20, 16, 10, 0.95) 6px 12px
+  );
 }
 
+/* ═══════════════════ DARK · primärer Tablet-Modus ═══════════════════ */
 [data-theme="dark"] {
-  --bg-deep: #08080b;
-  --bg-page: #0d0d12;
-  --surface-1: #16161d;
-  --surface-2: #1e1e27;
-  --surface-3: #262631;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --text-1: #ededf2;
-  --text-2: #a8a8b5;
-  --text-3: #66666f;
+  /* Warmes Anthrazit statt kühles Grau */
+  --bg-deep:    #0a0807;
+  --bg-page:    #100c0a;
+  --surface-1:  #1a1411;
+  --surface-2:  #221a16;
+  --surface-3:  #2c211c;
 
-  --red: #ef4444;
-  --red-bg: rgba(239, 68, 68, 0.1);
-  --red-border: rgba(239, 68, 68, 0.3);
-  --red-glow: rgba(239, 68, 68, 0.35);
+  /* Sichtbarere Borders — vorher .07 war zu zaghaft */
+  --border:        rgba(255, 220, 200, 0.12);
+  --border-strong: rgba(255, 220, 200, 0.28);
 
-  --amber: #f59e0b;
-  --amber-soft: rgba(245, 158, 11, 0.16);
-  --amber-border: rgba(245, 158, 11, 0.5);
+  /* Text-Hierarchie mit deutlicher Spreizung */
+  --text-1: #fff5ee;
+  --text-2: #c4b5a8;
+  --text-3: #7d6f63;
 
-  --emerald: #10b981;
-  --emerald-bg: rgba(16, 185, 129, 0.08);
-  --emerald-border: rgba(16, 185, 129, 0.25);
-  --emerald-glow: rgba(16, 185, 129, 0.35);
+  /* FF-Rot — kräftiger, leuchtender */
+  --red:         #f23932;
+  --red-strong:  #dc2626;
+  --red-bg:      rgba(242, 57, 50, 0.16);
+  --red-border:  rgba(242, 57, 50, 0.50);
+  --red-glow:    rgba(242, 57, 50, 0.55);
 
-  --blue: #6da6ff;
-  --blue-bg: rgba(109, 166, 255, 0.1);
-  --blue-border: rgba(109, 166, 255, 0.22);
+  /* High-Vis-Amber — Atemschutz, Warnings, Status */
+  --amber:        #fbbf24;
+  --amber-soft:   rgba(251, 191, 36, 0.18);
+  --amber-border: rgba(251, 191, 36, 0.65);
+  --amber-glow:   rgba(251, 191, 36, 0.45);
 
-  --shadow-card: none;
+  /* Emerald — "OK", Sync-Status */
+  --emerald:        #22c55e;
+  --emerald-bg:     rgba(34, 197, 94, 0.14);
+  --emerald-border: rgba(34, 197, 94, 0.45);
+  --emerald-glow:   rgba(34, 197, 94, 0.50);
+
+  /* Blau — Wasser/Hydranten, Info, GPS */
+  --blue:         #38bdf8;
+  --blue-bg:      rgba(56, 189, 248, 0.14);
+  --blue-border:  rgba(56, 189, 248, 0.45);
+  --blue-glow:    rgba(56, 189, 248, 0.45);
+
+  /* Card-Surface mit subtilem Verlauf — kein platter Block mehr */
+  --card-gradient: linear-gradient(180deg, var(--surface-1) 0%, color-mix(in srgb, var(--surface-1) 88%, #000) 100%);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 28px -16px rgba(0, 0, 0, 0.55);
   --grain-opacity: 0.5;
   --grain-blend: overlay;
 }
 
+/* ═══════════════════ LIGHT · Tagesbetrieb in der Halle ═══════════════════ */
 [data-theme="light"] {
-  --bg-deep: #f3f3f6;
-  --bg-page: #f7f7fa;
-  --surface-1: #ffffff;
-  --surface-2: #fafafc;
-  --surface-3: #f0f0f3;
-  --border: rgba(15, 18, 30, 0.08);
-  --border-strong: rgba(15, 18, 30, 0.2);
-  --text-1: #0a0a0e;
-  --text-2: #4a4a55;
-  --text-3: #7e7e8a;
+  --bg-deep:    #f4eeea;
+  --bg-page:    #faf6f3;
+  --surface-1:  #ffffff;
+  --surface-2:  #fbf6f2;
+  --surface-3:  #f1ebe6;
 
-  --red: #dc2626;
-  --red-bg: rgba(220, 38, 38, 0.06);
-  --red-border: rgba(220, 38, 38, 0.3);
-  --red-glow: rgba(220, 38, 38, 0.25);
+  --border:        rgba(40, 24, 12, 0.10);
+  --border-strong: rgba(40, 24, 12, 0.24);
 
-  --amber: #b45309;
-  --amber-soft: rgba(180, 83, 9, 0.1);
-  --amber-border: rgba(180, 83, 9, 0.42);
+  --text-1: #1a0f08;
+  --text-2: #4a3a30;
+  --text-3: #847468;
 
-  --emerald: #047857;
-  --emerald-bg: rgba(4, 120, 87, 0.06);
-  --emerald-border: rgba(4, 120, 87, 0.3);
-  --emerald-glow: rgba(4, 120, 87, 0.25);
+  --red:         #dc2626;
+  --red-strong:  #b91c1c;
+  --red-bg:      rgba(220, 38, 38, 0.10);
+  --red-border:  rgba(220, 38, 38, 0.45);
+  --red-glow:    rgba(220, 38, 38, 0.32);
 
-  --blue: #1d4ed8;
-  --blue-bg: rgba(29, 78, 216, 0.06);
-  --blue-border: rgba(29, 78, 216, 0.25);
+  --amber:        #d97706;
+  --amber-soft:   rgba(217, 119, 6, 0.12);
+  --amber-border: rgba(217, 119, 6, 0.55);
+  --amber-glow:   rgba(217, 119, 6, 0.30);
 
-  --shadow-card: 0 1px 2px rgba(15, 18, 30, 0.04), 0 2px 8px rgba(15, 18, 30, 0.04);
+  --emerald:        #059669;
+  --emerald-bg:     rgba(5, 150, 105, 0.10);
+  --emerald-border: rgba(5, 150, 105, 0.42);
+  --emerald-glow:   rgba(5, 150, 105, 0.30);
+
+  --blue:        #0369a1;
+  --blue-bg:     rgba(3, 105, 161, 0.10);
+  --blue-border: rgba(3, 105, 161, 0.40);
+  --blue-glow:   rgba(3, 105, 161, 0.28);
+
+  --card-gradient: linear-gradient(180deg, #ffffff 0%, #fbf6f2 100%);
+  --shadow-card: 0 1px 2px rgba(40, 24, 12, 0.04), 0 6px 18px -8px rgba(40, 24, 12, 0.08);
   --grain-opacity: 0;
   --grain-blend: normal;
+}
+
+/* ═══════════════════ Globale Utility-Animationen ═══════════════════ */
+@keyframes hazard-shift {
+  from { background-position: 0 0; }
+  to   { background-position: 48px -48px; }
+}
+
+@keyframes beacon {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 var(--red-glow),
+      0 0 0 0 rgba(0, 0, 0, 0);
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(242, 57, 50, 0.0),
+      0 0 24px 4px var(--red-glow);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }

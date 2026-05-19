@@ -1,5 +1,5 @@
 import { ArrowRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AlarmCard } from "../components/AlarmCard";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
@@ -26,6 +26,7 @@ import {
   makeInitialFleet,
 } from "../data/demo-alarm";
 import { getAllPersonen } from "../db/seed";
+import { haversineKm, useGeolocation } from "../lib/geo";
 import { FAHRZEUGE } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
@@ -50,7 +51,32 @@ export function LfaBPage({ onResetSetup }: { onResetSetup: () => void }) {
 
   const [chronik, setChronik] = useState<ChronikEintrag[]>(() => initialChronik(fahrzeug.funkrufname));
   const [fleet, setFleet] = useState<MapPosition[]>(makeInitialFleet);
-  const [selfPos] = useState(HOME_POS);
+
+  // Echte GPS-Position über navigator.geolocation. Fallback HOME_POS,
+  // solange noch nichts da ist (= sofort kartenfähig statt Blocker).
+  const geo = useGeolocation();
+  const selfPos = geo.fix
+    ? { lat: geo.fix.lat, lng: geo.fix.lng }
+    : HOME_POS;
+
+  // GPS-Spur für KM-Berechnung. Wird bei jedem Fix erweitert.
+  const trackRef = useRef<{ lat: number; lng: number }[]>([]);
+  const [kmGefahren, setKmGefahren] = useState(0);
+  useEffect(() => {
+    if (!geo.fix) return;
+    const pt = { lat: geo.fix.lat, lng: geo.fix.lng };
+    const track = trackRef.current;
+    const last = track[track.length - 1];
+    // 8m-Glättung: kleinere Sprünge verwerfen (GPS-Rauschen).
+    if (!last || haversineKm(last, pt) * 1000 > 8) {
+      track.push(pt);
+      const total = track.reduce(
+        (sum, p, i) => (i === 0 ? 0 : sum + haversineKm(track[i - 1]!, p)),
+        0,
+      );
+      setKmGefahren(total);
+    }
+  }, [geo.fix]);
 
   // Personalliste laden + Mock-Initialisierung
   useEffect(() => {
@@ -74,15 +100,15 @@ export function LfaBPage({ onResetSetup }: { onResetSetup: () => void }) {
     })();
   }, []);
 
-  // Live-Sim der Fahrzeuge (sanftes Wandern)
+  // Eigene Position in der fleet-Liste mit echter GPS-Position synchronisieren.
+  // Andere Fahrzeuge bewegen sich weiterhin simuliert (echtes Multi-Tablet-
+  // Position-Sharing folgt in Phase 4 mit SSE-Endpoint).
   useEffect(() => {
     const id = setInterval(() => {
       setFleet((prev) =>
         prev.map((f) => {
           if (f.isSelf) {
-            const dx = (EINSATZ_POS.lat - f.lat) * 0.02;
-            const dy = (EINSATZ_POS.lng - f.lng) * 0.02;
-            return { ...f, lat: f.lat + dx, lng: f.lng + dy };
+            return { ...f, lat: selfPos.lat, lng: selfPos.lng };
           }
           return {
             ...f,
@@ -93,7 +119,7 @@ export function LfaBPage({ onResetSetup }: { onResetSetup: () => void }) {
       );
     }, 3000);
     return () => clearInterval(id);
-  }, []);
+  }, [selfPos.lat, selfPos.lng]);
 
   const bereitsGewaehlt = useMemo(() => {
     const s = new Set<number>();
@@ -158,12 +184,12 @@ export function LfaBPage({ onResetSetup }: { onResetSetup: () => void }) {
     });
   }
 
-  // KM-Berechnung aus GPS (vereinfacht: Position-Animation gibt Distanz an)
-  const kmGefahren = ((48.11 - selfPos.lat) * 111).toFixed(1).replace(".", ",");
+  // KM-Anzeige aus echter GPS-Spur (mit "—" wenn noch keine Bewegung erfasst)
+  const kmDisplay = kmGefahren > 0 ? kmGefahren.toFixed(1).replace(".", ",") : "—";
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl pb-10">
-      <Topbar funkrufname={fahrzeug.funkrufname} />
+      <Topbar funkrufname={fahrzeug.funkrufname} geo={geo} />
       <RufnameBar fahrzeugId={FAHRZEUG_ID} />
       <DemoBanner />
 
@@ -188,7 +214,7 @@ export function LfaBPage({ onResetSetup }: { onResetSetup: () => void }) {
 
           <div className="grid grid-cols-2 gap-2">
             <ReadOnlyKm label="KM Abfahrt" hint="auto · GPS" value={KM_ABFAHRT.toLocaleString("de-AT")} />
-            <ReadOnlyKm label="KM gefahren" hint="auto · live" value={kmGefahren} />
+            <ReadOnlyKm label="KM gefahren" hint="auto · live" value={kmDisplay} />
           </div>
 
           <div className="mt-2">
@@ -246,21 +272,28 @@ export function LfaBPage({ onResetSetup }: { onResetSetup: () => void }) {
           <DictateButton onDictate={addChronikDiktat} />
         </section>
 
-        <div className="mt-1 px-1 text-center">
-          <p className="m-0 mb-2 text-[11px] text-text-3">
+        <div className="mt-2 px-1 text-center">
+          <p className="m-0 mb-2.5 text-[11px] text-text-3">
             Schließt den Fahrzeugbericht ab und übergibt ihn der Zentrale „Florian Eberstalzell".
           </p>
           <button
             type="button"
-            className="flex w-full items-center justify-center gap-2.5 rounded-m px-5 py-3 text-[15px] font-semibold tracking-wide text-white shadow"
+            className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-m px-5 py-3.5 text-[15px] font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
             style={{
-              background: "linear-gradient(180deg, var(--red) 0%, color-mix(in srgb, var(--red) 82%, #000) 100%)",
-              border: "1px solid color-mix(in srgb, var(--red) 80%, #000)",
-              boxShadow: "0 8px 24px -8px var(--red-glow), inset 0 1px 0 rgba(255,255,255,0.20)",
+              background:
+                "linear-gradient(180deg, var(--red) 0%, var(--red-strong) 60%, color-mix(in srgb, var(--red-strong) 60%, #000) 100%)",
+              border: "1px solid color-mix(in srgb, var(--red-strong) 60%, #000)",
+              boxShadow:
+                "0 14px 32px -10px var(--red-glow), 0 0 0 1px rgba(255,255,255,0.06) inset, inset 0 1px 0 rgba(255,255,255,0.22)",
             }}
           >
-            <span>Fahrzeugbericht abschließen</span>
-            <ArrowRight size={18} />
+            {/* Shine-Sweep */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+            />
+            <span className="relative">Fahrzeugbericht abschließen</span>
+            <ArrowRight size={18} className="relative" />
           </button>
         </div>
 
