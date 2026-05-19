@@ -2,6 +2,7 @@
 node_modules/
 .pnp
 .pnp.js
+.pnpm-store/
 
 # Build outputs
 dist/
@@ -9,6 +10,16 @@ build/
 out/
 .next/
 .nuxt/
+.turbo/
+
+# Vite
+*.local
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# PouchDB (browser, only relevant for dev)
+*.pouchdb/
 
 # Local env / secrets
 .env

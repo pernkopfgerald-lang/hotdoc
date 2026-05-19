@@ -1,0 +1,84 @@
+/* ─────────────────────────────────────────────────────────────
+   HotDoc Theme Tokens — übernommen 1:1 aus prototype/lfa-b/style.css
+   Werden in tailwind.config.ts referenziert (var(--xxx)).
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --radius-s: 7px;
+  --radius-m: 11px;
+  --radius-l: 16px;
+  --gap: 10px;
+  --gap-xl: 14px;
+  --pad-x: 16px;
+  --pad-card: 14px;
+}
+
+[data-theme="dark"] {
+  --bg-deep: #08080b;
+  --bg-page: #0d0d12;
+  --surface-1: #16161d;
+  --surface-2: #1e1e27;
+  --surface-3: #262631;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text-1: #ededf2;
+  --text-2: #a8a8b5;
+  --text-3: #66666f;
+
+  --red: #ef4444;
+  --red-bg: rgba(239, 68, 68, 0.1);
+  --red-border: rgba(239, 68, 68, 0.3);
+  --red-glow: rgba(239, 68, 68, 0.35);
+
+  --amber: #f59e0b;
+  --amber-soft: rgba(245, 158, 11, 0.16);
+  --amber-border: rgba(245, 158, 11, 0.5);
+
+  --emerald: #10b981;
+  --emerald-bg: rgba(16, 185, 129, 0.08);
+  --emerald-border: rgba(16, 185, 129, 0.25);
+  --emerald-glow: rgba(16, 185, 129, 0.35);
+
+  --blue: #6da6ff;
+  --blue-bg: rgba(109, 166, 255, 0.1);
+  --blue-border: rgba(109, 166, 255, 0.22);
+
+  --shadow-card: none;
+  --grain-opacity: 0.5;
+  --grain-blend: overlay;
+}
+
+[data-theme="light"] {
+  --bg-deep: #f3f3f6;
+  --bg-page: #f7f7fa;
+  --surface-1: #ffffff;
+  --surface-2: #fafafc;
+  --surface-3: #f0f0f3;
+  --border: rgba(15, 18, 30, 0.08);
+  --border-strong: rgba(15, 18, 30, 0.2);
+  --text-1: #0a0a0e;
+  --text-2: #4a4a55;
+  --text-3: #7e7e8a;
+
+  --red: #dc2626;
+  --red-bg: rgba(220, 38, 38, 0.06);
+  --red-border: rgba(220, 38, 38, 0.3);
+  --red-glow: rgba(220, 38, 38, 0.25);
+
+  --amber: #b45309;
+  --amber-soft: rgba(180, 83, 9, 0.1);
+  --amber-border: rgba(180, 83, 9, 0.42);
+
+  --emerald: #047857;
+  --emerald-bg: rgba(4, 120, 87, 0.06);
+  --emerald-border: rgba(4, 120, 87, 0.3);
+  --emerald-glow: rgba(4, 120, 87, 0.25);
+
+  --blue: #1d4ed8;
+  --blue-bg: rgba(29, 78, 216, 0.06);
+  --blue-border: rgba(29, 78, 216, 0.25);
+
+  --shadow-card: 0 1px 2px rgba(15, 18, 30, 0.04), 0 2px 8px rgba(15, 18, 30, 0.04);
+  --grain-opacity: 0;
+  --grain-blend: normal;
+}

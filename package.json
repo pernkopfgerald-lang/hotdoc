@@ -1,0 +1,30 @@
+{
+  "name": "hotdoc-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HotDoc — Digitale Einsatzberichte für die FF Eberstalzell (Monorepo Root)",
+  "author": "Gerald Pernkopf <gerald.pernkopf@ff-eberstalzell.at>",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev:pwa": "pnpm --filter @hotdoc/pwa dev",
+    "dev:api": "pnpm --filter @hotdoc/api dev",
+    "build": "pnpm -r build",
+    "build:pwa": "pnpm --filter @hotdoc/pwa build",
+    "build:api": "pnpm --filter @hotdoc/api build",
+    "build:shared": "pnpm --filter @hotdoc/shared build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r exec rm -rf dist node_modules .turbo",
+    "preview:prototype": "python -m http.server 5500 --directory prototype/lfa-b"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3",
+    "@types/node": "22.10.5",
+    "prettier": "3.4.2"
+  }
+}
