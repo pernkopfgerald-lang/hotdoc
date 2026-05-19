@@ -50,5 +50,21 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: true,
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  },
+  resolve: {
+    alias: {
+      // PouchDB-browser importiert intern `events` (Node-Builtin) für
+      // EventEmitter. Vite externalisiert das im Browser-Build zu einem
+      // leeren Stub — und dann scheitert `class X extends EventEmitter`
+      // mit "Class extends value #<Object> is not a constructor or null".
+      // Der npm-Polyfill `events` ist API-kompatibel und browser-ready.
+      events: "events",
+    },
+  },
+  optimizeDeps: {
+    include: ["pouchdb-browser", "events"],
   },
 });
