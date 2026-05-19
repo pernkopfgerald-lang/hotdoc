@@ -3,7 +3,8 @@
 **Version:** 1.0
 **Datum:** 2026-05-19
 **Status:** Design-Entwurf, bereit für Implementierungsplan
-**Auftraggeber:** Freiwillige Feuerwehr Eberstalzell
+**Auftraggeber:** Freiwillige Feuerwehr Eberstalzell, Solarstraße 1, 4653 Eberstalzell
+**Ansprechperson & Entwickler:** Gerald Pernkopf · gerald.pernkopf@ff-eberstalzell.at
 **Use Case:** UC2 — Digitale Einsatzberichte auf Fahrzeug-Tablets
 
 ---
@@ -79,7 +80,7 @@ Diktat-Aufnahme startet < 500 ms nach Knopfdruck. Transkription läuft im Web Wo
 - Personenbezug der Mannschaftslisten bleibt im Bericht (rechtliche Aufbewahrungspflicht).
 
 **NFR-6 — Wartbarkeit**
-Stack möglichst nah am Brandmeister-Projekt (TypeScript, Node.js, React), damit derselbe Entwickler beide Projekte betreuen kann.
+Stack auf TypeScript / Node.js / React aufsetzen — vertraute Technologien beim Ansprechperson-Entwickler, damit langfristige Wartbarkeit gegeben ist.
 
 ---
 
