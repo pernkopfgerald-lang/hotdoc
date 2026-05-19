@@ -56,7 +56,7 @@ Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kom
 **Anhänger (nur MTF):** Auf dem MTF-Tablet erscheinen zwei zusätzliche Checkboxen — „HR-Anhänger mitgenommen" und „PKW-Anhänger mitgenommen". Diese werden im Fahrzeugbericht-MTF gespeichert und im Hauptbericht-Fahrzeug-Checkliste automatisch übernommen.
 
 **Atemschutz-Erfassung (Detail)**
-Pro Mannschaftsplatz (sowie für Fahrer und Fahrzeug-Kdt., falls relevant) gibt es einen AS-Toggle. Wird er aktiviert, erscheint ein Zeit-Counter mit **Default 15 Minuten** Einsatzdauer. Der Counter ist über **+ / − Buttons** in **5-Minuten-Schritten** anpassbar (Min. 5 Min., Max. 60 Min. — letzteres entspricht etwa zwei PA-Flaschen). Wenn der Toggle deaktiviert wird, verschwindet der Counter und der Zeitwert wird verworfen.
+Pro Mannschaftsplatz (sowie für Fahrer und Fahrzeug-Kdt., falls relevant) gibt es einen AS-Toggle. Wird er aktiviert, erscheint ein Zeit-Counter mit **Default 15 Minuten** Einsatzdauer. Der Counter ist über **+ / − Buttons** in **5-Minuten-Schritten** anpassbar (Min. 5 Min., Max. 30 Min. — entspricht etwa einer PA-Flasche). Wenn der Toggle deaktiviert wird, verschwindet der Counter und der Zeitwert wird verworfen.
 
 **FR-3 — Hauptbericht (auf Zentrale-Tablet „Florian Eberstalzell")**
 Auf dem Zentrale-Tablet erfasst der Einsatzleiter den **vollumfänglichen** Einsatzbericht mit allen Feldern gemäß heutigem Papierformular: Einsatzort, Datum/Uhrzeit, Pflichtbereich-Flags, Alarmierungs-Quelle, Anrufer, Fahrzeug-Checkliste, Einsatzart (28 Checkboxen + Freitext), Zeitmarken (Lage unter Kontrolle, Brand AUS, Alst. 2, Alst. 3), beteiligte Stellen (Polizei, RK, BFKDT, AFKDT, …), sonstige anwesende FF, Mannschaftszahlen, Verrechnung, Ölbindemittel, „Meldung von der Einsatzleitung", Einsatzleiter, Einsatzende, Bearbeiter. Layout siehe Anhang B.
@@ -196,7 +196,7 @@ FAHRZEUGBERICHT (1 pro eingesetztem Fahrzeug)
   │       personId,
   │       atemschutzAktiv: bool,
   │       atemschutzDauerMin?: number  ← nur wenn atemschutzAktiv=true
-  │                                     Default 15, Schritte à 5, Range 5..60
+  │                                     Default 15, Schritte à 5, Range 5..30 (max. eine PA-Flasche)
   │     }
   ├── anhaengerMitgenommen?: string[]  ← nur MTF, z.B. ["HR-Anhaenger"]
   ├── geraete[]: { materialId, anzahl?, bemerkung? }

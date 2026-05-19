@@ -45,3 +45,7 @@ wiki_extracted/
 Einsatzberichte-Fahrzeugdatenblatt/
 HB_syBOS_API.pdf
 syBOS_API_CMS_wiki.zip
+
+# Personenbezogene Stammdaten (DSGVO) — niemals committen
+Personal-Liste*.xlsx
+Personal-Liste*.csv
