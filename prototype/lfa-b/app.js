@@ -111,8 +111,9 @@ document.querySelectorAll(".as-toggle").forEach(toggle=>{
 // ─── Geräte-Chips toggle + Counter ─────────────────────────
 const gearCount = document.getElementById("gear-count");
 function updateGearCount(){
-  const n = document.querySelectorAll(".chip--on").length;
-  if(gearCount) gearCount.textContent = `${n} ausgewählt`;
+  const onChips = document.querySelectorAll(".chip--on").length;
+  const oelOn   = document.getElementById("chip-oel")?.getAttribute("aria-pressed") === "true" ? 1 : 0;
+  if(gearCount) gearCount.textContent = `${onChips + oelOn} ausgewählt`;
 }
 document.querySelectorAll(".chip[data-gear]").forEach(chip=>{
   chip.addEventListener("click",()=>{
@@ -121,23 +122,52 @@ document.querySelectorAll(".chip[data-gear]").forEach(chip=>{
   });
 });
 
-// ─── Ölbindemittel-Counter (Säcke, min 0) ──────────────────
+// ─── Ölbindemittel-Smart-Chip (toggle + inline counter) ────
 (()=>{
+  const chip  = document.getElementById("chip-oel");
   const numEl = document.getElementById("oel-num");
-  const minus = document.getElementById("oel-minus");
-  const plus  = document.getElementById("oel-plus");
-  if(!numEl) return;
-  function set(v){
-    v = Math.max(0, Math.min(99, v));
-    numEl.textContent = v;
-    numEl.classList.toggle("oel__num--active", v > 0);
+  if(!chip || !numEl) return;
+
+  let saecke = 1;  // Default beim Aktivieren
+
+  function setActive(active){
+    chip.setAttribute("aria-pressed", String(active));
+    if(active){
+      // Reset auf 1 wenn frisch aktiviert
+      if(parseInt(numEl.textContent,10) <= 0){
+        saecke = 1;
+        numEl.textContent = saecke;
+      }
+    }else{
+      saecke = 0;
+      numEl.textContent = saecke;
+    }
+    // Counter wird im Gear-Counter mitgezählt
+    updateGearCount?.();
+  }
+
+  function step(delta){
+    saecke = Math.max(1, Math.min(99, saecke + delta));
+    numEl.textContent = saecke;
     numEl.animate(
-      [{transform:"scale(1)"},{transform:"scale(1.10)"},{transform:"scale(1)"}],
-      {duration:160, easing:"ease-out"}
+      [{transform:"scale(1)"},{transform:"scale(1.18)"},{transform:"scale(1)"}],
+      {duration:140, easing:"ease-out"}
     );
   }
-  minus?.addEventListener("click", ()=> set(parseInt(numEl.textContent,10) - 1));
-  plus?.addEventListener("click",  ()=> set(parseInt(numEl.textContent,10) + 1));
+
+  // Klick auf Chip: toggle (aber NICHT wenn auf +/- geklickt)
+  chip.addEventListener("click", (e)=>{
+    if(e.target.closest("[data-oel-act]")) return; // Counter-Klicks abfangen
+    setActive(chip.getAttribute("aria-pressed") !== "true");
+  });
+
+  // +/- Counter
+  chip.querySelectorAll("[data-oel-act]").forEach(btn=>{
+    btn.addEventListener("click",(e)=>{
+      e.stopPropagation();
+      step(btn.dataset.oelAct === "plus" ? 1 : -1);
+    });
+  });
 })();
 
 // ─── Mannschaft-Count (initial gefüllte zählen) ────────────

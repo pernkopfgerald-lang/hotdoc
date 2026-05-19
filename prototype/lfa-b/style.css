@@ -618,82 +618,84 @@ body{
   transform:translateY(-1px);
 }
 
-/* ─── Ölbindemittel (Verrechenbar) ─── */
-.oel{
-  background:
-    radial-gradient(600px 200px at 110% -10%, var(--amber-soft), transparent 60%),
-    var(--surface-1);
-  border-color:var(--amber-border);
+/* ─── Smart-Chip "Ölbindemittel" — Counter inline beim Aktivieren ─── */
+.chip-wrap{display:contents}
+.chip--oel{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 14px;
+  /* gleiches Grund-Styling wie .chip, aber selbsterweiternd */
 }
-.card__hint--bill{
+.chip--oel .chip__counter{
+  display:none;
+  align-items:center;
+  gap:8px;
+  padding-left:10px;
+  margin-left:2px;
+  border-left:1px solid var(--amber-border);
+}
+.chip--oel .chip__bill{
+  display:none;
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px;
   font-weight:700;
   color:var(--amber);
-  padding:3px 8px;
+  padding:1px 6px;
   background:var(--amber-soft);
   border:1px solid var(--amber-border);
   border-radius:4px;
-  letter-spacing:0.18em;
+  letter-spacing:0.05em;
 }
-.oel__row{
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-.oel__stepper{
-  display:flex; align-items:center; justify-content:center; gap:18px;
-  padding:14px 8px 10px;
-}
-.oel__btn{
-  width:60px; height:60px;
-  display:grid; place-items:center;
-  border:1px solid var(--border-strong);
-  border-radius:50%;
-  font-family:"IBM Plex Sans",sans-serif;
-  font-size:30px;
-  font-weight:600;
-  color:var(--text-1);
-  background:var(--surface-2);
-  transition:all .15s;
-  user-select:none;
-}
-.oel__btn:hover{background:var(--surface-3); transform:scale(1.04)}
-.oel__btn:active{transform:scale(0.94)}
-.oel__btn--plus{
-  background:linear-gradient(180deg, var(--amber-soft) 0%, color-mix(in srgb, var(--amber-soft) 60%, transparent) 100%);
+.chip--oel[aria-pressed="true"]{
+  background:var(--amber-soft);
   border-color:var(--amber-border);
   color:var(--amber);
+  font-weight:600;
 }
-.oel__btn--plus:hover{
-  background:var(--amber-soft);
+.chip--oel[aria-pressed="true"]::before{
+  content:"";
+  display:inline-block;
+  width:6px;height:6px;border-radius:50%;
+  background:var(--amber);
+  margin-right:5px;
+  box-shadow:0 0 6px var(--amber-soft);
+  transform:translateY(-1px);
 }
-.oel__counter{
-  min-width:120px;
-  display:flex; flex-direction:column; align-items:center; gap:2px;
+.chip--oel[aria-pressed="true"] .chip__counter{display:inline-flex}
+.chip--oel[aria-pressed="true"] .chip__bill{display:inline-block}
+
+.chip__step{
+  width:26px;height:26px;
+  display:grid; place-items:center;
+  border:1px solid var(--amber-border);
+  border-radius:6px;
+  font-family:"IBM Plex Sans",sans-serif;
+  font-size:15px;
+  font-weight:600;
+  color:var(--amber);
+  background:var(--surface-1);
+  cursor:pointer;
+  transition:background .12s, transform .08s;
+  user-select:none;
 }
-.oel__num{
+.chip__step:hover{background:var(--surface-3)}
+.chip__step:active{transform:scale(.9)}
+.chip__num{
   font-family:"IBM Plex Sans Condensed",sans-serif;
-  font-size:54px;
+  font-size:18px;
   font-weight:700;
-  line-height:1;
   color:var(--text-1);
   font-variant-numeric:tabular-nums;
-  letter-spacing:-0.02em;
-  transition:color .2s;
-}
-.oel__num--active{color:var(--amber)}
-.oel__unit{
-  font-family:"IBM Plex Mono",monospace;
-  font-size:11px; text-transform:uppercase; letter-spacing:0.20em;
-  color:var(--text-3);
-  font-weight:500;
-}
-.oel__hint{
-  margin:0;
-  font-size:12px;
-  line-height:1.5;
-  color:var(--text-2);
+  min-width:18px;
   text-align:center;
-  padding:0 8px;
+  letter-spacing:-0.01em;
+}
+.chip__unit{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:10px; text-transform:uppercase; letter-spacing:0.14em;
+  color:var(--amber);
+  font-weight:600;
 }
 
 /* ─── chronik ─── */
