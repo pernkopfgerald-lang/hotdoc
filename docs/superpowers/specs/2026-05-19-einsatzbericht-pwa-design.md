@@ -19,14 +19,14 @@ UC0 (Tätigkeitsnachweise) und UC1 (Anwesenheitserfassung im FF-Haus) sind **exp
 
 ## 2. Beteiligte und Rollen
 
-| Rolle | Tablet | Funkrufname | Aufgabe |
-|---|---|---|---|
-| Fahrzeug-Kdt. KDO | KDO-Tablet | **Kommando Eberstalzell** | erfasst Fahrzeugbericht KDO |
-| Fahrzeug-Kdt. TLF-A 4000 | TLF-Tablet | **Tank Eberstalzell** | erfasst Fahrzeugbericht TLF |
-| Fahrzeug-Kdt. LFA-B | LFA-B-Tablet | **Pumpe Eberstalzell** | erfasst Fahrzeugbericht LFA-B |
-| Fahrzeug-Kdt. MTF | MTF-Tablet | **MTF Eberstalzell** | erfasst Fahrzeugbericht MTF |
-| Einsatzleiter | Zentrale-Tablet | **Florian Eberstalzell** | erfasst Hauptbericht, sieht alle Fahrzeugberichte live (sobald gesynct) |
-| Bearbeiter (Funktionär) | Zentrale-Tablet / Browser | — | schließt Bericht ab, generiert PDF, überträgt nach syBOS |
+| Rolle | Tablet | Funkrufname | Besatzung | Aufgabe |
+|---|---|---|---|---|
+| Fahrzeug-Kdt. KDO | KDO-Tablet | **Kommando Eberstalzell** | 1+3 (4 Sitzpl.) | erfasst Fahrzeugbericht KDO |
+| Fahrzeug-Kdt. TLF-A 4000 | TLF-Tablet | **Tank Eberstalzell** | 1+7 (8 Sitzpl.) | erfasst Fahrzeugbericht TLF |
+| Fahrzeug-Kdt. LFA-B | LFA-B-Tablet | **Pumpe Eberstalzell** | 1+7 (8 Sitzpl.) | erfasst Fahrzeugbericht LFA-B |
+| Fahrzeug-Kdt. MTF | MTF-Tablet | **MTF Eberstalzell** | 1+8 (9 Sitzpl.) + Anhänger | erfasst Fahrzeugbericht MTF, ggf. HR- oder PKW-Anhänger |
+| Einsatzleiter | Zentrale-Tablet | **Florian Eberstalzell** | — | erfasst Hauptbericht, sieht alle Fahrzeugberichte live (sobald gesynct) |
+| Bearbeiter (Funktionär) | Zentrale-Tablet / Browser | — | — | schließt Bericht ab, generiert PDF, überträgt nach syBOS |
 
 **Keine personalisierten Logins.** Jedes Tablet ist auf ein Fahrzeug konfiguriert (einmaliger Setup); wer das Tablet bedient, wählt sich aus der Personalliste als Fahrer / Fahrzeug-Kdt. / Mannschaft.
 
@@ -42,10 +42,21 @@ UC0 (Tätigkeitsnachweise) und UC1 (Anwesenheitserfassung im FF-Haus) sind **exp
 Bei eingehendem Alarm (BlaulichtSMS) öffnet die App auf allen Tablets automatisch das Einsatzformular, vorausgefüllt mit BlaulichtSMS-Daten (Einsatzort, Koordinaten, Zeit, Audio).
 
 **FR-2 — Fahrzeug-Kurzbericht (auf Fahrzeug-Tablets)**
-Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kompakten** Fahrzeug-Kurzbericht: Fahrer, Fahrzeug-Kdt., Mannschaft (fix 7 Plätze) mit individueller **Atemschutz-Markierung pro Person**, KM-Stand Abfahrt, eingesetzte Geräte (gefiltert auf das Fahrzeug), Tätigkeitsbericht (Freitext / Diktat). KM-Rückkehr und Endzeit kommen beim Einrücken dazu. Layout siehe Anhang A.
+Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kompakten** Fahrzeug-Kurzbericht: Fahrer, Fahrzeug-Kdt., Mannschaft (Anzahl der Plätze je Fahrzeug — siehe Tabelle in Kapitel 2) mit individueller **Atemschutz-Markierung pro Person**, KM-Stand Abfahrt, eingesetzte Geräte (gefiltert auf das Fahrzeug), Tätigkeitsbericht (Freitext / Diktat). KM-Rückkehr und Endzeit kommen beim Einrücken dazu. Layout siehe Anhang A.
+
+**Besatzungs-Konvention:** Die FF-Konvention „1+X" bedeutet im UI: 1 Fahrzeug-Kdt. (Pflicht) + 1 Fahrer (Pflicht) + (X−1) zusätzliche Mannschaftsplätze.
+
+| Fahrzeug | Besatzungs-Typ | Mannschaftsplätze im UI |
+|---|---|---|
+| KDO | 1+3 | 2 |
+| TLF-A 4000 | 1+7 | 6 |
+| LFA-B | 1+7 | 6 |
+| MTF | 1+8 | 7 |
+
+**Anhänger (nur MTF):** Auf dem MTF-Tablet erscheinen zwei zusätzliche Checkboxen — „HR-Anhänger mitgenommen" und „PKW-Anhänger mitgenommen". Diese werden im Fahrzeugbericht-MTF gespeichert und im Hauptbericht-Fahrzeug-Checkliste automatisch übernommen.
 
 **Atemschutz-Erfassung (Detail)**
-Pro Mannschaftsplatz gibt es einen AS-Toggle. Wird er aktiviert, erscheint ein Zeit-Counter mit **Default 15 Minuten** Einsatzdauer. Der Counter ist über **+ / − Buttons** in **5-Minuten-Schritten** anpassbar (Min. 5 Min., Max. 60 Min. — letzteres entspricht etwa zwei PA-Flaschen). Wenn der Toggle deaktiviert wird, verschwindet der Counter und der Zeitwert wird verworfen.
+Pro Mannschaftsplatz (sowie für Fahrer und Fahrzeug-Kdt., falls relevant) gibt es einen AS-Toggle. Wird er aktiviert, erscheint ein Zeit-Counter mit **Default 15 Minuten** Einsatzdauer. Der Counter ist über **+ / − Buttons** in **5-Minuten-Schritten** anpassbar (Min. 5 Min., Max. 60 Min. — letzteres entspricht etwa zwei PA-Flaschen). Wenn der Toggle deaktiviert wird, verschwindet der Counter und der Zeitwert wird verworfen.
 
 **FR-3 — Hauptbericht (auf Zentrale-Tablet „Florian Eberstalzell")**
 Auf dem Zentrale-Tablet erfasst der Einsatzleiter den **vollumfänglichen** Einsatzbericht mit allen Feldern gemäß heutigem Papierformular: Einsatzort, Datum/Uhrzeit, Pflichtbereich-Flags, Alarmierungs-Quelle, Anrufer, Fahrzeug-Checkliste, Einsatzart (28 Checkboxen + Freitext), Zeitmarken (Lage unter Kontrolle, Brand AUS, Alst. 2, Alst. 3), beteiligte Stellen (Polizei, RK, BFKDT, AFKDT, …), sonstige anwesende FF, Mannschaftszahlen, Verrechnung, Ölbindemittel, „Meldung von der Einsatzleitung", Einsatzleiter, Einsatzende, Bearbeiter. Layout siehe Anhang B.
@@ -178,14 +189,16 @@ FAHRZEUGBERICHT (1 pro eingesetztem Fahrzeug)
   ├── zeit: { von, bis }
   ├── km: { abfahrt, rueckkehr }
   ├── fahrer, fahrzeugKdt (Person-Refs)
-  ├── mannschaft[]: max. 7 Plätze, jeweils
+  ├── mannschaft[]: 0..N Plätze (N = Fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich)
   │     {
-  │       slot: 1..7,                ← Reihenfolge wie im Papierformular
+  │       slot: 1..N,                ← Reihenfolge wie im Papierformular
+  │                                     (KDO: 1..2, TLF/LFA-B: 1..6, MTF: 1..7)
   │       personId,
   │       atemschutzAktiv: bool,
   │       atemschutzDauerMin?: number  ← nur wenn atemschutzAktiv=true
   │                                     Default 15, Schritte à 5, Range 5..60
   │     }
+  ├── anhaengerMitgenommen?: string[]  ← nur MTF, z.B. ["HR-Anhaenger"]
   ├── geraete[]: { materialId, anzahl?, bemerkung? }
   ├── taetigkeitsbericht (Freitext + verlinkte Chronik-Einträge)
   ├── fotos[]: { blobId, beschreibung }
@@ -203,9 +216,16 @@ PERSON
 
 FAHRZEUG (Konfiguration, lokal)
   ├── id, bezeichnung, kurz
-  ├── funkrufname        ← taktischer Funkrufname für Chronik-Anzeige
-  │                        z.B. "Tank Eberstalzell", "Florian Eberstalzell"
-  └── geraeteIds[]       ← welche Geräte sind auf diesem Fahrzeug verlastet
+  ├── funkrufname              ← taktischer Funkrufname für Chronik-Anzeige
+  │                              z.B. "Tank Eberstalzell"
+  ├── besatzung: {
+  │     typ: "1+3" | "1+7" | "1+8",          ← informativ
+  │     gesamtSitzplaetze: number,            ← inkl. Kdt + Fahrer
+  │     mannschaftsplaetzeZusaetzlich: number ← UI-relevant
+  │   }
+  ├── kannAnhaengerMitnehmen?: string[]       ← optional, z.B.
+  │                              ["HR-Anhaenger", "PKW-Anhaenger"]  (nur MTF)
+  └── geraeteIds[]             ← welche Geräte sind auf diesem Fahrzeug verlastet
 
 MATERIAL (aus syBOS)
   ├── id (syBOS-Material-ID)
@@ -626,7 +646,7 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 
 **Bezugsdokument:** `Einsatzberichte-Fahrzeugdatenblatt/Fahrzeugdatenblatt.docx`
 
-### A.1 Layout (1:1 zum Papier-Original)
+### A.1 Layout (1:1 zum Papier-Original, Mannschaftsplätze dynamisch je Fahrzeug)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -637,20 +657,24 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 │  Uhrzeit von        | (Zeitstempel KM-Abfahrt)              │
 │  Uhrzeit bis        | (Zeitstempel KM-Rückkehr)             │
 ├─────────────────────────────────────────────────────────────┤
-│  Fahrzeug           | (fix pro Tablet: KDO / TANK / LFB-A2  │
-│                     |  / MTF / HR-Anhänger)                 │
+│  Fahrzeug           | (fix pro Tablet)                      │
+│  Besatzungs-Typ     | z.B. 1+7 (8 Sitzplätze)               │
 │  Kilometer          | Abfahrt:  ____   Rückkehr:  ____      │
 ├─────────────────────────────────────────────────────────────┤
-│  Fahrer             | [Person-Picker]                       │
-│  Fahrzeug-Kdt.      | [Person-Picker]                       │
+│  Fahrer             | [Person-Picker]    [☐ AS]             │
+│  Fahrzeug-Kdt.      | [Person-Picker]    [☐ AS]             │
 ├─────────────────────────────────────────────────────────────┤
 │                     | 1  [Person-Picker]   [☐ AS]           │
 │                     | 2  [Person-Picker]   [☐ AS]           │
-│                     | 3  [Person-Picker]   [☑ AS]  ⎡−⎤15⎡+⎤ │
-│  Mannschaft         | 4  [Person-Picker]   [☐ AS]           │
-│                     | 5  [Person-Picker]   [☐ AS]           │
-│                     | 6  [Person-Picker]   [☐ AS]           │
-│                     | 7  [Person-Picker]   [☐ AS]           │
+│  Mannschaft         | 3  [Person-Picker]   [☑ AS] ⎡−⎤15⎡+⎤  │
+│  (dyn. Anzahl)      | …                                     │
+│                     | N  [Person-Picker]   [☐ AS]           │
+│                     |                                       │
+│                     | N je Fahrzeug:                        │
+│                     |   KDO → 2  ·  TLF → 6                 │
+│                     |   LFA-B → 6  ·  MTF → 7               │
+├─────────────────────────────────────────────────────────────┤
+│  Anhänger (nur MTF) | [☐ HR-Anhänger]  [☐ PKW-Anhänger]    │
 ├─────────────────────────────────────────────────────────────┤
 │  Geräte, Mittel     | [Multi-Select aus Fahrzeug-           │
 │   (Pumpe, Generator,|  Geräteliste]                         │
@@ -676,7 +700,8 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 | KM Rückkehr | Zahl | ja | manuell eingegeben beim Einrücken |
 | Fahrer | Person | ja | Auswahl aus aktiver syBOS-Personalliste |
 | Fahrzeug-Kdt. | Person | ja | Auswahl aus aktiver syBOS-Personalliste |
-| Mannschaft (7 Plätze) | Liste | nein | Pro Slot: Person + AS-Toggle + ggf. AS-Dauer (siehe A.3) |
+| Mannschaft (dyn. Anzahl) | Liste | nein | Pro Slot: Person + AS-Toggle + ggf. AS-Dauer (siehe A.3). Max-Anzahl je Fahrzeug: KDO 2, TLF 6, LFA-B 6, MTF 7 |
+| Anhänger-Mitnahme (nur MTF) | Multi-Select | nein | [HR-Anhänger / PKW-Anhänger], wird in Hauptbericht-Fahrzeug-Checkliste übernommen |
 | Geräte/Mittel | Multi-Select | nein | Vorgefilterte Liste aus Fahrzeug-Geräteliste |
 | Tätigkeitsbericht | Text | nein | Freitext, ergänzt automatisch durch Chronik-Diktate |
 
