@@ -444,8 +444,10 @@ body{
   margin-bottom:6px;
   font-weight:500;
 }
-.field__input{
+.field__input,
+.field__output{
   width:100%;
+  display:block;
   padding:10px 12px;
   background:var(--surface-2);
   border:1px solid var(--border);
@@ -454,6 +456,33 @@ body{
   color:var(--text-1);
   font-weight:500;
   transition:border-color .15s, background .15s;
+}
+.field__output{
+  /* read-only style: leicht ausgegraut, mit "auto"-Pattern */
+  background:repeating-linear-gradient(
+    -45deg,
+    var(--surface-2) 0,
+    var(--surface-2) 6px,
+    color-mix(in srgb, var(--surface-2) 85%, var(--blue)) 6px,
+    color-mix(in srgb, var(--surface-2) 85%, var(--blue)) 7px
+  );
+  color:var(--text-1);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:0.04em;
+}
+.field__output--mono{
+  font-family:"IBM Plex Mono",monospace;
+}
+.field__auto{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:8px; text-transform:uppercase; letter-spacing:0.16em;
+  color:var(--blue);
+  padding:2px 5px;
+  background:var(--blue-bg);
+  border:1px solid var(--blue-border);
+  border-radius:3px;
+  margin-left:6px;
+  font-weight:600;
 }
 .field__input--mono{
   font-family:"IBM Plex Mono",monospace;
@@ -945,17 +974,83 @@ body{
   flex-shrink:0;
 }
 .fzg-marker--self .fzg-marker__pin{
-  background:var(--red);
+  background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);  /* Amber/Gold für eigenes Fahrzeug */
   border-color:#fff;
   color:#fff;
+  box-shadow:0 0 0 3px rgba(245,158,11,0.30), 0 4px 12px rgba(0,0,0,0.4);
+  padding:5px 10px 5px 6px;
 }
-.fzg-marker--self .fzg-marker__dot{background:#fff; box-shadow:0 0 10px rgba(255,255,255,0.7)}
+.fzg-marker--self .fzg-marker__dot{
+  background:#fff;
+  width:12px; height:12px;
+  box-shadow:0 0 12px rgba(255,255,255,0.9);
+  animation:pulse-self 1.4s ease-in-out infinite;
+}
+@keyframes pulse-self{
+  0%,100%{transform:scale(1); box-shadow:0 0 8px rgba(255,255,255,0.7)}
+  50%{transform:scale(1.25); box-shadow:0 0 14px rgba(255,255,255,1)}
+}
 .fzg-marker--other .fzg-marker__pin{
   background:var(--blue-bg);
   border-color:var(--blue);
   color:var(--blue);
 }
 .fzg-marker--other .fzg-marker__dot{background:var(--blue); animation:pulse 2s ease-in-out infinite}
+
+/* Recenter-Button auf Karte */
+.map-recenter{
+  position:absolute;
+  bottom:70px; right:10px;
+  z-index:401;
+  width:36px; height:36px;
+  display:grid; place-items:center;
+  background:var(--surface-1);
+  border:1px solid var(--border-strong);
+  border-radius:50%;
+  color:var(--text-1);
+  box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  transition:transform .12s;
+}
+.map-recenter:hover{transform:scale(1.05)}
+.map-recenter:active{transform:scale(.94)}
+
+/* Hydrant-Marker (Wasserkarte.info Mock) */
+.hydrant-marker{
+  width:auto!important; height:auto!important;
+}
+.hydrant-marker__pin{
+  width:18px; height:18px;
+  display:grid; place-items:center;
+  border-radius:50%;
+  background:#0ea5e9;
+  border:1.5px solid #fff;
+  color:#fff;
+  box-shadow:0 2px 4px rgba(0,0,0,0.3);
+  font-family:"IBM Plex Mono",monospace;
+  font-size:9px;
+  font-weight:700;
+}
+
+/* Map Actions Row */
+.map-actions{
+  display:flex; gap:8px;
+  margin-top:10px;
+}
+.nav-btn--primary{flex:1}
+.nav-btn--secondary{
+  flex-shrink:0;
+  padding:13px 14px;
+  background:var(--surface-2);
+  border-color:var(--border-strong);
+  color:var(--text-2);
+  font-weight:500;
+}
+.nav-btn--secondary[aria-pressed="true"]{
+  background:linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+  border-color:#0284c7;
+  color:#fff;
+}
+.nav-btn--secondary[aria-pressed="true"] svg{color:#fff}
 
 .einsatz-marker{
   width:36px!important; height:48px!important;

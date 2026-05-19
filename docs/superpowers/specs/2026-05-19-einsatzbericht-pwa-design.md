@@ -82,15 +82,35 @@ Ein zweites Output-Format (HTML oder PDF) zeigt die Pflichtfelder in der Reihenf
 
 **FR-9 — Karte, Anfahrt und Live-Fahrzeug-Tracking**
 Auf jedem Tablet ist eine interaktive Karte (OpenStreetMap via Leaflet) sichtbar mit:
-- Einsatzort-Marker (aus BlaulichtSMS-Koordinaten)
-- Eigenes Fahrzeug (via Tablet-GPS, Funkrufname als Label)
-- Andere Fahrzeuge der FF Eberstalzell live (Funkrufnamen als Label)
-- Distanz und ETA zum Einsatzort
-- „Navigation starten"-Knopf, der Google Maps via Deeplink öffnet (`https://www.google.com/maps/dir/?api=1&destination=<Adresse>&travelmode=driving`)
+- **Einsatzort-Marker** aus BlaulichtSMS-Koordinaten (roter Pin mit Flamme)
+- **Eigenes Fahrzeug** via Tablet-GPS — visuell deutlich abgehoben (Amber/Gold-Marker mit pulsierendem Punkt, +3 px Glow-Ring), unterscheidet sich klar von anderen Fahrzeugen (blau)
+- **Andere Fahrzeuge der FF Eberstalzell** live (Funkrufnamen als Label, blaue Pill-Marker)
+- **Distanz und ETA** zum Einsatzort, live aktualisiert
+- **Anzahl Hydranten im 250-m-Radius** (Wasserkarte-Layer aktiv)
+- **„Route aktiv · Google Maps öffnen"** als CTA-Knopf — Route-Polyline ist **immer aktiv und sichtbar** (gestrichelte rote Linie Self → Einsatzort, aktualisiert sich mit Bewegung), der Knopf öffnet zusätzlich die echte Turn-by-Turn-Navigation in Google Maps (`https://www.google.com/maps/dir/?api=1&destination=<Adresse>&travelmode=driving`)
+- **Auto-Follow** der eigenen Position bei Zoom-Level 17 (~250 m Sichtfeld). Manuelles Verschieben pausiert Auto-Follow; „Recenter"-Knopf reaktiviert es.
 
-**Hardware-Voraussetzung:** Alle 5 Tablets haben GPS und Mobilfunk-SIM. Position wird alle 5–10 Sekunden per HTTP-POST an das Backend übermittelt und an die anderen Tablets via WebSocket / Server-Sent-Events weitergeleitet. Bei Funkloch puffert das Tablet die GPS-Spur lokal und übermittelt sie beim Reconnect.
+**Hardware-Voraussetzung:** Alle 5 Tablets haben GPS und Mobilfunk-SIM (bestätigt). Position wird alle 5–10 Sekunden per HTTP-POST an das Backend übermittelt und an die anderen Tablets via WebSocket / Server-Sent-Events weitergeleitet. Bei Funkloch puffert das Tablet die GPS-Spur lokal und übermittelt sie beim Reconnect.
 
 Hinweis: Position-Sharing ist eine **bewusste Ausnahme** vom Offline-Vertrag (siehe NFR-1) — fällt es aus, beeinträchtigt es die Berichts-Erfassung nicht.
+
+**FR-10 — Kilometerstand automatisch aus GPS-Track**
+KM Abfahrt und KM gefahren werden **nicht** händisch eingetragen. Sie sind read-only Felder, die automatisch berechnet werden:
+- **KM Abfahrt:** zuletzt synchronisierter Tachostand aus syBOS-Fahrzeugverwaltung (Stammdaten-Sync). Falls nicht verfügbar: vom Funktionär einmal initial gepflegt.
+- **KM gefahren:** kumulierte Distanz aus dem GPS-Track der Einsatzdauer, alle 5–10 Sekunden aktualisiert. Berechnung über Haversine-Formel zwischen aufeinanderfolgenden GPS-Punkten, mit Glättung (Outlier-Filter > 200 m/s = vermutlich GPS-Glitch).
+- **KM Rückkehr:** automatisch beim „Bericht abschließen" = KM Abfahrt + KM gefahren.
+
+Bei Funkloch ist die Berechnung trotzdem korrekt — GPS-Track wird lokal aufgezeichnet und beim Sync mit dem Backend abgeglichen.
+
+**FR-11 — Löschwasserdaten via wasserkarte.info**
+Auf der Karte werden Löschwasserentnahmestellen (Hydranten, Saugstellen, Tieflöschwasserstellen) und ggf. Brandschutzpläne von **wasserkarte.info** eingeblendet. Toggle-Knopf „Löschwasser" zum Ein-/Ausblenden.
+
+Integration über **wasserkarte.info Access-Key** (in Backend-Secrets gespeichert, gemäß `docs.wasserkarte.info/externe-systeme/feuerwehren/`). Daten werden im Backend gecacht (lokal in CouchDB) und an die Tablets via Sync verteilt — so auch offline verfügbar nach erstem Cache.
+
+Marker-Typen:
+- **H** (Hydrant): blauer Kreis mit weißem „H"
+- **S** (Saugstelle): blauer Kreis mit weißem „S"
+- Klick auf Marker zeigt Detail-Info (Größe, Leistung, letzter Prüfdatum, falls von wasserkarte.info geliefert).
 
 ### 3.2 Nicht-funktionale Anforderungen
 
@@ -211,7 +231,8 @@ FAHRZEUGBERICHT (1 pro eingesetztem Fahrzeug)
   ├── einsatzId (FK)
   ├── fahrzeugId
   ├── zeit: { von, bis }
-  ├── km: { abfahrt, rueckkehr }
+  ├── km: { abfahrt, gefahrenKm, rueckkehr }  ← gefahrenKm aus GPS-Track auto
+  ├── gpsTrack[]?: { lat, lng, t, accuracy }  ← optional, für Audit/Analyse
   ├── fahrer, fahrzeugKdt (Person-Refs)
   ├── mannschaft[]: 0..N Plätze (N = Fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich)
   │     {
@@ -531,6 +552,17 @@ Halbautomatischer Playwright-Bot, der die Spickzettel-Felder direkt in syBOS ein
 | WebPush | web-push (npm) + VAPID-Keys | offener Standard, ohne Drittanbieter |
 
 ---
+
+## 11.5 Externe Dienste
+
+| Dienst | Zweck | Auth | Cost |
+|---|---|---|---|
+| BlaulichtSMS Alarm API v1 | Alarmdaten (Ort, Zeit, Audio) | Customer-ID + User/Pw | je nach Kontingent |
+| syBOS Read-API (SOLARYS) | Personal-, Material-, Abteilungsstammdaten | Token + IP-Whitelist | kostenfrei |
+| OpenStreetMap Tiles | Karten-Hintergrund | none | kostenfrei (Fair-Use) |
+| Google Maps Deeplink | Turn-by-Turn-Navigation | none | kostenfrei |
+| **wasserkarte.info** | Löschwasserentnahmestellen | Access-Key (in fly secrets) | je nach Lizenz der FF |
+| OpenAI Whisper (Fallback) | Backend-Transkript wenn lokal scheitert | API-Key | nach Nutzung |
 
 ## 12. Pre-Launch-Checkliste
 

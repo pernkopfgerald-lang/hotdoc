@@ -390,39 +390,50 @@ function addChronikEntry(source, text, pending=false){
   search.addEventListener("input", e => render(e.target.value));
 })();
 
-// ─── Karte: Einsatzort + Fahrzeug-Tracking ─────────────────
+// ─── Karte: Einsatzort + Fahrzeug-Tracking + Wasserkarte ────
 (()=>{
-  if(typeof L === "undefined") return; // Leaflet noch nicht geladen
+  if(typeof L === "undefined") return;
   const mapEl = document.getElementById("map");
   if(!mapEl) return;
 
   // ── Koordinaten (Mock-Daten) ──
-  // Wachhaus FF Eberstalzell, Solarstraße 1, ca. 48.0884, 13.9586
-  // Mock-Einsatzort (BlaulichtSMS): 48.110, 13.961
-  const HOME    = [48.0884, 13.9586];
-  const EINSATZ = [48.1100, 13.9610];
+  const HOME    = [48.0884, 13.9586];   // Wachhaus FF Eberstalzell
+  const EINSATZ = [48.1100, 13.9610];   // Mock-Einsatzort aus BlaulichtSMS
 
-  // andere Fahrzeuge — bekommen Live-Position via Mock-Sim
+  const KM_START = 34712.0;             // Startwert KM-Zähler
+  const SELF_ZOOM = 17;                 // Zoom ~250m Sichtfeld
+
   const fleet = {
     self:    { id:"self",  ruf:"Pumpe Eberstalzell",    abk:"PUMPE",    pos:[...HOME] },
-    kdo:     { id:"kdo",   ruf:"Kommando Eberstalzell", abk:"KDO",      pos:[48.0890, 13.9595] },
+    kdo:     { id:"kdo",   ruf:"Kommando Eberstalzell", abk:"KDO",      pos:[48.0892, 13.9595] },
     tlf:     { id:"tlf",   ruf:"Tank Eberstalzell",     abk:"TANK",     pos:[48.0892, 13.9580] },
     florian: { id:"flo",   ruf:"Florian Eberstalzell",  abk:"FLORIAN",  pos:[...HOME] },
   };
+
+  // ── Wasserkarte.info Mock-Hydranten (Standorte rund um Einsatzort) ──
+  // In V1.0 via wasserkarte.info-API mit Access-Key abgerufen.
+  const HYDRANTEN = [
+    { pos:[48.1095, 13.9600], typ:"H" },
+    { pos:[48.1105, 13.9620], typ:"H" },
+    { pos:[48.1115, 13.9605], typ:"S" },  // Saugstelle
+    { pos:[48.1090, 13.9625], typ:"H" },
+    { pos:[48.1108, 13.9595], typ:"H" },
+    { pos:[48.0890, 13.9590], typ:"H" },  // beim Wachhaus
+  ];
 
   // ── Map init ──
   const map = L.map(mapEl, {
     zoomControl:true,
     attributionControl:true,
     preferCanvas:true,
-  }).setView([48.0995, 13.9598], 14);
+  }).setView(fleet.self.pos, SELF_ZOOM);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom:19,
     attribution:'© OpenStreetMap',
   }).addTo(map);
 
-  // ── Einsatzort-Marker (Flamme + Pin) ──
+  // ── Einsatzort-Marker ──
   const einsatzIcon = L.divIcon({
     className:"einsatz-marker",
     html:`
@@ -452,11 +463,28 @@ function addChronikEntry(source, text, pending=false){
     markers[key] = L.marker(fzg.pos, {icon, title:fzg.ruf, zIndexOffset: isSelf ? 1000 : 100}).addTo(map);
   }
 
-  // Karte auf Bounds anpassen
-  const allPts = [EINSATZ, ...Object.values(fleet).map(f => f.pos)];
-  map.fitBounds(L.latLngBounds(allPts).pad(0.25));
+  // ── Hydranten-Layer (Wasserkarte.info Mock) ──
+  const hydrantLayer = L.layerGroup();
+  HYDRANTEN.forEach(h => {
+    const icon = L.divIcon({
+      className:"hydrant-marker",
+      html:`<div class="hydrant-marker__pin">${h.typ}</div>`,
+      iconSize:[18,18], iconAnchor:[9,9],
+    });
+    L.marker(h.pos, {icon, title:`Löschwasser ${h.typ === "H" ? "Hydrant" : "Saugstelle"} · wasserkarte.info`}).addTo(hydrantLayer);
+  });
+  hydrantLayer.addTo(map);  // default sichtbar
 
-  // ── Distanz / ETA berechnen ──
+  // ── Route-Polyline (automatisch sichtbar, Self → Einsatzort) ──
+  const routeLine = L.polyline([fleet.self.pos, EINSATZ], {
+    color:"#dc2626",
+    weight:4,
+    opacity:0.7,
+    dashArray:"10 8",
+    lineCap:"round",
+  }).addTo(map);
+
+  // ── Distanz-Helper ──
   function distanceKm(a, b){
     const R = 6371;
     const toRad = x => x * Math.PI / 180;
@@ -467,14 +495,27 @@ function addChronikEntry(source, text, pending=false){
     return 2 * R * Math.asin(Math.sqrt(x));
   }
 
+  function hydrantsInRadius(center, radiusM){
+    return HYDRANTEN.filter(h => distanceKm(center, h.pos) * 1000 <= radiusM).length;
+  }
+
+  let totalKm = 0;
+  let lastPos = [...fleet.self.pos];
+
   function updateStats(){
     const d = distanceKm(fleet.self.pos, EINSATZ);
     const dEl  = document.getElementById("map-dist");
     const eEl  = document.getElementById("map-eta");
-    const cEl  = document.getElementById("map-cars");
+    const hEl  = document.getElementById("map-hydrants");
     if(dEl) dEl.textContent = d < 1 ? `${Math.round(d*1000)} m` : `${d.toFixed(1)} km`;
-    if(eEl) eEl.textContent = `${Math.max(1, Math.round(d * 60 / 50))} min`; // 50 km/h durchschnitt
-    if(cEl) cEl.textContent = `${Object.keys(fleet).length} live`;
+    if(eEl) eEl.textContent = `${Math.max(1, Math.round(d * 60 / 50))} min`;
+    if(hEl) hEl.textContent = `${hydrantsInRadius(fleet.self.pos, 250)} · wkinfo`;
+
+    // KM gefahren (kumuliert)
+    totalKm += distanceKm(lastPos, fleet.self.pos);
+    lastPos = [...fleet.self.pos];
+    const kmGef = document.getElementById("km-gefahren");
+    if(kmGef) kmGef.textContent = totalKm.toFixed(1).replace(".", ",");
   }
   updateStats();
 
@@ -485,11 +526,30 @@ function addChronikEntry(source, text, pending=false){
     navBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}&travelmode=driving`;
   }
 
-  // ── Live-Position-Simulation ──
-  // Bewegt das eigene Fahrzeug langsam in Richtung Einsatzort.
-  // Andere Fahrzeuge wackeln leicht (Demo).
+  // ── Wasserkarte-Toggle ──
+  const toggleWater = document.getElementById("toggle-water");
+  if(toggleWater){
+    toggleWater.addEventListener("click", ()=>{
+      const on = toggleWater.getAttribute("aria-pressed") === "true";
+      toggleWater.setAttribute("aria-pressed", String(!on));
+      if(on) map.removeLayer(hydrantLayer); else hydrantLayer.addTo(map);
+    });
+  }
+
+  // ── Recenter auf eigene Position ──
+  document.getElementById("map-recenter")?.addEventListener("click", ()=>{
+    map.setView(fleet.self.pos, SELF_ZOOM, {animate:true});
+  });
+
+  // ── Live-Position-Simulation + Auto-Follow auf Self ──
   let t = 0;
-  const total = 60; // Schritte bis Ziel
+  const total = 60;
+  let autoFollow = true;
+
+  // wenn User die Karte manuell verschiebt → Auto-Follow pausieren
+  map.on("dragstart", ()=>{ autoFollow = false; });
+  document.getElementById("map-recenter")?.addEventListener("click", ()=>{ autoFollow = true; });
+
   setInterval(()=>{
     t = Math.min(total, t + 1);
     const f = t / total;
@@ -499,12 +559,19 @@ function addChronikEntry(source, text, pending=false){
     ];
     markers.self.setLatLng(fleet.self.pos);
 
-    // andere Fahrzeuge wackeln dezent (Mock)
+    // Route mit aktueller Position aktualisieren
+    routeLine.setLatLngs([fleet.self.pos, EINSATZ]);
+
     ["kdo","tlf"].forEach(k=>{
       fleet[k].pos[0] += (Math.random() - 0.5) * 0.0008;
       fleet[k].pos[1] += (Math.random() - 0.5) * 0.0008;
       markers[k].setLatLng(fleet[k].pos);
     });
+
+    // Auto-Follow: Karte folgt eigenem Fahrzeug, Zoom stabil
+    if(autoFollow){
+      map.setView(fleet.self.pos, SELF_ZOOM, {animate:true, duration:1.2});
+    }
 
     updateStats();
   }, 3000);

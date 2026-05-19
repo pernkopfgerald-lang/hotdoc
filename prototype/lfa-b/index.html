@@ -119,6 +119,9 @@
 
         <div class="map-wrap">
           <div id="map" class="map"></div>
+          <button class="map-recenter" id="map-recenter" aria-label="Auf eigene Position zentrieren">
+            <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3"/></svg>
+          </button>
           <div class="map-overlay">
             <div class="map-stat">
               <span class="map-stat__lbl">Distanz</span>
@@ -129,21 +132,29 @@
               <span class="map-stat__val" id="map-eta">— min</span>
             </div>
             <div class="map-stat map-stat--right">
-              <span class="map-stat__lbl">Fahrzeuge</span>
-              <span class="map-stat__val" id="map-cars">— live</span>
+              <span class="map-stat__lbl">Hydranten in 250m</span>
+              <span class="map-stat__val" id="map-hydrants">— · wkinfo</span>
             </div>
           </div>
         </div>
 
-        <a class="nav-btn" id="nav-start" href="#" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path d="M3 12 L12 3 L21 12 L17 12 L17 21 L13 21 L13 14 L11 14 L11 21 L7 21 L7 12 Z" fill="currentColor"/>
-          </svg>
-          <span>Navigation starten</span>
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-            <path d="M7 7 H17 V17 M17 7 L7 17" fill="none" stroke="currentColor" stroke-width="2"/>
-          </svg>
-        </a>
+        <div class="map-actions">
+          <a class="nav-btn nav-btn--primary" id="nav-start" href="#" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M3 11 L12 2 L21 11 V21 H14 V14 H10 V21 H3 Z" fill="currentColor"/>
+            </svg>
+            <span>Route aktiv · Google Maps öffnen</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path d="M7 7 H17 V17 M17 7 L7 17" fill="none" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </a>
+          <button class="nav-btn nav-btn--secondary" id="toggle-water" aria-pressed="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M12 3 C8 9 6 13 6 16 C6 19.5 8.7 22 12 22 C15.3 22 18 19.5 18 16 C18 13 16 9 12 3 Z" fill="currentColor"/>
+            </svg>
+            <span>Löschwasser</span>
+          </button>
+        </div>
       </section>
 
       <!-- ┌─────────────────────────────────────────┐ -->
@@ -157,12 +168,12 @@
 
         <div class="row-2">
           <label class="field">
-            <span class="field__label">KM Abfahrt</span>
-            <input type="text" inputmode="numeric" placeholder="—" value="34 712" class="field__input field__input--mono" />
+            <span class="field__label">KM Abfahrt <span class="field__auto">auto · GPS</span></span>
+            <output class="field__output field__output--mono" id="km-abfahrt">34 712</output>
           </label>
           <label class="field">
-            <span class="field__label">KM Rückkehr</span>
-            <input type="text" inputmode="numeric" placeholder="—" class="field__input field__input--mono" disabled />
+            <span class="field__label">KM gefahren <span class="field__auto">auto · live</span></span>
+            <output class="field__output field__output--mono" id="km-gefahren">0,0</output>
           </label>
         </div>
 
@@ -170,7 +181,7 @@
           <label class="field">
             <span class="field__label">Fahrer</span>
             <button class="picker" data-picker="fahrer">
-              <span class="picker__name">Bruckner Christoph</span>
+              <span class="picker__name" data-person-id="123057">Bruckner Christoph</span>
               <span class="picker__grade">LM</span>
               <svg class="picker__chevron" viewBox="0 0 24 24" width="14" height="14"><path d="M6 9 L12 15 L18 9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
             </button>
@@ -181,8 +192,8 @@
           <label class="field">
             <span class="field__label">Fahrzeug-Kdt.</span>
             <button class="picker" data-picker="kdt">
-              <span class="picker__name">Karlsberger Bernhard</span>
-              <span class="picker__grade">BM</span>
+              <span class="picker__name" data-person-id="107375">Eder Christoph</span>
+              <span class="picker__grade">HBI</span>
               <svg class="picker__chevron" viewBox="0 0 24 24" width="14" height="14"><path d="M6 9 L12 15 L18 9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
             </button>
           </label>
@@ -203,7 +214,7 @@
           <li class="crew__slot crew__slot--filled" data-slot="1">
             <span class="crew__num">1</span>
             <button class="picker picker--inline" data-picker="crew" data-slot="1">
-              <span class="picker__name">Huemer Manfred</span>
+              <span class="picker__name" data-person-id="107452">Huemer Manfred</span>
               <span class="picker__grade">OBM</span>
             </button>
             <button class="as-toggle as-toggle--on" data-slot="1" aria-pressed="true">
@@ -220,7 +231,7 @@
           <li class="crew__slot crew__slot--filled" data-slot="2">
             <span class="crew__num">2</span>
             <button class="picker picker--inline" data-picker="crew" data-slot="2">
-              <span class="picker__name">Almhofer Martin</span>
+              <span class="picker__name" data-person-id="107506">Almhofer Martin</span>
               <span class="picker__grade">LM</span>
             </button>
             <button class="as-toggle" data-slot="2" aria-pressed="false">
@@ -228,24 +239,14 @@
             </button>
           </li>
 
-          <!-- Slot 3: belegt + AS aktiv -->
-          <li class="crew__slot crew__slot--filled" data-slot="3">
+          <!-- Slot 3-6: leer (Eder Christoph ist jetzt Fzg.-Kdt.) -->
+          <li class="crew__slot crew__slot--empty" data-slot="3">
             <span class="crew__num">3</span>
-            <button class="picker picker--inline" data-picker="crew" data-slot="3">
-              <span class="picker__name">Eder Christoph</span>
-              <span class="picker__grade">HBI</span>
+            <button class="picker picker--inline picker--empty" data-picker="crew" data-slot="3">
+              <span>Person wählen</span>
+              <svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 5 V19 M5 12 H19" stroke="currentColor" stroke-width="2"/></svg>
             </button>
-            <button class="as-toggle as-toggle--on" data-slot="3" aria-pressed="true">
-              <span class="as-toggle__lbl">AS</span>
-              <span class="as-toggle__time"><span class="as-mins" data-slot="3">25</span> min</span>
-            </button>
-            <div class="as-stepper" data-slot="3">
-              <button class="as-stepper__btn" data-act="minus" data-slot="3" aria-label="Minus 5">−</button>
-              <button class="as-stepper__btn" data-act="plus" data-slot="3" aria-label="Plus 5">+</button>
-            </div>
           </li>
-
-          <!-- Slot 4-6: leer -->
           <li class="crew__slot crew__slot--empty" data-slot="4">
             <span class="crew__num">4</span>
             <button class="picker picker--inline picker--empty" data-picker="crew" data-slot="4">
