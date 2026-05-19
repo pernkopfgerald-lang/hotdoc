@@ -1,19 +1,26 @@
 {
   "version": "0.0.1",
-  "_description": "Detected dev servers for HotDoc. Erweitern, sobald das echte App-Build (Vite + Node API) existiert.",
+  "_description": "Detected dev servers for HotDoc.",
   "configurations": [
     {
       "name": "prototype-lfa-b-static",
-      "_purpose": "Statischer Prototyp für das LFA-B-Tablet (Pumpe Eberstalzell). Python http.server reicht für lokales Preview.",
+      "_purpose": "Statischer Prototyp für das LFA-B-Tablet (Pumpe Eberstalzell) — Python http.server.",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5500", "--directory", "prototype/lfa-b"],
       "port": 5500
+    },
+    {
+      "name": "hotdoc-live-fly",
+      "_purpose": "Live-Preview der fly.io Deployment (zum Verifizieren des Stands).",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "require('http').createServer((q,r)=>r.writeHead(302,{Location:'https://hotdoc-eberstalzell.fly.dev/'}).end()).listen(5510)"],
+      "port": 5510
     }
   ],
   "_planned_configurations_when_real_app_exists": [
     {
       "name": "hotdoc-pwa-dev",
-      "_purpose": "Vite Dev-Server für React-PWA (sobald aufgesetzt)",
+      "_purpose": "Vite Dev-Server für React-PWA",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173

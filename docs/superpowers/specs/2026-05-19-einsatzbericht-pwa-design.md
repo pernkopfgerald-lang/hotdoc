@@ -55,6 +55,8 @@ Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kom
 
 **Anhänger (nur MTF):** Auf dem MTF-Tablet erscheinen zwei zusätzliche Checkboxen — „HR-Anhänger mitgenommen" und „PKW-Anhänger mitgenommen". Diese werden im Fahrzeugbericht-MTF gespeichert und im Hauptbericht-Fahrzeug-Checkliste automatisch übernommen.
 
+**Ölbindemittel-Erfassung (verrechenbar):** Auf jedem Fahrzeug-Tablet gibt es eine eigene Karte „Ölbindemittel" mit einem Säcke-Counter (Default 0, `+` / `−` Buttons, Range 0..99). Die Summe aus allen Fahrzeugberichten wird im Hauptbericht automatisch ins Feld „Ölbindemittel JA + Anzahl Stk." übernommen und im PDF-Bericht als **verrechenbare Position** ausgewiesen (Voraussetzung für die spätere Rechnung an Gemeinde / Verursacher).
+
 **Atemschutz-Erfassung (Detail)**
 Pro Mannschaftsplatz (sowie für Fahrer und Fahrzeug-Kdt., falls relevant) gibt es einen AS-Toggle. Wird er aktiviert, erscheint ein Zeit-Counter mit **Default 15 Minuten** Einsatzdauer. Der Counter ist über **+ / − Buttons** in **5-Minuten-Schritten** anpassbar (Min. 5 Min., Max. 30 Min. — entspricht etwa einer PA-Flasche). Wenn der Toggle deaktiviert wird, verschwindet der Counter und der Zeitwert wird verworfen.
 
@@ -200,6 +202,9 @@ FAHRZEUGBERICHT (1 pro eingesetztem Fahrzeug)
   │     }
   ├── anhaengerMitgenommen?: string[]  ← nur MTF, z.B. ["HR-Anhaenger"]
   ├── geraete[]: { materialId, anzahl?, bemerkung? }
+  ├── oelbindemittelSaecke: number     ← Default 0, +/- pro Sack, im Hauptbericht
+  │                                     aggregiert und als VERRECHENBARE Position
+  │                                     auf der Rechnung ausgewiesen
   ├── taetigkeitsbericht (Freitext + verlinkte Chronik-Einträge)
   ├── fotos[]: { blobId, beschreibung }
   └── status: 'in_arbeit' | 'abgeschlossen'
@@ -703,6 +708,7 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 | Mannschaft (dyn. Anzahl) | Liste | nein | Pro Slot: Person + AS-Toggle + ggf. AS-Dauer (siehe A.3). Max-Anzahl je Fahrzeug: KDO 2, TLF 6, LFA-B 6, MTF 7 |
 | Anhänger-Mitnahme (nur MTF) | Multi-Select | nein | [HR-Anhänger / PKW-Anhänger], wird in Hauptbericht-Fahrzeug-Checkliste übernommen |
 | Geräte/Mittel | Multi-Select | nein | Vorgefilterte Liste aus Fahrzeug-Geräteliste |
+| Ölbindemittel (Säcke) | Zahl 0..99 | nein | Counter mit +/− pro Sack. Im Hauptbericht aggregiert, als verrechenbare Position ausgewiesen |
 | Tätigkeitsbericht | Text | nein | Freitext, ergänzt automatisch durch Chronik-Diktate |
 
 ### A.3 Atemschutz-Erfassung (AS-Toggle pro Mannschaftsplatz)

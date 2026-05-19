@@ -618,6 +618,84 @@ body{
   transform:translateY(-1px);
 }
 
+/* ─── Ölbindemittel (Verrechenbar) ─── */
+.oel{
+  background:
+    radial-gradient(600px 200px at 110% -10%, var(--amber-soft), transparent 60%),
+    var(--surface-1);
+  border-color:var(--amber-border);
+}
+.card__hint--bill{
+  font-weight:700;
+  color:var(--amber);
+  padding:3px 8px;
+  background:var(--amber-soft);
+  border:1px solid var(--amber-border);
+  border-radius:4px;
+  letter-spacing:0.18em;
+}
+.oel__row{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.oel__stepper{
+  display:flex; align-items:center; justify-content:center; gap:18px;
+  padding:14px 8px 10px;
+}
+.oel__btn{
+  width:60px; height:60px;
+  display:grid; place-items:center;
+  border:1px solid var(--border-strong);
+  border-radius:50%;
+  font-family:"IBM Plex Sans",sans-serif;
+  font-size:30px;
+  font-weight:600;
+  color:var(--text-1);
+  background:var(--surface-2);
+  transition:all .15s;
+  user-select:none;
+}
+.oel__btn:hover{background:var(--surface-3); transform:scale(1.04)}
+.oel__btn:active{transform:scale(0.94)}
+.oel__btn--plus{
+  background:linear-gradient(180deg, var(--amber-soft) 0%, color-mix(in srgb, var(--amber-soft) 60%, transparent) 100%);
+  border-color:var(--amber-border);
+  color:var(--amber);
+}
+.oel__btn--plus:hover{
+  background:var(--amber-soft);
+}
+.oel__counter{
+  min-width:120px;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+}
+.oel__num{
+  font-family:"IBM Plex Sans Condensed",sans-serif;
+  font-size:54px;
+  font-weight:700;
+  line-height:1;
+  color:var(--text-1);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-0.02em;
+  transition:color .2s;
+}
+.oel__num--active{color:var(--amber)}
+.oel__unit{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:11px; text-transform:uppercase; letter-spacing:0.20em;
+  color:var(--text-3);
+  font-weight:500;
+}
+.oel__hint{
+  margin:0;
+  font-size:12px;
+  line-height:1.5;
+  color:var(--text-2);
+  text-align:center;
+  padding:0 8px;
+}
+
 /* ─── chronik ─── */
 .chronik{position:relative}
 .timeline{

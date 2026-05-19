@@ -121,6 +121,25 @@ document.querySelectorAll(".chip[data-gear]").forEach(chip=>{
   });
 });
 
+// ─── Ölbindemittel-Counter (Säcke, min 0) ──────────────────
+(()=>{
+  const numEl = document.getElementById("oel-num");
+  const minus = document.getElementById("oel-minus");
+  const plus  = document.getElementById("oel-plus");
+  if(!numEl) return;
+  function set(v){
+    v = Math.max(0, Math.min(99, v));
+    numEl.textContent = v;
+    numEl.classList.toggle("oel__num--active", v > 0);
+    numEl.animate(
+      [{transform:"scale(1)"},{transform:"scale(1.10)"},{transform:"scale(1)"}],
+      {duration:160, easing:"ease-out"}
+    );
+  }
+  minus?.addEventListener("click", ()=> set(parseInt(numEl.textContent,10) - 1));
+  plus?.addEventListener("click",  ()=> set(parseInt(numEl.textContent,10) + 1));
+})();
+
 // ─── Mannschaft-Count (initial gefüllte zählen) ────────────
 const crewCountEl = document.getElementById("mannschaft-count");
 function updateCrewCount(){
