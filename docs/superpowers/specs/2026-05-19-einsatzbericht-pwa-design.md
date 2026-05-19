@@ -41,11 +41,13 @@ UC0 (Tätigkeitsnachweise) und UC1 (Anwesenheitserfassung im FF-Haus) sind **exp
 **FR-1 — Alarm-Auslösung**
 Bei eingehendem Alarm (BlaulichtSMS) öffnet die App auf allen Tablets automatisch das Einsatzformular, vorausgefüllt mit BlaulichtSMS-Daten (Einsatzort, Koordinaten, Zeit, Audio).
 
-**FR-2 — Fahrzeugbericht-Erfassung**
-Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt.: Fahrer, Fahrzeug-Kdt., Mannschaft (mit Atemschutz-Markierung), KM-Stand Abfahrt, eingesetzte Geräte (gefiltert auf das Fahrzeug), Tätigkeitsbericht. KM-Rückkehr und Endzeit kommen beim Einrücken dazu.
+**FR-2 — Fahrzeug-Kurzbericht (auf Fahrzeug-Tablets)**
+Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kompakten** Fahrzeug-Kurzbericht: Fahrer, Fahrzeug-Kdt., Mannschaft (mit Atemschutz-Markierung), KM-Stand Abfahrt, eingesetzte Geräte (gefiltert auf das Fahrzeug), Tätigkeitsbericht (Freitext / Diktat). KM-Rückkehr und Endzeit kommen beim Einrücken dazu. Das Layout orientiert sich am bestehenden papierbasierten **Fahrzeugdatenblatt** (siehe Anhang A — wird vor Implementierungsplan finalisiert).
 
-**FR-3 — Hauptbericht-Erfassung**
-Auf dem Zentrale-Tablet erfasst der Einsatzleiter alle einsatzübergreifenden Felder gemäß heutigem Papierformular (Einsatzart, Pflichtbereich, Alarmierungsquelle, Zeitmarken, beteiligte Stellen, Verrechnung, Freitext-Meldung).
+**FR-3 — Hauptbericht (auf Zentrale-Tablet „Florian Eberstalzell")**
+Auf dem Zentrale-Tablet erfasst der Einsatzleiter den **vollumfänglichen** Einsatzbericht mit allen Feldern gemäß heutigem Papierformular: Einsatzort, Datum/Uhrzeit, Pflichtbereich-Flags, Alarmierungs-Quelle, Anrufer, Fahrzeug-Checkliste, Einsatzart (28 Checkboxen + Freitext), Zeitmarken (Lage unter Kontrolle, Brand AUS, Alst. 2, Alst. 3), beteiligte Stellen (Polizei, RK, BFKDT, AFKDT, …), sonstige anwesende FF, Mannschaftszahlen, Verrechnung, Ölbindemittel, „Meldung von der Einsatzleitung", Einsatzleiter, Einsatzende, Bearbeiter. Layout siehe Anhang B.
+
+Die beiden Berichtstypen sind **bewusst unterschiedlich strukturiert** — der Fahrzeug-Kurzbericht ist auf die im Einsatz schnell erfassbaren Daten reduziert, der Hauptbericht der Einsatzzentrale enthält alle einsatzübergreifenden Felder.
 
 **FR-4 — Diktat / Einsatzchronik**
 Jedes Tablet kann während des Einsatzes Sprachnotizen mit Zeitstempel aufnehmen, die offline transkribiert werden (Whisper.cpp). Die Chronik erscheint im fertigen Bericht und im Spickzettel. Diktat-Einträge werden mit dem **taktischen Funkrufnamen** des Tablet-Fahrzeugs ausgewiesen (z.B. „Tank Eberstalzell", „Florian Eberstalzell"); Fahrzeug-Kdt. und Kraftfahrer werden dabei nicht unterschieden.
@@ -57,7 +59,7 @@ Mannschaftszahlen im Hauptbericht („Eingesetzt") werden automatisch aus den Fa
 Wenn alle Fahrzeugberichte abgeschlossen sind, kann der Einsatzleiter den Einsatz gesamt abschließen. Backend generiert PDF + Spickzettel-JSON.
 
 **FR-7 — PDF-Ausgabe**
-Das PDF folgt der Struktur des heutigen Papierformulars (Hauptbericht + ein Fahrzeugdatenblatt pro Fahrzeug + Einsatzchronik). Layout: A4 hochkant.
+Das PDF folgt der Struktur der heutigen Papierformulare: **Seite 1+ Hauptbericht** (Layout wie Anhang B), gefolgt von je einer Seite **Fahrzeug-Kurzbericht** pro eingesetztem Fahrzeug (Layout wie Anhang A), abschließend die **Einsatzchronik** mit Zeitstempeln und Funkrufnamen. Layout: A4 hochkant, 1:1 zum heutigen Papier-Workflow, damit Bearbeiter/Einsatzleiter visuell wiedererkennen.
 
 **FR-8 — syBOS-Spickzettel**
 Ein zweites Output-Format (HTML oder PDF) zeigt die Pflichtfelder in der Reihenfolge der syBOS-Einsatz-Eingabemaske, damit der Bearbeiter sie effizient abtippen kann. PDF ist als Anhang an den syBOS-Eintrag gedacht.
@@ -398,11 +400,32 @@ Tablet erkennt Netzwerk via `navigator.onLine` + Heartbeat-Ping ans Backend (nur
 
 ### 10.1 PDF
 
-Generiert vom Backend mit Puppeteer aus einer HTML-Vorlage, die das heutige Papierformular nachbildet:
-- Seite 1: Hauptbericht (Header, Fahrzeuge, Einsatzart, Zeitmarken, beteiligte Stellen, Mannschaftszahlen, Verrechnung, Freitext)
-- Seite 2+: Pro Fahrzeug ein Fahrzeugdatenblatt
-- Letzte Seiten: Einsatzchronik (chronologisch, mit Zeitstempel und Diktat-Quelle)
-- Optional: Foto-Anhänge
+Generiert vom Backend mit Puppeteer aus **zwei HTML-Templates**, die die heutigen Papierformulare 1:1 nachbilden:
+
+**Template „Hauptbericht" (Anhang B)** — vom Zentrale-Tablet „Florian Eberstalzell" erfasst:
+- Header mit FF-Eberstalzell-Logo, „Einsatzbericht"-Titel, Einsatzort, Datum/Uhrzeit
+- Pflichtbereich, Einsatzzone, Überörtliche Hilfeleistung, Alarmierungsquelle (BWST/LWZ)
+- Einsatzauftrag-Quelle (WAS / Funk / Telefon / Bote / Behörde), Anrufer + Tel.
+- Fahrzeug-Checkliste (KDO, TLF-A 4000, LFA-B, PKW-Anhänger, MTF, HR-Anhänger, Stapler)
+- Einsatzart (28 Checkboxen + Freitext + Warn-/Alarmsystem-Nr.)
+- Zeitmarken (Lage unter Kontrolle, Brand AUS, Alst. 2, Alst. 3 mit Anforderer)
+- Beteiligte Stellen (Polizei, RK, BFKDT, AFKDT, Gem., BH, GAS, Ener.AG, RAG, Arzt, Bestatt., STM)
+- Sonstige anwesende Feuerwehren (OEL, Kran, TMB, SRF, ASF, DLK, GSF, HEU, Sonstige)
+- Mannschaft (Eingesetzt aggregiert, Bereitschaft, Sonstige, Gesamt)
+- Verrechenbarkeit + Rechnungsadresse, Ölbindemittel
+- Freitext „Meldung von der Einsatzleitung"
+- Footer: Einsatzleiter, Einsatzende, Bearbeiter, Unterschrift
+
+**Template „Fahrzeug-Kurzbericht" (Anhang A)** — vom jeweiligen Fahrzeug-Tablet erfasst, eine Seite pro eingesetztem Fahrzeug:
+- Layout deutlich kompakter als der Hauptbericht
+- Konkrete Feldliste wird vor Implementierungsstart finalisiert (User liefert nach)
+- Aktueller Stand basiert auf dem bestehenden Papier-Fahrzeugdatenblatt:
+  Einsatzort, Datum, Uhrzeit von/bis, Fahrzeug, Kilometer, Fahrer, Fahrzeug-Kdt.,
+  Mannschaft (7 Plätze mit AS-Markierung), Geräte/Mittel, Tätigkeitsbericht
+
+**Einsatzchronik (letzte Seite[n])** — chronologisch sortiert mit Zeitstempel und Funkrufname-Quelle.
+
+**Foto-Anhänge** — wenn vorhanden, am Ende als separater Anhang.
 
 ### 10.2 Spickzettel
 
@@ -582,6 +605,57 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 | DLK | Drehleiter |
 | GSF | Gerätschaftsfahrzeug |
 | HEU | Hilfslöschzug (Heutender) |
+
+---
+
+---
+
+## Anhang A — Fahrzeug-Kurzbericht (Layout-Referenz)
+
+**Status: ausstehend.** Das endgültige Layout des Fahrzeug-Kurzberichts wird vom Auftraggeber (FF Eberstalzell) vor Implementierungsstart geliefert. Das Spec wird dann um die konkrete Feldliste ergänzt.
+
+**Aktueller Arbeits-Stand** (basierend auf dem bestehenden Papier-Fahrzeugdatenblatt der FF Eberstalzell):
+
+| Feld | Typ | Pflicht? |
+|---|---|---|
+| Einsatzort | Text (übernommen aus Hauptbericht) | ja |
+| Datum | Datum (übernommen) | ja |
+| Uhrzeit von | Zeit (KM-Abfahrt-Zeitstempel) | ja |
+| Uhrzeit bis | Zeit (KM-Rückkehr-Zeitstempel) | ja |
+| Fahrzeug | Auswahl aus Fahrzeug-Liste (fix pro Tablet) | ja |
+| Kilometer Abfahrt | Zahl | ja |
+| Kilometer Rückkehr | Zahl | ja |
+| Fahrer | Person-Auswahl (syBOS-Personalliste, aktiv) | ja |
+| Fahrzeug-Kdt. | Person-Auswahl (syBOS-Personalliste, aktiv) | ja |
+| Mannschaft (max. 7) | Liste von Person-Refs mit AS-Flag | nein (kann 0–7 sein) |
+| Geräte/Mittel | Multi-Select aus Fahrzeug-Geräteliste | nein |
+| Tätigkeitsbericht | Freitext + Diktate aus Chronik | nein |
+
+Bezugsdokument: `Einsatzberichte-Fahrzeugdatenblatt/Fahrzeugdatenblatt.docx`
+
+## Anhang B — Hauptbericht (Layout-Referenz)
+
+**Status: definiert** durch das aktuelle Papier-Formular der FF Eberstalzell.
+
+Bezugsdokumente:
+- `Einsatzberichte-Fahrzeugdatenblatt/Einsatzbericht 2025 NEU.pdf`
+- `Einsatzberichte-Fahrzeugdatenblatt/2025 Einsatzbericht Neu.xlsx`
+
+**Feldgruppen** (Auflistung aus Original-Formular):
+
+1. **Kopf**: Einsatzort, Datum/Uhrzeit
+2. **Klassifikation**: Pflichtbereich (JA/NEIN), Einsatzzone E-zell (JA/NEIN), Überörtliche Hilfeleistung (JA/NEIN), Alarmiert durch (BWST/LWZ), Einsatzauftrag eingelangt über (WAS/Funk/Telefon/Bote/Behörde), Anrufer + Tel.Nr.
+3. **Eingesetzte Fahrzeuge** (Checkboxen): KDO, TLF-A 4000, LFA-B, PKW-Anhänger, MTF, HR-Anhänger, Stapler
+4. **Einsatzart** (28 Checkboxen): Brand Sonstiges / Brand Gewerbe / Brand Landwirtschaft / Brand Wohnhaus / BMA / Brandverdacht / Brand Kamin / Brand Abfall / Brand KFZ / Flurbrand / Brandwache n. Brand / Personenrettung / Überflutung / Pumparbeiten / Sturm / Ölspur / Lift / Tierrettung / Türöffnung / Wasserschaden / Straßenreinigung / Lotsendienst / Kanalspülen / Brandsicherheitsdienst / VU Eingekl. Per. / VU Aufräumarbeiten / Höhenrettungseins. / Bienen-Wespen
+5. **Andere Einsätze** (Freitext) + **Warn- und Alarmsystem-Nummer**
+6. **Zeitmarken**: Lage unter Kontrolle Uhrzeit, Brand AUS Uhrzeit, Alst. 2 (Uhrzeit + Anforderer), Alst. 3 (Uhrzeit + Anforderer)
+7. **Beteiligte Stellen** (Checkboxen): Polizei, RK, BFKDT, AFKDT, Gem., BH, GAS, Ener.AG, RAG, Arzt, Bestatt., STM
+8. **Sonstige anwesende Feuerwehren**: OEL, Kran, TMB, SRF, ASF, DLK, GSF, HEU, Sonstige (Freitext)
+9. **Mannschaft**: Eingesetzt (aggregiert aus Fahrzeug-Kurzberichten), Bereitschaft, Sonstige, Gesamt
+10. **Verrechenbarer Einsatz** (JA/NEIN) + Rechnungsadresse
+11. **Ölbindemittel** (JA + Anzahl Stk.)
+12. **Meldung von der Einsatzleitung** (Freitext, großes Feld)
+13. **Footer**: Einsatzleiter, Einsatzende, Bearbeiter, Unterschrift
 
 ---
 
