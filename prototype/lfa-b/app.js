@@ -229,13 +229,286 @@ function addChronikEntry(source, text, pending=false){
   li.scrollIntoView({behavior:"smooth", block:"nearest"});
 }
 
-// ─── Empty-Slot click (Mock: alert) ────────────────────────
-document.querySelectorAll(".crew__slot--empty .picker--empty").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    // Im echten Prototyp: Person-Picker-Modal mit syBOS-Liste öffnen
-    btn.animate([{opacity:1},{opacity:.4},{opacity:1}],{duration:240});
+// ─── Personen-Picker Modal ─────────────────────────────────
+(()=>{
+  const modal   = document.getElementById("person-modal");
+  const list    = document.getElementById("person-list");
+  const search  = document.getElementById("person-search");
+  const count   = document.getElementById("person-count");
+  const title   = document.getElementById("modal-title");
+  const sub     = document.getElementById("modal-sub");
+  if(!modal || !list || !search) return;
+
+  let activePicker = null;
+  let selectedIds  = new Set();   // verhindert Doppelauswahl in Mannschaft
+
+  function collectSelectedIds(){
+    selectedIds.clear();
+    document.querySelectorAll("[data-picker] [data-person-id]").forEach(el=>{
+      selectedIds.add(parseInt(el.dataset.personId,10));
+    });
+  }
+
+  function open(picker){
+    activePicker = picker;
+    const target = picker.dataset.picker;
+    const slot   = picker.dataset.slot;
+    const titles = {
+      fahrer: "Fahrer wählen",
+      kdt:    "Fahrzeug-Kommandant wählen",
+      crew:   `Mannschaftsplatz ${slot}`,
+    };
+    title.textContent = titles[target] || "Person wählen";
+    sub.textContent = target === "crew" ? "aktive Mitglieder · LFA-B · 1+7" : "aktive Mitglieder · syBOS-Sync";
+    search.value = "";
+    collectSelectedIds();
+    render("");
+    modal.hidden = false;
+    setTimeout(()=> search.focus(), 50);
+  }
+
+  function close(){
+    modal.hidden = true;
+    activePicker = null;
+  }
+
+  function render(q){
+    const norm = q.trim().toLowerCase();
+    const matched = (window.PERSONAL || []).filter(p =>
+      !norm || p.name.toLowerCase().includes(norm) || p.grad.toLowerCase().includes(norm)
+    );
+    count.textContent = `${matched.length} Treffer`;
+    if(matched.length === 0){
+      list.innerHTML = '<li class="modal__empty">Keine Person gefunden.</li>';
+      return;
+    }
+    list.innerHTML = matched.map(p => {
+      const alreadyChosen = selectedIds.has(p.id);
+      return `
+        <li>
+          <button data-pid="${p.id}" ${alreadyChosen ? 'disabled style="opacity:.4"' : ''}>
+            <span class="person-name">${p.name}</span>
+            ${p.as ? '<span class="person-as">AS</span>' : '<span class="person-as person-as--off">AS</span>'}
+            <span class="person-grade">${p.grad}</span>
+          </button>
+        </li>`;
+    }).join("");
+
+    list.querySelectorAll("button[data-pid]").forEach(btn=>{
+      if(btn.disabled) return;
+      btn.addEventListener("click",()=>{
+        const id = parseInt(btn.dataset.pid,10);
+        const p = window.PERSONAL.find(x => x.id === id);
+        if(p && activePicker) applySelection(activePicker, p);
+        close();
+      });
+    });
+  }
+
+  function applySelection(picker, person){
+    // Set the picker UI
+    const isInline = picker.classList.contains("picker--inline");
+    const wasEmpty = picker.classList.contains("picker--empty");
+    picker.classList.remove("picker--empty");
+    picker.innerHTML = `
+      <span class="picker__name" data-person-id="${person.id}">${person.name}</span>
+      <span class="picker__grade">${person.grad}</span>
+      ${!isInline ? '<svg class="picker__chevron" viewBox="0 0 24 24" width="14" height="14"><path d="M6 9 L12 15 L18 9" fill="none" stroke="currentColor" stroke-width="2"/></svg>' : ''}
+    `;
+    // If this is a crew slot that was empty, change the LI state
+    const slot = picker.closest(".crew__slot");
+    if(slot){
+      slot.classList.remove("crew__slot--empty");
+      slot.classList.add("crew__slot--filled");
+      // Add AS-Toggle if not present
+      if(!slot.querySelector(".as-toggle")){
+        const slotNum = slot.dataset.slot;
+        const toggle = document.createElement("button");
+        toggle.className = "as-toggle";
+        toggle.dataset.slot = slotNum;
+        toggle.setAttribute("aria-pressed","false");
+        toggle.innerHTML = `<span class="as-toggle__lbl">AS</span>`;
+        toggle.addEventListener("click", ()=> handleAsToggle(toggle));
+        slot.appendChild(toggle);
+      }
+    }
+    updateCrewCount?.();
+  }
+
+  // Re-usable AS toggle handler (extracted für Wiederverwendung im Picker)
+  function handleAsToggle(toggle){
+    const slot = toggle.dataset.slot;
+    const isOn = toggle.classList.toggle("as-toggle--on");
+    toggle.setAttribute("aria-pressed", String(isOn));
+    if(isOn){
+      let timeEl = toggle.querySelector(".as-toggle__time");
+      if(!timeEl){
+        timeEl = document.createElement("span");
+        timeEl.className = "as-toggle__time";
+        timeEl.innerHTML = `<span class="as-mins" data-slot="${slot}">15</span> min`;
+        toggle.appendChild(timeEl);
+      }
+      let stepper = toggle.parentElement.querySelector(`.as-stepper[data-slot="${slot}"]`);
+      if(!stepper){
+        stepper = document.createElement("div");
+        stepper.className = "as-stepper";
+        stepper.dataset.slot = slot;
+        stepper.innerHTML = `
+          <button class="as-stepper__btn" data-act="minus" data-slot="${slot}" aria-label="Minus 5">−</button>
+          <button class="as-stepper__btn" data-act="plus"  data-slot="${slot}" aria-label="Plus 5">+</button>`;
+        toggle.parentElement.appendChild(stepper);
+        stepper.querySelectorAll(".as-stepper__btn").forEach(b=>{
+          b.addEventListener("click",()=>{
+            const el = document.querySelector(`.as-mins[data-slot="${slot}"]`);
+            if(!el) return;
+            let v = parseInt(el.textContent,10) || 15;
+            v = Math.max(5, Math.min(30, b.dataset.act === "plus" ? v + 5 : v - 5));
+            el.textContent = v;
+          });
+        });
+      }
+    }
+  }
+
+  // Wire up all pickers
+  document.querySelectorAll("[data-picker]").forEach(p=>{
+    p.addEventListener("click",(e)=>{
+      e.preventDefault();
+      open(p);
+    });
   });
-});
+
+  // Modal close handlers
+  modal.querySelectorAll("[data-modal-close]").forEach(el=>{
+    el.addEventListener("click", close);
+  });
+  document.addEventListener("keydown",(e)=>{
+    if(e.key === "Escape" && !modal.hidden) close();
+  });
+
+  // Search
+  search.addEventListener("input", e => render(e.target.value));
+})();
+
+// ─── Karte: Einsatzort + Fahrzeug-Tracking ─────────────────
+(()=>{
+  if(typeof L === "undefined") return; // Leaflet noch nicht geladen
+  const mapEl = document.getElementById("map");
+  if(!mapEl) return;
+
+  // ── Koordinaten (Mock-Daten) ──
+  // Wachhaus FF Eberstalzell, Solarstraße 1, ca. 48.0884, 13.9586
+  // Mock-Einsatzort (BlaulichtSMS): 48.110, 13.961
+  const HOME    = [48.0884, 13.9586];
+  const EINSATZ = [48.1100, 13.9610];
+
+  // andere Fahrzeuge — bekommen Live-Position via Mock-Sim
+  const fleet = {
+    self:    { id:"self",  ruf:"Pumpe Eberstalzell",    abk:"PUMPE",    pos:[...HOME] },
+    kdo:     { id:"kdo",   ruf:"Kommando Eberstalzell", abk:"KDO",      pos:[48.0890, 13.9595] },
+    tlf:     { id:"tlf",   ruf:"Tank Eberstalzell",     abk:"TANK",     pos:[48.0892, 13.9580] },
+    florian: { id:"flo",   ruf:"Florian Eberstalzell",  abk:"FLORIAN",  pos:[...HOME] },
+  };
+
+  // ── Map init ──
+  const map = L.map(mapEl, {
+    zoomControl:true,
+    attributionControl:true,
+    preferCanvas:true,
+  }).setView([48.0995, 13.9598], 14);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom:19,
+    attribution:'© OpenStreetMap',
+  }).addTo(map);
+
+  // ── Einsatzort-Marker (Flamme + Pin) ──
+  const einsatzIcon = L.divIcon({
+    className:"einsatz-marker",
+    html:`
+      <svg viewBox="0 0 36 48" width="36" height="48" class="einsatz-marker__svg">
+        <path d="M18 0 C8 0 2 8 2 16 C2 28 18 48 18 48 C18 48 34 28 34 16 C34 8 28 0 18 0 Z"
+              fill="#dc2626" stroke="#fff" stroke-width="2" />
+        <path d="M18 8 C13 12 13 17 16 19 C14 18 13.5 16 14.5 14 M18 8 C23 12 23 17 20 19 C22 18 22.5 16 21.5 14 M16 21 H20 V25 H16 Z"
+              fill="#fff" />
+      </svg>`,
+  });
+  L.marker(EINSATZ, {icon:einsatzIcon, title:"Einsatzort"}).addTo(map);
+
+  // ── Fahrzeug-Marker ──
+  const markers = {};
+  for(const [key, fzg] of Object.entries(fleet)){
+    const isSelf = key === "self";
+    const icon = L.divIcon({
+      className:`fzg-marker ${isSelf ? "fzg-marker--self" : "fzg-marker--other"}`,
+      html:`
+        <div class="fzg-marker__pin">
+          <span class="fzg-marker__dot"></span>
+          <span>${fzg.abk}</span>
+        </div>`,
+      iconSize:null,
+      iconAnchor:[10, 10],
+    });
+    markers[key] = L.marker(fzg.pos, {icon, title:fzg.ruf, zIndexOffset: isSelf ? 1000 : 100}).addTo(map);
+  }
+
+  // Karte auf Bounds anpassen
+  const allPts = [EINSATZ, ...Object.values(fleet).map(f => f.pos)];
+  map.fitBounds(L.latLngBounds(allPts).pad(0.25));
+
+  // ── Distanz / ETA berechnen ──
+  function distanceKm(a, b){
+    const R = 6371;
+    const toRad = x => x * Math.PI / 180;
+    const dLat = toRad(b[0] - a[0]);
+    const dLon = toRad(b[1] - a[1]);
+    const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
+    const x = Math.sin(dLat/2)**2 + Math.sin(dLon/2)**2 * Math.cos(lat1) * Math.cos(lat2);
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+
+  function updateStats(){
+    const d = distanceKm(fleet.self.pos, EINSATZ);
+    const dEl  = document.getElementById("map-dist");
+    const eEl  = document.getElementById("map-eta");
+    const cEl  = document.getElementById("map-cars");
+    if(dEl) dEl.textContent = d < 1 ? `${Math.round(d*1000)} m` : `${d.toFixed(1)} km`;
+    if(eEl) eEl.textContent = `${Math.max(1, Math.round(d * 60 / 50))} min`; // 50 km/h durchschnitt
+    if(cEl) cEl.textContent = `${Object.keys(fleet).length} live`;
+  }
+  updateStats();
+
+  // ── Navigation-Deeplink (Google Maps) ──
+  const navBtn = document.getElementById("nav-start");
+  if(navBtn){
+    const addr = "Eberstalzeller Straße 5, 4653 Eberstalzell, Österreich";
+    navBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}&travelmode=driving`;
+  }
+
+  // ── Live-Position-Simulation ──
+  // Bewegt das eigene Fahrzeug langsam in Richtung Einsatzort.
+  // Andere Fahrzeuge wackeln leicht (Demo).
+  let t = 0;
+  const total = 60; // Schritte bis Ziel
+  setInterval(()=>{
+    t = Math.min(total, t + 1);
+    const f = t / total;
+    fleet.self.pos = [
+      HOME[0] + (EINSATZ[0] - HOME[0]) * f,
+      HOME[1] + (EINSATZ[1] - HOME[1]) * f,
+    ];
+    markers.self.setLatLng(fleet.self.pos);
+
+    // andere Fahrzeuge wackeln dezent (Mock)
+    ["kdo","tlf"].forEach(k=>{
+      fleet[k].pos[0] += (Math.random() - 0.5) * 0.0008;
+      fleet[k].pos[1] += (Math.random() - 0.5) * 0.0008;
+      markers[k].setLatLng(fleet[k].pos);
+    });
+
+    updateStats();
+  }, 3000);
+})();
 
 // ─── Soft styles for recording state ───────────────────────
 const style = document.createElement("style");

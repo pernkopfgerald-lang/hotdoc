@@ -80,10 +80,29 @@ Das PDF folgt der Struktur der heutigen Papierformulare: **Seite 1+ Hauptbericht
 **FR-8 — syBOS-Spickzettel**
 Ein zweites Output-Format (HTML oder PDF) zeigt die Pflichtfelder in der Reihenfolge der syBOS-Einsatz-Eingabemaske, damit der Bearbeiter sie effizient abtippen kann. PDF ist als Anhang an den syBOS-Eintrag gedacht.
 
+**FR-9 — Karte, Anfahrt und Live-Fahrzeug-Tracking**
+Auf jedem Tablet ist eine interaktive Karte (OpenStreetMap via Leaflet) sichtbar mit:
+- Einsatzort-Marker (aus BlaulichtSMS-Koordinaten)
+- Eigenes Fahrzeug (via Tablet-GPS, Funkrufname als Label)
+- Andere Fahrzeuge der FF Eberstalzell live (Funkrufnamen als Label)
+- Distanz und ETA zum Einsatzort
+- „Navigation starten"-Knopf, der Google Maps via Deeplink öffnet (`https://www.google.com/maps/dir/?api=1&destination=<Adresse>&travelmode=driving`)
+
+**Hardware-Voraussetzung:** Alle 5 Tablets haben GPS und Mobilfunk-SIM. Position wird alle 5–10 Sekunden per HTTP-POST an das Backend übermittelt und an die anderen Tablets via WebSocket / Server-Sent-Events weitergeleitet. Bei Funkloch puffert das Tablet die GPS-Spur lokal und übermittelt sie beim Reconnect.
+
+Hinweis: Position-Sharing ist eine **bewusste Ausnahme** vom Offline-Vertrag (siehe NFR-1) — fällt es aus, beeinträchtigt es die Berichts-Erfassung nicht.
+
 ### 3.2 Nicht-funktionale Anforderungen
 
-**NFR-1 — Offline-Vertrag**
-Während des Einsatzes (Ausrücken → Einrücken) macht die App **keine** Netzwerkanfragen. Alle Stammdaten sind lokal verfügbar; alle Eingaben werden lokal persistiert.
+**NFR-1 — Offline-Vertrag (mit eng definierten Ausnahmen)**
+Während des Einsatzes (Ausrücken → Einrücken) macht die App **keine blockierenden** Netzwerkanfragen. Alle Stammdaten sind lokal verfügbar; alle Berichts-Eingaben werden lokal persistiert und sind bei Funkloch trotzdem komplett funktional.
+
+**Eng definierte Ausnahmen (opportunistisch, nicht blockierend):**
+- **Live-Position-Sharing** der eigenen Fahrzeug-Position über 4G/5G (siehe FR-9). Wenn die SIM keine Verbindung hat, puffern die Tablets ihre GPS-Spur lokal und übermitteln sie beim nächsten Reconnect. Die Karte zeigt dann „Position-Sharing pausiert".
+- **Karten-Tiles**: Online aus OpenStreetMap, mit lokalem Tile-Cache für die Eberstalzell-Umgebung (Service Worker, ca. 50 MB Pre-Cache der relevanten Zoom-Stufen). Bei Funkloch fallen Tiles außerhalb des Cache aus → Marker bleiben sichtbar, Karte wird grau.
+- **Audio-Upload** zum Backend-Whisper-Fallback (nur falls lokales Whisper fehlschlägt). Wenn 4G nicht da: Audio bleibt lokal, Upload beim Reconnect.
+
+Diese Ausnahmen dürfen **niemals** dazu führen, dass der Bearbeiter im Einsatz blockiert ist. Jede Funktion in der App muss auch bei vollständigem Funkloch erfassbar bleiben.
 
 **NFR-2 — Sync-Zeitpunkte**
 Sync findet ausschließlich statt: (a) bei WLAN-Verfügbarkeit in der Halle, (b) auf manuellen Trigger des Funktionärs.
@@ -172,6 +191,9 @@ Stack auf TypeScript / Node.js / React aufsetzen — vertraute Technologien beim
 ```
 EINSATZ (zentral angelegt aus Alarm)
   ├── alarmId, einsatzort, koordinaten, alarmierungZeit, audioUrl
+  ├── fahrzeugPositionen[]: { fahrzeugId, lat, lng, timestamp }
+  │     ← Live-Stream im Einsatz, alle 5-10s aktualisiert, im Bericht
+  │       letzte 100 Positionen archiviert für Audit/Analyse
   ├── einsatzart, pflichtbereich, alarmiertDurch, einsatzauftragVia
   ├── zeitmarken: { lageUnterKontrolle, brandAus, alst2, alst3 }
   ├── beteiligteStellen[], sonstigeAnwesendeFF
