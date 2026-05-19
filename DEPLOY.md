@@ -11,34 +11,45 @@ Diese Anleitung beschreibt das initiale Setup für **zwei Remotes**:
 
 ## 1. Gitea — internes Repo anlegen
 
-### 1.1 Im Gitea-Webfrontend
-1. In deinem Gitea-Account: **Neues Repository** anlegen
-   - Name: `hotdoc`
-   - Sichtbarkeit: privat
-   - **Nicht** initialisieren (kein README/gitignore/license), wir pushen alles vom lokalen Repo
-2. Repo-URL kopieren, z.B.:
-   `https://gitea.ff-eberstalzell.local/gerald/hotdoc.git`
+**Gitea-Server:** `http://192.168.178.219:3006` (Version 1.25.5)
+**Account:** `gerald`
+**Geplantes Repo:** `http://192.168.178.219:3006/gerald/hotdoc`
 
-### 1.2 Lokales Repo verbinden
+### 1.1 Im Gitea-Webfrontend
+1. Browse zu http://192.168.178.219:3006/repo/create
+2. Repository-Konfiguration:
+   - **Owner:** gerald
+   - **Name:** `hotdoc`
+   - **Visibility:** Private (empfohlen)
+   - **Default Branch:** `main`
+   - **Nicht** initialisieren (kein README/gitignore/license auswählen) —
+     wir pushen alles vom bestehenden lokalen Repo
+3. „Create Repository" klicken
+
+### 1.2 Lokales Repo verbinden + erstmaliger Push
+
 ```bash
-# Im Projekt-Root
-git remote add origin https://gitea.ff-eberstalzell.local/gerald/hotdoc.git
+# Im Projekt-Root (bereits gemacht beim Setup, falls remote noch fehlt):
+git remote add origin http://192.168.178.219:3006/gerald/hotdoc.git
 git push -u origin main
 ```
 
-Falls Gitea HTTPS-Auth via Token nutzt:
+Falls Gitea bei HTTPS nach Credentials fragt:
+- Username: `gerald`
+- Passwort: Gitea-Passwort ODER persönliches Access Token
+  (Gitea → Settings → Applications → Generate Token, Scope `repo`)
+
+### 1.3 Token-basierter Push (sauberer, ohne Passwort-Prompt)
+
 ```bash
-git remote add origin https://gerald:<TOKEN>@gitea.ff-eberstalzell.local/gerald/hotdoc.git
+# Token einmalig im Gitea-Webfrontend erzeugen, dann:
+git remote set-url origin http://gerald:<TOKEN>@192.168.178.219:3006/gerald/hotdoc.git
+git push -u origin main
 ```
 
-Alternativ via SSH:
-```bash
-git remote add origin git@gitea.ff-eberstalzell.local:gerald/hotdoc.git
-```
-
-### 1.3 Branch-Schutz (im Gitea-Webfrontend, optional)
-- `main` als Default-Branch
-- Settings → Branches → Branch protection für `main`: Direct push erlaubt für Entwickler
+### 1.4 Branch-Schutz (im Gitea-Webfrontend, optional)
+- Settings → Branches → Branch Protection für `main`
+- Empfehlung für jetzt: Direct-Push erlaubt für `gerald`, da Solo-Entwickler
 
 ---
 
