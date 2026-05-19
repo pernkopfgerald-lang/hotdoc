@@ -42,7 +42,10 @@ UC0 (Tätigkeitsnachweise) und UC1 (Anwesenheitserfassung im FF-Haus) sind **exp
 Bei eingehendem Alarm (BlaulichtSMS) öffnet die App auf allen Tablets automatisch das Einsatzformular, vorausgefüllt mit BlaulichtSMS-Daten (Einsatzort, Koordinaten, Zeit, Audio).
 
 **FR-2 — Fahrzeug-Kurzbericht (auf Fahrzeug-Tablets)**
-Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kompakten** Fahrzeug-Kurzbericht: Fahrer, Fahrzeug-Kdt., Mannschaft (mit Atemschutz-Markierung), KM-Stand Abfahrt, eingesetzte Geräte (gefiltert auf das Fahrzeug), Tätigkeitsbericht (Freitext / Diktat). KM-Rückkehr und Endzeit kommen beim Einrücken dazu. Das Layout orientiert sich am bestehenden papierbasierten **Fahrzeugdatenblatt** (siehe Anhang A — wird vor Implementierungsplan finalisiert).
+Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt. (oder Kraftfahrer) einen **kompakten** Fahrzeug-Kurzbericht: Fahrer, Fahrzeug-Kdt., Mannschaft (fix 7 Plätze) mit individueller **Atemschutz-Markierung pro Person**, KM-Stand Abfahrt, eingesetzte Geräte (gefiltert auf das Fahrzeug), Tätigkeitsbericht (Freitext / Diktat). KM-Rückkehr und Endzeit kommen beim Einrücken dazu. Layout siehe Anhang A.
+
+**Atemschutz-Erfassung (Detail)**
+Pro Mannschaftsplatz gibt es einen AS-Toggle. Wird er aktiviert, erscheint ein Zeit-Counter mit **Default 15 Minuten** Einsatzdauer. Der Counter ist über **+ / − Buttons** in **5-Minuten-Schritten** anpassbar (Min. 5 Min., Max. 60 Min. — letzteres entspricht etwa zwei PA-Flaschen). Wenn der Toggle deaktiviert wird, verschwindet der Counter und der Zeitwert wird verworfen.
 
 **FR-3 — Hauptbericht (auf Zentrale-Tablet „Florian Eberstalzell")**
 Auf dem Zentrale-Tablet erfasst der Einsatzleiter den **vollumfänglichen** Einsatzbericht mit allen Feldern gemäß heutigem Papierformular: Einsatzort, Datum/Uhrzeit, Pflichtbereich-Flags, Alarmierungs-Quelle, Anrufer, Fahrzeug-Checkliste, Einsatzart (28 Checkboxen + Freitext), Zeitmarken (Lage unter Kontrolle, Brand AUS, Alst. 2, Alst. 3), beteiligte Stellen (Polizei, RK, BFKDT, AFKDT, …), sonstige anwesende FF, Mannschaftszahlen, Verrechnung, Ölbindemittel, „Meldung von der Einsatzleitung", Einsatzleiter, Einsatzende, Bearbeiter. Layout siehe Anhang B.
@@ -175,9 +178,16 @@ FAHRZEUGBERICHT (1 pro eingesetztem Fahrzeug)
   ├── zeit: { von, bis }
   ├── km: { abfahrt, rueckkehr }
   ├── fahrer, fahrzeugKdt (Person-Refs)
-  ├── mannschaft[]: { personId, atemschutz: bool }
+  ├── mannschaft[]: max. 7 Plätze, jeweils
+  │     {
+  │       slot: 1..7,                ← Reihenfolge wie im Papierformular
+  │       personId,
+  │       atemschutzAktiv: bool,
+  │       atemschutzDauerMin?: number  ← nur wenn atemschutzAktiv=true
+  │                                     Default 15, Schritte à 5, Range 5..60
+  │     }
   ├── geraete[]: { materialId, anzahl?, bemerkung? }
-  ├── taetigkeitsbericht (Freitext)
+  ├── taetigkeitsbericht (Freitext + verlinkte Chronik-Einträge)
   ├── fotos[]: { blobId, beschreibung }
   └── status: 'in_arbeit' | 'abgeschlossen'
 
@@ -612,26 +622,84 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 
 ## Anhang A — Fahrzeug-Kurzbericht (Layout-Referenz)
 
-**Status: ausstehend.** Das endgültige Layout des Fahrzeug-Kurzberichts wird vom Auftraggeber (FF Eberstalzell) vor Implementierungsstart geliefert. Das Spec wird dann um die konkrete Feldliste ergänzt.
+**Status: definiert** durch das aktuelle Papier-Fahrzeugdatenblatt der FF Eberstalzell.
 
-**Aktueller Arbeits-Stand** (basierend auf dem bestehenden Papier-Fahrzeugdatenblatt der FF Eberstalzell):
+**Bezugsdokument:** `Einsatzberichte-Fahrzeugdatenblatt/Fahrzeugdatenblatt.docx`
 
-| Feld | Typ | Pflicht? |
-|---|---|---|
-| Einsatzort | Text (übernommen aus Hauptbericht) | ja |
-| Datum | Datum (übernommen) | ja |
-| Uhrzeit von | Zeit (KM-Abfahrt-Zeitstempel) | ja |
-| Uhrzeit bis | Zeit (KM-Rückkehr-Zeitstempel) | ja |
-| Fahrzeug | Auswahl aus Fahrzeug-Liste (fix pro Tablet) | ja |
-| Kilometer Abfahrt | Zahl | ja |
-| Kilometer Rückkehr | Zahl | ja |
-| Fahrer | Person-Auswahl (syBOS-Personalliste, aktiv) | ja |
-| Fahrzeug-Kdt. | Person-Auswahl (syBOS-Personalliste, aktiv) | ja |
-| Mannschaft (max. 7) | Liste von Person-Refs mit AS-Flag | nein (kann 0–7 sein) |
-| Geräte/Mittel | Multi-Select aus Fahrzeug-Geräteliste | nein |
-| Tätigkeitsbericht | Freitext + Diktate aus Chronik | nein |
+### A.1 Layout (1:1 zum Papier-Original)
 
-Bezugsdokument: `Einsatzberichte-Fahrzeugdatenblatt/Fahrzeugdatenblatt.docx`
+```
+┌─────────────────────────────────────────────────────────────┐
+│  FF Eberstalzell      [Wappen]      Fahrzeugbericht         │
+├─────────────────────────────────────────────────────────────┤
+│  Einsatzort         | (übernommen aus Hauptbericht)         │
+│  Datum              | (übernommen)                          │
+│  Uhrzeit von        | (Zeitstempel KM-Abfahrt)              │
+│  Uhrzeit bis        | (Zeitstempel KM-Rückkehr)             │
+├─────────────────────────────────────────────────────────────┤
+│  Fahrzeug           | (fix pro Tablet: KDO / TANK / LFB-A2  │
+│                     |  / MTF / HR-Anhänger)                 │
+│  Kilometer          | Abfahrt:  ____   Rückkehr:  ____      │
+├─────────────────────────────────────────────────────────────┤
+│  Fahrer             | [Person-Picker]                       │
+│  Fahrzeug-Kdt.      | [Person-Picker]                       │
+├─────────────────────────────────────────────────────────────┤
+│                     | 1  [Person-Picker]   [☐ AS]           │
+│                     | 2  [Person-Picker]   [☐ AS]           │
+│                     | 3  [Person-Picker]   [☑ AS]  ⎡−⎤15⎡+⎤ │
+│  Mannschaft         | 4  [Person-Picker]   [☐ AS]           │
+│                     | 5  [Person-Picker]   [☐ AS]           │
+│                     | 6  [Person-Picker]   [☐ AS]           │
+│                     | 7  [Person-Picker]   [☐ AS]           │
+├─────────────────────────────────────────────────────────────┤
+│  Geräte, Mittel     | [Multi-Select aus Fahrzeug-           │
+│   (Pumpe, Generator,|  Geräteliste]                         │
+│    Seilwinde,       |                                       │
+│    Leiter, Lüfter,  |                                       │
+│    Ölbindemittel)   |                                       │
+├─────────────────────────────────────────────────────────────┤
+│  Näherer Tätigkeitsbericht (auf Rückseite / unten):         │
+│  [Freitext, ergänzt durch Chronik-Diktate dieses Fahrzeugs] │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### A.2 Feldliste
+
+| Feld | Typ | Pflicht? | Bemerkung |
+|---|---|---|---|
+| Einsatzort | Text | ja | übernommen aus Hauptbericht (read-only auf Fahrzeug-Tablet) |
+| Datum | Datum | ja | übernommen aus BlaulichtSMS-Alarm |
+| Uhrzeit von | Zeit | ja | gesetzt bei Erfassung KM-Abfahrt |
+| Uhrzeit bis | Zeit | ja | gesetzt bei „Bericht abschließen" |
+| Fahrzeug | fix | ja | pro Tablet konfiguriert, nicht editierbar |
+| KM Abfahrt | Zahl | ja | manuell eingegeben beim Ausrücken |
+| KM Rückkehr | Zahl | ja | manuell eingegeben beim Einrücken |
+| Fahrer | Person | ja | Auswahl aus aktiver syBOS-Personalliste |
+| Fahrzeug-Kdt. | Person | ja | Auswahl aus aktiver syBOS-Personalliste |
+| Mannschaft (7 Plätze) | Liste | nein | Pro Slot: Person + AS-Toggle + ggf. AS-Dauer (siehe A.3) |
+| Geräte/Mittel | Multi-Select | nein | Vorgefilterte Liste aus Fahrzeug-Geräteliste |
+| Tätigkeitsbericht | Text | nein | Freitext, ergänzt automatisch durch Chronik-Diktate |
+
+### A.3 Atemschutz-Erfassung (AS-Toggle pro Mannschaftsplatz)
+
+**Verhalten:**
+- Jeder der 7 Mannschaftsplätze hat einen AS-Toggle (Checkbox / Switch).
+- AS-Toggle **inaktiv** (Default): keine PA-Zeit, keine zusätzlichen Felder.
+- AS-Toggle **aktiviert**:
+  - Zeit-Counter erscheint mit Default-Wert **15 Min**.
+  - Steuerung über `[−] 15 Min [+]`, Schrittweite **5 Min**.
+  - **Range:** Minimum 5 Min., Maximum 60 Min.
+  - Bei Klick auf `−` unter 5 Min.: bleibt bei 5 Min. (keine Deaktivierung des Toggles durch Min-Erreichen).
+  - Bei Klick auf `+` über 60 Min.: bleibt bei 60 Min.
+
+**Werte-Skala:** 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60 Minuten.
+
+**Im PDF-Output** wird die AS-Markierung wie im Papier-Original angezeigt:
+```
+3.  Sepp HUBER ............... AS 30 min
+```
+
+**Annahme zu validieren:** Schrittweite 5 Min. und Range 5–60 Min. ist eine sinnvolle Default-Vorgabe. Falls in der Praxis andere Schrittweiten gewünscht sind (z.B. 1 Min., oder gar keine Begrenzung), in 2-Minuten-Anpassung im Implementierungsplan korrigierbar.
 
 ## Anhang B — Hauptbericht (Layout-Referenz)
 
