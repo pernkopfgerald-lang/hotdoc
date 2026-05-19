@@ -1,6 +1,11 @@
 .git
 .gitignore
 node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+**/.cache
 docs/
 wiki_extracted/
 Einsatzberichte-Fahrzeugdatenblatt/
@@ -12,5 +17,7 @@ syBOS_API_CMS_wiki.zip
 .vscode/
 .idea/
 *.log
-README*.md
+prototype/
 DEPLOY.md
+README*.md
+*.tsbuildinfo

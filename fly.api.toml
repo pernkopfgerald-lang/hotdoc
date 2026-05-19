@@ -1,0 +1,55 @@
+# ───────────────────────────────────────────────────────────────
+# HotDoc · API (Backend)
+# Setup:
+#   fly apps create hotdoc-api --org personal
+#   fly secrets set -a hotdoc-api JWT_SECRET=...
+#   fly deploy -c deploy/api/fly.toml --dockerfile deploy/api/Dockerfile
+# ───────────────────────────────────────────────────────────────
+
+app             = "hotdoc-api"
+primary_region  = "fra"
+kill_signal     = "SIGTERM"
+kill_timeout    = 10
+
+[build]
+  # Relativ zum fly.toml-Verzeichnis; deploy via CLI passt den Pfad an,
+  # falls aus dem Repo-Root deployt wird.
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT     = "3000"
+  COUCH_URL = "http://hotdoc-db.internal:5984"
+  COUCH_DB  = "hotdoc"
+  AUDIO_RETENTION_DAYS = "30"
+  # WARNUNG: Test-Defaults — bitte mit `fly secrets set` rotieren.
+  COUCH_USER = "admin"
+  COUCH_PASS = "hotdoc-dev-changeme-now"
+  JWT_SECRET = "hotdoc-dev-jwt-secret-bitte-rotieren-mit-fly-secrets-mindestens-32-zeichen"
+  BOOTSTRAP_ADMIN_USERNAME = "admin"
+  BOOTSTRAP_ADMIN_PASSWORD = "admin12345678"
+
+[http_service]
+  internal_port = 3000
+  force_https   = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 200
+    soft_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "get"
+    timeout = "5s"
+    path = "/healthz"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "1gb"

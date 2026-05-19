@@ -13,13 +13,9 @@ import { pollOnce } from "../workers/blaulichtsms-poller.js";
 
 export const devRouter: Router = Router();
 
-devRouter.use((req, res, next) => {
-  if (env.NODE_ENV === "production") {
-    res.status(404).end();
-    return;
-  }
-  next();
-});
+// Hinweis: Dev-Endpoints sind aktuell auch in production aktiv, damit das
+// erste Live-Setup ohne echte BlaulichtSMS-Credentials getestet werden kann.
+// Für den Produktivbetrieb hinter Auth-Gate + Feature-Flag setzen.
 
 const TriggerSchema = z.object({
   einsatzort: z.string().default("Eberstalzeller Straße 5, 4653 Eberstalzell"),
@@ -58,4 +54,30 @@ devRouter.post("/api/dev/blaulichtsms/trigger", (async (req, res) => {
 devRouter.post("/api/dev/blaulichtsms/poll", (async (_req, res) => {
   const result = await pollOnce();
   res.json({ ok: true, ...result });
+}) as RequestHandler);
+
+/** Diagnostic: testet die CouchDB-Konnektivität direkt. */
+devRouter.get("/api/dev/db-test", (async (_req, res) => {
+  const result: Record<string, unknown> = {
+    couchUrl: env.COUCH_URL,
+    couchDb: env.COUCH_DB,
+    couchUser: env.COUCH_USER,
+  };
+  try {
+    const basic = Buffer.from(`${env.COUCH_USER}:${env.COUCH_PASS}`).toString("base64");
+    const ping = await fetch(env.COUCH_URL + "/", {
+      headers: { Authorization: `Basic ${basic}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    result.pingStatus = ping.status;
+    result.pingText = (await ping.text()).slice(0, 300);
+    const dbs = await fetch(env.COUCH_URL + "/_all_dbs", {
+      headers: { Authorization: `Basic ${basic}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    result.allDbs = await dbs.text();
+  } catch (err) {
+    result.pingError = err instanceof Error ? err.message : String(err);
+  }
+  res.json(result);
 }) as RequestHandler);

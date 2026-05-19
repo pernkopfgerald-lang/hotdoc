@@ -1,0 +1,30 @@
+# ───────────────────────────────────────────────────────────────
+# HotDoc · CouchDB (Master-DB)
+# KEIN public-Service — fly internal-Netzwerk reicht via hotdoc-db.internal:5984
+# ───────────────────────────────────────────────────────────────
+
+app             = "hotdoc-db"
+primary_region  = "fra"
+kill_signal     = "SIGTERM"
+kill_timeout    = 30
+
+[build]
+  dockerfile = "deploy/couchdb/Dockerfile"
+
+[env]
+  COUCHDB_USER     = "admin"
+  COUCHDB_PASSWORD = "hotdoc-dev-changeme-now"
+  COUCHDB_SECRET   = "hotdoc-cookie-secret-changeme"
+
+[mounts]
+  source      = "hotdoc_db_data"
+  destination = "/opt/couchdb/data"
+  initial_size = "5gb"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"
+
+[deploy]
+  strategy = "immediate"
