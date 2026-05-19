@@ -1,0 +1,41 @@
+/* Identisch zur PWA — wir importieren mittelfristig aus shared, hier lokal kopiert für Phase 1. */
+
+:root {
+  --radius-s: 7px;
+  --radius-m: 11px;
+  --radius-l: 16px;
+}
+
+[data-theme="dark"] {
+  --bg-deep: #08080b;
+  --bg-page: #0d0d12;
+  --surface-1: #16161d;
+  --surface-2: #1e1e27;
+  --surface-3: #262631;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text-1: #ededf2;
+  --text-2: #a8a8b5;
+  --text-3: #66666f;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --emerald: #10b981;
+  --blue: #6da6ff;
+}
+
+[data-theme="light"] {
+  --bg-deep: #f3f3f6;
+  --bg-page: #f7f7fa;
+  --surface-1: #ffffff;
+  --surface-2: #fafafc;
+  --surface-3: #f0f0f3;
+  --border: rgba(15, 18, 30, 0.08);
+  --border-strong: rgba(15, 18, 30, 0.2);
+  --text-1: #0a0a0e;
+  --text-2: #4a4a55;
+  --text-3: #7e7e8a;
+  --red: #dc2626;
+  --amber: #b45309;
+  --emerald: #047857;
+  --blue: #1d4ed8;
+}

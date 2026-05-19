@@ -102,6 +102,50 @@ KM Abfahrt und KM gefahren werden **nicht** händisch eingetragen. Sie sind read
 
 Bei Funkloch ist die Berechnung trotzdem korrekt — GPS-Track wird lokal aufgezeichnet und beim Sync mit dem Backend abgeglichen.
 
+**FR-12 — Manuelle Berichts-Anlage**
+Nicht jeder Einsatz wird durch BlaulichtSMS getriggert. Vorausschauend (z. B. Brandsicherheitsdienst, Lotsendienst, Pumparbeiten ohne Alarm) oder rückwirkend muss der Einsatzleiter / Bearbeiter einen Bericht **manuell** anlegen können. Dafür gibt es einen Knopf „Neuer Bericht (manuell)" auf dem Zentrale-Tablet und im Backoffice. Manuelle Berichte tragen das Feld `typ: "manuell"` (statt `"alarm"`), und `manuellAngelegt: { vonBenutzerId, am, grund? }` zur Audit-Dokumentation. Sie haben keine Alarm-Vorausfüllung, Einsatzort und Datum werden vom Bearbeiter eingegeben.
+
+**FR-13 — Parallele Einsätze**
+Bei Großereignissen (Hochwasser, Sturmlage) können mehrere Einsätze gleichzeitig aktiv sein. Jedes Fahrzeug-Tablet muss zwischen aktiven Einsätzen wählen können („andocken"). Das Backoffice listet alle aktiven Einsätze parallel mit Status-Übersicht.
+
+**FR-14 — Schreibschutz nach Abschluss + bewusste Reaktivierung**
+Sobald ein Einsatz auf `status: "abgeschlossen"` gesetzt wird, sind alle Felder (Hauptbericht und alle Fahrzeugberichte) **read-only**. Eine Reaktivierung ist nur durch einen autorisierten Benutzer (Funktionär-Rolle) möglich und erfordert:
+- bewusste Bestätigung in einem Modal („Bericht wurde am … abgeschlossen. Wirklich zurück auf aktiv setzen?")
+- Pflichtangabe eines Grundes (Freitext, min. 10 Zeichen)
+- Audit-Trail-Eintrag in `reaktivierungen[]: { vonBenutzerId, am, grund, vonStatus }`
+
+Beim erneuten Abschluss wird der Schreibschutz wieder aktiv.
+
+**FR-15 — Zugriffsberechtigung & Authentifizierung**
+Zwei unterschiedliche Authentifizierungs-Mechanismen je Endgerät-Klasse:
+
+*Tablets (Fahrzeuge + Zentrale):* **MSISDN-basierte Auth**. Die SIM-Karte ist pro Fahrzeug einzigartig; die zugehörige Mobilfunknummer wird einmalig beim Setup hinterlegt. Beim App-Start fragt die App die MSISDN ab (Android Telephony-Manager via Capacitor / native bridge oder manuelle Hinterlegung), validiert sie gegen die Backend-Konfiguration und vergibt einen Device-Token. Token wird im Service Worker / lokalen Storage gespeichert und bei jedem API-Call mitgeschickt. Vorteil: keine händischen Passwörter im Stress-Einsatz.
+
+*Backoffice / Florianstation (Windows PC):* **Username + Passwort** mit klassischem Login-Flow. Sessions via HTTP-Only-Cookie (signed JWT), Ablauf nach 8h Inaktivität. Optional: Microsoft AD / Azure SSO in V1.1 (siehe Brandmeister-Stack-Erfahrung).
+
+*Rollen:*
+- `mannschaft` — auf Tablets, kann Fahrzeugberichte erfassen
+- `einsatzleiter` — auf Zentrale-Tablet, kann Hauptbericht abschließen
+- `funktionaer` — im Backoffice, kann Berichte einsehen, reaktivieren, Fahrzeug-/Geräte-Stammdaten pflegen
+- `admin` — im Backoffice, kann Benutzer verwalten, fly secrets ändern
+
+**FR-16 — Backoffice / Verwaltungs-Website**
+Eine separate Web-App (`apps/backoffice`) für Funktionäre, die nicht im Einsatz sind. Funktionen:
+- **Bericht-Browser:** alle Einsätze (aktiv + abgeschlossen) durchsuchbar nach Datum, Einsatzart, Fahrzeug, Personen. Filter, Sortierung, Export als CSV/PDF.
+- **Bericht-Detail-Ansicht:** read-only nach Abschluss, mit Reaktivieren-Knopf (FR-14).
+- **Manuelle Berichts-Anlage:** Eingabe-Formular wie auf der Zentrale.
+- **Stammdaten-Pflege:** Fahrzeug-Geräte-Listen, Fahrzeug-Funkrufnamen, AS-Range-Konfiguration, BlaulichtSMS-Account-Status.
+- **Benutzer-Verwaltung** (admin): Anlegen, Rollen, Passwort-Reset.
+- **Statistik-Dashboard:** Einsätze pro Monat, Einsatzart-Verteilung, Mannschaftsstunden, Ölbindemittel-Verbrauch (Vorbereitung für UC0 in V1.1).
+
+**FR-17 — Florianstation-Layout (Windows-PC, Querformat)**
+Eine Variante des Zentrale-Tablet-Views, optimiert für **Windows-PC im Querformat** (typisch 1920×1080):
+- Mehrspaltiges Layout: links Karte + Live-Positionen, Mitte Hauptbericht-Formular, rechts Live-Stream aller Fahrzeugberichte
+- **Keine Diktat-Funktion** — Tastatur-Eingabe für Freitext, mit Auto-Vervollständigung für Standardphrasen
+- Größere Touch-Targets nicht nötig — Maus + Tastatur
+- Funktioniert ohne PWA-Installation, einfach im Browser (Chrome/Edge)
+- Login via Username + Passwort (FR-15)
+
 **FR-11 — Löschwasserdaten via wasserkarte.info**
 Auf der Karte werden Löschwasserentnahmestellen (Hydranten, Saugstellen, Tieflöschwasserstellen) und ggf. Brandschutzpläne von **wasserkarte.info** eingeblendet. Toggle-Knopf „Löschwasser" zum Ein-/Ausblenden.
 
@@ -209,8 +253,12 @@ Stack auf TypeScript / Node.js / React aufsetzen — vertraute Technologien beim
 ### 5.1 Entitäten und Beziehungen
 
 ```
-EINSATZ (zentral angelegt aus Alarm)
-  ├── alarmId, einsatzort, koordinaten, alarmierungZeit, audioUrl
+EINSATZ (zentral, durch Alarm ODER manuell angelegt)
+  ├── typ: 'alarm' | 'manuell'                  ← FR-12
+  ├── manuellAngelegt?: { vonBenutzerId, am, grund? }
+  ├── reaktivierungen[]: { vonBenutzerId, am, grund, vonStatus }  ← FR-14
+  ├── schreibschutz: bool                       ← =true wenn status='abgeschlossen'
+  ├── alarmId?, einsatzort, koordinaten, alarmierungZeit, audioUrl
   ├── fahrzeugPositionen[]: { fahrzeugId, lat, lng, timestamp }
   │     ← Live-Stream im Einsatz, alle 5-10s aktualisiert, im Bericht
   │       letzte 100 Positionen archiviert für Audit/Analyse
@@ -251,6 +299,23 @@ FAHRZEUGBERICHT (1 pro eingesetztem Fahrzeug)
   ├── taetigkeitsbericht (Freitext + verlinkte Chronik-Einträge)
   ├── fotos[]: { blobId, beschreibung }
   └── status: 'in_arbeit' | 'abgeschlossen'
+
+BENUTZER (Backoffice, FR-15)
+  ├── _id: "user:<uuid>"
+  ├── username
+  ├── passwordHash         ← bcrypt
+  ├── rolle: 'mannschaft' | 'einsatzleiter' | 'funktionaer' | 'admin'
+  ├── verknuepftePersonId? ← FK auf Person (für Audit-Trail Name)
+  ├── aktiv: bool
+  └── letzterLogin?
+
+TABLET-AUTH (lokal pro Tablet, FR-15)
+  ├── _id: "tablet:<deviceId>"
+  ├── msisdn               ← +43 664… , unique pro Fahrzeug
+  ├── fahrzeugId
+  ├── deviceToken          ← random, wird in jedem API-Call mitgeschickt
+  ├── tokenAusgestelltAm
+  └── letzterZugriff?
 
 STAMMDATEN (aus syBOS, lokal gecacht):
 

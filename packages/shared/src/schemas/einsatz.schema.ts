@@ -35,13 +35,35 @@ export const ChronikEintragSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+export const ReaktivierungSchema = z.object({
+  vonBenutzerId: z.string(),
+  am: z.string().datetime(),
+  grund: z.string().min(10, "Reaktivierungs-Grund mind. 10 Zeichen"),
+  vonStatus: z.literal("abgeschlossen"),
+});
+
+export const ManuellAnlageSchema = z.object({
+  vonBenutzerId: z.string(),
+  am: z.string().datetime(),
+  grund: z.string().optional(),
+});
+
 export const EinsatzSchema = z.object({
-  _id: z.string().regex(/^einsatz:.+$/, "Erwartet 'einsatz:<alarmId>'"),
+  _id: z.string().regex(/^einsatz:.+$/, "Erwartet 'einsatz:<id>'"),
   _rev: z.string().optional(),
   type: z.literal("einsatz"),
 
-  // — Aus BlaulichtSMS (vorgefüllt, editierbar) —
-  alarmId: z.string(),
+  /** Quelle des Einsatzes: BlaulichtSMS-Alarm oder manuell angelegt (FR-12). */
+  einsatzTyp: z.enum(["alarm", "manuell"]).default("alarm"),
+  manuellAngelegt: ManuellAnlageSchema.optional(),
+
+  /** Audit-Trail aller Reaktivierungen nach Abschluss (FR-14). */
+  reaktivierungen: z.array(ReaktivierungSchema).default([]),
+  /** Wird automatisch true bei status=abgeschlossen, false bei Reaktivierung. */
+  schreibschutz: z.boolean().default(false),
+
+  // — Aus BlaulichtSMS (vorgefüllt, editierbar) — nur bei einsatzTyp="alarm" —
+  alarmId: z.string().optional(),
   einsatzort: z.string(),
   einsatzortPostleitzahl: z.string().optional(),
   einsatzortOrt: z.string().optional(),
@@ -123,3 +145,5 @@ export const EinsatzSchema = z.object({
 export type Einsatz = z.infer<typeof EinsatzSchema>;
 export type ChronikEintrag = z.infer<typeof ChronikEintragSchema>;
 export type FahrzeugPosition = z.infer<typeof FahrzeugPositionSchema>;
+export type Reaktivierung = z.infer<typeof ReaktivierungSchema>;
+export type ManuellAnlage = z.infer<typeof ManuellAnlageSchema>;

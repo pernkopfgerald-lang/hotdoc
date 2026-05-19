@@ -1,9 +1,19 @@
 // Re-exports der inferierten Typen aus den Zod-Schemas.
 // PWA + API importieren ausschließlich von hier (oder von @hotdoc/shared direkt).
 export type {
+  AuthResponse,
+  Benutzer,
+  LoginRequest,
+  Rolle,
+  TabletAuth,
+  TabletRegisterRequest,
+} from "../schemas/auth.schema.js";
+export type {
   Einsatz,
   ChronikEintrag,
   FahrzeugPosition,
+  ManuellAnlage,
+  Reaktivierung,
 } from "../schemas/einsatz.schema.js";
 export type { FahrzeugConfigDoc } from "../schemas/fahrzeug-config.schema.js";
 export type {

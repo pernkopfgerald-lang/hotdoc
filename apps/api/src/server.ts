@@ -7,7 +7,9 @@ import pinoHttp from "pino-http";
 import { env } from "./config.js";
 import { ensureDatabase } from "./couch/client.js";
 import { logger } from "./lib/logger.js";
+import { adminRouter } from "./routes/admin.js";
 import { healthRouter } from "./routes/health.js";
+import { startSyBosSyncCron } from "./workers/sybos-sync.js";
 
 async function main(): Promise<void> {
   const app = express();
@@ -21,6 +23,7 @@ async function main(): Promise<void> {
 
   // — Routes —
   app.use(healthRouter);
+  app.use(adminRouter);
 
   // — DB-Bootstrap —
   try {
@@ -28,6 +31,9 @@ async function main(): Promise<void> {
   } catch (err) {
     logger.error({ err }, "CouchDB-Bootstrap fehlgeschlagen — Server startet trotzdem, /healthz bleibt grün");
   }
+
+  // — Worker —
+  startSyBosSyncCron();
 
   // — Start —
   app.listen(env.PORT, () => {
