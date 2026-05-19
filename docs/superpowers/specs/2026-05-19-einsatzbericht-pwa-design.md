@@ -19,16 +19,18 @@ UC0 (Tätigkeitsnachweise) und UC1 (Anwesenheitserfassung im FF-Haus) sind **exp
 
 ## 2. Beteiligte und Rollen
 
-| Rolle | Tablet | Aufgabe |
-|---|---|---|
-| Fahrzeug-Kdt. KDO | KDO-Tablet | erfasst Fahrzeugbericht KDO |
-| Fahrzeug-Kdt. TLF-A 4000 | TLF-Tablet | erfasst Fahrzeugbericht TLF |
-| Fahrzeug-Kdt. LFA-B | LFA-B-Tablet | erfasst Fahrzeugbericht LFA-B |
-| Fahrzeug-Kdt. MTF | MTF-Tablet | erfasst Fahrzeugbericht MTF |
-| Einsatzleiter | Zentrale-Tablet | erfasst Hauptbericht, sieht alle Fahrzeugberichte live (sobald gesynct) |
-| Bearbeiter (Funktionär) | Zentrale-Tablet / Browser | schließt Bericht ab, generiert PDF, überträgt nach syBOS |
+| Rolle | Tablet | Funkrufname | Aufgabe |
+|---|---|---|---|
+| Fahrzeug-Kdt. KDO | KDO-Tablet | **Kommando Eberstalzell** | erfasst Fahrzeugbericht KDO |
+| Fahrzeug-Kdt. TLF-A 4000 | TLF-Tablet | **Tank Eberstalzell** | erfasst Fahrzeugbericht TLF |
+| Fahrzeug-Kdt. LFA-B | LFA-B-Tablet | **Pumpe Eberstalzell** | erfasst Fahrzeugbericht LFA-B |
+| Fahrzeug-Kdt. MTF | MTF-Tablet | **MTF Eberstalzell** | erfasst Fahrzeugbericht MTF |
+| Einsatzleiter | Zentrale-Tablet | **Florian Eberstalzell** | erfasst Hauptbericht, sieht alle Fahrzeugberichte live (sobald gesynct) |
+| Bearbeiter (Funktionär) | Zentrale-Tablet / Browser | — | schließt Bericht ab, generiert PDF, überträgt nach syBOS |
 
 **Keine personalisierten Logins.** Jedes Tablet ist auf ein Fahrzeug konfiguriert (einmaliger Setup); wer das Tablet bedient, wählt sich aus der Personalliste als Fahrer / Fahrzeug-Kdt. / Mannschaft.
+
+**Diktat-Quelle ist der Funkrufname, nicht die Person.** Sowohl Fahrzeugkommandant als auch Kraftfahrer (oder beliebige andere Person im Fahrzeug) können das Diktat-Mikrofon nutzen. In der Chronik wird der Eintrag mit dem taktischen Funkrufnamen des Fahrzeugs ausgewiesen — die genaue Person dahinter wird **nicht** unterschieden. Das entspricht dem FF-Funksprech-Stil („Tank Eberstalzell – Brand aus") und ist realitätsnah für die spätere Nachbearbeitung.
 
 ---
 
@@ -46,7 +48,7 @@ Auf dem Fahrzeug-Tablet erfasst der Fahrzeug-Kdt.: Fahrer, Fahrzeug-Kdt., Mannsc
 Auf dem Zentrale-Tablet erfasst der Einsatzleiter alle einsatzübergreifenden Felder gemäß heutigem Papierformular (Einsatzart, Pflichtbereich, Alarmierungsquelle, Zeitmarken, beteiligte Stellen, Verrechnung, Freitext-Meldung).
 
 **FR-4 — Diktat / Einsatzchronik**
-Jedes Tablet kann während des Einsatzes Sprachnotizen mit Zeitstempel aufnehmen, die offline transkribiert werden (Whisper.cpp). Die Chronik erscheint im fertigen Bericht und im Spickzettel.
+Jedes Tablet kann während des Einsatzes Sprachnotizen mit Zeitstempel aufnehmen, die offline transkribiert werden (Whisper.cpp). Die Chronik erscheint im fertigen Bericht und im Spickzettel. Diktat-Einträge werden mit dem **taktischen Funkrufnamen** des Tablet-Fahrzeugs ausgewiesen (z.B. „Tank Eberstalzell", „Florian Eberstalzell"); Fahrzeug-Kdt. und Kraftfahrer werden dabei nicht unterschieden.
 
 **FR-5 — Aggregation**
 Mannschaftszahlen im Hauptbericht („Eingesetzt") werden automatisch aus den Fahrzeugberichten summiert. „Bereitschaft" und „Sonstige" sind manuelle Felder.
@@ -113,12 +115,14 @@ Stack auf TypeScript / Node.js / React aufsetzen — vertraute Technologien beim
                 ▼                ▼                ▼               ▼
         ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
         │ KDO-Tablet   │ │ TLF-Tablet   │ │ LFA-B-Tablet │ │ ZENTRALE     │
-        │   PWA        │ │   PWA        │ │   PWA        │ │   PWA        │
-        │ + PouchDB    │ │ + PouchDB    │ │ + PouchDB    │ │ + PouchDB    │
+        │ "Kommando    │ │ "Tank        │ │ "Pumpe       │ │ "Florian     │
+        │  Eberstalz." │ │  Eberstalz." │ │  Eberstalz." │ │  Eberstalz." │
+        │ PWA+PouchDB  │ │ PWA+PouchDB  │ │ PWA+PouchDB  │ │ PWA+PouchDB  │
         │ + Whisper    │ │ + Whisper    │ │ + Whisper    │ │ + Whisper    │
         └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 
-        (MTF-Tablet identisch wie die anderen Fahrzeug-Tablets, hier weggelassen)
+        (MTF-Tablet "MTF Eberstalzell" identisch wie die anderen Fahrzeug-Tablets,
+         hier weggelassen)
 ```
 
 ### 4.1 Komponentenbeschreibung
@@ -187,7 +191,9 @@ PERSON
 
 FAHRZEUG (Konfiguration, lokal)
   ├── id, bezeichnung, kurz
-  └── geraeteIds[]  ← welche Geräte sind auf diesem Fahrzeug verlastet
+  ├── funkrufname        ← taktischer Funkrufname für Chronik-Anzeige
+  │                        z.B. "Tank Eberstalzell", "Florian Eberstalzell"
+  └── geraeteIds[]       ← welche Geräte sind auf diesem Fahrzeug verlastet
 
 MATERIAL (aus syBOS)
   ├── id (syBOS-Material-ID)
@@ -202,12 +208,18 @@ MATERIAL (aus syBOS)
 CHRONIK-EINTRAG
   ├── id
   ├── zeitstempel       ← exakt der Moment des Aufnahme-Knopf-Drucks
-  ├── fahrzeugId        ← welches Tablet diktiert hat
+  ├── fahrzeugId        ← welches Tablet diktiert hat (technische ID)
+  │                       Anzeige in UI/PDF: Fahrzeug.funkrufname
+  │                       z.B. "Tank Eberstalzell", "Florian Eberstalzell"
   ├── typ: 'diktat' | 'manuell' | 'auto-blaulichtsms'
   ├── audioBlobId?      ← bei Diktat: Audio im lokalen Storage
   ├── transkript?       ← gefüllt sofort (Whisper) oder beim Sync-Fallback
   ├── transkriptStatus: 'pending' | 'verfügbar' | 'manuell-korrigiert'
   └── tags?[]           ← V1.1: Auto-Extraktion ('brand-aus', 'lage-uK', …)
+
+Hinweis: Es wird KEINE Person als Diktat-Autor gespeichert. Sowohl
+Fahrzeug-Kdt. als auch Kraftfahrer (oder jede andere Person im Fahrzeug)
+darf diktieren. Quelle ist allein der Funkrufname des Tablet-Fahrzeugs.
 ```
 
 ### 5.3 CouchDB-Dokumentschema
@@ -549,10 +561,12 @@ Diese Punkte sind bewusst **nicht** Teil des MVP und werden in späteren Version
 | BWST | Brandwache-Steyr (Bezirksalarmzentrale Steyr-Land) |
 | LWZ | Landeswarnzentrale |
 | FF | Freiwillige Feuerwehr |
-| KDO | Kommando-Fahrzeug |
-| TLF | Tanklöschfahrzeug |
-| LFA-B | Löschfahrzeug-Allrad, Bauart B |
-| MTF | Mannschaftstransportfahrzeug |
+| KDO | Kommando-Fahrzeug (Funkrufname: „Kommando Eberstalzell") |
+| TLF | Tanklöschfahrzeug (Funkrufname: „Tank Eberstalzell") |
+| LFA-B | Löschfahrzeug-Allrad, Bauart B (Funkrufname: „Pumpe Eberstalzell") |
+| MTF | Mannschaftstransportfahrzeug (Funkrufname: „MTF Eberstalzell") |
+| Zentrale | Einsatzzentrale im Wachhaus (Funkrufname: „Florian Eberstalzell") |
+| Funkrufname | Taktische Bezeichnung im FF-Funkverkehr, im Bericht als Diktat-Quelle verwendet |
 | AS | Atemschutz |
 | FFK | Feuerwehrkommandant |
 | syBOS | Verwaltungssystem für Behörden- und Organisations-Strukturen (Hersteller SOLARYS, Götzis) |
