@@ -1,0 +1,35 @@
+# HotDoc Static Server
+# Listens on :8080 (fly.io edge handles TLS)
+:8080 {
+  root * /srv
+  encode gzip zstd
+  file_server
+
+  # Health endpoint für fly.io health-check
+  respond /healthz "ok" 200
+
+  # PWA: serve index.html as fallback for any unknown route
+  try_files {path} {path}/ /index.html
+
+  # Cache static assets aggressiv, HTML kurz
+  @static {
+    path *.css *.js *.woff2 *.svg *.png *.jpg *.webp
+  }
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  @html path *.html
+  header @html Cache-Control "no-cache"
+
+  # Sicherheitsheader
+  header {
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "microphone=(self), camera=(), geolocation=()"
+    -Server
+  }
+
+  log {
+    output stdout
+    format console
+  }
+}

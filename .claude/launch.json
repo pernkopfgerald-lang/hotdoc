@@ -1,11 +1,36 @@
 {
   "version": "0.0.1",
+  "_description": "Detected dev servers for HotDoc. Erweitern, sobald das echte App-Build (Vite + Node API) existiert.",
   "configurations": [
     {
-      "name": "prototype-lfa-b",
+      "name": "prototype-lfa-b-static",
+      "_purpose": "Statischer Prototyp für das LFA-B-Tablet (Pumpe Eberstalzell). Python http.server reicht für lokales Preview.",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5500", "--directory", "prototype/lfa-b"],
       "port": 5500
+    }
+  ],
+  "_planned_configurations_when_real_app_exists": [
+    {
+      "name": "hotdoc-pwa-dev",
+      "_purpose": "Vite Dev-Server für React-PWA (sobald aufgesetzt)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "hotdoc-api-dev",
+      "_purpose": "Node/Express Backend-Dev-Server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:api"],
+      "port": 3000
+    },
+    {
+      "name": "hotdoc-couchdb",
+      "_purpose": "Lokale CouchDB für Sync-Tests (über Docker)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "couchdb"],
+      "port": 5984
     }
   ]
 }

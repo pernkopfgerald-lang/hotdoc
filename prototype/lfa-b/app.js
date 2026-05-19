@@ -1,7 +1,38 @@
 /* ─────────────────────────────────────────────────────────────
-   FF Eberstalzell · Pumpe-Tablet (LFA-B) · Prototyp JS
-   Demo-Daten, keine echten APIs.
+   HotDoc · FF Eberstalzell · Pumpe-Tablet (LFA-B) · Prototyp JS
+   v0.2 — Auto Light/Dark Theme + Demo-Daten, keine echten APIs.
    ───────────────────────────────────────────────────────────── */
+
+// ─── Theme: Auto Light/Dark by hour (07–19 = light, 19–07 = dark) ──
+const THEME_STORAGE_KEY = "hotdoc.themeOverride";
+
+function autoTheme(){
+  const h = new Date().getHours();
+  return (h >= 7 && h < 19) ? "light" : "dark";
+}
+function effectiveTheme(){
+  const override = localStorage.getItem(THEME_STORAGE_KEY);
+  return override || autoTheme();
+}
+function applyTheme(t){
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", t === "dark" ? "#0d0d12" : "#f7f7fa");
+}
+applyTheme(effectiveTheme());
+
+// re-evaluate every 5 minutes — covers crossing 07/19 hour boundary
+setInterval(()=>{
+  if(!localStorage.getItem(THEME_STORAGE_KEY)) applyTheme(autoTheme());
+}, 5 * 60 * 1000);
+
+// theme toggle button: cycle override → light → dark → auto
+document.getElementById("themeToggle")?.addEventListener("click", ()=>{
+  const cur = document.documentElement.dataset.theme;
+  const next = cur === "light" ? "dark" : "light";
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  applyTheme(next);
+});
 
 // ─── clock (live im Header) ────────────────────────────────
 const clockEl = document.getElementById("clock");

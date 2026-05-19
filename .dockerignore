@@ -1,0 +1,16 @@
+.git
+.gitignore
+node_modules
+docs/
+wiki_extracted/
+Einsatzberichte-Fahrzeugdatenblatt/
+Personal-Liste*.xlsx
+Personal-Liste*.csv
+HB_syBOS_API.pdf
+syBOS_API_CMS_wiki.zip
+.claude/
+.vscode/
+.idea/
+*.log
+README*.md
+DEPLOY.md

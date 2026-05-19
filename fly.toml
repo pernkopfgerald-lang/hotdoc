@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────
+# HotDoc · FF Eberstalzell Einsatzbericht-PWA
+# fly.io deployment configuration
+#
+# App name muss eindeutig sein in deinem fly.io Account.
+# Erstmaliges Setup: `fly launch --name hotdoc-eberstalzell --no-deploy`
+# Deploy:            `fly deploy`
+# ─────────────────────────────────────────────────────────────
+
+app             = "hotdoc-eberstalzell"
+primary_region  = "fra"            # Frankfurt - DSGVO / EU
+kill_signal     = "SIGINT"
+kill_timeout    = 5
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+# Static prototype server für die aktuelle Entwicklungsphase.
+# Sobald wir den echten App-Build haben, hier auf Node.js + Caddy
+# Reverse Proxy wechseln.
+[http_service]
+  internal_port       = 8080
+  force_https         = true
+  auto_stop_machines  = true     # idle nach inaktivität → Kostenoptimierung
+  auto_start_machines = true
+  min_machines_running = 0       # erst bei Anfrage hochfahren
+  processes           = ["app"]
+
+  [http_service.concurrency]
+    type        = "connections"
+    hard_limit  = 200
+    soft_limit  = 100
+
+  [[http_service.checks]]
+    grace_period  = "10s"
+    interval      = "30s"
+    method        = "get"
+    timeout       = "5s"
+    path          = "/healthz"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "256mb"
+
+# Spätere CouchDB-App läuft in eigener fly-App (hotdoc-eberstalzell-db)
+# mit persistent volume — siehe deploy/couchdb/fly.toml
