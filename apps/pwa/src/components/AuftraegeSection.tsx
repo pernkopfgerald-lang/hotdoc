@@ -9,31 +9,21 @@ export interface Auftrag {
 
 interface Props {
   auftraege: Auftrag[];
+  /** Verfügbare Schnellauswahl — wird in Phase 2 aus der Einsatzzentrale-Verwaltung gespeist */
+  verfuegbareTypen: readonly string[];
   onAdd: (text: string) => void;
   onRemove: (id: string) => void;
 }
 
-const QUICK_CHIPS = [
-  "Verkehrsabsicherung",
-  "Wassertransport",
-  "Personenrettung",
-  "Brandbekämpfung außen",
-  "Brandbekämpfung innen",
-  "Technische Hilfeleistung",
-  "Atemschutz-Trupp",
-  "Drehleiter-Einsatz",
-  "Nachlöscharbeiten",
-  "Beleuchtung sichern",
-] as const;
-
 /**
- * "Zusätzliche Aufträge" — alles was während des Einsatzes anfällt
- * und nicht in den festen Sektionen abgebildet ist. Freitext + Quick-Chips
- * für die häufigsten Aufgaben.
+ * Auftrag — was im Rahmen dieses Einsatzes konkret zu tun ist.
+ * Schnellauswahl-Chips kommen aus der globalen Auftrag-Typen-Konfiguration
+ * (in der Einsatzzentrale verwaltbar — Phase 2). Aktuell als Default-
+ * Konstante; das Backend liefert die Liste dann via /api/config/auftrag-typen.
  */
-export function AuftraegeSection({ auftraege, onAdd, onRemove }: Props) {
+export function AuftraegeSection({ auftraege, verfuegbareTypen, onAdd, onRemove }: Props) {
   const [input, setInput] = useState("");
-  const placeholderShown = auftraege.length === 0;
+  const empty = auftraege.length === 0;
 
   function submit() {
     const text = input.trim();
@@ -44,101 +34,150 @@ export function AuftraegeSection({ auftraege, onAdd, onRemove }: Props) {
 
   return (
     <section
-      className="rounded-m border p-3.5"
+      className="p-5"
       style={{
-        borderColor: "var(--border-strong)",
-        background: "var(--card-gradient)",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 18,
         boxShadow: "var(--shadow-card)",
       }}
     >
-      <header className="mb-2.5 flex items-baseline justify-between">
-        <div className="flex items-center gap-2">
-          <ClipboardList size={16} className="text-amber" />
-          <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">
-            Zusätzliche Aufträge
+      <header className="mb-3.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <ClipboardList size={20} style={{ color: "var(--fg-2)" }} />
+          <h2
+            className="text-[17px] font-bold tracking-tight"
+            style={{ color: "var(--fg)" }}
+          >
+            Auftrag
           </h2>
         </div>
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-text-3">
-          {auftraege.length} Eintr{auftraege.length === 1 ? "ag" : "äge"}
+        <span
+          className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
+          style={{ color: "var(--fg-3)" }}
+        >
+          <span style={{ color: "var(--fg)" }}>{auftraege.length}</span>{" "}
+          {auftraege.length === 1 ? "Eintrag" : "Einträge"}
         </span>
       </header>
 
       {/* Quick-Chips */}
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {QUICK_CHIPS.map((chip) => (
-          <button
-            key={chip}
-            type="button"
-            onClick={() => onAdd(chip)}
-            className="rounded-full border px-2.5 py-1 font-mono text-[11px] font-medium transition active:translate-y-px"
-            style={{
-              borderColor: "var(--border-strong)",
-              background: "var(--surface-2)",
-              color: "var(--text-2)",
-            }}
-          >
-            + {chip}
-          </button>
-        ))}
+      <div className="flex flex-wrap gap-2">
+        {verfuegbareTypen.map((chip) => {
+          const selected = auftraege.some((a) => a.text === chip);
+          return (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => !selected && onAdd(chip)}
+              disabled={selected}
+              className="inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3.5 py-2 text-[13px] font-semibold transition disabled:cursor-default"
+              style={
+                selected
+                  ? {
+                      background: "var(--info-tint)",
+                      color: "var(--info)",
+                      borderColor: "rgba(37, 99, 235, 0.18)",
+                    }
+                  : {
+                      background: "var(--surface-2)",
+                      color: "var(--fg-2)",
+                      borderColor: "transparent",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 13,
+                    }
+              }
+            >
+              {selected ? (
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: "var(--info)" }}
+                />
+              ) : (
+                <span
+                  className="text-[14px] font-bold leading-none"
+                  style={{ color: "var(--fg-3)" }}
+                >
+                  +
+                </span>
+              )}
+              {chip}
+            </button>
+          );
+        })}
       </div>
 
       {/* Freitext-Input */}
-      <div className="flex gap-2">
+      <div className="mt-3 flex gap-2.5">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder="Eigener Auftrag …"
-          className="flex-1 rounded-s border px-3 py-2 text-[14px] text-text-1 outline-none transition placeholder:text-text-3 focus:border-amber-border"
-          style={{ background: "var(--surface-2)", borderColor: "var(--border-strong)" }}
+          className="flex-1 rounded-[12px] border-[1.5px] px-4 py-3.5 text-[15px] font-medium outline-none transition placeholder:font-normal focus:outline-none"
+          style={{
+            background: "var(--surface-2)",
+            borderColor: "transparent",
+            color: "var(--fg)",
+          }}
         />
         <button
           type="button"
           onClick={submit}
           disabled={!input.trim()}
-          className="grid h-10 w-10 place-items-center rounded-s text-white transition disabled:opacity-50"
+          className="grid h-[52px] w-[52px] place-items-center rounded-[12px] text-[22px] font-normal transition disabled:opacity-40"
           style={{
-            background: "linear-gradient(180deg, var(--amber) 0%, color-mix(in srgb, var(--amber) 60%, #000) 100%)",
-            border: "1px solid color-mix(in srgb, var(--amber) 60%, #000)",
-            boxShadow: "0 6px 16px -6px var(--amber-glow)",
+            background: "var(--fg)",
+            color: "var(--bg)",
           }}
           aria-label="Auftrag hinzufügen"
         >
-          <Plus size={18} strokeWidth={2.6} />
+          <Plus size={22} strokeWidth={2.4} />
         </button>
       </div>
 
-      {/* Liste */}
-      {placeholderShown ? (
-        <p className="mt-3 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-text-3">
-          Noch keine Aufträge — chip antippen oder Text eingeben
+      {/* Liste der gewählten Aufträge */}
+      {empty ? (
+        <p
+          className="mt-3.5 text-center font-mono text-[11px] font-medium uppercase tracking-[0.08em]"
+          style={{ color: "var(--fg-3)" }}
+        >
+          Chip antippen oder Text eingeben
         </p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-1.5">
+        <ul className="mt-3.5 flex flex-col gap-1.5">
           {auftraege.map((a) => (
             <li
               key={a.id}
-              className="flex items-center gap-3 rounded-s border px-3 py-2 transition"
+              className="flex items-center gap-3 rounded-[12px] border-[1.5px] px-3.5 py-2.5"
               style={{
-                borderColor: "var(--amber-border)",
-                background: "var(--amber-soft)",
+                background: "var(--info-tint)",
+                borderColor: "rgba(37, 99, 235, 0.18)",
               }}
             >
               <span
-                className="font-mono text-[10px] font-semibold tabular-nums tracking-wide text-amber"
+                className="font-mono text-[11px] font-bold tabular-nums tracking-[0.05em]"
+                style={{ color: "var(--info)" }}
               >
                 {formatTime(a.zeitstempel)}
               </span>
-              <span className="flex-1 text-[14px] font-medium text-text-1">{a.text}</span>
+              <span
+                className="flex-1 text-[14px] font-semibold"
+                style={{ color: "var(--fg)" }}
+              >
+                {a.text}
+              </span>
               <button
                 type="button"
                 onClick={() => onRemove(a.id)}
                 aria-label="Auftrag entfernen"
-                className="grid h-7 w-7 place-items-center rounded-full border text-text-3 transition hover:border-red-border hover:text-red"
-                style={{ borderColor: "var(--border-strong)", background: "var(--surface-2)" }}
+                className="grid h-7 w-7 place-items-center rounded-[8px] border transition"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--fg-3)",
+                }}
               >
                 <X size={13} />
               </button>

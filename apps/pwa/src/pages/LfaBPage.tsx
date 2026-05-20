@@ -1,13 +1,14 @@
 import { ArrowRight, Lock } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
 import { AbschlussModal, type AbschlussCheck } from "../components/AbschlussModal";
-import { AlarmCard } from "../components/AlarmCard";
+import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
 import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { DemoBanner } from "../components/DemoBanner";
 import { DictateButton } from "../components/DictateButton";
+import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { GearChips } from "../components/GearChips";
 import {
   MannschaftSlot,
@@ -15,6 +16,7 @@ import {
   type MannschaftSlotData,
 } from "../components/MannschaftSlot";
 import { MapCard, type MapPosition } from "../components/MapCard";
+import { NeuerAuftragModal } from "../components/NeuerAuftragModal";
 import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { RufnameBar } from "../components/RufnameBar";
@@ -37,7 +39,44 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
 
 const FAHRZEUG_ID = "lfa-b" as const;
-const KM_ABFAHRT = 34712;
+/** Realistischer Straßen-Faktor: Luftlinie × 1.3 ≈ tatsächliche Fahrstrecke */
+const ROAD_FACTOR = 1.3;
+
+/**
+ * Standard-Auftrag-Typen — in Phase 2 wird das aus der Einsatzzentrale-
+ * Verwaltung über /api/config/auftrag-typen geladen (FR-15 Verwaltung).
+ */
+const DEFAULT_AUFTRAG_TYPEN: readonly string[] = [
+  "Verkehrsabsicherung",
+  "Wassertransport",
+  "Personenrettung",
+  "Brandbekämpfung außen",
+  "Brandbekämpfung innen",
+  "Technische Hilfeleistung",
+  "Atemschutz-Trupp",
+  "Drehleiter-Einsatz",
+  "Nachlöscharbeiten",
+  "Beleuchtung sichern",
+] as const;
+
+/**
+ * Ein lokal verwalteter Einsatz/Auftrag dieses Tablets. Mehrere können
+ * parallel laufen — der Tab-Bar wechselt zwischen ihnen.
+ */
+interface EinsatzInstance {
+  id: string;
+  alarm: AlarmDaten;
+  einsatzPos: { lat: number; lng: number };
+  manuell: boolean;
+  fahrer: PickPerson | null;
+  kdt: PickPerson | null;
+  mannschaft: MannschaftSlotData[];
+  gearSelected: Set<string>;
+  oelSaecke: number;
+  auftraege: Auftrag[];
+  chronik: ChronikEintrag[];
+  abgeschlossen: { ts: string; durch: string; kmGefahren: number } | null;
+}
 
 interface Props {
   onSwitchFahrzeug: (id: FahrzeugId) => void;
@@ -50,69 +89,66 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState<PickerTarget | null>(null);
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
+  const [neuerAuftragOpen, setNeuerAuftragOpen] = useState(false);
+  const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
 
-  const [fahrer, setFahrer] = useState<PickPerson | null>(null);
-  const [kdt, setKdt] = useState<PickPerson | null>(null);
-  const [mannschaft, setMannschaft] = useState<MannschaftSlotData[]>(
-    () => Array.from({ length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich }, (_, i) => emptySlot(i + 1)),
-  );
-
-  const [gearSelected, setGearSelected] = useState<Set<string>>(new Set(["ts-pumpe", "schlauchmaterial"]));
-  const [oelSaecke, setOelSaecke] = useState(0);
-
-  const [auftraege, setAuftraege] = useState<Auftrag[]>([]);
-  const [chronik, setChronik] = useState<ChronikEintrag[]>(() => initialChronik(fahrzeug.funkrufname));
+  // Initialer Einsatz aus Demo-Alarm
+  const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => [
+    {
+      id: DEMO_ALARM.alarmId,
+      alarm: DEMO_ALARM,
+      einsatzPos: EINSATZ_POS,
+      manuell: false,
+      fahrer: null,
+      kdt: null,
+      mannschaft: Array.from(
+        { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
+        (_, i) => emptySlot(i + 1),
+      ),
+      gearSelected: new Set(["ts-pumpe", "schlauchmaterial"]),
+      oelSaecke: 0,
+      auftraege: [],
+      chronik: initialChronik(fahrzeug.funkrufname),
+      abgeschlossen: null,
+    },
+  ]);
+  const [activeId, setActiveId] = useState<string>(DEMO_ALARM.alarmId);
   const [fleet, setFleet] = useState<MapPosition[]>(makeInitialFleet);
 
-  // Aufgenommene Audios (vor Sync nur im RAM, Phase 5 → PouchDB-Attachment)
-  const audioBlobsRef = useRef<{ id: string; blob: Blob; durationMs: number }[]>([]);
-  const audioUrlsRef = useRef<Map<string, string>>(new Map());
+  const active = einsaetze.find((e) => e.id === activeId) ?? einsaetze[0]!;
 
-  // Abschluss-Workflow
-  const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
-  const [abgeschlossen, setAbgeschlossen] = useState<{ ts: string; durch: string } | null>(null);
-
-  // Echte GPS-Position über navigator.geolocation. Fallback HOME_POS,
-  // solange noch nichts da ist (= sofort kartenfähig statt Blocker).
+  // GPS — aktualisiert die eigene Position auf der Karte
   const geo = useGeolocation();
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
 
-  // GPS-Spur für KM-Berechnung. Wird bei jedem Fix erweitert.
-  const trackRef = useRef<{ lat: number; lng: number }[]>([]);
-  const [kmGefahren, setKmGefahren] = useState(0);
-  useEffect(() => {
-    if (!geo.fix) return;
-    const pt = { lat: geo.fix.lat, lng: geo.fix.lng };
-    const track = trackRef.current;
-    const last = track[track.length - 1];
-    if (!last || haversineKm(last, pt) * 1000 > 8) {
-      track.push(pt);
-      const total = track.reduce(
-        (sum, p, i) => (i === 0 ? 0 : sum + haversineKm(track[i - 1]!, p)),
-        0,
-      );
-      setKmGefahren(total);
-    }
-  }, [geo.fix]);
-
-  // Personalliste laden + Demo-Vorbelegung
+  // Personalliste laden + Demo-Vorbelegung beim ersten Einsatz
   useEffect(() => {
     void (async () => {
       const docs = await getAllPersonen();
-      setPersonen(docs as unknown as PickPerson[]);
-      const byId = new Map(docs.map((p) => [p.syBosId, p as unknown as PickPerson]));
-      const eder = byId.get(107375);
-      const bruckner = byId.get(123057);
+      const list = docs as unknown as PickPerson[];
+      setPersonen(list);
+      const byId = new Map(list.map((p) => [p.syBosId, p]));
+      const eder = byId.get(107375) ?? null;
+      const bruckner = byId.get(123057) ?? null;
       const huemer = byId.get(107452);
       const almhofer = byId.get(107506);
-      if (eder) setKdt(eder);
-      if (bruckner) setFahrer(bruckner);
-      setMannschaft((prev) => {
-        const next = [...prev];
-        if (huemer && next[0]) next[0] = { ...next[0], person: huemer, atemschutzAktiv: true, atemschutzDauerMin: 15 };
-        if (almhofer && next[1]) next[1] = { ...next[1], person: almhofer };
-        return next;
-      });
+      setEinsaetze((prev) =>
+        prev.map((e) =>
+          e.id === DEMO_ALARM.alarmId
+            ? {
+                ...e,
+                kdt: eder,
+                fahrer: bruckner,
+                mannschaft: e.mannschaft.map((m, i) => {
+                  if (i === 0 && huemer)
+                    return { ...m, person: huemer, atemschutzAktiv: true, atemschutzDauerMin: 15 };
+                  if (i === 1 && almhofer) return { ...m, person: almhofer };
+                  return m;
+                }),
+              }
+            : e,
+        ),
+      );
     })();
   }, []);
 
@@ -133,31 +169,31 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     return () => clearInterval(id);
   }, [selfPos.lat, selfPos.lng]);
 
-  // Object-URLs beim Unmount freigeben
-  useEffect(() => {
-    return () => {
-      for (const url of audioUrlsRef.current.values()) URL.revokeObjectURL(url);
-    };
-  }, []);
+  // ────────────── Helper: aktiven Einsatz patchen ──────────────
+  function patchActive(updater: (e: EinsatzInstance) => EinsatzInstance) {
+    setEinsaetze((prev) => prev.map((e) => (e.id === activeId ? updater(e) : e)));
+  }
 
+  // ────────────── Personen-Picker ──────────────
   const bereitsGewaehlt = useMemo(() => {
     const s = new Set<number>();
-    if (fahrer) s.add(fahrer.syBosId);
-    if (kdt) s.add(kdt.syBosId);
-    for (const m of mannschaft) if (m.person) s.add(m.person.syBosId);
+    if (active.fahrer) s.add(active.fahrer.syBosId);
+    if (active.kdt) s.add(active.kdt.syBosId);
+    for (const m of active.mannschaft) if (m.person) s.add(m.person.syBosId);
     return s;
-  }, [fahrer, kdt, mannschaft]);
+  }, [active.fahrer, active.kdt, active.mannschaft]);
 
   function selectPerson(p: PickPerson) {
     if (!pickerOpen) return;
-    if (pickerOpen.kind === "fahrer") setFahrer(p);
-    else if (pickerOpen.kind === "kdt") setKdt(p);
-    else {
-      const slotIdx = pickerOpen.slot - 1;
-      setMannschaft((prev) =>
-        prev.map((m, i) => (i === slotIdx ? { ...m, person: p } : m)),
-      );
-    }
+    patchActive((e) => {
+      if (pickerOpen.kind === "fahrer") return { ...e, fahrer: p };
+      if (pickerOpen.kind === "kdt") return { ...e, kdt: p };
+      const idx = pickerOpen.slot - 1;
+      return {
+        ...e,
+        mannschaft: e.mannschaft.map((m, i) => (i === idx ? { ...m, person: p } : m)),
+      };
+    });
     setPickerOpen(null);
   }
 
@@ -168,161 +204,241 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     return `Mannschaftsplatz ${pickerOpen.slot}`;
   }
 
+  // ────────────── Mannschaft AS-Toggle ──────────────
   function toggleMannschaftAs(idx: number) {
-    setMannschaft((prev) =>
-      prev.map((m, i) => (i === idx ? { ...m, atemschutzAktiv: !m.atemschutzAktiv } : m)),
-    );
+    patchActive((e) => ({
+      ...e,
+      mannschaft: e.mannschaft.map((m, i) => (i === idx ? { ...m, atemschutzAktiv: !m.atemschutzAktiv } : m)),
+    }));
   }
   function setMannschaftAsDauer(idx: number, dauer: number) {
-    setMannschaft((prev) => prev.map((m, i) => (i === idx ? { ...m, atemschutzDauerMin: dauer } : m)));
+    patchActive((e) => ({
+      ...e,
+      mannschaft: e.mannschaft.map((m, i) => (i === idx ? { ...m, atemschutzDauerMin: dauer } : m)),
+    }));
   }
 
-  /**
-   * Audio aufgenommen — Blob in den lokalen Cache, Object-URL für sofortige
-   * Wiedergabe, und ein vorläufiger Chronik-Eintrag (Status pending bis das
-   * Transkript da ist). In Phase 5 hängt ein Web-Worker das Whisper-Modell
-   * dran und ersetzt den pending-Eintrag durch das echte Transkript.
-   */
+  // ────────────── Diktat ──────────────
   function onDictateResult(result: RecordingResult) {
     const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    audioBlobsRef.current.push({ id, blob: result.blob, durationMs: result.durationMs });
-    audioUrlsRef.current.set(id, URL.createObjectURL(result.blob));
-    setChronik((prev) => [
-      ...prev,
-      {
-        id,
-        zeitstempel: new Date().toISOString(),
-        funkrufname: fahrzeug.funkrufname,
-        source: "fahrzeug",
-        pending: true,
-        text: `🎤 Audio · ${formatDuration(result.durationMs)} · Transkript folgt`,
-      },
-    ]);
+    patchActive((e) => ({
+      ...e,
+      chronik: [
+        ...e.chronik,
+        {
+          id,
+          zeitstempel: new Date().toISOString(),
+          funkrufname: fahrzeug.funkrufname,
+          source: "fahrzeug",
+          pending: true,
+          text: `🎤 Audio · ${formatDuration(result.durationMs)} · Transkript folgt`,
+        },
+      ],
+    }));
   }
 
+  // ────────────── Auftrag-Aktionen ──────────────
   function addAuftrag(text: string) {
     const id = `auf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    setAuftraege((prev) => [
-      ...prev,
-      { id, text, zeitstempel: new Date().toISOString() },
-    ]);
+    patchActive((e) => ({
+      ...e,
+      auftraege: [...e.auftraege, { id, text, zeitstempel: new Date().toISOString() }],
+    }));
   }
   function removeAuftrag(id: string) {
-    setAuftraege((prev) => prev.filter((a) => a.id !== id));
+    patchActive((e) => ({ ...e, auftraege: e.auftraege.filter((a) => a.id !== id) }));
   }
 
+  // ────────────── Gear ──────────────
   function toggleGear(id: string) {
-    setGearSelected((prev) => {
-      const next = new Set(prev);
+    patchActive((e) => {
+      const next = new Set(e.gearSelected);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
+      return { ...e, gearSelected: next };
     });
   }
+  function setOelSaecke(n: number) {
+    patchActive((e) => ({ ...e, oelSaecke: n }));
+  }
 
+  // ────────────── Multi-Einsatz: neuen Auftrag anlegen ──────────────
+  function createNewAuftrag(einsatzart: string, einsatzortText: string) {
+    const id = `manuell-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const now = new Date();
+    // Wir können hier ohne Geocoder nicht die echten Koords ermitteln —
+    // fallweise nehmen wir die aktuelle Position oder HOME_POS als Stub.
+    const pos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : EINSATZ_POS;
+    const neueInstance: EinsatzInstance = {
+      id,
+      manuell: true,
+      einsatzPos: pos,
+      alarm: {
+        alarmId: id.toUpperCase(),
+        einsatzart,
+        einsatzort: einsatzortText,
+        alarmierungZeit: now.toISOString(),
+        alarmierungAuthor: "MANUELL",
+        koordinaten: pos,
+        distanzKm: haversineKm(HOME_POS, pos),
+      },
+      // Personen werden vom aktiven Auftrag übernommen
+      fahrer: active.fahrer,
+      kdt: active.kdt,
+      mannschaft: active.mannschaft.map((m) => ({ ...m })),
+      gearSelected: new Set(),
+      oelSaecke: 0,
+      auftraege: [],
+      chronik: [
+        {
+          id: `chr-${Date.now()}`,
+          zeitstempel: now.toISOString(),
+          funkrufname: fahrzeug.funkrufname,
+          source: "manuell",
+          text: `Auftrag manuell angelegt · ${einsatzart} · ${einsatzortText}`,
+        },
+      ],
+      abgeschlossen: null,
+    };
+    setEinsaetze((prev) => [...prev, neueInstance]);
+    setActiveId(id);
+    setNeuerAuftragOpen(false);
+  }
+
+  // ────────────── Vehicle Switcher ──────────────
   function handleSwitchVehicle(id: FahrzeugId) {
     setVehicleSwitcherOpen(false);
     onSwitchFahrzeug(id);
   }
 
+  // ────────────── Abschluss ──────────────
+  /**
+   * Strecke zum Einsatzort hin und zurück, mit Road-Faktor.
+   * Ersetzt die früheren manuellen KM-Felder.
+   */
+  function computeKm(): number {
+    const luftlinie = haversineKm(HOME_POS, active.einsatzPos);
+    return luftlinie * ROAD_FACTOR * 2;
+  }
+
   function abschliessen() {
-    setAbgeschlossen({
-      ts: new Date().toISOString(),
-      durch: kdt ? `${kdt.nachname} ${kdt.vorname}` : "—",
-    });
+    const km = computeKm();
+    patchActive((e) => ({
+      ...e,
+      abgeschlossen: {
+        ts: new Date().toISOString(),
+        durch: e.kdt ? `${e.kdt.nachname} ${e.kdt.vorname}` : "—",
+        kmGefahren: km,
+      },
+    }));
     setAbschlussModalOpen(false);
   }
 
-  // KM-Anzeige aus echter GPS-Spur
-  const kmDisplay = kmGefahren > 0 ? kmGefahren.toFixed(1).replace(".", ",") : "—";
+  // ────────────── Tab-Summaries ──────────────
+  const tabs: EinsatzTabSummary[] = einsaetze.map((e) => ({
+    id: e.id,
+    einsatzart: e.alarm.einsatzart,
+    einsatzort: e.alarm.einsatzort,
+    status: e.abgeschlossen ? "abgeschlossen" : "aktiv",
+    manuell: e.manuell,
+  }));
 
-  // Abschluss-Sanity-Checks
-  const mannschaftCount = mannschaft.filter((m) => m.person).length;
+  // ────────────── Abschluss-Checks + Summary ──────────────
+  const mannschaftCount = active.mannschaft.filter((m) => m.person).length;
+  const personenAnzahl = mannschaftCount + (active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0);
+  const kmRound = computeKm();
+  const kmDisplay = `${kmRound.toFixed(1).replace(".", ",")} km`;
+
   const checks: AbschlussCheck[] = [
-    { ok: !!fahrer, label: "Fahrer eingetragen" },
-    { ok: !!kdt, label: "Fahrzeug-Kommandant eingetragen" },
+    { ok: !!active.fahrer, label: "Fahrer eingetragen" },
+    { ok: !!active.kdt, label: "Fahrzeug-Kommandant eingetragen" },
     { ok: mannschaftCount >= 1, label: `Mindestens 1 Mannschaftsplatz besetzt (aktuell ${mannschaftCount})` },
-    { ok: kmGefahren > 0, label: `GPS-Strecke aufgezeichnet (${kmDisplay} km)` },
+    { ok: !!active.alarm.einsatzort.trim(), label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" },
   ];
 
   const abschlussSummary = [
-    { label: "KM gefahren", value: `${kmDisplay} km` },
-    { label: "Mannschaft", value: `${mannschaftCount + (fahrer ? 1 : 0) + (kdt ? 1 : 0)} Pers.` },
-    { label: "Geräte gewählt", value: String(gearSelected.size) },
-    { label: "Aufträge", value: String(auftraege.length) },
+    { label: "Mannschaft", value: `${personenAnzahl} Pers.` },
+    { label: "KM (auto)", value: kmDisplay },
+    { label: "Geräte", value: String(active.gearSelected.size) },
+    { label: "Aufträge", value: String(active.auftraege.length) },
   ];
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl pb-10">
-      <Topbar funkrufname={fahrzeug.funkrufname} geo={geo} />
-      <RufnameBar fahrzeugId={FAHRZEUG_ID} onSwitch={() => setVehicleSwitcherOpen(true)} />
-      {!abgeschlossen ? <DemoBanner /> : null}
+      <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={active.alarm.alarmId} geo={geo} />
 
-      <main className="flex flex-col gap-3.5 px-4 pb-8 pt-3">
-        {abgeschlossen ? (
+      <EinsatzTabs
+        tabs={tabs}
+        activeId={activeId}
+        onSelect={setActiveId}
+        onNew={() => setNeuerAuftragOpen(true)}
+      />
+
+      <RufnameBar fahrzeugId={FAHRZEUG_ID} onSwitch={() => setVehicleSwitcherOpen(true)} />
+
+      {!active.abgeschlossen ? <DemoBanner /> : null}
+
+      <main className="flex flex-col gap-4 px-4 pb-8 pt-3">
+        {active.abgeschlossen ? (
           <AbgeschlossenView
             funkrufname={fahrzeug.funkrufname}
-            abgeschlossenAm={abgeschlossen.ts}
-            durch={abgeschlossen.durch}
-            summary={abschlussSummary}
+            abgeschlossenAm={active.abgeschlossen.ts}
+            durch={active.abgeschlossen.durch}
+            summary={[
+              { label: "Mannschaft", value: `${personenAnzahl} Pers.` },
+              { label: "KM (auto)", value: `${active.abgeschlossen.kmGefahren.toFixed(1).replace(".", ",")} km` },
+              { label: "Geräte", value: String(active.gearSelected.size) },
+              { label: "Aufträge", value: String(active.auftraege.length) },
+            ]}
             onSwitchFahrzeug={() => setVehicleSwitcherOpen(true)}
           />
         ) : (
           <>
-            <AlarmCard alarm={DEMO_ALARM} />
+            <AlarmCard alarm={active.alarm} />
 
+            <SectionHead title="Anfahrt" />
             <MapCard
               selfPos={selfPos}
-              einsatzPos={EINSATZ_POS}
-              einsatzAdresse={DEMO_ALARM.einsatzort}
+              einsatzPos={active.einsatzPos}
+              einsatzAdresse={active.alarm.einsatzort}
               fleet={fleet}
               hydranten={DEMO_HYDRANTEN}
+              showLoeschwasser={false}
             />
 
-            <section
-              className="rounded-m border p-3.5"
-              style={{
-                borderColor: "var(--border-strong)",
-                background: "var(--card-gradient)",
-                boxShadow: "var(--shadow-card)",
-              }}
-            >
-              <header className="mb-2.5 flex items-baseline justify-between">
-                <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">Ausrückung</h2>
-                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-text-3">
-                  Pflichtfelder vor Abfahrt
+            <SectionHead title="Mannschaft" />
+            <section className="rounded-[18px] border bg-surface p-5" style={{ background: "var(--surface)", borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}>
+              <div className="mb-3.5 flex items-center justify-between">
+                <h2 className="text-[17px] font-bold tracking-tight" style={{ color: "var(--fg)" }}>
+                  Fahrer &amp; Kdt.
+                </h2>
+                <span
+                  className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
+                  style={{ color: "var(--fg-3)" }}
+                >
+                  <span style={{ color: "var(--fg)" }}>{(active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0)}</span> / 2
                 </span>
-              </header>
-
-              <div className="grid grid-cols-2 gap-2">
-                <ReadOnlyKm label="KM Abfahrt" hint="auto · GPS" value={KM_ABFAHRT.toLocaleString("de-AT")} />
-                <ReadOnlyKm label="KM gefahren" hint="auto · live" value={kmDisplay} />
               </div>
-
-              <div className="mt-2">
-                <PersonButton label="Fahrer" person={fahrer} onOpen={() => setPickerOpen({ kind: "fahrer" })} />
-              </div>
-              <div className="mt-2">
-                <PersonButton label="Fahrzeug-Kdt." person={kdt} onOpen={() => setPickerOpen({ kind: "kdt" })} />
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <PersonButton label="Fahrer" person={active.fahrer} onOpen={() => setPickerOpen({ kind: "fahrer" })} />
+                <PersonButton label="Fahrzeug-Kdt." person={active.kdt} onOpen={() => setPickerOpen({ kind: "kdt" })} />
               </div>
             </section>
 
-            <section
-              className="rounded-m border p-3.5"
-              style={{
-                borderColor: "var(--border-strong)",
-                background: "var(--card-gradient)",
-                boxShadow: "var(--shadow-card)",
-              }}
-            >
-              <header className="mb-2.5 flex items-baseline justify-between">
-                <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">Mannschaft</h2>
-                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-text-3">
-                  {mannschaftCount} / {mannschaft.length} Plätze
+            <section className="rounded-[18px] border p-5" style={{ background: "var(--surface)", borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}>
+              <div className="mb-3.5 flex items-center justify-between">
+                <h2 className="text-[17px] font-bold tracking-tight" style={{ color: "var(--fg)" }}>
+                  Besatzung
+                </h2>
+                <span
+                  className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
+                  style={{ color: "var(--fg-3)" }}
+                >
+                  <span style={{ color: "var(--fg)" }}>{mannschaftCount}</span> / {active.mannschaft.length} Plätze
                 </span>
-              </header>
-              <ul className="flex list-none flex-col gap-1.5 p-0">
-                {mannschaft.map((m, i) => (
+              </div>
+              <ul className="flex flex-col gap-2 p-0">
+                {active.mannschaft.map((m, i) => (
                   <MannschaftSlot
                     key={m.slot}
                     data={m}
@@ -334,68 +450,73 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
               </ul>
             </section>
 
+            <SectionHead title="Geräte & Mittel" />
             <GearChips
               items={DEMO_GEAR_LFA_B}
-              selected={gearSelected}
-              oelbindemittelSaecke={oelSaecke}
+              selected={active.gearSelected}
+              oelbindemittelSaecke={active.oelSaecke}
               onToggle={toggleGear}
               onOelChange={setOelSaecke}
             />
 
-            <AuftraegeSection auftraege={auftraege} onAdd={addAuftrag} onRemove={removeAuftrag} />
+            <SectionHead title="Auftrag" />
+            <AuftraegeSection
+              auftraege={active.auftraege}
+              verfuegbareTypen={DEFAULT_AUFTRAG_TYPEN}
+              onAdd={addAuftrag}
+              onRemove={removeAuftrag}
+            />
 
-            <section
-              className="rounded-m border p-3.5"
-              style={{
-                borderColor: "var(--border-strong)",
-                background: "var(--card-gradient)",
-                boxShadow: "var(--shadow-card)",
-              }}
-            >
-              <header className="mb-2.5 flex items-baseline justify-between">
-                <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">Einsatzchronik</h2>
-                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-text-3">
+            <SectionHead title="Chronik" />
+            <section className="rounded-[18px] border p-5" style={{ background: "var(--surface)", borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}>
+              <div className="mb-3.5 flex items-center justify-between">
+                <h2 className="text-[17px] font-bold tracking-tight" style={{ color: "var(--fg)" }}>
+                  Einsatzchronik
+                </h2>
+                <span
+                  className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
+                  style={{ color: "var(--fg-3)" }}
+                >
                   Whisper · offline
                 </span>
-              </header>
-              <ChronikTimeline eintraege={chronik} />
+              </div>
+              <ChronikTimeline eintraege={active.chronik} />
               <DictateButton onAudio={onDictateResult} />
             </section>
 
-            <div className="mt-2 px-1 text-center">
-              <p className="m-0 mb-2.5 text-[11px] text-text-3">
+            <div className="mt-2 flex flex-col gap-2.5">
+              <p
+                className="text-center text-[13px]"
+                style={{ color: "var(--fg-2)" }}
+              >
                 Schließt den Fahrzeugbericht ab und übergibt ihn der Zentrale „Florian Eberstalzell".
               </p>
               <button
                 type="button"
                 onClick={() => setAbschlussModalOpen(true)}
-                className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-m px-5 py-3.5 text-[15px] font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
+                className="flex items-center justify-center gap-3 rounded-[18px] px-5 py-5 text-[17px] font-bold tracking-tight text-white transition hover:-translate-y-0.5"
                 style={{
-                  background:
-                    "linear-gradient(180deg, var(--red) 0%, var(--red-strong) 60%, color-mix(in srgb, var(--red-strong) 60%, #000) 100%)",
-                  border: "1px solid color-mix(in srgb, var(--red-strong) 60%, #000)",
-                  boxShadow:
-                    "0 14px 32px -10px var(--red-glow), 0 0 0 1px rgba(255,255,255,0.06) inset, inset 0 1px 0 rgba(255,255,255,0.22)",
+                  background: "linear-gradient(180deg, #D8132F 0%, #B30D26 100%)",
+                  boxShadow: "var(--shadow-cta)",
                 }}
               >
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
-                />
-                <Lock size={16} className="relative" />
-                <span className="relative">Fahrzeugbericht abschließen</span>
-                <ArrowRight size={18} className="relative" />
+                <Lock size={20} />
+                Fahrzeugbericht abschließen
+                <ArrowRight size={20} />
               </button>
             </div>
           </>
         )}
 
-        <footer className="flex items-center justify-between px-1 pb-2 pt-4 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-text-3">
+        <footer
+          className="flex items-center justify-between pt-6 font-mono text-[11px] font-semibold uppercase tracking-[0.12em]"
+          style={{ color: "var(--fg-3)" }}
+        >
           <span>
             <span style={{ color: "var(--red)" }}>Hot</span>
-            <span className="text-text-1">Doc</span> · UC2 · v0.4
+            <span style={{ color: "var(--fg)" }}>Doc</span> · UC2 · v0.5
           </span>
-          <button type="button" onClick={onResetSetup} className="underline hover:text-text-2">
+          <button type="button" onClick={onResetSetup} className="underline transition hover:text-text-2">
             Setup zurücksetzen
           </button>
         </footer>
@@ -418,6 +539,13 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
         onClose={() => setVehicleSwitcherOpen(false)}
       />
 
+      <NeuerAuftragModal
+        open={neuerAuftragOpen}
+        inheritedCount={personenAnzahl}
+        onConfirm={createNewAuftrag}
+        onCancel={() => setNeuerAuftragOpen(false)}
+      />
+
       <AbschlussModal
         open={abschlussModalOpen}
         funkrufname={fahrzeug.funkrufname}
@@ -430,29 +558,16 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
   );
 }
 
-function ReadOnlyKm({ label, hint, value }: { label: string; hint: string; value: string }) {
+function SectionHead({ title }: { title: string }) {
   return (
-    <div>
-      <span className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-        {label}
-        <span
-          className="rounded border px-1.5 py-px font-mono text-[8px] font-semibold tracking-[0.16em]"
-          style={{ borderColor: "var(--blue-border)", background: "var(--blue-bg)", color: "var(--blue)" }}
-        >
-          {hint}
-        </span>
-      </span>
-      <output
-        className="block w-full rounded-s border px-3 py-2.5 font-mono text-[16px] font-medium tabular-nums tracking-wide text-text-1"
-        style={{
-          borderColor: "var(--border-strong)",
-          background: "var(--surface-2)",
-          backgroundImage:
-            "repeating-linear-gradient(-45deg, var(--surface-2) 0 6px, color-mix(in srgb, var(--surface-2) 85%, var(--blue)) 6px 7px)",
-        }}
+    <div className="flex items-center gap-2.5 px-1.5 pt-1.5">
+      <span
+        className="font-mono text-[11px] font-bold uppercase tracking-[0.12em]"
+        style={{ color: "var(--fg-3)" }}
       >
-        {value}
-      </output>
+        {title}
+      </span>
+      <span className="h-px flex-1" style={{ background: "var(--border)" }} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Play, Siren } from "lucide-react";
+import { MapPin, Play, Siren } from "lucide-react";
 
 export interface AlarmDaten {
   alarmId: string;
@@ -16,99 +16,128 @@ interface Props {
   onPlayAudio?: () => void;
 }
 
+/**
+ * Apple-Style Alarm-Karte mit pulsierendem Siren-Icon, rotem Verlauf,
+ * Header-Beacon-Strip und 4 Meta-Zellen (Alarmiert · Ausgerückt · Eingerückt · Stichwort).
+ */
 export function AlarmCard({ alarm, onPlayAudio }: Props) {
   return (
     <section
-      className="relative overflow-hidden rounded-m border"
+      className="relative overflow-hidden p-6 pt-[26px]"
       style={{
-        borderColor: "var(--red-border)",
+        borderRadius: 22,
         background:
-          "radial-gradient(900px 320px at 0% 0%, var(--red-bg) 0%, transparent 55%), " +
-          "linear-gradient(180deg, var(--surface-1) 0%, color-mix(in srgb, var(--surface-1) 82%, #000) 100%)",
-        boxShadow: "0 24px 60px -32px var(--red-glow), 0 1px 0 rgba(255,255,255,0.04) inset",
+          "linear-gradient(135deg, var(--surface) 0%, var(--red-tint) 55%, var(--red-tint-2) 100%)",
+        border: "1px solid var(--red-border)",
+        boxShadow: "var(--shadow-alarm)",
       }}
     >
-      {/* Roter Beacon-Balken oben — leuchtet pulsierend */}
+      {/* Beacon-Stripe oben */}
       <div
         aria-hidden
-        className="h-[3px] w-full"
+        className="absolute left-0 right-0 top-0 h-1"
         style={{
           background:
-            "linear-gradient(90deg, transparent 0%, var(--red) 18%, var(--red) 82%, transparent 100%)",
-          animation: "beacon 2.4s ease-in-out infinite",
+            "linear-gradient(90deg, var(--red) 0%, #E63946 50%, var(--red) 100%)",
         }}
       />
 
-      <div className="p-4">
-        <header className="mb-3 flex items-center gap-3">
+      {/* Header */}
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          {/* Siren-Icon mit Pulse-Ring */}
           <span
-            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md border text-white"
+            className="relative grid h-14 w-14 shrink-0 place-items-center rounded-[16px]"
             style={{
-              background: "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)",
-              borderColor: "color-mix(in srgb, var(--red-strong) 70%, #000)",
-              boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.08) inset, 0 0 18px -2px var(--red-glow)",
+              background: "var(--red)",
+              boxShadow: "0 4px 12px rgba(200, 16, 46, 0.35)",
             }}
           >
-            <Siren size={20} strokeWidth={2.2} />
-          </span>
-          <div className="flex flex-1 items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--red)" }}>
+            <Siren size={30} color="#fff" strokeWidth={2.2} />
             <span
-              className="inline-block h-1.5 w-1.5 rounded-full"
+              aria-hidden
+              className="absolute inset-[-4px] rounded-[20px] border-2"
               style={{
-                background: "var(--red)",
-                boxShadow: "0 0 10px var(--red-glow)",
-                animation: "pulse 1.2s ease-in-out infinite",
+                borderColor: "rgba(200, 16, 46, 0.18)",
+                animation: "pulse-ring 1.8s ease-out infinite",
               }}
             />
-            Aktiver Alarm
-            <span className="text-text-3">·</span>
-            <span className="text-text-2">{alarm.alarmierungAuthor}</span>
-            <span className="ml-auto text-text-3 normal-case tracking-normal">#{alarm.alarmId}</span>
+          </span>
+
+          <div>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span
+                className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em]"
+                style={{ color: "var(--red)" }}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    background: "var(--red)",
+                    animation: "blink 1.2s ease-in-out infinite",
+                  }}
+                />
+                Aktiver Alarm
+              </span>
+              <span
+                className="font-mono text-[11px] font-bold uppercase tracking-[0.1em]"
+                style={{ color: "var(--fg-2)" }}
+              >
+                · {alarm.alarmierungAuthor} · Stufe 2
+              </span>
+            </div>
+            <h1
+              className="text-[32px] font-extrabold leading-[1.1] tracking-tight"
+              style={{ color: "var(--fg)" }}
+            >
+              {alarm.einsatzart}
+            </h1>
+            <div
+              className="mt-1.5 flex items-center gap-1.5 text-[16px] font-medium"
+              style={{ color: "var(--fg-2)" }}
+            >
+              <MapPin size={16} />
+              {alarm.einsatzort}
+            </div>
           </div>
-        </header>
-
-        <h1
-          className="font-condensed text-[32px] font-bold leading-[1] tracking-tight text-text-1"
-          style={{ textShadow: "0 1px 0 rgba(0,0,0,0.4)" }}
+        </div>
+        <div
+          className="font-mono text-[12px] font-semibold tracking-[0.05em]"
+          style={{ color: "var(--fg-2)" }}
         >
-          {alarm.einsatzart}
-        </h1>
-        <p className="mb-4 mt-1.5 text-[14px] text-text-2">{alarm.einsatzort}</p>
+          #{alarm.alarmId}
+        </div>
+      </div>
 
-        {alarm.audioSecs ? (
-          <button
-            type="button"
-            onClick={onPlayAudio}
-            className="mb-4 flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] transition"
-            style={{
-              borderColor: "var(--amber-border)",
-              background: "var(--amber-soft)",
-              color: "var(--amber)",
-            }}
-          >
-            <Play size={12} fill="currentColor" />
-            BlaulichtSMS-Audio · {formatSecs(alarm.audioSecs)}
-          </button>
-        ) : null}
-
-        <dl
-          className="grid grid-cols-3 gap-0 overflow-hidden rounded-s border"
-          style={{ borderColor: "var(--border)" }}
+      {/* Audio-Button (optional) */}
+      {alarm.audioSecs ? (
+        <button
+          type="button"
+          onClick={onPlayAudio}
+          className="mb-4 flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] transition"
+          style={{
+            borderColor: "var(--amber-border)",
+            background: "var(--warn-tint)",
+            color: "var(--warn)",
+          }}
         >
-          <MetaCell label="Alarmiert um" value={formatTime(alarm.alarmierungZeit)} accent />
-          <MetaCell
-            label="Distanz"
-            value={`${alarm.distanzKm.toFixed(1)} km`}
-            divided
-          />
-          <MetaCell
-            label="Koord."
-            value={`${alarm.koordinaten.lat.toFixed(3)}, ${alarm.koordinaten.lng.toFixed(3)}`}
-            divided
-            mono
-          />
-        </dl>
+          <Play size={12} fill="currentColor" />
+          BlaulichtSMS-Audio · {formatSecs(alarm.audioSecs)}
+        </button>
+      ) : null}
+
+      {/* 4 Meta-Zellen */}
+      <div
+        className="grid grid-cols-4 gap-0 rounded-[14px] border px-1 py-3.5"
+        style={{
+          background: "color-mix(in srgb, var(--surface) 65%, transparent)",
+          borderColor: "color-mix(in srgb, var(--red-border) 60%, transparent)",
+        }}
+      >
+        <MetaCell label="Alarmiert" value={formatTime(alarm.alarmierungZeit)} accent />
+        <MetaCell label="Ausgerückt" value="—" divided />
+        <MetaCell label="Eingerückt" value="– – : – –" placeholder divided />
+        <MetaCell label="Distanz" value={`${alarm.distanzKm.toFixed(1)} km`} divided />
       </div>
     </section>
   );
@@ -117,37 +146,37 @@ export function AlarmCard({ alarm, onPlayAudio }: Props) {
 function MetaCell({
   label,
   value,
-  divided,
   accent,
-  mono,
+  divided,
+  placeholder,
 }: {
   label: string;
   value: string;
-  divided?: boolean;
   accent?: boolean;
-  mono?: boolean;
+  divided?: boolean;
+  placeholder?: boolean;
 }) {
   return (
     <div
-      className="px-3 py-2"
+      className="px-4"
       style={{
-        background: accent
-          ? "color-mix(in srgb, var(--red-bg) 60%, transparent)"
-          : "color-mix(in srgb, var(--surface-2) 60%, transparent)",
-        borderLeft: divided ? "1px solid var(--border)" : undefined,
+        borderLeft: divided ? "1px solid color-mix(in srgb, var(--red-border) 60%, transparent)" : undefined,
       }}
     >
-      <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-text-3">
+      <div
+        className="mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.1em]"
+        style={{ color: "var(--fg-3)" }}
+      >
         {label}
-      </dt>
-      <dd
-        className={`m-0 mt-0.5 text-[14px] font-semibold tabular-nums text-text-1 ${
-          mono ? "font-mono text-[12px]" : ""
-        }`}
-        style={accent ? { color: "var(--red)" } : undefined}
+      </div>
+      <div
+        className="text-[18px] font-bold tabular-nums tracking-tight"
+        style={{
+          color: accent ? "var(--red)" : placeholder ? "var(--fg-3)" : "var(--fg)",
+        }}
       >
         {value}
-      </dd>
+      </div>
     </div>
   );
 }

@@ -11,13 +11,15 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg-deep);
-  color: var(--text-1);
-  font-family: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
-  font-feature-settings: "ss03", "cv11";
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11";
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.4s ease;
+  transition: background-color 0.3s ease, color 0.2s ease;
 }
 
 * {
@@ -28,14 +30,14 @@ button {
   font: inherit;
 }
 
-/* Touch-Targets minimum 44px - Tablet-Bedienung */
+/* Touch-Targets minimum 44px für Tablet */
 button,
 [role="button"] {
   min-height: 44px;
 }
 
 :focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--info);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -54,37 +56,36 @@ button,
   padding: 4px 8px 4px 5px;
   border-radius: 99px;
   white-space: nowrap;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .fzg-self-pin {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%);
   border: 1.5px solid #fff;
   color: #fff;
   padding: 5px 10px 5px 6px;
   box-shadow:
-    0 0 0 3px rgba(245, 158, 11, 0.3),
-    0 4px 12px rgba(0, 0, 0, 0.4);
+    0 0 0 3px rgba(200, 16, 46, 0.18),
+    0 4px 12px rgba(0, 0, 0, 0.25);
 }
 .fzg-self-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.85);
   animation: pulse-self 1.4s ease-in-out infinite;
 }
 @keyframes pulse-self {
-  0%,
-  100% {
+  0%, 100% {
     transform: scale(1);
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.7);
   }
   50% {
-    transform: scale(1.25);
+    transform: scale(1.2);
     box-shadow: 0 0 14px rgba(255, 255, 255, 1);
   }
 }
@@ -94,11 +95,15 @@ button,
   color: var(--blue);
 }
 .fzg-other-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--blue);
-  animation: pulse 2s ease-in-out infinite;
+  animation: pulse-other 2s ease-in-out infinite;
+}
+@keyframes pulse-other {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.85); }
 }
 
 .hydrant-marker {
@@ -114,8 +119,8 @@ button,
   background: var(--blue);
   border: 1.5px solid #fff;
   color: #fff;
-  box-shadow: 0 0 10px var(--blue-glow), 0 2px 4px rgba(0, 0, 0, 0.35);
-  font-family: "IBM Plex Mono", monospace;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
 }
@@ -127,40 +132,19 @@ button,
   margin-top: -44px !important;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.85);
-  }
-}
-@keyframes bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
 [data-theme="dark"] .leaflet-tile {
-  filter: brightness(0.72) saturate(0.85) hue-rotate(-3deg);
+  filter: brightness(0.75) saturate(0.85) hue-rotate(-3deg);
 }
 .leaflet-control-zoom a {
-  background: var(--surface-1) !important;
-  color: var(--text-1) !important;
+  background: var(--surface) !important;
+  color: var(--fg) !important;
   border: 1px solid var(--border) !important;
 }
 .leaflet-control-attribution {
-  background: color-mix(in srgb, var(--surface-1) 80%, transparent) !important;
-  color: var(--text-3) !important;
+  background: color-mix(in srgb, var(--surface) 80%, transparent) !important;
+  color: var(--fg-3) !important;
   font-size: 9px !important;
 }
 .leaflet-control-attribution a {
-  color: var(--text-2) !important;
+  color: var(--fg-2) !important;
 }

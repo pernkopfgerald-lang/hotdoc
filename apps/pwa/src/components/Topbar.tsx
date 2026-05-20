@@ -5,10 +5,15 @@ import type { GeoState } from "../lib/geo";
 
 interface Props {
   funkrufname?: string;
+  einsatzNr?: string;
   geo?: GeoState;
 }
 
-export function Topbar({ funkrufname, geo }: Props) {
+/**
+ * Apple-Style Sticky-Header mit Glass-Effekt, Flame-Logo + HotDoc-Marke,
+ * Einsatznummer als Subtitle, GPS-Chip, Theme-Toggle, Uhr+Datum.
+ */
+export function Topbar({ funkrufname, einsatzNr, geo }: Props) {
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
 
@@ -27,76 +32,91 @@ export function Topbar({ funkrufname, geo }: Props) {
     setTheme(next);
   }
 
+  const dateLabel = formatDate(new Date());
+
   return (
     <header
-      className="sticky top-0 z-20 border-b border-border-strong bg-bg-page/95 backdrop-blur-md"
+      className="sticky top-0 z-20 flex items-center gap-4 border-b px-7 py-3.5 backdrop-blur-md"
+      style={{
+        background: "color-mix(in srgb, var(--bg) 78%, transparent)",
+        borderColor: "var(--border)",
+        backdropFilter: "blur(12px) saturate(140%)",
+      }}
       data-component="topbar"
     >
-      {/* Hazard-Tape · 4px schmale Streifen oben, animiert nach links unten */}
-      <div
+      {/* App-Logo (Flame-Icon) */}
+      <span
         aria-hidden
-        className="h-1 w-full"
-        style={{
-          background: "var(--hazard-thin)",
-          animation: "hazard-shift 8s linear infinite",
-        }}
-      />
+        className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[12px]"
+        style={{ background: "#0F172A" }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" width={26} height={26}>
+          <path
+            d="M12 2c.5 4 4 5.5 4 9.5 0 3.6-1.8 6.5-4 6.5s-4-2.9-4-6.5C8 9 9.5 8 12 2z"
+            fill="#E63946"
+          />
+          <path
+            d="M12 7c0 3 2 4 2 6.5s-1 3.5-2 3.5-2-1-2-3.5S12 10 12 7z"
+            fill="#FFB703"
+          />
+          <circle cx="12" cy="20.5" r="1.8" fill="#FFB703" />
+        </svg>
+      </span>
 
-      <div className="flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-2.5">
-          {/* FF-Schild mit rotem Glow statt blassem Outline */}
-          <span
-            className="grid h-9 w-9 place-items-center rounded-md border text-white"
-            style={{
-              background: "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)",
-              borderColor: "color-mix(in srgb, var(--red-strong) 70%, #000)",
-              boxShadow: "0 0 16px -2px var(--red-glow), inset 0 1px 0 rgba(255,255,255,0.25)",
-            }}
-            aria-hidden
-          >
-            <svg viewBox="0 0 32 32" width="22" height="22">
-              <path
-                d="M16 4 C9 8 9 16 13 19 C9 17.5 7.5 13.5 9.5 9 M16 4 C23 8 23 16 19 19 C23 17.5 24.5 13.5 22.5 9 M12 22 H20 V27 H12 Z"
-                fill="currentColor"
-              />
-            </svg>
-          </span>
-          <div className="flex flex-col leading-none">
-            <span className="font-condensed text-[19px] font-bold leading-none tracking-tight">
-              <span style={{ color: "var(--red)" }}>Hot</span>
-              <span className="text-text-1">Doc</span>
-            </span>
-            <span className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-text-2">
-              {funkrufname ?? "FF Eberstalzell"}
-            </span>
-          </div>
-        </div>
-
+      {/* Branding */}
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          {geo ? <GeoChip geo={geo} /> : null}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label="Theme umschalten"
-            className="grid h-9 w-9 place-items-center rounded-full border border-border-strong bg-surface-2 text-text-2 transition hover:border-amber hover:text-amber"
-          >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <span className="font-mono text-[15px] font-medium tabular-nums tracking-wider text-text-1">
-            {clock}
-          </span>
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{
+              background: "var(--red)",
+              boxShadow: "0 0 0 4px rgba(200, 16, 46, 0.18)",
+              animation: "pulse 1.4s ease-in-out infinite",
+            }}
+          />
+          <span className="text-[18px] font-bold tracking-tight text-text-1">HotDoc</span>
         </div>
+        <div
+          className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-[0.06em] text-text-2"
+        >
+          Fahrzeugbericht{einsatzNr ? ` · Einsatz ${einsatzNr}` : ""}
+          {funkrufname ? ` · ${funkrufname}` : ""}
+        </div>
+      </div>
+
+      {/* GPS-Chip */}
+      {geo ? <GeoChip geo={geo} /> : null}
+
+      {/* Theme-Toggle */}
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label="Modus wechseln"
+        className="grid h-[38px] w-[38px] place-items-center rounded-[12px] border transition"
+        style={{
+          background: "var(--surface-2)",
+          borderColor: "var(--border)",
+          color: theme === "dark" ? "var(--warn)" : "var(--fg-2)",
+        }}
+      >
+        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
+      {/* Zeitstempel */}
+      <div className="flex flex-col items-end leading-none">
+        <span className="font-mono text-[16px] font-semibold tabular-nums text-text-1">
+          {clock}
+        </span>
+        <span className="mt-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-2">
+          {dateLabel}
+        </span>
       </div>
     </header>
   );
 }
 
-/**
- * GPS-Status als kleines Pill rechts in der Topbar.
- * Farbe codiert den Zustand: live=emerald, stale=amber, denied/unavail=red.
- */
 function GeoChip({ geo }: { geo: GeoState }) {
-  const tone = toneFor(geo.status);
+  const palette = paletteFor(geo.status);
   const Icon = geo.status === "denied" || geo.status === "unavail" ? WifiOff : MapPin;
   const label =
     geo.status === "live"
@@ -104,47 +124,41 @@ function GeoChip({ geo }: { geo: GeoState }) {
       : geo.status === "stale"
         ? `${geo.ageSec}s alt`
         : geo.status === "loading"
-          ? "sucht …"
+          ? "GPS sucht"
           : geo.status === "denied"
             ? "blockiert"
             : "kein GPS";
   return (
     <span
-      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
-      style={{
-        borderColor: `var(--${tone}-border)`,
-        background: `var(--${tone}-bg)`,
-        color: `var(--${tone})`,
-        boxShadow: geo.status === "live" ? `0 0 0 0 transparent` : undefined,
-      }}
+      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.08em]"
+      style={palette}
       title={geo.errorMessage ?? undefined}
     >
       <Icon size={11} />
       <span>{label}</span>
-      {geo.status === "live" ? (
-        <span
-          className="h-1 w-1 rounded-full"
-          style={{
-            background: "var(--emerald)",
-            boxShadow: "0 0 6px var(--emerald-glow)",
-            animation: "pulse 1.6s ease-in-out infinite",
-          }}
-        />
-      ) : null}
     </span>
   );
 }
 
-function toneFor(status: GeoState["status"]): "emerald" | "amber" | "red" | "blue" {
+function paletteFor(status: GeoState["status"]): React.CSSProperties {
   switch (status) {
-    case "live":    return "emerald";
-    case "stale":   return "amber";
-    case "denied":  return "red";
-    case "unavail": return "red";
-    case "loading": return "blue";
+    case "live":
+      return { color: "var(--ok)", background: "var(--ok-tint)", borderColor: "var(--emerald-border)" };
+    case "stale":
+      return { color: "var(--warn)", background: "var(--warn-tint)", borderColor: "var(--amber-border)" };
+    case "denied":
+    case "unavail":
+      return { color: "var(--red)", background: "var(--red-tint)", borderColor: "var(--red-border)" };
+    case "loading":
+      return { color: "var(--info)", background: "var(--info-tint)", borderColor: "var(--blue-border)" };
   }
 }
 
 function formatClock(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatDate(d: Date): string {
+  const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()} · ${days[d.getDay()]}`;
 }

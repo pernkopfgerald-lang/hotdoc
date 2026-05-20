@@ -25,11 +25,20 @@ interface Props {
   einsatzAdresse: string;
   fleet: MapPosition[];
   hydranten: Hydrant[];
+  /** Wenn false (Default), wird der Löschwasser-Toggle nicht gerendert */
+  showLoeschwasser?: boolean;
 }
 
 const SELF_ZOOM = 17;
 
-export function MapCard({ selfPos, einsatzPos, einsatzAdresse, fleet, hydranten }: Props) {
+export function MapCard({
+  selfPos,
+  einsatzPos,
+  einsatzAdresse,
+  fleet,
+  hydranten,
+  showLoeschwasser = false,
+}: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -225,41 +234,41 @@ export function MapCard({ selfPos, einsatzPos, einsatzAdresse, fleet, hydranten 
           href={navHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex flex-1 items-center justify-center gap-2.5 rounded-m px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5"
+          className="flex flex-1 items-center justify-center gap-2.5 rounded-[14px] px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5"
           style={{
-            background:
-              "linear-gradient(180deg, color-mix(in srgb, var(--blue) 80%, #000) 0%, color-mix(in srgb, var(--blue) 55%, #000) 100%)",
-            border: "1px solid color-mix(in srgb, var(--blue) 60%, #000)",
-            boxShadow: "0 10px 26px -10px var(--blue-glow), inset 0 1px 0 rgba(255,255,255,0.18)",
+            background: "linear-gradient(180deg, #1E293B 0%, #0F172A 100%)",
+            border: "1px solid #0F172A",
+            boxShadow: "0 6px 18px -6px rgba(15, 23, 42, 0.50)",
           }}
         >
           <Navigation size={18} />
-          <span>Route aktiv · Google Maps öffnen</span>
+          <span>Route · Google Maps öffnen</span>
           <ExternalLink size={14} />
         </a>
-        <button
-          type="button"
-          aria-pressed={waterOn}
-          onClick={() => setWaterOn((v) => !v)}
-          className="flex shrink-0 items-center gap-2 rounded-m border px-3.5 py-3 text-sm font-semibold transition"
-          style={
-            waterOn
-              ? {
-                  borderColor: "var(--blue-border)",
-                  background: "var(--blue-bg)",
-                  color: "var(--blue)",
-                  boxShadow: "0 0 16px -4px var(--blue-glow)",
-                }
-              : {
-                  borderColor: "var(--border-strong)",
-                  background: "var(--surface-2)",
-                  color: "var(--text-2)",
-                }
-          }
-        >
-          <Droplets size={18} />
-          Löschwasser
-        </button>
+        {showLoeschwasser ? (
+          <button
+            type="button"
+            aria-pressed={waterOn}
+            onClick={() => setWaterOn((v) => !v)}
+            className="flex shrink-0 items-center gap-2 rounded-[14px] border px-3.5 py-3 text-sm font-semibold transition"
+            style={
+              waterOn
+                ? {
+                    borderColor: "var(--blue-border)",
+                    background: "var(--blue-bg)",
+                    color: "var(--blue)",
+                  }
+                : {
+                    borderColor: "var(--border-strong)",
+                    background: "var(--surface-2)",
+                    color: "var(--fg-2)",
+                  }
+            }
+          >
+            <Droplets size={18} />
+            Löschwasser
+          </button>
+        ) : null}
       </div>
     </section>
   );

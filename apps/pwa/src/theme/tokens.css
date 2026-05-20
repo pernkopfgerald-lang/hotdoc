@@ -1,147 +1,165 @@
-/* ─────────────────────────────────────────────────────────────
-   HotDoc Theme Tokens · Emergency-Services-Palette
-   ─────────────────────────────────────────────────────────────
-   Designprinzip: tiefes Anthrazit-Schwarz mit warmem Unterton,
-   ↳ FF-Rot als Hauptakzent (nicht nur als Mini-Dot),
-   ↳ High-Vis-Amber wie ein Feuerwehr-Helm,
-   ↳ klare Sichtbarkeitskanten.
-   ───────────────────────────────────────────────────────────── */
+/* ============================================================
+   HotDoc — Design-Tokens (portiert aus Claude Design)
+   Tablet-Hochformat · Inter + JetBrains Mono · Apple-style
+   Brand: FF Eberstalzell — Rot #C8102E
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 :root {
-  --radius-s: 7px;
-  --radius-m: 11px;
-  --radius-l: 16px;
-  --gap: 10px;
-  --gap-xl: 14px;
-  --pad-x: 16px;
-  --pad-card: 14px;
+  /* Schichten */
+  --bg:           #F4F6F9;
+  --bg-deep:      #F4F6F9;          /* Alias für Bestandscode */
+  --bg-page:      #F4F6F9;
+  --surface:      #FFFFFF;
+  --surface-1:    #FFFFFF;
+  --surface-2:    #F1F4F8;
+  --surface-3:    #E8ECF2;
+  --border:       #E4E8EE;
+  --border-strong:#D2D8E0;
 
-  /* Hazard-Streifen (gelb-schwarz wie Absperrband) — schicht über Cards */
-  --hazard-stripe: repeating-linear-gradient(
-    -45deg,
-    #fbbf24 0 12px,
-    #1a1410 12px 24px
-  );
-  /* Subtile Hazard-Variante für inline-Akzente */
-  --hazard-thin: repeating-linear-gradient(
-    -45deg,
-    rgba(251, 191, 36, 0.9) 0 6px,
-    rgba(20, 16, 10, 0.95) 6px 12px
-  );
-}
+  /* Text-Hierarchie */
+  --fg:           #0F172A;
+  --fg-2:         #475569;
+  --fg-3:         #94A3B8;
+  --fg-4:         #CBD5E1;
+  --text-1:       var(--fg);        /* Aliase für Bestandscode */
+  --text-2:       var(--fg-2);
+  --text-3:       var(--fg-3);
 
-/* ═══════════════════ DARK · primärer Tablet-Modus ═══════════════════ */
-[data-theme="dark"] {
-  /* Warmes Anthrazit statt kühles Grau */
-  --bg-deep:    #0a0807;
-  --bg-page:    #100c0a;
-  --surface-1:  #1a1411;
-  --surface-2:  #221a16;
-  --surface-3:  #2c211c;
+  /* FF-Brand */
+  --red:          #C8102E;
+  --red-strong:   #A30B25;
+  --red-tint:     #FFF1F2;
+  --red-tint-2:   #FEE2E2;
+  --red-bg:       var(--red-tint);
+  --red-border:   #F3C2C8;
+  --red-glow:     rgba(200, 16, 46, 0.30);
 
-  /* Sichtbarere Borders — vorher .07 war zu zaghaft */
-  --border:        rgba(255, 220, 200, 0.12);
-  --border-strong: rgba(255, 220, 200, 0.28);
+  /* Status-Farben */
+  --ok:           #16A34A;
+  --ok-tint:      #DCFCE7;
+  --emerald:      var(--ok);
+  --emerald-bg:   var(--ok-tint);
+  --emerald-border: rgba(22, 163, 74, 0.30);
+  --emerald-glow: rgba(22, 163, 74, 0.30);
 
-  /* Text-Hierarchie mit deutlicher Spreizung */
-  --text-1: #fff5ee;
-  --text-2: #c4b5a8;
-  --text-3: #7d6f63;
-
-  /* FF-Rot — kräftiger, leuchtender */
-  --red:         #f23932;
-  --red-strong:  #dc2626;
-  --red-bg:      rgba(242, 57, 50, 0.16);
-  --red-border:  rgba(242, 57, 50, 0.50);
-  --red-glow:    rgba(242, 57, 50, 0.55);
-
-  /* High-Vis-Amber — Atemschutz, Warnings, Status */
-  --amber:        #fbbf24;
-  --amber-soft:   rgba(251, 191, 36, 0.18);
-  --amber-border: rgba(251, 191, 36, 0.65);
-  --amber-glow:   rgba(251, 191, 36, 0.45);
-
-  /* Emerald — "OK", Sync-Status */
-  --emerald:        #22c55e;
-  --emerald-bg:     rgba(34, 197, 94, 0.14);
-  --emerald-border: rgba(34, 197, 94, 0.45);
-  --emerald-glow:   rgba(34, 197, 94, 0.50);
-
-  /* Blau — Wasser/Hydranten, Info, GPS */
-  --blue:         #38bdf8;
-  --blue-bg:      rgba(56, 189, 248, 0.14);
-  --blue-border:  rgba(56, 189, 248, 0.45);
-  --blue-glow:    rgba(56, 189, 248, 0.45);
-
-  /* Card-Surface mit subtilem Verlauf — kein platter Block mehr */
-  --card-gradient: linear-gradient(180deg, var(--surface-1) 0%, color-mix(in srgb, var(--surface-1) 88%, #000) 100%);
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 28px -16px rgba(0, 0, 0, 0.55);
-  --grain-opacity: 0.5;
-  --grain-blend: overlay;
-}
-
-/* ═══════════════════ LIGHT · Tagesbetrieb in der Halle ═══════════════════ */
-[data-theme="light"] {
-  --bg-deep:    #f4eeea;
-  --bg-page:    #faf6f3;
-  --surface-1:  #ffffff;
-  --surface-2:  #fbf6f2;
-  --surface-3:  #f1ebe6;
-
-  --border:        rgba(40, 24, 12, 0.10);
-  --border-strong: rgba(40, 24, 12, 0.24);
-
-  --text-1: #1a0f08;
-  --text-2: #4a3a30;
-  --text-3: #847468;
-
-  --red:         #dc2626;
-  --red-strong:  #b91c1c;
-  --red-bg:      rgba(220, 38, 38, 0.10);
-  --red-border:  rgba(220, 38, 38, 0.45);
-  --red-glow:    rgba(220, 38, 38, 0.32);
-
-  --amber:        #d97706;
-  --amber-soft:   rgba(217, 119, 6, 0.12);
-  --amber-border: rgba(217, 119, 6, 0.55);
+  --warn:         #D97706;
+  --warn-tint:    #FEF3C7;
+  --amber:        var(--warn);
+  --amber-soft:   var(--warn-tint);
+  --amber-border: rgba(217, 119, 6, 0.40);
   --amber-glow:   rgba(217, 119, 6, 0.30);
 
-  --emerald:        #059669;
-  --emerald-bg:     rgba(5, 150, 105, 0.10);
-  --emerald-border: rgba(5, 150, 105, 0.42);
-  --emerald-glow:   rgba(5, 150, 105, 0.30);
+  --info:         #2563EB;
+  --info-tint:    #DBEAFE;
+  --blue:         var(--info);
+  --blue-bg:      var(--info-tint);
+  --blue-border:  rgba(37, 99, 235, 0.30);
+  --blue-glow:    rgba(37, 99, 235, 0.30);
 
-  --blue:        #0369a1;
-  --blue-bg:     rgba(3, 105, 161, 0.10);
-  --blue-border: rgba(3, 105, 161, 0.40);
-  --blue-glow:   rgba(3, 105, 161, 0.28);
+  --as:           #7C3AED;     /* Atemschutz */
+  --as-tint:      #F1ECFE;
+  --rank:         #2563EB;     /* Dienstgrad-Badges */
 
-  --card-gradient: linear-gradient(180deg, #ffffff 0%, #fbf6f2 100%);
-  --shadow-card: 0 1px 2px rgba(40, 24, 12, 0.04), 0 6px 18px -8px rgba(40, 24, 12, 0.08);
-  --grain-opacity: 0;
-  --grain-blend: normal;
+  /* Fonts */
+  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:    "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* Shadows */
+  --shadow-card:  0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04);
+  --shadow-alarm: 0 1px 2px rgba(200, 16, 46, 0.10), 0 8px 32px rgba(200, 16, 46, 0.18);
+  --shadow-cta:   0 2px 6px rgba(200, 16, 46, 0.20), 0 12px 32px rgba(200, 16, 46, 0.30);
+
+  --card-gradient: var(--surface);
+
+  /* Radii */
+  --radius-s: 10px;
+  --radius-m: 14px;
+  --radius-l: 18px;
 }
 
-/* ═══════════════════ Globale Utility-Animationen ═══════════════════ */
-@keyframes hazard-shift {
-  from { background-position: 0 0; }
-  to   { background-position: 48px -48px; }
+/* ============================================================
+   DARK THEME — Nacht-Einsatz, hoher Kontrast
+   ============================================================ */
+[data-theme="dark"] {
+  --bg:           #0E1116;
+  --bg-deep:      #0E1116;
+  --bg-page:      #0E1116;
+  --surface:      #181C24;
+  --surface-1:    #181C24;
+  --surface-2:    #1F242E;
+  --surface-3:    #262C38;
+  --border:       #2A3140;
+  --border-strong:#3A4254;
+
+  --fg:           #F1F4F9;
+  --fg-2:         #B0B8C7;
+  --fg-3:         #7B8494;
+  --fg-4:         #4E5666;
+  --text-1:       var(--fg);
+  --text-2:       var(--fg-2);
+  --text-3:       var(--fg-3);
+
+  --red:          #FF4D5E;
+  --red-strong:   #FF2C44;
+  --red-tint:     rgba(255, 77, 94, 0.10);
+  --red-tint-2:   rgba(255, 77, 94, 0.18);
+  --red-bg:       var(--red-tint);
+  --red-border:   rgba(255, 77, 94, 0.35);
+  --red-glow:     rgba(255, 77, 94, 0.35);
+
+  --ok:           #2DD4A5;
+  --ok-tint:      rgba(45, 212, 165, 0.14);
+  --emerald:      var(--ok);
+  --emerald-bg:   var(--ok-tint);
+  --emerald-border: rgba(45, 212, 165, 0.32);
+  --emerald-glow: rgba(45, 212, 165, 0.32);
+
+  --warn:         #F5A524;
+  --warn-tint:    rgba(245, 165, 36, 0.14);
+  --amber:        var(--warn);
+  --amber-soft:   var(--warn-tint);
+  --amber-border: rgba(245, 165, 36, 0.40);
+  --amber-glow:   rgba(245, 165, 36, 0.30);
+
+  --info:         #5AA9FF;
+  --info-tint:    rgba(90, 169, 255, 0.14);
+  --blue:         var(--info);
+  --blue-bg:      var(--info-tint);
+  --blue-border:  rgba(90, 169, 255, 0.40);
+  --blue-glow:    rgba(90, 169, 255, 0.30);
+
+  --as:           #B388FF;
+  --as-tint:      rgba(179, 136, 255, 0.14);
+  --rank:         #5AA9FF;
+
+  --shadow-card:  0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 18px rgba(0, 0, 0, 0.30);
+  --shadow-alarm: 0 1px 2px rgba(255, 77, 94, 0.18), 0 8px 32px rgba(255, 77, 94, 0.18);
+  --shadow-cta:   0 2px 6px rgba(255, 77, 94, 0.30), 0 12px 32px rgba(255, 77, 94, 0.34);
+
+  --card-gradient: var(--surface);
 }
 
-@keyframes beacon {
-  0%, 100% {
-    box-shadow:
-      0 0 0 0 var(--red-glow),
-      0 0 0 0 rgba(0, 0, 0, 0);
-  }
-  50% {
-    box-shadow:
-      0 0 0 8px rgba(242, 57, 50, 0.0),
-      0 0 24px 4px var(--red-glow);
-  }
+/* ============================================================
+   Animationen
+   ============================================================ */
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(200, 16, 46, 0.18); }
+  50%      { box-shadow: 0 0 0 7px rgba(200, 16, 46, 0.05); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1);    opacity: 0.8; }
+  100% { transform: scale(1.18); opacity: 0;   }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
+  0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
