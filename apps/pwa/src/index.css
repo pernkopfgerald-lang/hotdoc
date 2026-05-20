@@ -1,6 +1,7 @@
 /* @import MUSS vor allen anderen Regeln stehen (CSS-Spec).
    PostCSS verwirft sonst still, dann fehlen alle Tokens. */
 @import "./theme/tokens.css";
+@import "./theme/design.css";
 
 @tailwind base;
 @tailwind components;

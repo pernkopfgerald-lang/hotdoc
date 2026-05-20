@@ -7,34 +7,60 @@ interface Props {
   onOpen: () => void;
 }
 
+/**
+ * PersonButton — Design-Vorlage `.person` mit `.avatar` (Initialen) +
+ * `.name` + Dienstgrad-`.badge.rank` + chevron. Avatar-Farbe wird
+ * deterministisch aus der syBosId abgeleitet (color-a … color-f).
+ */
 export function PersonButton({ label, person, onOpen }: Props) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-        {label}
-      </span>
+    <div className="field">
+      <label className="caption">{label}</label>
       <button
         type="button"
         onClick={onOpen}
-        className="flex w-full items-center gap-2.5 rounded-s border border-border bg-surface-2 px-3 py-2.5 text-left transition hover:bg-surface-3"
+        className={`person${person ? " filled" : ""}`}
       >
         {person ? (
           <>
-            <span className="flex-1 text-[15px] font-medium text-text-1">
+            <span className={`avatar ${avatarColor(person.syBosId)}`}>
+              {initials(person)}
+            </span>
+            <div className="name">
               {person.nachname} {person.vorname}
-            </span>
-            <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.10em] text-blue">
-              {person.dienstgrad}
-            </span>
-            <ChevronDown size={14} className="text-text-3" />
+            </div>
+            <div className="badges">
+              <span className="badge rank">{person.dienstgrad}</span>
+            </div>
+            <div className="chev" style={{ marginLeft: 4 }}>
+              <ChevronDown size={14} strokeWidth={2.5} />
+            </div>
           </>
         ) : (
           <>
-            <span className="flex-1 text-[15px] text-text-3">Person wählen</span>
-            <Plus size={14} className="text-text-3" />
+            <span className="avatar">
+              <Plus size={16} />
+            </span>
+            <div className="name placeholder">Person wählen</div>
+            <div className="chev" style={{ marginLeft: 4 }}>
+              <ChevronDown size={14} strokeWidth={2.5} />
+            </div>
           </>
         )}
       </button>
-    </label>
+    </div>
   );
+}
+
+/** Initialen aus Nachname + Vorname. "Eder Christoph" → "EC" */
+export function initials(p: PickPerson): string {
+  const n = p.nachname?.[0] ?? "";
+  const v = p.vorname?.[0] ?? "";
+  return (n + v).toUpperCase() || "?";
+}
+
+/** Deterministische Avatar-Farbe aus syBosId — bleibt stabil über Sessions */
+export function avatarColor(id: number): string {
+  const colors = ["color-a", "color-b", "color-c", "color-d", "color-e", "color-f"];
+  return colors[Math.abs(id) % colors.length]!;
 }

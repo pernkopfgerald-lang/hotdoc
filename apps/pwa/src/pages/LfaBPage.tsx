@@ -1,4 +1,4 @@
-import { ArrowRight, Lock } from "lucide-react";
+import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Truck, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
@@ -19,7 +19,6 @@ import { MapCard, type MapPosition } from "../components/MapCard";
 import { NeuerAuftragModal } from "../components/NeuerAuftragModal";
 import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
-import { RufnameBar } from "../components/RufnameBar";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import {
@@ -39,30 +38,21 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
 
 const FAHRZEUG_ID = "lfa-b" as const;
-/** Realistischer Straßen-Faktor: Luftlinie × 1.3 ≈ tatsächliche Fahrstrecke */
 const ROAD_FACTOR = 1.3;
 
-/**
- * Standard-Auftrag-Typen — in Phase 2 wird das aus der Einsatzzentrale-
- * Verwaltung über /api/config/auftrag-typen geladen (FR-15 Verwaltung).
- */
 const DEFAULT_AUFTRAG_TYPEN: readonly string[] = [
+  "Brandbekämpfung außen",
+  "Brandbekämpfung innen",
+  "Atemschutz-Trupp",
   "Verkehrsabsicherung",
   "Wassertransport",
   "Personenrettung",
-  "Brandbekämpfung außen",
-  "Brandbekämpfung innen",
   "Technische Hilfeleistung",
-  "Atemschutz-Trupp",
   "Drehleiter-Einsatz",
   "Nachlöscharbeiten",
   "Beleuchtung sichern",
 ] as const;
 
-/**
- * Ein lokal verwalteter Einsatz/Auftrag dieses Tablets. Mehrere können
- * parallel laufen — der Tab-Bar wechselt zwischen ihnen.
- */
 interface EinsatzInstance {
   id: string;
   alarm: AlarmDaten;
@@ -92,7 +82,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
   const [neuerAuftragOpen, setNeuerAuftragOpen] = useState(false);
   const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
 
-  // Initialer Einsatz aus Demo-Alarm
   const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => [
     {
       id: DEMO_ALARM.alarmId,
@@ -117,11 +106,9 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
 
   const active = einsaetze.find((e) => e.id === activeId) ?? einsaetze[0]!;
 
-  // GPS — aktualisiert die eigene Position auf der Karte
   const geo = useGeolocation();
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
 
-  // Personalliste laden + Demo-Vorbelegung beim ersten Einsatz
   useEffect(() => {
     void (async () => {
       const docs = await getAllPersonen();
@@ -152,7 +139,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     })();
   }, []);
 
-  // Eigene Position in der fleet-Liste mit echter GPS-Position synchronisieren.
   useEffect(() => {
     const id = setInterval(() => {
       setFleet((prev) =>
@@ -169,12 +155,10 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     return () => clearInterval(id);
   }, [selfPos.lat, selfPos.lng]);
 
-  // ────────────── Helper: aktiven Einsatz patchen ──────────────
   function patchActive(updater: (e: EinsatzInstance) => EinsatzInstance) {
     setEinsaetze((prev) => prev.map((e) => (e.id === activeId ? updater(e) : e)));
   }
 
-  // ────────────── Personen-Picker ──────────────
   const bereitsGewaehlt = useMemo(() => {
     const s = new Set<number>();
     if (active.fahrer) s.add(active.fahrer.syBosId);
@@ -204,7 +188,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     return `Mannschaftsplatz ${pickerOpen.slot}`;
   }
 
-  // ────────────── Mannschaft AS-Toggle ──────────────
   function toggleMannschaftAs(idx: number) {
     patchActive((e) => ({
       ...e,
@@ -218,7 +201,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     }));
   }
 
-  // ────────────── Diktat ──────────────
   function onDictateResult(result: RecordingResult) {
     const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     patchActive((e) => ({
@@ -237,7 +219,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     }));
   }
 
-  // ────────────── Auftrag-Aktionen ──────────────
   function addAuftrag(text: string) {
     const id = `auf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     patchActive((e) => ({
@@ -249,7 +230,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     patchActive((e) => ({ ...e, auftraege: e.auftraege.filter((a) => a.id !== id) }));
   }
 
-  // ────────────── Gear ──────────────
   function toggleGear(id: string) {
     patchActive((e) => {
       const next = new Set(e.gearSelected);
@@ -262,12 +242,9 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     patchActive((e) => ({ ...e, oelSaecke: n }));
   }
 
-  // ────────────── Multi-Einsatz: neuen Auftrag anlegen ──────────────
   function createNewAuftrag(einsatzart: string, einsatzortText: string) {
     const id = `manuell-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const now = new Date();
-    // Wir können hier ohne Geocoder nicht die echten Koords ermitteln —
-    // fallweise nehmen wir die aktuelle Position oder HOME_POS als Stub.
     const pos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : EINSATZ_POS;
     const neueInstance: EinsatzInstance = {
       id,
@@ -282,7 +259,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
         koordinaten: pos,
         distanzKm: haversineKm(HOME_POS, pos),
       },
-      // Personen werden vom aktiven Auftrag übernommen
       fahrer: active.fahrer,
       kdt: active.kdt,
       mannschaft: active.mannschaft.map((m) => ({ ...m })),
@@ -305,17 +281,11 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     setNeuerAuftragOpen(false);
   }
 
-  // ────────────── Vehicle Switcher ──────────────
   function handleSwitchVehicle(id: FahrzeugId) {
     setVehicleSwitcherOpen(false);
     onSwitchFahrzeug(id);
   }
 
-  // ────────────── Abschluss ──────────────
-  /**
-   * Strecke zum Einsatzort hin und zurück, mit Road-Faktor.
-   * Ersetzt die früheren manuellen KM-Felder.
-   */
   function computeKm(): number {
     const luftlinie = haversineKm(HOME_POS, active.einsatzPos);
     return luftlinie * ROAD_FACTOR * 2;
@@ -334,7 +304,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     setAbschlussModalOpen(false);
   }
 
-  // ────────────── Tab-Summaries ──────────────
   const tabs: EinsatzTabSummary[] = einsaetze.map((e) => ({
     id: e.id,
     einsatzart: e.alarm.einsatzart,
@@ -343,9 +312,10 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     manuell: e.manuell,
   }));
 
-  // ────────────── Abschluss-Checks + Summary ──────────────
   const mannschaftCount = active.mannschaft.filter((m) => m.person).length;
+  const asAktiv = active.mannschaft.filter((m) => m.person && m.atemschutzAktiv).length;
   const personenAnzahl = mannschaftCount + (active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0);
+  const fahrerKdtCount = (active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0);
   const kmRound = computeKm();
   const kmDisplay = `${kmRound.toFixed(1).replace(".", ",")} km`;
 
@@ -363,8 +333,13 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     { label: "Aufträge", value: String(active.auftraege.length) },
   ];
 
+  // Datum/Zeit aus Alarm
+  const datum = new Date(active.alarm.alarmierungZeit);
+  const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
+  const zeitStr = `${pad(datum.getHours())}:${pad(datum.getMinutes())}`;
+
   return (
-    <div className="mx-auto min-h-screen max-w-3xl pb-10">
+    <div>
       <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={active.alarm.alarmId} geo={geo} />
 
       <EinsatzTabs
@@ -374,11 +349,9 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
         onNew={() => setNeuerAuftragOpen(true)}
       />
 
-      <RufnameBar fahrzeugId={FAHRZEUG_ID} onSwitch={() => setVehicleSwitcherOpen(true)} />
-
       {!active.abgeschlossen ? <DemoBanner /> : null}
 
-      <main className="flex flex-col gap-4 px-4 pb-8 pt-3">
+      <main className="page">
         {active.abgeschlossen ? (
           <AbgeschlossenView
             funkrufname={fahrzeug.funkrufname}
@@ -396,48 +369,100 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
           <>
             <AlarmCard alarm={active.alarm} />
 
-            <SectionHead title="Anfahrt" />
-            <MapCard
-              selfPos={selfPos}
-              einsatzPos={active.einsatzPos}
-              einsatzAdresse={active.alarm.einsatzort}
-              fleet={fleet}
-              hydranten={DEMO_HYDRANTEN}
-              showLoeschwasser={false}
-            />
+            <SectionHead title="Einsatzdaten" />
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">
+                  <Calendar size={20} />
+                  Datum &amp; Zeitraum
+                </div>
+                <span className="card-meta">Auto-Übernahme aus Alarm</span>
+              </div>
+              <div className="grid-3" style={{ gap: 14 }}>
+                <div className="field">
+                  <label className="caption">Datum</label>
+                  <div className="input-row filled">
+                    <input value={datumStr} readOnly />
+                    <div className="chev"><span style={{ fontSize: 12 }}>▾</span></div>
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="caption">Uhrzeit von</label>
+                  <div className="input-row filled">
+                    <input value={zeitStr} readOnly className="num" />
+                    <div className="chev"><span style={{ fontSize: 12 }}>▾</span></div>
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="caption">Uhrzeit bis</label>
+                  <div className="input-row">
+                    <input value="– – : – –" readOnly className="num" style={{ color: "var(--fg-3)" }} />
+                    <div className="chev"><span style={{ fontSize: 12 }}>▾</span></div>
+                  </div>
+                </div>
+              </div>
+              <div className="field" style={{ marginTop: 14 }}>
+                <label className="caption">Einsatzort</label>
+                <input className="input filled" value={active.alarm.einsatzort} readOnly />
+              </div>
+            </section>
 
-            <SectionHead title="Mannschaft" />
-            <section className="rounded-[18px] border bg-surface p-5" style={{ background: "var(--surface)", borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}>
-              <div className="mb-3.5 flex items-center justify-between">
-                <h2 className="text-[17px] font-bold tracking-tight" style={{ color: "var(--fg)" }}>
-                  Fahrer &amp; Kdt.
-                </h2>
-                <span
-                  className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
-                  style={{ color: "var(--fg-3)" }}
-                >
-                  <span style={{ color: "var(--fg)" }}>{(active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0)}</span> / 2
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">
+                  <Truck size={20} />
+                  Fahrzeug
+                </div>
+                <span className="card-meta">
+                  <span className="num">{fahrzeug.bezeichnung}</span> · {fahrzeug.funkrufname}
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div className="vehicle-row">
+                {(["kdo", "tlf-a-4000", "lfa-b", "mtf", "zentrale"] as const).map((id) => {
+                  const active2 = id === FAHRZEUG_ID;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`vehicle-chip${active2 ? " active" : ""}`}
+                      onClick={() => !active2 && handleSwitchVehicle(id)}
+                    >
+                      <div className="code">{shortCode(id)}</div>
+                      <div className="sub">{shortSub(id)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">
+                  <Users size={20} />
+                  Fahrer &amp; Fahrzeug-Kdt.
+                </div>
+                <span className="card-meta">
+                  <span className="num">{fahrerKdtCount}</span> / 2 belegt
+                </span>
+              </div>
+              <div className="grid-2">
                 <PersonButton label="Fahrer" person={active.fahrer} onOpen={() => setPickerOpen({ kind: "fahrer" })} />
                 <PersonButton label="Fahrzeug-Kdt." person={active.kdt} onOpen={() => setPickerOpen({ kind: "kdt" })} />
               </div>
             </section>
 
-            <section className="rounded-[18px] border p-5" style={{ background: "var(--surface)", borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}>
-              <div className="mb-3.5 flex items-center justify-between">
-                <h2 className="text-[17px] font-bold tracking-tight" style={{ color: "var(--fg)" }}>
-                  Besatzung
-                </h2>
-                <span
-                  className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
-                  style={{ color: "var(--fg-3)" }}
-                >
-                  <span style={{ color: "var(--fg)" }}>{mannschaftCount}</span> / {active.mannschaft.length} Plätze
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">
+                  <Users size={20} />
+                  Mannschaft
+                </div>
+                <span className="card-meta">
+                  <span className="num">{mannschaftCount}</span> / {active.mannschaft.length} Plätze
+                  {asAktiv > 0 ? <> · <span className="num">{asAktiv}</span>× Atemschutz aktiv</> : null}
                 </span>
               </div>
-              <ul className="flex flex-col gap-2 p-0">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {active.mannschaft.map((m, i) => (
                   <MannschaftSlot
                     key={m.slot}
@@ -447,10 +472,9 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
                     onChangeAs={(v) => setMannschaftAsDauer(i, v)}
                   />
                 ))}
-              </ul>
+              </div>
             </section>
 
-            <SectionHead title="Geräte & Mittel" />
             <GearChips
               items={DEMO_GEAR_LFA_B}
               selected={active.gearSelected}
@@ -459,7 +483,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
               onOelChange={setOelSaecke}
             />
 
-            <SectionHead title="Auftrag" />
             <AuftraegeSection
               auftraege={active.auftraege}
               verfuegbareTypen={DEFAULT_AUFTRAG_TYPEN}
@@ -467,60 +490,76 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
               onRemove={removeAuftrag}
             />
 
-            <SectionHead title="Chronik" />
-            <section className="rounded-[18px] border p-5" style={{ background: "var(--surface)", borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}>
-              <div className="mb-3.5 flex items-center justify-between">
-                <h2 className="text-[17px] font-bold tracking-tight" style={{ color: "var(--fg)" }}>
+            <SectionHead title="Anfahrt & Position-Sharing" />
+            <MapCard
+              selfPos={selfPos}
+              einsatzPos={active.einsatzPos}
+              einsatzAdresse={active.alarm.einsatzort}
+              fleet={fleet}
+              hydranten={DEMO_HYDRANTEN}
+              showLoeschwasser={false}
+            />
+
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">
+                  <Clipboard size={20} />
                   Einsatzchronik
-                </h2>
-                <span
-                  className="font-mono text-[11px] font-bold uppercase tracking-[0.08em]"
-                  style={{ color: "var(--fg-3)" }}
-                >
-                  Whisper · offline
-                </span>
+                </div>
+                <span className="card-meta">Whisper · offline</span>
               </div>
               <ChronikTimeline eintraege={active.chronik} />
               <DictateButton onAudio={onDictateResult} />
             </section>
 
-            <div className="mt-2 flex flex-col gap-2.5">
-              <p
-                className="text-center text-[13px]"
-                style={{ color: "var(--fg-2)" }}
-              >
-                Schließt den Fahrzeugbericht ab und übergibt ihn der Zentrale „Florian Eberstalzell".
-              </p>
-              <button
-                type="button"
-                onClick={() => setAbschlussModalOpen(true)}
-                className="flex items-center justify-center gap-3 rounded-[18px] px-5 py-5 text-[17px] font-bold tracking-tight text-white transition hover:-translate-y-0.5"
-                style={{
-                  background: "linear-gradient(180deg, #D8132F 0%, #B30D26 100%)",
-                  boxShadow: "var(--shadow-cta)",
-                }}
-              >
-                <Lock size={20} />
+            <div className="cta-wrap">
+              <div className="cta-secondary">
+                <button type="button">
+                  <Save size={16} />
+                  Entwurf speichern
+                </button>
+                <button type="button">
+                  <Eye size={16} />
+                  Vorschau Bericht
+                </button>
+              </div>
+              <button type="button" className="cta" onClick={() => setAbschlussModalOpen(true)}>
+                <CheckCircle2 size={22} />
                 Fahrzeugbericht abschließen
-                <ArrowRight size={20} />
+                <ArrowRight size={22} />
               </button>
+              <div className="cta-hint">
+                Übergibt den Bericht an die Zentrale <strong>„Florian Eberstalzell"</strong>.
+              </div>
             </div>
           </>
         )}
-
-        <footer
-          className="flex items-center justify-between pt-6 font-mono text-[11px] font-semibold uppercase tracking-[0.12em]"
-          style={{ color: "var(--fg-3)" }}
-        >
-          <span>
-            <span style={{ color: "var(--red)" }}>Hot</span>
-            <span style={{ color: "var(--fg)" }}>Doc</span> · UC2 · v0.5
-          </span>
-          <button type="button" onClick={onResetSetup} className="underline transition hover:text-text-2">
-            Setup zurücksetzen
-          </button>
-        </footer>
       </main>
+
+      <div className="appfoot">
+        HotDoc
+        <span className="sep">·</span>
+        v0.6 UC2
+        <span className="sep">·</span>
+        {fahrzeug.funkrufname}
+        <span className="sep">·</span>
+        <button
+          type="button"
+          onClick={onResetSetup}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "inherit",
+            font: "inherit",
+            cursor: "pointer",
+            textDecoration: "underline",
+            minHeight: 0,
+            padding: 0,
+          }}
+        >
+          Setup
+        </button>
+      </div>
 
       <PersonPickerModal
         open={!!pickerOpen}
@@ -560,16 +599,34 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
 
 function SectionHead({ title }: { title: string }) {
   return (
-    <div className="flex items-center gap-2.5 px-1.5 pt-1.5">
-      <span
-        className="font-mono text-[11px] font-bold uppercase tracking-[0.12em]"
-        style={{ color: "var(--fg-3)" }}
-      >
-        {title}
-      </span>
-      <span className="h-px flex-1" style={{ background: "var(--border)" }} />
+    <div className="section-head">
+      <span className="h">{title}</span>
+      <span className="line" />
     </div>
   );
+}
+
+function shortCode(id: FahrzeugId): string {
+  switch (id) {
+    case "kdo":        return "KDO";
+    case "tlf-a-4000": return "TANK";
+    case "lfa-b":      return "LFB-A2";
+    case "mtf":        return "MTF";
+    case "zentrale":   return "FLORIAN";
+  }
+}
+function shortSub(id: FahrzeugId): string {
+  switch (id) {
+    case "kdo":        return "Kommando";
+    case "tlf-a-4000": return "Tanklösch.";
+    case "lfa-b":      return "Löschfzg.";
+    case "mtf":        return "Mannsch.";
+    case "zentrale":   return "Zentrale";
+  }
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
 function formatDuration(ms: number): string {

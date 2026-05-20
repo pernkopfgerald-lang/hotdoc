@@ -1,6 +1,7 @@
 import { AS_DEFAULT, AS_MAX, AS_MIN, AS_STEP, clampAsDauer } from "@hotdoc/shared";
-import { Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import type { PickPerson } from "./PersonPickerModal";
+import { avatarColor, initials } from "./PersonButton";
 
 export interface MannschaftSlotData {
   slot: number;
@@ -16,96 +17,154 @@ interface Props {
   onChangeAs: (newValue: number) => void;
 }
 
+/**
+ * MannschaftSlot — Design `.crew-row` mit `.crew-num`, `.avatar`,
+ * `.crew-name`, `.crew-meta` (Rank-Badge + AS-Timer + Icon-Buttons).
+ * Leere Plätze: `.crew-row.empty` (dashed border, "Person hinzufügen").
+ */
 export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs }: Props) {
   const filled = !!data.person;
-  return (
-    <li
-      className={`grid grid-cols-[28px_1fr_auto_auto] items-center gap-2 rounded-s border p-1 ${
-        filled
-          ? "border-border bg-surface-2"
-          : "border-border bg-transparent"
-      }`}
-      style={!filled ? { borderStyle: "dashed" } : undefined}
-    >
-      <span className="pl-1 text-center font-mono text-[13px] font-semibold text-text-3">
-        {data.slot}
-      </span>
 
+  if (!filled) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onPickPerson}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onPickPerson();
+        }}
+        className="crew-row empty"
+      >
+        <div className="crew-num">{data.slot}</div>
+        <div className="crew-name placeholder">Person hinzufügen</div>
+        <div className="crew-meta">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Person wählen"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPickPerson();
+            }}
+          >
+            <Plus size={14} strokeWidth={2.5} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const p = data.person!;
+  return (
+    <div className="crew-row filled">
+      <div className="crew-num">{data.slot}</div>
       <button
         type="button"
         onClick={onPickPerson}
-        className="flex items-center gap-2 rounded-s px-2 py-1.5 text-left transition hover:bg-surface-3"
+        className={`avatar ${avatarColor(p.syBosId)}`}
+        title="Person wechseln"
       >
-        {data.person ? (
-          <>
-            <span className="flex-1 text-[15px] font-medium text-text-1">
-              {data.person.nachname} {data.person.vorname}
-            </span>
-            <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.10em] text-blue">
-              {data.person.dienstgrad}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="flex-1 text-[14px] text-text-3">Person wählen</span>
-            <Plus size={14} className="text-text-3" />
-          </>
-        )}
+        {initials(p)}
       </button>
-
-      {filled ? (
-        <button
-          type="button"
-          aria-pressed={data.atemschutzAktiv}
-          onClick={onToggleAs}
-          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 transition ${
-            data.atemschutzAktiv
-              ? "border-amber/45 bg-amber/15"
-              : "border-border bg-surface-1 hover:border-border-strong"
-          }`}
-        >
-          <span
-            className={`font-mono text-[10px] font-bold uppercase tracking-[0.16em] ${
-              data.atemschutzAktiv ? "text-amber" : "text-text-3"
-            }`}
+      <button
+        type="button"
+        onClick={onPickPerson}
+        className="crew-name"
+        style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }}
+      >
+        {p.nachname} {p.vorname}
+      </button>
+      <div className="crew-meta">
+        <span className="badge rank">{p.dienstgrad}</span>
+        {data.atemschutzAktiv ? (
+          <AsTimer
+            minutes={data.atemschutzDauerMin}
+            onMinus={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin - AS_STEP))}
+            onPlus={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin + AS_STEP))}
+            minusDisabled={data.atemschutzDauerMin <= AS_MIN}
+            plusDisabled={data.atemschutzDauerMin >= AS_MAX}
+          />
+        ) : (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Atemschutz aktivieren"
+            onClick={onToggleAs}
+            title="Atemschutz aktivieren"
+            style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em" }}
           >
             AS
-          </span>
-          {data.atemschutzAktiv ? (
-            <span className="border-l border-amber/35 pl-1.5 font-mono text-[11px] font-semibold tabular-nums text-amber">
-              <span className="font-bold text-text-1">{data.atemschutzDauerMin}</span> min
-            </span>
-          ) : null}
+          </button>
+        )}
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label={data.atemschutzAktiv ? "AS beenden" : "Person entfernen"}
+          onClick={data.atemschutzAktiv ? onToggleAs : onPickPerson}
+        >
+          {data.atemschutzAktiv ? <Minus size={14} strokeWidth={2.5} /> : <Plus size={14} strokeWidth={2.5} />}
         </button>
-      ) : (
-        <span aria-hidden />
-      )}
+      </div>
+    </div>
+  );
+}
 
-      {filled && data.atemschutzAktiv ? (
-        <div className="flex gap-0.5">
-          <button
-            type="button"
-            aria-label="Minus"
-            onClick={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin - AS_STEP))}
-            disabled={data.atemschutzDauerMin <= AS_MIN}
-            className="grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-1 font-mono text-base font-semibold text-text-2 transition hover:bg-surface-3 disabled:opacity-30"
-          >
-            −
-          </button>
-          <button
-            type="button"
-            aria-label="Plus"
-            onClick={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin + AS_STEP))}
-            disabled={data.atemschutzDauerMin >= AS_MAX}
-            className="grid h-7 w-7 place-items-center rounded-md border border-border bg-surface-1 font-mono text-base font-semibold text-text-2 transition hover:bg-surface-3 disabled:opacity-30"
-          >
-            +
-          </button>
-        </div>
-      ) : (
-        <span aria-hidden />
-      )}
-    </li>
+function AsTimer({
+  minutes,
+  onMinus,
+  onPlus,
+  minusDisabled,
+  plusDisabled,
+}: {
+  minutes: number;
+  onMinus: () => void;
+  onPlus: () => void;
+  minusDisabled: boolean;
+  plusDisabled: boolean;
+}) {
+  return (
+    <span className="as-timer">
+      <span className="tag">AS</span>
+      <span className="val">{minutes} min</span>
+      <button
+        type="button"
+        aria-label="AS-Dauer minus"
+        onClick={onMinus}
+        disabled={minusDisabled}
+        className="icon-btn"
+        style={{
+          background: "transparent",
+          border: 0,
+          width: 24,
+          height: 24,
+          minHeight: 24,
+          color: "var(--as)",
+          marginLeft: 2,
+          opacity: minusDisabled ? 0.3 : 1,
+        }}
+      >
+        <Minus size={11} strokeWidth={3} />
+      </button>
+      <button
+        type="button"
+        aria-label="AS-Dauer plus"
+        onClick={onPlus}
+        disabled={plusDisabled}
+        className="icon-btn"
+        style={{
+          background: "transparent",
+          border: 0,
+          width: 24,
+          height: 24,
+          minHeight: 24,
+          color: "var(--as)",
+          opacity: plusDisabled ? 0.3 : 1,
+        }}
+      >
+        <Plus size={11} strokeWidth={3} />
+      </button>
+    </span>
   );
 }
 

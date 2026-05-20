@@ -1,3 +1,4 @@
+import { Box, Minus, Plus } from "lucide-react";
 import { useState } from "react";
 
 export interface GearItem {
@@ -14,50 +15,52 @@ interface Props {
   onOelChange: (newCount: number) => void;
 }
 
+/**
+ * GearChips — Design `.card` mit `.card-head`/`.card-title`/`.card-meta` und
+ * den `.chips`/`.chip.selected`-Pills aus design.css.
+ */
 export function GearChips({ items, selected, oelbindemittelSaecke, onToggle, onOelChange }: Props) {
   const oelOn = oelbindemittelSaecke > 0;
   const count = selected.size + (oelOn ? 1 : 0);
 
   return (
-    <section className="rounded-m border border-border bg-surface-1 p-3.5">
-      <header className="mb-2.5 flex items-baseline justify-between">
-        <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <Box size={20} />
           Geräte &amp; Mittel
-        </h2>
-        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-text-3">
-          {count} ausgewählt
+        </div>
+        <span className="card-meta">
+          <span className="num">{count}</span> ausgewählt
         </span>
-      </header>
+      </div>
 
-      <ul className="flex flex-wrap gap-1.5">
+      <div className="chips">
         {items.map((it) =>
           it.isOelbindemittel ? (
-            <li key={it.id}>
-              <OelSmartChip aktiv={oelOn} saecke={oelbindemittelSaecke} onChange={onOelChange} />
-            </li>
+            <OelSmartChip
+              key={it.id}
+              aktiv={oelOn}
+              saecke={oelbindemittelSaecke}
+              onChange={onOelChange}
+            />
           ) : (
-            <li key={it.id}>
-              <button
-                type="button"
-                onClick={() => onToggle(it.id)}
-                className={`rounded-full border px-3 py-2 text-[13px] font-medium transition ${
-                  selected.has(it.id)
-                    ? "border-emerald/40 bg-emerald/10 font-semibold text-emerald"
-                    : "border-border bg-surface-2 text-text-2 hover:bg-surface-3 hover:text-text-1"
-                }`}
-              >
-                {selected.has(it.id) ? (
-                  <span
-                    className="mr-1.5 inline-block h-1.5 w-1.5 -translate-y-px rounded-full bg-emerald"
-                    style={{ boxShadow: "0 0 6px var(--emerald-glow)" }}
-                  />
-                ) : null}
-                {it.bezeichnung}
-              </button>
-            </li>
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => onToggle(it.id)}
+              className={`chip${selected.has(it.id) ? " selected" : ""}`}
+            >
+              {selected.has(it.id) ? (
+                <span className="dot" />
+              ) : (
+                <span className="plus">+</span>
+              )}
+              {it.bezeichnung}
+            </button>
           ),
         )}
-      </ul>
+      </div>
     </section>
   );
 }
@@ -83,61 +86,99 @@ function OelSmartChip({
     onChange(next);
   }
 
+  if (!aktiv) {
+    return (
+      <button type="button" onClick={toggleActive} className="chip">
+        <span className="plus">+</span>
+        Ölbindemittel
+      </button>
+    );
+  }
+
   return (
-    <div
-      aria-pressed={aktiv}
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[13px] transition ${
-        aktiv
-          ? "border-amber/45 bg-amber/15 font-semibold text-amber"
-          : "border-border bg-surface-2 text-text-2 hover:bg-surface-3 hover:text-text-1"
-      }`}
+    <span
+      className="chip selected"
+      style={{
+        background: "var(--warn-tint)",
+        color: "var(--warn)",
+        borderColor: "rgba(217,119,6,0.30)",
+        paddingRight: 6,
+      }}
     >
       <button
         type="button"
         onClick={toggleActive}
-        className="flex items-center gap-2"
+        style={{
+          background: "transparent",
+          border: 0,
+          padding: 0,
+          color: "inherit",
+          font: "inherit",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          minHeight: 0,
+        }}
       >
-        {aktiv ? (
-          <span
-            className="inline-block h-1.5 w-1.5 -translate-y-px rounded-full bg-amber"
-            style={{ boxShadow: "0 0 6px var(--amber-soft)" }}
-          />
-        ) : null}
+        <span className="dot" style={{ background: "var(--warn)" }} />
         Ölbindemittel
       </button>
-
-      {aktiv ? (
-        <span className="flex items-center gap-1.5 border-l border-amber/35 pl-2.5">
-          <button
-            type="button"
-            aria-label="Minus 1 Sack"
-            onClick={() => step(-1)}
-            className="grid h-6 w-6 place-items-center rounded border border-amber/40 bg-surface-1 font-mono text-sm font-bold text-amber transition hover:bg-surface-3"
-          >
-            −
-          </button>
-          <span className="min-w-[18px] text-center font-condensed text-base font-bold tabular-nums text-text-1">
-            {saecke}
-          </span>
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-amber">
-            Säcke
-          </span>
-          <button
-            type="button"
-            aria-label="Plus 1 Sack"
-            onClick={() => step(1)}
-            className="grid h-6 w-6 place-items-center rounded border border-amber/40 bg-surface-1 font-mono text-sm font-bold text-amber transition hover:bg-surface-3"
-          >
-            +
-          </button>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          marginLeft: 8,
+          paddingLeft: 8,
+          borderLeft: "1px solid rgba(217,119,6,0.30)",
+          fontFamily: "var(--font-mono)",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => step(-1)}
+          aria-label="Minus 1 Sack"
+          style={{
+            width: 22,
+            height: 22,
+            minHeight: 22,
+            border: "1px solid rgba(217,119,6,0.35)",
+            background: "var(--surface)",
+            borderRadius: 6,
+            color: "var(--warn)",
+            cursor: "pointer",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <Minus size={11} strokeWidth={3} />
+        </button>
+        <span style={{ minWidth: 18, textAlign: "center", fontWeight: 700, color: "var(--fg)" }}>
+          {saecke}
         </span>
-      ) : null}
-
-      {aktiv ? (
-        <span className="rounded border border-amber/40 bg-amber/15 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-[0.05em] text-amber">
-          €
-        </span>
-      ) : null}
-    </div>
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em" }}>Säcke</span>
+        <button
+          type="button"
+          onClick={() => step(1)}
+          aria-label="Plus 1 Sack"
+          style={{
+            width: 22,
+            height: 22,
+            minHeight: 22,
+            border: "1px solid rgba(217,119,6,0.35)",
+            background: "var(--surface)",
+            borderRadius: 6,
+            color: "var(--warn)",
+            cursor: "pointer",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <Plus size={11} strokeWidth={3} />
+        </button>
+      </span>
+    </span>
   );
 }
