@@ -1,17 +1,21 @@
+/* @import MUSS vor allen anderen Regeln stehen (CSS-Spec) */
+@import "./theme/tokens.css";
+@import "./theme/design.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import "./theme/tokens.css";
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg-deep);
-  color: var(--text-1);
-  font-family: "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 * {
@@ -23,7 +27,7 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--info);
   outline-offset: 2px;
   border-radius: 6px;
 }

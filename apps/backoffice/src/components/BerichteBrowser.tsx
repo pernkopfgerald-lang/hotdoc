@@ -1,4 +1,4 @@
-import { Lock, Unlock, AlertCircle, Plus, Zap } from "lucide-react";
+import { AlertCircle, Lock, Plus, Unlock, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { listEinsaetze, manuellAnlegen, triggerMockAlarm, type EinsatzListItem } from "../api/einsaetze";
 import { BerichtDetail } from "./BerichtDetail";
@@ -41,11 +41,7 @@ export function BerichteBrowser() {
     }
   }
 
-  async function onManuellAnlegen(input: {
-    einsatzort: string;
-    einsatzart?: string;
-    grund?: string;
-  }) {
+  async function onManuellAnlegen(input: { einsatzort: string; einsatzart?: string; grund?: string }) {
     await manuellAnlegen(input);
     setManuellOpen(false);
     await reload();
@@ -53,55 +49,88 @@ export function BerichteBrowser() {
 
   return (
     <section>
-      <header className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <FilterChip
-            label="Alle"
-            active={statusFilter === "alle"}
-            onClick={() => setStatusFilter("alle")}
-          />
-          <FilterChip
-            label="Aktiv"
-            active={statusFilter === "aktiv"}
-            onClick={() => setStatusFilter("aktiv")}
-          />
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div className="chips">
+          <FilterChip label="Alle" active={statusFilter === "alle"} onClick={() => setStatusFilter("alle")} />
+          <FilterChip label="Aktiv" active={statusFilter === "aktiv"} onClick={() => setStatusFilter("aktiv")} />
           <FilterChip
             label="Abgeschlossen"
             active={statusFilter === "abgeschlossen"}
             onClick={() => setStatusFilter("abgeschlossen")}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             type="button"
             onClick={onMockAlarm}
             disabled={busy}
-            className="flex items-center gap-2 rounded-s border border-border bg-surface-2 px-3 py-1.5 text-sm hover:bg-surface-3 disabled:opacity-50"
+            className="themetoggle"
+            style={{ width: "auto", padding: "0 14px", gap: 8, display: "flex", alignItems: "center" }}
             title="Dev-Endpoint: simuliert einen BlaulichtSMS-Alarm"
           >
-            <Zap size={14} /> Mock-Alarm
+            <Zap size={14} />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Mock-Alarm</span>
           </button>
           <button
             type="button"
             onClick={() => setManuellOpen(true)}
-            className="flex items-center gap-2 rounded-s bg-red px-3 py-1.5 text-sm font-semibold text-white shadow hover:brightness-110"
+            className="cta"
+            style={{ width: "auto", padding: "10px 16px", fontSize: 14 }}
           >
-            <Plus size={14} /> Neuer Bericht (manuell)
+            <Plus size={16} />
+            Neuer Bericht (manuell)
           </button>
         </div>
       </header>
 
       {err && (
-        <div className="mb-4 flex items-center gap-2 rounded-s border border-red/40 bg-red/10 p-3 text-sm text-red">
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "var(--red-tint)",
+            color: "var(--red)",
+            fontSize: 13,
+            fontWeight: 500,
+            border: "1px solid var(--red-border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
           <AlertCircle size={16} />
           {err}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_2fr]">
-        <ul className="m-0 list-none rounded-m border border-border bg-surface-1 p-1">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(280px, 1fr) 2fr",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <ul className="card" style={{ padding: 8, listStyle: "none", margin: 0 }}>
           {items.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-text-3">
+            <li
+              style={{
+                padding: "32px 16px",
+                textAlign: "center",
+                color: "var(--fg-3)",
+                fontSize: 13,
+              }}
+            >
               {busy ? "lädt …" : "Keine Berichte gefunden."}
             </li>
           ) : (
@@ -110,18 +139,33 @@ export function BerichteBrowser() {
                 <button
                   type="button"
                   onClick={() => setSelectedId(it._id)}
-                  className={`flex w-full flex-col gap-1 rounded-md px-3 py-2.5 text-left transition hover:bg-surface-2 ${
-                    selectedId === it._id ? "bg-surface-3" : ""
-                  }`}
+                  className={`person${selectedId === it._id ? " filled" : ""}`}
+                  style={{
+                    marginBottom: 4,
+                    flexDirection: "column",
+                    alignItems: "stretch",
+                    gap: 4,
+                    padding: "10px 12px",
+                  }}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-text-1">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span className="name" style={{ fontSize: 14 }}>
                       {it.einsatzart ?? it.einsatzartFreitext ?? "—"}
                     </span>
                     <StatusBadge item={it} />
                   </div>
-                  <span className="text-xs text-text-2">{it.einsatzort}</span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-3">
+                  <span style={{ fontSize: 12, color: "var(--fg-2)", textAlign: "left" }}>{it.einsatzort}</span>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "var(--fg-3)",
+                      textAlign: "left",
+                    }}
+                  >
                     {formatDateTime(it.alarmierungZeit)} · {it.einsatzTyp === "manuell" ? "MAN" : "ALR"}
                   </span>
                 </button>
@@ -134,18 +178,24 @@ export function BerichteBrowser() {
           {selectedId ? (
             <BerichtDetail id={selectedId} onChange={reload} />
           ) : (
-            <div className="rounded-m border border-dashed border-border p-6 text-center text-sm text-text-3">
+            <div
+              style={{
+                padding: 32,
+                textAlign: "center",
+                fontSize: 14,
+                color: "var(--fg-3)",
+                border: "1px dashed var(--border-strong)",
+                borderRadius: 18,
+                background: "var(--surface)",
+              }}
+            >
               Wähle einen Bericht aus der Liste links.
             </div>
           )}
         </div>
       </div>
 
-      <ManuellerBerichtModal
-        open={manuellOpen}
-        onClose={() => setManuellOpen(false)}
-        onSubmit={onManuellAnlegen}
-      />
+      <ManuellerBerichtModal open={manuellOpen} onClose={() => setManuellOpen(false)} onSubmit={onManuellAnlegen} />
     </section>
   );
 }
@@ -153,36 +203,29 @@ export function BerichteBrowser() {
 function StatusBadge({ item }: { item: EinsatzListItem }) {
   if (item.status === "aktiv") {
     return (
-      <span className="inline-flex items-center gap-1 rounded border border-emerald/30 bg-emerald/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-emerald">
+      <span className="badge ok" style={{ gap: 4 }}>
         <Unlock size={9} /> aktiv
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded border border-text-3/30 bg-surface-3 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-text-2">
+    <span className="badge neutral" style={{ gap: 4 }}>
       <Lock size={9} /> geschützt
     </span>
   );
 }
 
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+      className="chip"
+      style={
         active
-          ? "border-text-1 bg-text-1 text-bg-page"
-          : "border-border bg-surface-2 text-text-2 hover:border-border-strong"
-      }`}
+          ? { background: "var(--fg)", color: "var(--bg)", borderColor: "var(--fg)" }
+          : undefined
+      }
     >
       {label}
     </button>

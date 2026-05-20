@@ -1,5 +1,5 @@
 import { EINSATZARTEN } from "@hotdoc/shared";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useState } from "react";
 
 interface Props {
@@ -44,51 +44,91 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center px-4">
-      <button
-        type="button"
-        aria-label="Schließen"
-        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-md rounded-m border border-border bg-surface-1 p-5 shadow-2xl">
-        <header className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="m-0 text-lg font-semibold">Neuer Bericht (manuell)</h3>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-text-3">
-              FR-12 · ohne BlaulichtSMS-Alarm
-            </p>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2000,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(0, 0, 0, 0.6)",
+        backdropFilter: "blur(4px)",
+        padding: 16,
+      }}
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="card" style={{ width: "100%", maxWidth: 480 }}>
+        <header
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                background: "var(--info-tint)",
+                color: "var(--info)",
+              }}
+            >
+              <Plus size={18} strokeWidth={2.4} />
+            </span>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)" }}>
+                Neuer Bericht (manuell)
+              </h3>
+              <p
+                style={{
+                  marginTop: 4,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--fg-3)",
+                }}
+              >
+                FR-12 · ohne BlaulichtSMS-Alarm
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full hover:bg-surface-3"
             aria-label="Schließen"
+            className="themetoggle"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </header>
 
-        <label className="block">
-          <span className="block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-            Einsatzort *
-          </span>
+        <div className="field">
+          <label className="caption">Einsatzort *</label>
           <input
             value={einsatzort}
             onChange={(e) => setEinsatzort(e.target.value)}
-            placeholder="z.B. Eberstalzeller Str. 5"
-            className="mt-1 w-full rounded-s border border-border bg-surface-2 px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
+            placeholder="z. B. Eberstalzeller Str. 5"
+            className="input"
           />
-        </label>
+        </div>
 
-        <label className="mt-3 block">
-          <span className="block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-            Einsatzart
-          </span>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label className="caption">Einsatzart</label>
           <select
             value={einsatzart}
             onChange={(e) => setEinsatzart(e.target.value)}
-            className="mt-1 w-full rounded-s border border-border bg-surface-2 px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
+            className="input"
+            style={{ fontFamily: "inherit" }}
           >
             <option value="">— wählen —</option>
             {EINSATZARTEN.map((a) => (
@@ -97,42 +137,53 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
-        <label className="mt-3 block">
-          <span className="block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-            oder Freitext
-          </span>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label className="caption">oder Freitext</label>
           <input
             value={freitext}
             onChange={(e) => setFreitext(e.target.value)}
             placeholder="Wenn Einsatzart nicht passt …"
-            className="mt-1 w-full rounded-s border border-border bg-surface-2 px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
+            className="input"
           />
-        </label>
+        </div>
 
-        <label className="mt-3 block">
-          <span className="block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-            Grund der Anlage (optional, für Audit)
-          </span>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label className="caption">Grund der Anlage (Audit)</label>
           <textarea
             value={grund}
             onChange={(e) => setGrund(e.target.value)}
             rows={2}
-            placeholder="z.B. Pumparbeiten ohne vorherigen Alarm"
-            className="mt-1 w-full rounded-s border border-border bg-surface-2 p-2 text-sm focus:border-border-strong focus:outline-none"
+            placeholder="z. B. Pumparbeiten ohne vorherigen Alarm"
+            className="input"
+            style={{ resize: "vertical" }}
           />
-        </label>
+        </div>
 
         {err && (
-          <div className="mt-3 rounded-s border border-red/40 bg-red/10 p-2 text-sm text-red">{err}</div>
+          <div
+            style={{
+              marginTop: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--red-tint)",
+              color: "var(--red)",
+              fontSize: 13,
+              fontWeight: 500,
+              border: "1px solid var(--red-border)",
+            }}
+          >
+            {err}
+          </div>
         )}
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-m border border-border px-3 py-2 text-sm"
+            className="themetoggle"
+            style={{ width: "auto", padding: "0 14px" }}
           >
             Abbrechen
           </button>
@@ -140,7 +191,8 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
             type="button"
             onClick={submit}
             disabled={busy}
-            className="rounded-m bg-red px-3 py-2 text-sm font-semibold text-white shadow disabled:opacity-50"
+            className="cta"
+            style={{ width: "auto", padding: "10px 16px", fontSize: 14 }}
           >
             {busy ? "Anlegen …" : "Anlegen"}
           </button>

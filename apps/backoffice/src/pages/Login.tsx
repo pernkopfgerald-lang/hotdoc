@@ -25,7 +25,7 @@ export function Login({ onLoggedIn }: Props) {
       if (err instanceof ApiError && err.status === 401) {
         setError("Benutzername oder Passwort ungültig");
       } else if (err instanceof ApiError && err.status === 404) {
-        setError("Auth-Endpoint noch nicht implementiert (Phase folgt). Hier wird der Login funktional.");
+        setError("Auth-Endpoint noch nicht implementiert.");
       } else {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -34,26 +34,61 @@ export function Login({ onLoggedIn }: Props) {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center px-6">
-      <div className="w-full max-w-sm">
-        <header className="mb-6 text-center">
-          <h1 className="font-condensed text-3xl font-bold tracking-tight">
-            <span className="text-red">Hot</span>
-            <span className="text-text-1">Doc</span>
+    <main
+      className="page"
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: 24,
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        <header style={{ textAlign: "center", marginBottom: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <span
+            className="applogo"
+            aria-hidden
+            style={{ width: 64, height: 64, borderRadius: 18 }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" width={38} height={38}>
+              <path
+                d="M12 2c.5 4 4 5.5 4 9.5 0 3.6-1.8 6.5-4 6.5s-4-2.9-4-6.5C8 9 9.5 8 12 2z"
+                fill="#E63946"
+              />
+              <path
+                d="M12 7c0 3 2 4 2 6.5s-1 3.5-2 3.5-2-1-2-3.5S12 10 12 7z"
+                fill="#FFB703"
+              />
+              <circle cx="12" cy="20.5" r="1.8" fill="#FFB703" />
+            </svg>
+          </span>
+          <h1
+            style={{
+              fontSize: 28,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              color: "var(--fg)",
+            }}
+          >
+            HotDoc
           </h1>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-3">
+          <p
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+            }}
+          >
             Backoffice · FF Eberstalzell
           </p>
         </header>
 
-        <form
-          onSubmit={submit}
-          className="rounded-m border border-border bg-surface-1 p-6 shadow"
-        >
-          <label className="block">
-            <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-text-3">
-              Benutzername
-            </span>
+        <form onSubmit={submit} className="card">
+          <div className="field">
+            <label className="caption">Benutzername</label>
             <input
               type="text"
               autoComplete="username"
@@ -61,14 +96,12 @@ export function Login({ onLoggedIn }: Props) {
               onChange={(e) => setUsername(e.target.value)}
               required
               minLength={3}
-              className="mt-1.5 w-full rounded-s border border-border bg-surface-2 px-3 py-2.5 text-text-1 focus:border-border-strong focus:outline-none"
+              className="input"
             />
-          </label>
+          </div>
 
-          <label className="mt-4 block">
-            <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-text-3">
-              Passwort
-            </span>
+          <div className="field" style={{ marginTop: 14 }}>
+            <label className="caption">Passwort</label>
             <input
               type="password"
               autoComplete="current-password"
@@ -76,12 +109,23 @@ export function Login({ onLoggedIn }: Props) {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              className="mt-1.5 w-full rounded-s border border-border bg-surface-2 px-3 py-2.5 text-text-1 focus:border-border-strong focus:outline-none"
+              className="input"
             />
-          </label>
+          </div>
 
           {error && (
-            <div className="mt-4 rounded-s border border-red/40 bg-red/10 p-3 text-sm text-red">
+            <div
+              style={{
+                marginTop: 16,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--red-tint)",
+                color: "var(--red)",
+                fontSize: 13,
+                fontWeight: 500,
+                border: "1px solid var(--red-border)",
+              }}
+            >
               {error}
             </div>
           )}
@@ -89,16 +133,28 @@ export function Login({ onLoggedIn }: Props) {
           <button
             type="submit"
             disabled={busy}
-            className="mt-5 w-full rounded-m bg-red px-4 py-3 font-semibold text-white shadow transition hover:brightness-110 disabled:opacity-50"
+            className="cta"
+            style={{ marginTop: 20, padding: "16px 20px", fontSize: 15 }}
           >
             {busy ? "Anmelden …" : "Anmelden"}
           </button>
         </form>
 
-        <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-wider text-text-3">
+        <p
+          style={{
+            marginTop: 18,
+            textAlign: "center",
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--fg-3)",
+          }}
+        >
           Tablet-Anmeldung läuft automatisch über die SIM-Karte
         </p>
       </div>
-    </div>
+    </main>
   );
 }

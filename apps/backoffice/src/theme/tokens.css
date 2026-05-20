@@ -1,41 +1,165 @@
-/* Identisch zur PWA — wir importieren mittelfristig aus shared, hier lokal kopiert für Phase 1. */
+/* ============================================================
+   HotDoc — Design-Tokens (portiert aus Claude Design)
+   Tablet-Hochformat · Inter + JetBrains Mono · Apple-style
+   Brand: FF Eberstalzell — Rot #C8102E
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 :root {
-  --radius-s: 7px;
-  --radius-m: 11px;
-  --radius-l: 16px;
+  /* Schichten */
+  --bg:           #F4F6F9;
+  --bg-deep:      #F4F6F9;          /* Alias für Bestandscode */
+  --bg-page:      #F4F6F9;
+  --surface:      #FFFFFF;
+  --surface-1:    #FFFFFF;
+  --surface-2:    #F1F4F8;
+  --surface-3:    #E8ECF2;
+  --border:       #E4E8EE;
+  --border-strong:#D2D8E0;
+
+  /* Text-Hierarchie */
+  --fg:           #0F172A;
+  --fg-2:         #475569;
+  --fg-3:         #94A3B8;
+  --fg-4:         #CBD5E1;
+  --text-1:       var(--fg);        /* Aliase für Bestandscode */
+  --text-2:       var(--fg-2);
+  --text-3:       var(--fg-3);
+
+  /* FF-Brand */
+  --red:          #C8102E;
+  --red-strong:   #A30B25;
+  --red-tint:     #FFF1F2;
+  --red-tint-2:   #FEE2E2;
+  --red-bg:       var(--red-tint);
+  --red-border:   #F3C2C8;
+  --red-glow:     rgba(200, 16, 46, 0.30);
+
+  /* Status-Farben */
+  --ok:           #16A34A;
+  --ok-tint:      #DCFCE7;
+  --emerald:      var(--ok);
+  --emerald-bg:   var(--ok-tint);
+  --emerald-border: rgba(22, 163, 74, 0.30);
+  --emerald-glow: rgba(22, 163, 74, 0.30);
+
+  --warn:         #D97706;
+  --warn-tint:    #FEF3C7;
+  --amber:        var(--warn);
+  --amber-soft:   var(--warn-tint);
+  --amber-border: rgba(217, 119, 6, 0.40);
+  --amber-glow:   rgba(217, 119, 6, 0.30);
+
+  --info:         #2563EB;
+  --info-tint:    #DBEAFE;
+  --blue:         var(--info);
+  --blue-bg:      var(--info-tint);
+  --blue-border:  rgba(37, 99, 235, 0.30);
+  --blue-glow:    rgba(37, 99, 235, 0.30);
+
+  --as:           #7C3AED;     /* Atemschutz */
+  --as-tint:      #F1ECFE;
+  --rank:         #2563EB;     /* Dienstgrad-Badges */
+
+  /* Fonts */
+  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:    "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* Shadows */
+  --shadow-card:  0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04);
+  --shadow-alarm: 0 1px 2px rgba(200, 16, 46, 0.10), 0 8px 32px rgba(200, 16, 46, 0.18);
+  --shadow-cta:   0 2px 6px rgba(200, 16, 46, 0.20), 0 12px 32px rgba(200, 16, 46, 0.30);
+
+  --card-gradient: var(--surface);
+
+  /* Radii */
+  --radius-s: 10px;
+  --radius-m: 14px;
+  --radius-l: 18px;
 }
 
+/* ============================================================
+   DARK THEME — Nacht-Einsatz, hoher Kontrast
+   ============================================================ */
 [data-theme="dark"] {
-  --bg-deep: #08080b;
-  --bg-page: #0d0d12;
-  --surface-1: #16161d;
-  --surface-2: #1e1e27;
-  --surface-3: #262631;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --text-1: #ededf2;
-  --text-2: #a8a8b5;
-  --text-3: #66666f;
-  --red: #ef4444;
-  --amber: #f59e0b;
-  --emerald: #10b981;
-  --blue: #6da6ff;
+  --bg:           #0E1116;
+  --bg-deep:      #0E1116;
+  --bg-page:      #0E1116;
+  --surface:      #181C24;
+  --surface-1:    #181C24;
+  --surface-2:    #1F242E;
+  --surface-3:    #262C38;
+  --border:       #2A3140;
+  --border-strong:#3A4254;
+
+  --fg:           #F1F4F9;
+  --fg-2:         #B0B8C7;
+  --fg-3:         #7B8494;
+  --fg-4:         #4E5666;
+  --text-1:       var(--fg);
+  --text-2:       var(--fg-2);
+  --text-3:       var(--fg-3);
+
+  --red:          #FF4D5E;
+  --red-strong:   #FF2C44;
+  --red-tint:     rgba(255, 77, 94, 0.10);
+  --red-tint-2:   rgba(255, 77, 94, 0.18);
+  --red-bg:       var(--red-tint);
+  --red-border:   rgba(255, 77, 94, 0.35);
+  --red-glow:     rgba(255, 77, 94, 0.35);
+
+  --ok:           #2DD4A5;
+  --ok-tint:      rgba(45, 212, 165, 0.14);
+  --emerald:      var(--ok);
+  --emerald-bg:   var(--ok-tint);
+  --emerald-border: rgba(45, 212, 165, 0.32);
+  --emerald-glow: rgba(45, 212, 165, 0.32);
+
+  --warn:         #F5A524;
+  --warn-tint:    rgba(245, 165, 36, 0.14);
+  --amber:        var(--warn);
+  --amber-soft:   var(--warn-tint);
+  --amber-border: rgba(245, 165, 36, 0.40);
+  --amber-glow:   rgba(245, 165, 36, 0.30);
+
+  --info:         #5AA9FF;
+  --info-tint:    rgba(90, 169, 255, 0.14);
+  --blue:         var(--info);
+  --blue-bg:      var(--info-tint);
+  --blue-border:  rgba(90, 169, 255, 0.40);
+  --blue-glow:    rgba(90, 169, 255, 0.30);
+
+  --as:           #B388FF;
+  --as-tint:      rgba(179, 136, 255, 0.14);
+  --rank:         #5AA9FF;
+
+  --shadow-card:  0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 18px rgba(0, 0, 0, 0.30);
+  --shadow-alarm: 0 1px 2px rgba(255, 77, 94, 0.18), 0 8px 32px rgba(255, 77, 94, 0.18);
+  --shadow-cta:   0 2px 6px rgba(255, 77, 94, 0.30), 0 12px 32px rgba(255, 77, 94, 0.34);
+
+  --card-gradient: var(--surface);
 }
 
-[data-theme="light"] {
-  --bg-deep: #f3f3f6;
-  --bg-page: #f7f7fa;
-  --surface-1: #ffffff;
-  --surface-2: #fafafc;
-  --surface-3: #f0f0f3;
-  --border: rgba(15, 18, 30, 0.08);
-  --border-strong: rgba(15, 18, 30, 0.2);
-  --text-1: #0a0a0e;
-  --text-2: #4a4a55;
-  --text-3: #7e7e8a;
-  --red: #dc2626;
-  --amber: #b45309;
-  --emerald: #047857;
-  --blue: #1d4ed8;
+/* ============================================================
+   Animationen
+   ============================================================ */
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(200, 16, 46, 0.18); }
+  50%      { box-shadow: 0 0 0 7px rgba(200, 16, 46, 0.05); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1);    opacity: 0.8; }
+  100% { transform: scale(1.18); opacity: 0;   }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }

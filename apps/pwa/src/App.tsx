@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { db, getFahrzeugConfig } from "./db/pouch";
 import { seedIfEmpty } from "./db/seed";
-import { Dashboard } from "./pages/Dashboard";
-import { LfaBPage } from "./pages/LfaBPage";
+import { BerichtPage } from "./pages/BerichtPage";
 import { Setup } from "./pages/Setup";
+import { ZentralePage } from "./pages/ZentralePage";
 import type { FahrzeugId } from "@hotdoc/shared";
 
 type State =
@@ -34,10 +34,6 @@ export function App() {
     setState({ kind: "setup" });
   }
 
-  /**
-   * In-App-Wechsel auf ein anderes Fahrzeug. Persistiert die neue Auswahl
-   * und remountet die Page durch State-Wechsel. Kein Reset-Setup nötig.
-   */
   async function switchFahrzeug(id: FahrzeugId) {
     const doc = await getFahrzeugConfig();
     if (doc) {
@@ -51,15 +47,25 @@ export function App() {
         setupAm: new Date().toISOString(),
       });
     }
-    // Loading-Zwischenschritt erzwingt Remount aller Pages mit frischer Page-ID
     setState({ kind: "loading" });
     setTimeout(() => setState({ kind: "ready", fahrzeugId: id }), 0);
   }
 
   if (state.kind === "loading") {
     return (
-      <div className="grid min-h-screen place-items-center text-text-3">
-        <span className="font-mono text-xs uppercase tracking-wider">lädt …</span>
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          minHeight: "100vh",
+          color: "var(--fg-3)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+        }}
+      >
+        lädt …
       </div>
     );
   }
@@ -68,20 +74,20 @@ export function App() {
     return <Setup onSetupDone={(id) => setState({ kind: "ready", fahrzeugId: id })} />;
   }
 
-  // LFA-B-Tablet: volles Erfassungs-UI
-  if (state.fahrzeugId === "lfa-b") {
+  // Zentrale → Hauptbericht-Ansicht
+  if (state.fahrzeugId === "zentrale") {
     return (
-      <LfaBPage
-        key={state.fahrzeugId}
+      <ZentralePage
+        key="zentrale"
         onSwitchFahrzeug={switchFahrzeug}
         onResetSetup={resetSetup}
       />
     );
   }
 
-  // Andere Fahrzeuge / Zentrale: zeigen vorerst das Dashboard
+  // KDO/TLF/LFA-B/MTF → einheitliche Fahrzeugbericht-Page
   return (
-    <Dashboard
+    <BerichtPage
       key={state.fahrzeugId}
       fahrzeugId={state.fahrzeugId}
       onSwitchFahrzeug={switchFahrzeug}

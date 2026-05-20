@@ -1,4 +1,4 @@
-import { Lock, Unlock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, Unlock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { abschluss, getEinsatz, reaktivieren, type EinsatzListItem } from "../api/einsaetze";
 
@@ -67,46 +67,90 @@ export function BerichtDetail({ id, onChange }: Props) {
 
   if (!doc) {
     return (
-      <div className="rounded-m border border-border bg-surface-1 p-6 text-sm text-text-3">
+      <div
+        className="card"
+        style={{
+          textAlign: "center",
+          color: "var(--fg-3)",
+          fontSize: 14,
+          padding: 24,
+        }}
+      >
         {busy ? "lädt …" : err ?? "—"}
       </div>
     );
   }
 
   return (
-    <article className="rounded-m border border-border bg-surface-1 p-5">
-      <header className="mb-4 flex items-start justify-between gap-4">
+    <article className="card">
+      <header
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 16,
+        }}
+      >
         <div>
-          <h3 className="m-0 text-xl font-semibold text-text-1">
+          <h3 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", color: "var(--fg)" }}>
             {(doc as { einsatzart?: string; einsatzartFreitext?: string }).einsatzart ??
               (doc as { einsatzartFreitext?: string }).einsatzartFreitext ??
               "(ohne Einsatzart)"}
           </h3>
-          <p className="mt-0.5 text-sm text-text-2">{doc.einsatzort}</p>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-text-3">
-            {doc._id} · {doc.einsatzTyp === "manuell" ? "manuell angelegt" : "BlaulichtSMS-Alarm"}
+          <p style={{ marginTop: 4, fontSize: 14, color: "var(--fg-2)" }}>{doc.einsatzort}</p>
+          <p
+            style={{
+              marginTop: 6,
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+            }}
+          >
+            {doc._id} · {doc.einsatzTyp === "manuell" ? "manuell" : "BlaulichtSMS"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {doc.status === "aktiv" ? (
-            <span className="inline-flex items-center gap-1.5 rounded border border-emerald/30 bg-emerald/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-emerald">
-              <Unlock size={12} /> aktiv
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded border border-text-3/30 bg-surface-3 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-text-2">
-              <Lock size={12} /> geschützt
-            </span>
-          )}
-        </div>
+        {doc.status === "aktiv" ? (
+          <span className="badge ok" style={{ gap: 6, padding: "4px 10px" }}>
+            <Unlock size={11} /> aktiv
+          </span>
+        ) : (
+          <span className="badge neutral" style={{ gap: 6, padding: "4px 10px" }}>
+            <Lock size={11} /> geschützt
+          </span>
+        )}
       </header>
 
       {err && (
-        <div className="mb-3 flex items-center gap-2 rounded-s border border-red/40 bg-red/10 p-3 text-sm text-red">
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "var(--red-tint)",
+            color: "var(--red)",
+            fontSize: 13,
+            fontWeight: 500,
+            border: "1px solid var(--red-border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
           <AlertTriangle size={16} /> {err}
         </div>
       )}
 
-      <dl className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+      <dl
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 12,
+        }}
+      >
         <Field label="Alarmierung">{formatDateTime((doc as { alarmierungZeit: string }).alarmierungZeit)}</Field>
         <Field label="Status">{doc.status}</Field>
         <Field label="Schreibschutz">{doc.schreibschutz ? "JA" : "NEIN"}</Field>
@@ -119,27 +163,66 @@ export function BerichtDetail({ id, onChange }: Props) {
       </dl>
 
       {doc.reaktivierungen && doc.reaktivierungen.length > 0 && (
-        <section className="mt-5 rounded-s border border-amber/30 bg-amber/10 p-3">
-          <header className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-amber">
-            <AlertTriangle size={12} /> Reaktivierungs-Audit-Trail
+        <section
+          style={{
+            marginTop: 20,
+            padding: 14,
+            borderRadius: 12,
+            background: "var(--warn-tint)",
+            border: "1px solid var(--amber-border)",
+          }}
+        >
+          <header
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "var(--warn)",
+              marginBottom: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <AlertTriangle size={12} /> Reaktivierungs-Audit
           </header>
-          <ul className="m-0 list-none space-y-1.5 text-xs">
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
             {doc.reaktivierungen.map((r, i) => (
-              <li key={i} className="border-l-2 border-amber pl-2 text-text-1">
-                <span className="font-mono text-text-3">{formatDateTime(r.am)}</span> · {r.grund}
+              <li
+                key={i}
+                style={{
+                  borderLeft: "2px solid var(--warn)",
+                  paddingLeft: 10,
+                  fontSize: 12,
+                  color: "var(--fg)",
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-mono)", color: "var(--fg-3)" }}>
+                  {formatDateTime(r.am)}
+                </span>{" "}
+                · {r.grund}
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <footer className="mt-5 flex flex-wrap gap-2">
+      <footer style={{ marginTop: 20, display: "flex", gap: 10, flexWrap: "wrap" }}>
         {doc.status === "aktiv" ? (
           <button
             type="button"
             onClick={onAbschluss}
             disabled={busy}
-            className="flex items-center gap-2 rounded-m border border-emerald/50 bg-gradient-to-b from-emerald to-emerald/80 px-4 py-2 text-sm font-semibold text-white shadow disabled:opacity-50"
+            className="cta"
+            style={{
+              width: "auto",
+              padding: "12px 18px",
+              fontSize: 14,
+              background: "linear-gradient(180deg, var(--ok) 0%, color-mix(in srgb, var(--ok) 70%, #000) 100%)",
+              boxShadow: "0 4px 12px rgba(22, 163, 74, 0.30)",
+            }}
           >
             <CheckCircle2 size={16} /> Abschließen
           </button>
@@ -148,7 +231,14 @@ export function BerichtDetail({ id, onChange }: Props) {
             type="button"
             onClick={() => setReaktivModal(true)}
             disabled={busy}
-            className="flex items-center gap-2 rounded-m border border-amber/50 bg-amber/15 px-4 py-2 text-sm font-semibold text-amber disabled:opacity-50"
+            className="cta"
+            style={{
+              width: "auto",
+              padding: "12px 18px",
+              fontSize: 14,
+              background: "linear-gradient(180deg, var(--warn) 0%, color-mix(in srgb, var(--warn) 70%, #000) 100%)",
+              boxShadow: "0 4px 12px rgba(217, 119, 6, 0.30)",
+            }}
           >
             <Unlock size={16} /> Reaktivieren …
           </button>
@@ -156,36 +246,42 @@ export function BerichtDetail({ id, onChange }: Props) {
       </footer>
 
       {reaktivModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center px-4">
-          <button
-            type="button"
-            aria-label="Schließen"
-            className="absolute inset-0 bg-black/55"
-            onClick={() => setReaktivModal(false)}
-          />
-          <div className="relative w-full max-w-md rounded-m border border-border bg-surface-1 p-5 shadow-2xl">
-            <h4 className="m-0 text-lg font-semibold">Bericht reaktivieren</h4>
-            <p className="mt-1 text-sm text-text-2">
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(0, 0, 0, 0.55)",
+            padding: 16,
+          }}
+        >
+          <div className="card" style={{ width: "100%", maxWidth: 480 }}>
+            <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--fg)" }}>
+              Bericht reaktivieren
+            </h4>
+            <p style={{ marginTop: 6, fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
               Der Bericht wurde am{" "}
               <strong>{doc.einsatzende ? formatDateTime(doc.einsatzende) : "—"}</strong>{" "}
               abgeschlossen. Eine Reaktivierung wird mit Audit-Trail dokumentiert.
             </p>
-            <label className="mt-4 block">
-              <span className="block font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-text-3">
-                Grund (min. 10 Zeichen)
-              </span>
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="caption">Grund (min. 10 Zeichen)</label>
               <textarea
                 value={grund}
                 onChange={(e) => setGrund(e.target.value)}
                 rows={3}
-                className="mt-1 w-full rounded-s border border-border bg-surface-2 p-2 text-sm focus:border-border-strong focus:outline-none"
+                className="input"
+                style={{ resize: "vertical" }}
               />
-            </label>
-            <div className="mt-4 flex justify-end gap-2">
+            </div>
+            <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button
                 type="button"
                 onClick={() => setReaktivModal(false)}
-                className="rounded-m border border-border px-3 py-2 text-sm"
+                className="themetoggle"
+                style={{ width: "auto", padding: "0 14px" }}
               >
                 Abbrechen
               </button>
@@ -193,7 +289,13 @@ export function BerichtDetail({ id, onChange }: Props) {
                 type="button"
                 onClick={onReaktivieren}
                 disabled={busy || grund.trim().length < 10}
-                className="rounded-m bg-amber px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="cta"
+                style={{
+                  width: "auto",
+                  padding: "10px 16px",
+                  fontSize: 14,
+                  background: "linear-gradient(180deg, var(--warn) 0%, color-mix(in srgb, var(--warn) 70%, #000) 100%)",
+                }}
               >
                 Reaktivieren
               </button>
@@ -207,11 +309,18 @@ export function BerichtDetail({ id, onChange }: Props) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <dt className="font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-text-3">
-        {label}
-      </dt>
-      <dd className="m-0 mt-0.5 text-text-1">{children}</dd>
+    <div className="field">
+      <dt className="caption" style={{ marginBottom: 4 }}>{label}</dt>
+      <dd
+        style={{
+          margin: 0,
+          fontSize: 14,
+          fontWeight: 600,
+          color: "var(--fg)",
+        }}
+      >
+        {children}
+      </dd>
     </div>
   );
 }

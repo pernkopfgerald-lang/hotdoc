@@ -23,13 +23,13 @@ import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import {
   DEMO_ALARM,
-  DEMO_GEAR_LFA_B,
   DEMO_HYDRANTEN,
   EINSATZ_POS,
   HOME_POS,
   initialChronik,
   makeInitialFleet,
 } from "../data/demo-alarm";
+import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import { getAllPersonen } from "../db/seed";
 import type { RecordingResult } from "../lib/audio";
 import { haversineKm, useGeolocation } from "../lib/geo";
@@ -37,7 +37,6 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
 
-const FAHRZEUG_ID = "lfa-b" as const;
 const ROAD_FACTOR = 1.3;
 
 const DEFAULT_AUFTRAG_TYPEN: readonly string[] = [
@@ -69,12 +68,19 @@ interface EinsatzInstance {
 }
 
 interface Props {
+  fahrzeugId: FahrzeugId;
   onSwitchFahrzeug: (id: FahrzeugId) => void;
   onResetSetup: () => void;
 }
 
-export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
-  const fahrzeug = FAHRZEUGE[FAHRZEUG_ID];
+/**
+ * Generischer Fahrzeugbericht — funktioniert für KDO / TLF / LFA-B / MTF.
+ * Mannschaftsplätze und Geräteliste kommen aus der Fahrzeugkonfiguration.
+ * Für Zentrale gibt es eine eigene Page (Hauptbericht, Anhang B des Spec).
+ */
+export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Props) {
+  const fahrzeug = FAHRZEUGE[fahrzeugId];
+  const gearList = GEAR_BY_FAHRZEUG[fahrzeugId];
 
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState<PickerTarget | null>(null);
@@ -94,7 +100,7 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
         { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
         (_, i) => emptySlot(i + 1),
       ),
-      gearSelected: new Set(["ts-pumpe", "schlauchmaterial"]),
+      gearSelected: new Set(),
       oelSaecke: 0,
       auftraege: [],
       chronik: initialChronik(fahrzeug.funkrufname),
@@ -102,18 +108,20 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     },
   ]);
   const [activeId, setActiveId] = useState<string>(DEMO_ALARM.alarmId);
-  const [fleet, setFleet] = useState<MapPosition[]>(makeInitialFleet);
+  const [fleet, setFleet] = useState<MapPosition[]>(() => makeInitialFleet());
 
   const active = einsaetze.find((e) => e.id === activeId) ?? einsaetze[0]!;
 
   const geo = useGeolocation();
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
 
+  // Personalliste laden (für LFA-B mit Demo-Vorbelegung; sonst nur Liste)
   useEffect(() => {
     void (async () => {
       const docs = await getAllPersonen();
       const list = docs as unknown as PickPerson[];
       setPersonen(list);
+      if (fahrzeugId !== "lfa-b") return;
       const byId = new Map(list.map((p) => [p.syBosId, p]));
       const eder = byId.get(107375) ?? null;
       const bruckner = byId.get(123057) ?? null;
@@ -132,12 +140,13 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
                   if (i === 1 && almhofer) return { ...m, person: almhofer };
                   return m;
                 }),
+                gearSelected: new Set(["ts-pumpe", "schlauchmaterial"]),
               }
             : e,
         ),
       );
     })();
-  }, []);
+  }, [fahrzeugId]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -333,7 +342,6 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
     { label: "Aufträge", value: String(active.auftraege.length) },
   ];
 
-  // Datum/Zeit aus Alarm
   const datum = new Date(active.alarm.alarmierungZeit);
   const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
   const zeitStr = `${pad(datum.getHours())}:${pad(datum.getMinutes())}`;
@@ -419,7 +427,7 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
               </div>
               <div className="vehicle-row">
                 {(["kdo", "tlf-a-4000", "lfa-b", "mtf", "zentrale"] as const).map((id) => {
-                  const active2 = id === FAHRZEUG_ID;
+                  const active2 = id === fahrzeugId;
                   return (
                     <button
                       key={id}
@@ -476,7 +484,7 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
             </section>
 
             <GearChips
-              items={DEMO_GEAR_LFA_B}
+              items={gearList}
               selected={active.gearSelected}
               oelbindemittelSaecke={active.oelSaecke}
               onToggle={toggleGear}
@@ -539,7 +547,7 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
-        v0.6 UC2
+        v0.7 UC2
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
         <span className="sep">·</span>
@@ -573,7 +581,7 @@ export function LfaBPage({ onSwitchFahrzeug, onResetSetup }: Props) {
 
       <VehicleSwitcherModal
         open={vehicleSwitcherOpen}
-        current={FAHRZEUG_ID}
+        current={fahrzeugId}
         onSelect={handleSwitchVehicle}
         onClose={() => setVehicleSwitcherOpen(false)}
       />
