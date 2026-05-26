@@ -20,13 +20,27 @@ import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { DEMO_ALARM } from "../data/demo-alarm";
 import { apiCall, getTabletToken } from "../lib/api";
-import { fetchChronikDiff } from "../lib/chronik-sync";
+import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { useGeolocation } from "../lib/geo";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
 interface Props {
   onSwitchFahrzeug: (id: FahrzeugId) => void;
   onResetSetup: () => void;
+}
+
+interface EinsatzApiDoc {
+  _id: string;
+  einsatzort?: string;
+  einsatzart?: string;
+  einsatzartFreitext?: string;
+  alarmId?: string;
+  alarmierungZeit?: string;
+  alarmierungAuthor?: string;
+  alarmierungText?: string;
+  koordinaten?: { lat: number; lng: number };
+  status?: string;
+  einsatzTyp?: string;
 }
 
 /**
@@ -43,6 +57,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
   const geo = useGeolocation();
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
   const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
+  const [aktiverEinsatz, setAktiverEinsatz] = useState<EinsatzApiDoc | null>(null);
   const [downloadBusy, setDownloadBusy] = useState<"pdf" | "spick" | null>(null);
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
 
@@ -52,14 +67,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
     let cancelled = false;
     const load = async () => {
       try {
-        const r = await apiCall<{ items: Array<{ _id: string; status: string }> }>(
+        const r = await apiCall<{ items: EinsatzApiDoc[] }>(
           "/api/einsaetze?status=aktiv",
         );
         if (cancelled) return;
         const first = r.items[0];
-        if (first) setAktiverEinsatzId(first._id);
+        if (first) {
+          setAktiverEinsatzId(first._id);
+          setAktiverEinsatz(first);
+        }
       } catch {
-        // Backend nicht erreichbar — Fallback auf Demo-ID damit Buttons nicht völlig tot wirken
+        // Backend nicht erreichbar — bleibt bei null, UI zeigt Demo-Fallback
       }
     };
     void load();
@@ -136,17 +154,29 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
     { id: "mtf", status: "wartend", mannschaft: 0 },
   ];
 
+  // Live-Daten des aktiven Einsatzes (aus Backend) — fallen auf DEMO_ALARM
+  // zurück nur solange kein echter Einsatz geladen wurde. Sobald BlaulichtSMS
+  // einen echten Alarm sendet, werden diese Felder ausgetauscht.
+  const e = aktiverEinsatz;
+  const einsatzId = e?._id?.replace(/^einsatz:/, "") ?? DEMO_ALARM.alarmId;
+  const einsatzort = e?.einsatzort ?? DEMO_ALARM.einsatzort;
+  const einsatzart =
+    e?.einsatzart ?? e?.einsatzartFreitext ?? e?.alarmierungText ?? DEMO_ALARM.einsatzart;
+  const alarmierungZeit = e?.alarmierungZeit ?? DEMO_ALARM.alarmierungZeit;
+  const alarmierungAuthor = e?.alarmierungAuthor ?? DEMO_ALARM.alarmierungAuthor;
+  const einsatzTyp: "alarm" | "manuell" = e?.einsatzTyp === "manuell" ? "manuell" : "alarm";
+
   const tabs: EinsatzTabSummary[] = [
     {
-      id: DEMO_ALARM.alarmId,
-      einsatzart: DEMO_ALARM.einsatzart,
-      einsatzort: DEMO_ALARM.einsatzort,
+      id: einsatzId,
+      einsatzart,
+      einsatzort,
       status: "aktiv",
-      manuell: false,
+      manuell: einsatzTyp === "manuell",
     },
   ];
 
-  const datum = new Date(DEMO_ALARM.alarmierungZeit);
+  const datum = new Date(alarmierungZeit);
   const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
 
   const aggregateMannschaft = fahrzeugStatus.reduce((sum, f) => sum + f.mannschaft, 0);
@@ -170,7 +200,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
-      const id = aktiverEinsatzId ?? DEMO_ALARM.alarmId;
+      const id = aktiverEinsatzId ?? `einsatz:${einsatzId}`;
       const knownIds = new Set(chronik.map((c) => c.id));
       const neue = await fetchChronikDiff(id, knownIds);
       if (cancelled || neue.length === 0) return;
@@ -194,9 +224,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
 
   return (
     <div>
-      <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={DEMO_ALARM.alarmId} geo={geo} />
+      <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={einsatzId} geo={geo} />
 
-      <EinsatzTabs tabs={tabs} activeId={DEMO_ALARM.alarmId} onSelect={() => {}} onNew={() => {}} />
+      <EinsatzTabs tabs={tabs} activeId={einsatzId} onSelect={() => {}} onNew={() => {}} />
 
       <DemoBanner />
 
@@ -226,20 +256,20 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
                   </span>
                   <span className="alarm-tag muted">· Florian Eberstalzell · Hauptbericht</span>
                 </div>
-                <div className="alarm-title">{DEMO_ALARM.einsatzart}</div>
+                <div className="alarm-title">{einsatzart}</div>
                 <div className="alarm-addr">
                   <MapPin size={16} />
-                  {DEMO_ALARM.einsatzort}
+                  {einsatzort}
                 </div>
               </div>
             </div>
-            <div className="alarm-no">#{DEMO_ALARM.alarmId}</div>
+            <div className="alarm-no">#{einsatzId}</div>
           </div>
 
           <div className="alarm-meta">
             <div className="cell">
               <div className="lbl">Alarmiert</div>
-              <div className="val">{formatTime(DEMO_ALARM.alarmierungZeit)}</div>
+              <div className="val">{formatTime(alarmierungZeit)}</div>
             </div>
             <div className="cell">
               <div className="lbl">Fahrzeuge aktiv</div>
@@ -276,12 +306,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
           </div>
           <div className="grid-3" style={{ gap: 14 }}>
             <ReadOnly label="Datum" value={datumStr} />
-            <ReadOnly label="Alarmiert" value={formatTime(DEMO_ALARM.alarmierungZeit)} />
-            <ReadOnly label="Auslöser" value={DEMO_ALARM.alarmierungAuthor} />
+            <ReadOnly label="Alarmiert" value={formatTime(alarmierungZeit)} />
+            <ReadOnly label="Auslöser" value={alarmierungAuthor} />
           </div>
           <div className="field" style={{ marginTop: 14 }}>
             <label className="caption">Einsatzort</label>
-            <input className="input filled" value={DEMO_ALARM.einsatzort} readOnly />
+            <input className="input filled" value={einsatzort} readOnly />
           </div>
         </section>
 
@@ -364,9 +394,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
               <Clipboard size={20} />
               Chronologie aller Fahrzeuge
             </div>
-            <span className="card-meta">Live aus Replikation</span>
+            <span className="card-meta">
+              {aktiverEinsatzId ? "Live aus Replikation" : "kein aktiver Einsatz"}
+            </span>
           </div>
           <ChronikTimeline eintraege={chronik} />
+          <FlorianChronikInput
+            einsatzId={aktiverEinsatzId}
+            onAdded={(eintrag) =>
+              setChronik((prev) =>
+                [...prev, eintrag].sort(
+                  (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
+                ),
+              )
+            }
+          />
         </section>
 
         <SectionHead title="Übergabe an Bearbeiter" />
@@ -543,6 +585,111 @@ function Stat({ label, value, unit, tone }: { label: string; value: string; unit
           </span>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Florianstation-Chronik-Input.
+ *
+ * Erlaubt der Einsatzzentrale eigene Chronik-Einträge direkt zu erfassen
+ * (z. B. "Nachalarmierung Bezirk angefordert", "Krankentransport
+ * nachgefordert"). Der Eintrag wird sofort lokal gerendert UND an alle
+ * Fahrzeug-Tablets gebroadcastet via /api/einsaetze/:id/chronik.
+ *
+ * Die Florianstation diktiert nicht — Eingabe per Tastatur (das PC-
+ * Tablet hat keinen Mikrofon-Workflow, FR-17).
+ */
+function FlorianChronikInput({
+  einsatzId,
+  onAdded,
+}: {
+  einsatzId: string | null;
+  onAdded: (entry: ChronikEintrag) => void;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    if (!einsatzId) {
+      setErr("Kein aktiver Einsatz — kann Chronik-Eintrag nicht zuordnen.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    const id = `florian-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const zeitstempel = new Date().toISOString();
+    const entry: ChronikEintrag = {
+      id,
+      zeitstempel,
+      funkrufname: "Florian Eberstalzell",
+      source: "manuell",
+      text: cleaned,
+    };
+    onAdded(entry); // optimistic
+    setText("");
+    setBusy(false);
+    await broadcastChronikEntry(einsatzId, {
+      id,
+      zeitstempel,
+      funkrufname: "Florian Eberstalzell",
+      fahrzeugId: "zentrale",
+      source: "manuell",
+      text: cleaned,
+    });
+  }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      {err ? (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "var(--red-tint)",
+            color: "var(--red)",
+            fontSize: 12,
+            border: "1px solid var(--red-border)",
+          }}
+        >
+          {err}
+        </div>
+      ) : null}
+      <div className="freeform">
+        <input
+          className="input"
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void submit()}
+          placeholder="Florianstation-Eintrag · z. B. Nachalarmierung BFKDT angefordert …"
+          disabled={!einsatzId}
+        />
+        <button
+          type="button"
+          className="add-btn"
+          onClick={() => void submit()}
+          disabled={busy || !text.trim() || !einsatzId}
+          aria-label="Chronik-Eintrag hinzufügen"
+        >
+          +
+        </button>
+      </div>
+      <p
+        style={{
+          marginTop: 8,
+          fontSize: 11,
+          fontFamily: "var(--font-mono)",
+          color: "var(--fg-3)",
+          letterSpacing: "0.06em",
+        }}
+      >
+        Eintrag erscheint binnen 8 s in der Chronik aller Fahrzeug-Tablets.
+      </p>
     </div>
   );
 }

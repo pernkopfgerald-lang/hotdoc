@@ -2,6 +2,7 @@ import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, 
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
 import { getConfig, putConfig, type AuftragstypenData, type EinsatzstichworteData, type GeraeteData, type StammdatenData } from "../api/config";
+import { listEinsaetze, type EinsatzListItem } from "../api/einsaetze";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { Florianstation } from "./Florianstation";
@@ -547,6 +548,24 @@ function AuftragstypenPanel() {
 }
 
 function ArchivPanel() {
+  const [items, setItems] = useState<EinsatzListItem[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"alle" | "aktiv" | "abgeschlossen">("alle");
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const r = await listEinsaetze(filter === "alle" ? undefined : filter);
+      setItems(r);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [filter]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   return (
     <section className="card">
       <div className="card-head">
@@ -554,84 +573,125 @@ function ArchivPanel() {
           <Archive size={20} />
           Archiv · alle Berichte
         </div>
-        <span className="card-meta">syBOS-Übergabestatus pro Eintrag</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="chips">
+            {(["alle", "aktiv", "abgeschlossen"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className="chip"
+                style={
+                  filter === f
+                    ? { background: "var(--fg)", color: "var(--bg)", borderColor: "var(--fg)" }
+                    : undefined
+                }
+              >
+                {f === "alle" ? "Alle" : f === "aktiv" ? "Aktiv" : "Abgeschlossen"}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="themetoggle"
+            onClick={() => void load()}
+            style={{ width: "auto", padding: "0 12px", gap: 6 }}
+          >
+            <RefreshCw size={13} />
+            <span style={{ fontSize: 12, fontWeight: 600 }}>Refresh</span>
+          </button>
+        </div>
       </div>
-      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
-        Vollständige Liste aller je angelegten Einsatzberichte (Brand + Technisch).
-        Filterbar nach Jahr, Kategorie, Status. Pro Eintrag ist sichtbar, ob der
-        Bericht bereits an syBOS übergeben wurde (mit Zeitstempel + Antwort-Code).
-      </p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border)" }}>
-            <th style={archTh}>Bericht-Nr.</th>
-            <th style={archTh}>Datum</th>
-            <th style={archTh}>Einsatzart</th>
-            <th style={archTh}>Mannschaft</th>
-            <th style={archTh}>Schreibschutz</th>
-            <th style={archTh}>syBOS</th>
-            <th style={archTh}>PDF</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[
-            { nr: "B26-014", date: "20.05.26", art: "Brand KFZ", mann: 6, locked: true, sybos: "pending", pdf: true },
-            { nr: "T26-009", date: "12.04.26", art: "Sturm", mann: 12, locked: true, sybos: "ok-2026-04-12T14:32", pdf: true },
-            { nr: "T26-008", date: "08.04.26", art: "Ölspur", mann: 4, locked: true, sybos: "ok-2026-04-08T11:05", pdf: true },
-            { nr: "B26-007", date: "30.03.26", art: "BMA", mann: 8, locked: true, sybos: "ok-2026-03-30T20:18", pdf: true },
-          ].map((r) => (
-            <tr key={r.nr} style={{ borderBottom: "1px solid var(--border)" }}>
-              <td style={archTd}>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>{r.nr}</span>
-              </td>
-              <td style={archTd}>{r.date}</td>
-              <td style={archTd}>{r.art}</td>
-              <td style={archTd}>{r.mann} Pers.</td>
-              <td style={archTd}>
-                <span className="badge neutral" style={{ gap: 4 }}>
-                  geschützt
-                </span>
-              </td>
-              <td style={archTd}>
-                {r.sybos === "pending" ? (
-                  <span className="badge warn">offen</span>
-                ) : (
-                  <span className="badge ok" title={r.sybos}>
-                    übergeben
-                  </span>
-                )}
-              </td>
-              <td style={archTd}>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title="PDF-Bericht herunterladen"
-                  onClick={() =>
-                    window.open(`/api/reports/${r.nr}/pdf`, "_blank", "noopener,noreferrer")
-                  }
-                >
-                  <FileText size={13} />
-                </button>
-              </td>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {!items ? (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      ) : items.length === 0 ? (
+        <p style={{ color: "var(--fg-3)", fontSize: 13, padding: 16, textAlign: "center" }}>
+          Keine Einsätze gefunden ({filter}).
+        </p>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <th style={archTh}>Bericht-Nr / ID</th>
+              <th style={archTh}>Datum</th>
+              <th style={archTh}>Einsatzart</th>
+              <th style={archTh}>Ort</th>
+              <th style={archTh}>Status</th>
+              <th style={archTh}>Quelle</th>
+              <th style={archTh}>PDF</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it._id} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={archTd}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11 }}>
+                    {it._id.replace(/^einsatz:/, "").slice(0, 18)}
+                    {it._id.length > 24 ? "…" : ""}
+                  </span>
+                </td>
+                <td style={archTd}>{formatDate(it.alarmierungZeit)}</td>
+                <td style={archTd}>{it.einsatzart ?? it.einsatzartFreitext ?? "—"}</td>
+                <td style={archTd} title={it.einsatzort}>
+                  {it.einsatzort.length > 32 ? it.einsatzort.slice(0, 32) + "…" : it.einsatzort}
+                </td>
+                <td style={archTd}>
+                  {it.status === "aktiv" ? (
+                    <span className="badge ok" style={{ gap: 4 }}>aktiv</span>
+                  ) : (
+                    <span className="badge neutral" style={{ gap: 4 }}>geschützt</span>
+                  )}
+                </td>
+                <td style={archTd}>
+                  <span className="badge neutral" style={{ fontSize: 9 }}>
+                    {it.einsatzTyp === "manuell" ? "MAN" : "BLM"}
+                  </span>
+                </td>
+                <td style={archTd}>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="PDF-Bericht herunterladen"
+                    onClick={() =>
+                      window.open(
+                        `/api/einsaetze/${encodeURIComponent(it._id)}/pdf`,
+                        "_blank",
+                        "noopener,noreferrer",
+                      )
+                    }
+                  >
+                    <FileText size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <p
         style={{
           marginTop: 16,
           fontFamily: "var(--font-mono)",
-          fontSize: 11,
+          fontSize: 10,
           color: "var(--fg-3)",
           letterSpacing: "0.1em",
           textTransform: "uppercase",
         }}
       >
-        Live-Daten aus CouchDB folgen — Backend-Endpoint{" "}
-        <strong>GET /api/einsaetze?archiv=1&amp;jahr=2026</strong>.
+        {items?.length ?? 0} Einträge · syBOS-Übergabe-Tracking folgt mit Phase 7
       </p>
     </section>
   );
+}
+
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getFullYear()).slice(-2)}`;
+  } catch {
+    return iso;
+  }
 }
 
 interface HealthItem {
