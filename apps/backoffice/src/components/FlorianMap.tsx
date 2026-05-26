@@ -11,7 +11,13 @@ export interface FahrzeugPos {
   lng: number;
   /** Status für die Farbcodierung */
   status: "im_einsatz" | "wartend" | "abgeschlossen";
+  /** Florian Eberstalzell — fix am Feuerwehrhaus, nie stale. */
+  isZentrale?: boolean;
+  /** ISO-Zeitstempel des letzten Positions-Updates. */
+  lastSeenAt?: string;
 }
+
+const STALE_AFTER_MIN = 10;
 
 interface Props {
   einsatzort?: { lat: number; lng: number; label?: string };
@@ -74,16 +80,25 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
     }
   }, [einsatzort?.lat, einsatzort?.lng, einsatzort?.label]);
 
-  // Fahrzeug-Marker synchronisieren
+  // Periodischer Tick (60 s) damit "offline seit X min" mitwächst
+  // auch wenn keine neuen Fahrzeug-Daten kommen.
+  const [tickNow, setTickNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setTickNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Fahrzeug-Marker synchronisieren (inkl. Stale-Status)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const seen = new Set<string>();
     for (const f of fahrzeuge) {
       seen.add(f.fahrzeugId);
-      const existing = markersRef.current.get(f.fahrzeugId);
+      const staleMin = staleMinutes(f, tickNow);
+      const ic = fahrzeugIcon(f, staleMin);
       const pos: LatLngExpression = [f.lat, f.lng];
-      const ic = fahrzeugIcon(f);
+      const existing = markersRef.current.get(f.fahrzeugId);
       if (existing) {
         existing.setLatLng(pos);
         existing.setIcon(ic);
@@ -98,7 +113,7 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
         markersRef.current.delete(id);
       }
     }
-  }, [fahrzeuge]);
+  }, [fahrzeuge, tickNow]);
 
   // Resize wenn Vollbild wechselt
   useEffect(() => {
@@ -264,36 +279,55 @@ function einsatzIcon(): L.DivIcon {
   });
 }
 
-function fahrzeugIcon(f: FahrzeugPos): L.DivIcon {
+function staleMinutes(f: FahrzeugPos, now: number): number | null {
+  if (f.isZentrale) return 0;
+  if (!f.lastSeenAt) return null;
+  const t = new Date(f.lastSeenAt).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((now - t) / 60_000));
+}
+
+function fahrzeugIcon(f: FahrzeugPos, staleMin: number | null): L.DivIcon {
+  const isStale = staleMin !== null && staleMin > STALE_AFTER_MIN;
+  const noPos = staleMin === null && !f.isZentrale;
   const color =
     f.status === "abgeschlossen"
       ? "#16A34A"
       : f.status === "im_einsatz"
         ? "#D97706"
         : "#94A3B8";
-  const bg = color + "33"; // ~20% alpha
+  const bg = color + "33";
+  const opacity = isStale || noPos ? 0.45 : 1;
+  const offlineLabel = isStale
+    ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);">offline seit ${staleMin} min</div>`
+    : noPos
+      ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;">keine Position</div>`
+      : "";
   return L.divIcon({
     className: "fln-fzg",
     html: `
-      <div style="
-        display:flex;
-        align-items:center;
-        gap:5px;
-        padding:4px 10px 4px 6px;
-        border-radius:99px;
-        background:${bg};
-        border:1.5px solid ${color};
-        color:${color};
-        font-family:'JetBrains Mono', monospace;
-        font-size:10px;
-        font-weight:700;
-        letter-spacing:0.08em;
-        text-transform:uppercase;
-        white-space:nowrap;
-        box-shadow:0 2px 8px rgba(15,23,42,0.18);
-      ">
-        <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
-        ${f.abk}
+      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;opacity:${opacity};transition:opacity 200ms ease;">
+        <div style="
+          display:flex;
+          align-items:center;
+          gap:5px;
+          padding:4px 10px 4px 6px;
+          border-radius:99px;
+          background:${bg};
+          border:1.5px solid ${color};
+          color:${color};
+          font-family:'JetBrains Mono', monospace;
+          font-size:10px;
+          font-weight:700;
+          letter-spacing:0.08em;
+          text-transform:uppercase;
+          white-space:nowrap;
+          box-shadow:0 2px 8px rgba(15,23,42,0.18);
+        ">
+          <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
+          ${f.abk}
+        </div>
+        ${offlineLabel}
       </div>`,
     iconSize: undefined as unknown as L.PointTuple,
     iconAnchor: [10, 10],

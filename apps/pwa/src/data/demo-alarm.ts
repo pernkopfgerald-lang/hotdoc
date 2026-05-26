@@ -28,11 +28,46 @@ export const DEMO_HYDRANTEN: Hydrant[] = [
 ];
 
 export function makeInitialFleet(): MapPosition[] {
+  const now = new Date().toISOString();
+  // Demo: TANK ist seit > 10 min "offline" um den Stale-Status zu zeigen.
+  // Sobald echte Positions-Streams da sind, kommt das aus dem Backend.
+  const tankStale = new Date(Date.now() - 14 * 60 * 1000).toISOString();
   return [
-    { fahrzeugId: "lfa-b", funkrufname: "Pumpe Eberstalzell", abk: "PUMPE", lat: HOME_POS.lat, lng: HOME_POS.lng, isSelf: true },
-    { fahrzeugId: "kdo", funkrufname: "Kommando Eberstalzell", abk: "KDO", lat: 48.0892, lng: 13.9595 },
-    { fahrzeugId: "tlf-a-4000", funkrufname: "Tank Eberstalzell", abk: "TANK", lat: 48.0892, lng: 13.958 },
-    { fahrzeugId: "zentrale", funkrufname: "Florian Eberstalzell", abk: "FLORIAN", lat: HOME_POS.lat, lng: HOME_POS.lng },
+    {
+      fahrzeugId: "lfa-b",
+      funkrufname: "Pumpe Eberstalzell",
+      abk: "PUMPE",
+      lat: HOME_POS.lat,
+      lng: HOME_POS.lng,
+      isSelf: true,
+      lastSeenAt: now,
+    },
+    {
+      fahrzeugId: "kdo",
+      funkrufname: "Kommando Eberstalzell",
+      abk: "KDO",
+      lat: 48.0892,
+      lng: 13.9595,
+      lastSeenAt: now,
+    },
+    {
+      fahrzeugId: "tlf-a-4000",
+      funkrufname: "Tank Eberstalzell",
+      abk: "TANK",
+      lat: 48.0892,
+      lng: 13.958,
+      lastSeenAt: tankStale,
+    },
+    {
+      // Florian Eberstalzell — fix am Feuerwehrhaus (Solarstraße 1).
+      // Nie stale, bewegt sich nicht.
+      fahrzeugId: "zentrale",
+      funkrufname: "Florian Eberstalzell",
+      abk: "FLORIAN",
+      lat: HOME_POS.lat,
+      lng: HOME_POS.lng,
+      isZentrale: true,
+    },
   ];
 }
 

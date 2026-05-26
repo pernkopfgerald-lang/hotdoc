@@ -153,13 +153,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
 
   useEffect(() => {
     const id = setInterval(() => {
+      const now = new Date().toISOString();
       setFleet((prev) =>
         prev.map((f) => {
-          if (f.isSelf) return { ...f, lat: selfPos.lat, lng: selfPos.lng };
+          // Self bekommt frische GPS-Position + Zeitstempel
+          if (f.isSelf) {
+            return { ...f, lat: selfPos.lat, lng: selfPos.lng, lastSeenAt: now };
+          }
+          // Florian Eberstalzell ist fix am Feuerwehrhaus — keine Bewegung
+          if (f.isZentrale) return f;
+          // Stale-Fahrzeuge bewegen sich nicht und bleiben offline
+          const t = f.lastSeenAt ? new Date(f.lastSeenAt).getTime() : 0;
+          const ageMin = (Date.now() - t) / 60_000;
+          if (ageMin > 10) return f;
+          // Online-Fahrzeuge wandern leicht und behalten frischen Zeitstempel
           return {
             ...f,
             lat: f.lat + (Math.random() - 0.5) * 0.0008,
             lng: f.lng + (Math.random() - 0.5) * 0.0008,
+            lastSeenAt: now,
           };
         }),
       );

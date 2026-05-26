@@ -16,14 +16,21 @@ const HOME = { lat: 48.0884, lng: 13.9586 };
  * Mock-Fahrzeugpositionen — kommen in Phase 4 vom SSE-Endpoint
  * `/api/positions/stream`. Bis dahin platzieren wir die Fahrzeuge
  * leicht um das Gerätehaus + Einsatzort.
+ *
+ * Florian Eberstalzell ist fix am Feuerwehrhaus, alle anderen
+ * bekommen einen lastSeenAt-Zeitstempel. TANK ist demonstrativ
+ * "stale" (>10 min) damit das Offline-Symbol auf der Karte zu sehen ist.
  */
 function mockFleet(einsatzLat?: number, einsatzLng?: number): FahrzeugPos[] {
   const E = einsatzLat && einsatzLng ? { lat: einsatzLat, lng: einsatzLng } : HOME;
+  const now = new Date().toISOString();
+  const stale = new Date(Date.now() - 14 * 60 * 1000).toISOString();
   return [
-    { fahrzeugId: "kdo",        funkrufname: "Kommando Eberstalzell", abk: "KDO",   status: "im_einsatz",     lat: E.lat - 0.0009, lng: E.lng + 0.0007 },
-    { fahrzeugId: "tlf",        funkrufname: "Tank Eberstalzell",     abk: "TANK",  status: "im_einsatz",     lat: E.lat + 0.0006, lng: E.lng - 0.0006 },
-    { fahrzeugId: "lfa-b",      funkrufname: "Pumpe Eberstalzell",    abk: "LFA-B", status: "abgeschlossen",  lat: HOME.lat + 0.0003, lng: HOME.lng + 0.0001 },
-    { fahrzeugId: "mtf",        funkrufname: "MTF Eberstalzell",      abk: "MTF",   status: "wartend",        lat: HOME.lat,          lng: HOME.lng - 0.0003 },
+    { fahrzeugId: "kdo",        funkrufname: "Kommando Eberstalzell", abk: "KDO",     status: "im_einsatz",    lat: E.lat - 0.0009, lng: E.lng + 0.0007, lastSeenAt: now },
+    { fahrzeugId: "tlf",        funkrufname: "Tank Eberstalzell",     abk: "TANK",    status: "im_einsatz",    lat: E.lat + 0.0006, lng: E.lng - 0.0006, lastSeenAt: stale },
+    { fahrzeugId: "lfa-b",      funkrufname: "Pumpe Eberstalzell",    abk: "LFA-B",   status: "abgeschlossen", lat: HOME.lat + 0.0003, lng: HOME.lng + 0.0001, lastSeenAt: now },
+    { fahrzeugId: "mtf",        funkrufname: "MTF Eberstalzell",      abk: "MTF",     status: "wartend",       lat: HOME.lat,          lng: HOME.lng - 0.0003, lastSeenAt: now },
+    { fahrzeugId: "zentrale",   funkrufname: "Florian Eberstalzell",  abk: "FLORIAN", status: "wartend",       lat: HOME.lat,          lng: HOME.lng,           isZentrale: true },
   ];
 }
 

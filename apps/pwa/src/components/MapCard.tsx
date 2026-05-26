@@ -10,7 +10,15 @@ export interface MapPosition {
   lat: number;
   lng: number;
   isSelf?: boolean;
+  /** Florian Eberstalzell — fix am Feuerwehrhaus, nie stale. */
+  isZentrale?: boolean;
+  /** ISO-Zeitstempel des letzten Positions-Updates. Wenn fehlt
+   *  oder älter als STALE_AFTER_MIN, gilt das Fahrzeug als offline. */
+  lastSeenAt?: string;
 }
+
+/** Fahrzeug gilt als "offline" wenn Position älter als 10 Minuten. */
+const STALE_AFTER_MIN = 10;
 
 export interface Hydrant {
   id: string;
@@ -93,20 +101,31 @@ export function MapCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // — Marker für Fahrzeuge synchronisieren —
+  // Periodischer Tick (60 s) damit Stale-Anzeigen rerender und
+  // "offline seit 11 min" auf "12 min" wechselt ohne neue fleet-Daten.
+  const [tickNow, setTickNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setTickNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // — Marker für Fahrzeuge synchronisieren (inkl. Stale-Status) —
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const seen = new Set<string>();
     for (const f of fleet) {
       seen.add(f.fahrzeugId);
-      const existing = markersRef.current.get(f.fahrzeugId);
+      const staleMin = staleMinutes(f, tickNow);
+      const icon = fzgIcon(f, staleMin);
       const pos: LatLngExpression = [f.lat, f.lng];
+      const existing = markersRef.current.get(f.fahrzeugId);
       if (existing) {
         existing.setLatLng(pos);
+        existing.setIcon(icon);
       } else {
         const m = L.marker(pos, {
-          icon: fzgIcon(f.abk, !!f.isSelf),
+          icon,
           title: f.funkrufname,
           zIndexOffset: f.isSelf ? 1000 : 100,
         }).addTo(map);
@@ -365,13 +384,37 @@ function einsatzIcon(): L.DivIcon {
   });
 }
 
-function fzgIcon(abk: string, isSelf: boolean): L.DivIcon {
+/**
+ * Wie alt ist die letzte Position in Minuten? null = nie gesehen.
+ * Zentrale ist fix und gibt immer 0 zurück.
+ */
+function staleMinutes(f: MapPosition, now: number): number | null {
+  if (f.isZentrale) return 0;
+  if (!f.lastSeenAt) return null;
+  const t = new Date(f.lastSeenAt).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((now - t) / 60_000));
+}
+
+function fzgIcon(f: MapPosition, staleMin: number | null): L.DivIcon {
+  const isSelf = !!f.isSelf;
   const cls = isSelf ? "fzg-self" : "fzg-other";
+  const isStale = staleMin !== null && staleMin > STALE_AFTER_MIN;
+  const opacityStyle = isStale || staleMin === null ? "opacity:0.45;" : "";
+  const offlineLabel =
+    isStale
+      ? `<div class="fzg-offline">offline seit ${staleMin} min</div>`
+      : staleMin === null && !f.isZentrale
+        ? `<div class="fzg-offline">keine Position</div>`
+        : "";
   return L.divIcon({
     className: cls,
-    html: `<div class="${cls}-pin">
-      <span class="${cls}-dot"></span>
-      <span>${abk}</span>
+    html: `<div class="fzg-wrap" style="${opacityStyle}">
+      <div class="${cls}-pin">
+        <span class="${cls}-dot"></span>
+        <span>${f.abk}</span>
+      </div>
+      ${offlineLabel}
     </div>`,
     iconSize: undefined as unknown as L.PointTuple,
     iconAnchor: [10, 10],
