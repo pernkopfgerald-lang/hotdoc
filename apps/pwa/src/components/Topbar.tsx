@@ -2,6 +2,7 @@ import { MapPin, Moon, Sun, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
+import { BrandLogo } from "./BrandLogo";
 
 interface Props {
   funkrufname?: string;
@@ -30,20 +31,7 @@ export function Topbar({ funkrufname, einsatzNr, geo }: Props) {
 
   return (
     <header className="appheader">
-      <div className="applogo" aria-hidden="true">
-        {/* Flame mark */}
-        <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="M12 2c.5 4 4 5.5 4 9.5 0 3.6-1.8 6.5-4 6.5s-4-2.9-4-6.5C8 9 9.5 8 12 2z"
-            fill="#E63946"
-          />
-          <path
-            d="M12 7c0 3 2 4 2 6.5s-1 3.5-2 3.5-2-1-2-3.5S12 10 12 7z"
-            fill="#FFB703"
-          />
-          <circle cx="12" cy="20.5" r="1.8" fill="#FFB703" />
-        </svg>
-      </div>
+      <BrandLogo variant="mark" size={44} />
 
       <div className="appbrand">
         <div className="appname">

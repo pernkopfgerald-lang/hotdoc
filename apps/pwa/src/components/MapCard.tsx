@@ -1,6 +1,6 @@
 import L, { type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ExternalLink, Crosshair, Droplets, Navigation } from "lucide-react";
+import { ExternalLink, Crosshair, Droplets, Maximize2, Minimize2, Navigation } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export interface MapPosition {
@@ -47,6 +47,7 @@ export function MapCard({
   const autoFollowRef = useRef(true);
   const [waterOn, setWaterOn] = useState(true);
   const [distance, setDistance] = useState<number>(0);
+  const [fullscreen, setFullscreen] = useState(false);
 
   // — Map einmalig initialisieren —
   useEffect(() => {
@@ -156,45 +157,88 @@ export function MapCard({
     mapRef.current?.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true });
   }
 
-  return (
-    <section
-      className="rounded-m border p-3.5 pb-2.5"
-      style={{
+  // Leaflet braucht ein invalidateSize() nach Größenänderung der Karte
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const t = setTimeout(() => map.invalidateSize(), 60);
+    return () => clearTimeout(t);
+  }, [fullscreen]);
+
+  // ESC-Taste schließt Vollbild
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFullscreen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
+
+  const sectionStyle = fullscreen
+    ? ({
+        position: "fixed" as const,
+        inset: 0,
+        zIndex: 2100,
+        margin: 0,
+        borderRadius: 0,
+        background: "var(--bg)",
+        padding: 12,
+        display: "flex",
+        flexDirection: "column" as const,
+        gap: 10,
+      })
+    : ({
         borderColor: "var(--border-strong)",
         background: "var(--card-gradient)",
         boxShadow: "var(--shadow-card)",
-      }}
+      });
+  const mapHeight = fullscreen ? "calc(100vh - 200px)" : "360px";
+
+  return (
+    <section
+      className={fullscreen ? "" : "rounded-m border p-3.5 pb-2.5"}
+      style={sectionStyle}
     >
       <header className="mb-2.5 flex items-baseline justify-between">
         <h2 className="m-0 text-[16px] font-semibold tracking-tight text-text-1">
           Anfahrt &amp; Lage
         </h2>
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em]"
-          style={{
-            borderColor: "var(--emerald-border)",
-            background: "var(--emerald-bg)",
-            color: "var(--emerald)",
-            boxShadow: "0 0 18px -4px var(--emerald-glow)",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
-            className="h-1.5 w-1.5 rounded-full"
+            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em]"
             style={{
-              background: "var(--emerald)",
-              boxShadow: "0 0 8px var(--emerald-glow)",
-              animation: "pulse 1.8s ease-in-out infinite",
+              borderColor: "var(--emerald-border)",
+              background: "var(--emerald-bg)",
+              color: "var(--emerald)",
+              boxShadow: "0 0 18px -4px var(--emerald-glow)",
             }}
-          />
-          Position-Sharing
-        </span>
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{
+                background: "var(--emerald)",
+                boxShadow: "0 0 8px var(--emerald-glow)",
+                animation: "pulse 1.8s ease-in-out infinite",
+              }}
+            />
+            Position-Sharing
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setFullscreen((v) => !v)}
+            aria-label={fullscreen ? "Vollbild beenden" : "Karte im Vollbild"}
+            title={fullscreen ? "Vollbild beenden (ESC)" : "Karte im Vollbild"}
+          >
+            {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        </div>
       </header>
 
       <div
         className="relative overflow-hidden rounded-s border"
-        style={{ borderColor: "var(--border-strong)" }}
+        style={{ borderColor: "var(--border-strong)", flex: fullscreen ? 1 : undefined }}
       >
-        <div ref={elRef} className="h-[280px] bg-surface-2" />
+        <div ref={elRef} className="bg-surface-2" style={{ height: mapHeight, width: "100%" }} />
 
         <button
           type="button"

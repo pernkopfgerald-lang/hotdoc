@@ -21,6 +21,7 @@ import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
+import { VorschauModal } from "../components/VorschauModal";
 import {
   DEMO_ALARM,
   DEMO_HYDRANTEN,
@@ -87,6 +88,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
   const [neuerAuftragOpen, setNeuerAuftragOpen] = useState(false);
   const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
+  const [vorschauOpen, setVorschauOpen] = useState(false);
 
   const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => [
     {
@@ -526,7 +528,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
                   <Save size={16} />
                   Entwurf speichern
                 </button>
-                <button type="button">
+                <button type="button" onClick={() => setVorschauOpen(true)}>
                   <Eye size={16} />
                   Vorschau Bericht
                 </button>
@@ -601,6 +603,23 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
         onConfirm={abschliessen}
         onCancel={() => setAbschlussModalOpen(false)}
       />
+
+      <VorschauModal
+        open={vorschauOpen}
+        data={{
+          funkrufname: fahrzeug.funkrufname,
+          alarm: active.alarm,
+          fahrer: active.fahrer,
+          kdt: active.kdt,
+          mannschaft: active.mannschaft,
+          gearList,
+          gearSelected: active.gearSelected,
+          auftraege: active.auftraege,
+          chronik: active.chronik,
+          kmGefahren: kmRound,
+        }}
+        onClose={() => setVorschauOpen(false)}
+      />
     </div>
   );
 }
@@ -618,7 +637,7 @@ function shortCode(id: FahrzeugId): string {
   switch (id) {
     case "kdo":        return "KDO";
     case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "LFB-A2";
+    case "lfa-b":      return "LFA-B";
     case "mtf":        return "MTF";
     case "zentrale":   return "FLORIAN";
   }

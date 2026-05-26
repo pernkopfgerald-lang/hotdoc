@@ -434,7 +434,7 @@ function shortCode(id: FahrzeugId): string {
   switch (id) {
     case "kdo":        return "KDO";
     case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "LFB-A2";
+    case "lfa-b":      return "LFA-B";
     case "mtf":        return "MTF";
     case "zentrale":   return "FLORIAN";
   }

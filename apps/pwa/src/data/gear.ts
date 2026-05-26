@@ -54,6 +54,7 @@ const MTF: GearItem[] = [
   { id: "verpflegung", bezeichnung: "Verpflegung" },
   { id: "decke-rettung", bezeichnung: "Rettungsdecken" },
   { id: "hr-anhaenger", bezeichnung: "HR-Anhänger gezogen" },
+  { id: "hoehenretter-anhaenger", bezeichnung: "Höhenretter-Anhänger" },
   { id: "absperrmaterial", bezeichnung: "Absperrmaterial" },
 ];
 

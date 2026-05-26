@@ -1,3 +1,4 @@
+import { STICHWORT_STUFEN, type StichwortStufe } from "@hotdoc/shared";
 import { MapPin, Play, Siren } from "lucide-react";
 
 export interface AlarmDaten {
@@ -9,7 +10,8 @@ export interface AlarmDaten {
   koordinaten: { lat: number; lng: number };
   distanzKm: number;
   audioSecs?: number;
-  stichwort?: string;
+  /** Klassifizierungs-Stufe — siehe STICHWORT_STUFEN für Tooltips. */
+  stichwort?: StichwortStufe;
 }
 
 interface Props {
@@ -74,9 +76,16 @@ export function AlarmCard({ alarm, onPlayAudio }: Props) {
           <div className="lbl">Eingerückt</div>
           <div className="val muted">– – : – –</div>
         </div>
-        <div className="cell">
+        <div
+          className="cell"
+          title={
+            alarm.stichwort
+              ? STICHWORT_STUFEN[alarm.stichwort]
+              : "Klassifizierungs-Stufe (B-1/B-2/B-3 Brand · T-1/T-2/T-3 Technisch)"
+          }
+        >
           <div className="lbl">Stichwort</div>
-          <div className="val">{alarm.stichwort ?? "B 2"}</div>
+          <div className="val">{alarm.stichwort ?? "—"}</div>
         </div>
       </div>
     </section>

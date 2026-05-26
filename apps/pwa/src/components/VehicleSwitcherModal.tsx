@@ -136,7 +136,7 @@ function idToAbk(id: FahrzeugId): string {
   switch (id) {
     case "kdo":        return "KDO";
     case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "PUMPE";
+    case "lfa-b":      return "LFA-B";
     case "mtf":        return "MTF";
     case "zentrale":   return "FL";
   }

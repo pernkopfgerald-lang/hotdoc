@@ -4,7 +4,7 @@ import type { ChronikEintrag } from "../components/ChronikTimeline";
 import type { Hydrant, MapPosition } from "../components/MapCard";
 
 export const DEMO_ALARM: AlarmDaten = {
-  alarmId: "2026-014",
+  alarmId: "B26-014",
   einsatzart: "Brand KFZ",
   einsatzort: "Eberstalzeller Straße 5, 4653 Eberstalzell",
   alarmierungZeit: new Date(new Date().setHours(17, 43, 12, 0)).toISOString(),
@@ -12,6 +12,7 @@ export const DEMO_ALARM: AlarmDaten = {
   koordinaten: { lat: 48.11, lng: 13.961 },
   distanzKm: 1.2,
   audioSecs: 24,
+  stichwort: "B-2",
 };
 
 export const HOME_POS = { lat: 48.0884, lng: 13.9586 };

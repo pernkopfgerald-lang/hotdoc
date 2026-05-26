@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ApiError, apiCall, setToken } from "../api/client";
+import { BrandLogo } from "../components/BrandLogo";
 import type { AuthResponse, LoginRequest } from "@hotdoc/shared";
 
 interface Props {
@@ -45,23 +46,7 @@ export function Login({ onLoggedIn }: Props) {
     >
       <div style={{ width: "100%", maxWidth: 420 }}>
         <header style={{ textAlign: "center", marginBottom: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-          <span
-            className="applogo"
-            aria-hidden
-            style={{ width: 64, height: 64, borderRadius: 18 }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" width={38} height={38}>
-              <path
-                d="M12 2c.5 4 4 5.5 4 9.5 0 3.6-1.8 6.5-4 6.5s-4-2.9-4-6.5C8 9 9.5 8 12 2z"
-                fill="#E63946"
-              />
-              <path
-                d="M12 7c0 3 2 4 2 6.5s-1 3.5-2 3.5-2-1-2-3.5S12 10 12 7z"
-                fill="#FFB703"
-              />
-              <circle cx="12" cy="20.5" r="1.8" fill="#FFB703" />
-            </svg>
-          </span>
+          <BrandLogo variant="full" size={56} />
           <h1
             style={{
               fontSize: 28,

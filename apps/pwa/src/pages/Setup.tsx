@@ -2,6 +2,7 @@ import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { db } from "../db/pouch";
+import { BrandLogo } from "../components/BrandLogo";
 
 interface Props {
   onSetupDone: (fahrzeugId: FahrzeugId) => void;
@@ -37,24 +38,8 @@ export function Setup({ onSetupDone }: Props) {
   return (
     <main className="page" style={{ minHeight: "100vh", maxWidth: 560, margin: "0 auto", paddingTop: 64 }}>
       <header style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <span
-          className="applogo"
-          aria-hidden
-          style={{ width: 72, height: 72, borderRadius: 20 }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" width={42} height={42}>
-            <path
-              d="M12 2c.5 4 4 5.5 4 9.5 0 3.6-1.8 6.5-4 6.5s-4-2.9-4-6.5C8 9 9.5 8 12 2z"
-              fill="#E63946"
-            />
-            <path
-              d="M12 7c0 3 2 4 2 6.5s-1 3.5-2 3.5-2-1-2-3.5S12 10 12 7z"
-              fill="#FFB703"
-            />
-            <circle cx="12" cy="20.5" r="1.8" fill="#FFB703" />
-          </svg>
-        </span>
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--fg)" }}>
+        <BrandLogo variant="full" size={64} />
+        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--fg)", marginTop: 8 }}>
           HotDoc
         </h1>
         <p
@@ -161,7 +146,7 @@ function shortCode(id: FahrzeugId): string {
   switch (id) {
     case "kdo":        return "KDO";
     case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "LFB-A2";
+    case "lfa-b":      return "LFA-B";
     case "mtf":        return "MTF";
     case "zentrale":   return "FLORIAN";
   }
