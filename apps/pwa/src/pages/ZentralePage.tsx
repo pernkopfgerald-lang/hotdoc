@@ -19,6 +19,7 @@ import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { DEMO_ALARM } from "../data/demo-alarm";
+import { apiCall, getTabletToken } from "../lib/api";
 import { fetchChronikDiff } from "../lib/chronik-sync";
 import { useGeolocation } from "../lib/geo";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
@@ -41,6 +42,91 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
   const fahrzeug = FAHRZEUGE.zentrale;
   const geo = useGeolocation();
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
+  const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
+  const [downloadBusy, setDownloadBusy] = useState<"pdf" | "spick" | null>(null);
+  const [downloadErr, setDownloadErr] = useState<string | null>(null);
+
+  // Aktive Einsätze vom Backend laden — der erste aktive wird die Quelle
+  // für PDF/Spickzettel/Chronik-Sync. Refresht alle 30 s.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await apiCall<{ items: Array<{ _id: string; status: string }> }>(
+          "/api/einsaetze?status=aktiv",
+        );
+        if (cancelled) return;
+        const first = r.items[0];
+        if (first) setAktiverEinsatzId(first._id);
+      } catch {
+        // Backend nicht erreichbar — Fallback auf Demo-ID damit Buttons nicht völlig tot wirken
+      }
+    };
+    void load();
+    const t = setInterval(() => void load(), 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+
+  async function downloadPdf(einsatzId: string): Promise<void> {
+    setDownloadBusy("pdf");
+    setDownloadErr(null);
+    try {
+      const token = getTabletToken();
+      const res = await fetch(`/api/einsaetze/${encodeURIComponent(einsatzId)}/pdf`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status} — ${txt.slice(0, 120)}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      // Tab öffnen statt direkt download — PDF-Viewer hat oft Druck-Button
+      const win = window.open(url, "_blank", "noopener,noreferrer");
+      if (!win) {
+        // Pop-up blocked → klassischer Download
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `einsatzbericht-${einsatzId.replace(/[^a-z0-9-]/gi, "_")}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setDownloadErr(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDownloadBusy(null);
+    }
+  }
+
+  async function openSpickzettel(einsatzId: string): Promise<void> {
+    setDownloadBusy("spick");
+    setDownloadErr(null);
+    try {
+      const token = getTabletToken();
+      const res = await fetch(`/api/einsaetze/${encodeURIComponent(einsatzId)}/spickzettel`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const win = window.open("", "_blank", "noopener,noreferrer");
+      if (!win) {
+        alert("Pop-up-Blocker — bitte für diese Seite erlauben.");
+        return;
+      }
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+    } catch (err) {
+      setDownloadErr(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDownloadBusy(null);
+    }
+  }
 
   // Mock-Status für jedes Fahrzeug
   const fahrzeugStatus: { id: FahrzeugId; status: "wartend" | "im_einsatz" | "abgeschlossen"; mannschaft: number; kdt?: string }[] = [
@@ -84,8 +170,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
+      const id = aktiverEinsatzId ?? DEMO_ALARM.alarmId;
       const knownIds = new Set(chronik.map((c) => c.id));
-      const neue = await fetchChronikDiff(DEMO_ALARM.alarmId, knownIds);
+      const neue = await fetchChronikDiff(id, knownIds);
       if (cancelled || neue.length === 0) return;
       setChronik((prev) => {
         const own = new Set(prev.map((c) => c.id));
@@ -103,7 +190,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [aktiverEinsatzId]);
 
   return (
     <div>
@@ -284,14 +371,36 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
 
         <SectionHead title="Übergabe an Bearbeiter" />
         <div className="cta-wrap">
+          {downloadErr ? (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--red-tint)",
+                color: "var(--red)",
+                fontSize: 13,
+                border: "1px solid var(--red-border)",
+              }}
+            >
+              {downloadErr}
+            </div>
+          ) : null}
           <div className="cta-secondary">
-            <button type="button">
+            <button
+              type="button"
+              onClick={() => aktiverEinsatzId && void downloadPdf(aktiverEinsatzId)}
+              disabled={!aktiverEinsatzId || downloadBusy !== null}
+            >
               <Download size={16} />
-              PDF-Bericht
+              {downloadBusy === "pdf" ? "Lade …" : "PDF-Bericht"}
             </button>
-            <button type="button">
+            <button
+              type="button"
+              onClick={() => aktiverEinsatzId && void openSpickzettel(aktiverEinsatzId)}
+              disabled={!aktiverEinsatzId || downloadBusy !== null}
+            >
               <FileText size={16} />
-              syBOS-Spickzettel
+              {downloadBusy === "spick" ? "Lade …" : "syBOS-Spickzettel"}
             </button>
           </div>
           <button
