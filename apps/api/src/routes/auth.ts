@@ -284,6 +284,7 @@ async function findTabletByMsisdn(msisdn: string): Promise<TabletAuth | null> {
 //    = 32^8 ≈ 10^12 Permutationen. Brute-Force nicht möglich.
 
 const HANDOFF_TTL_MS = 5 * 60 * 1000;
+const HANDOFF_AUTO_RELEASE_MS = 24 * 60 * 60 * 1000; // 24 Std
 const HANDOFF_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // ohne 0/O/1/I-Verwechslung
 const HANDOFF_CODE_LEN = 8;
 
@@ -422,12 +423,22 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
 
   // Neuen JWT-Token für das Handy ausstellen (gleiche Rolle wie Quell-Session,
   // gleiche fahrzeugId, gleiche Identität — Handy übernimmt die Sitzung).
-  const { token, expiresAt } = await signSession({
-    sub: doc.sourceSub,
-    username: doc.sourceUsername,
-    rolle: doc.sourceRolle,
-    ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
-  });
+  //
+  // Auto-Release: nach 24 h wird der Token als ungültig markiert. Das Handy
+  // bekommt dann beim nächsten API-Call 401, sieht den Setup-Screen, und das
+  // Tablet kann sich mit normaler PIN wieder einloggen. Manuelles „Sitzung
+  // freigeben" geht über das clearen von localStorage am Handy (rein
+  // clientseitig — Token ist eh self-contained).
+  const autoReleaseAt = new Date(Date.now() + HANDOFF_AUTO_RELEASE_MS).toISOString();
+  const { token, expiresAt } = await signSession(
+    {
+      sub: doc.sourceSub,
+      username: doc.sourceUsername,
+      rolle: doc.sourceRolle,
+      ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
+    },
+    { autoReleaseAt, viaHandoff: true },
+  );
 
   logger.warn(
     {
@@ -435,19 +446,45 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
       from: doc.sourceUsername,
       fahrzeug: doc.sourceFahrzeugId,
       einsatzId: doc.einsatzId,
+      autoReleaseAt,
       ua: ua.slice(0, 60),
     },
-    "Handoff geclaimt — Quell-Tablet sollte sich selbst ausloggen",
+    "Handoff geclaimt — Quell-Tablet sollte sich selbst ausloggen · Auto-Release in 24h",
   );
 
   res.json({
     ok: true,
     token,
     expiresAt,
+    autoReleaseAt,
+    viaHandoff: true,
     rolle: doc.sourceRolle,
     ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
     ...(doc.einsatzId ? { einsatzId: doc.einsatzId } : {}),
   });
+}) as RequestHandler);
+
+// — POST /api/auth/handoff/release —
+// Manuelles „Sitzung freigeben" am Handy. Rein semantisch + Audit-Trail:
+// das Handy clearrt seinen Token sowieso clientseitig. Diese Route ist
+// nur dazu da damit der Server im Log sieht „Sitzung am Handy freigegeben"
+// und für spätere Multi-Device-Awareness-Features (Push an Tablets).
+//
+// Verlangt einen aktuell-gültigen Token (requireAuth) — Anonyme können
+// nicht fremde Handoffs „beenden", auch wenn sie eh keine Auswirkung
+// hätten.
+authRouter.post("/api/auth/handoff/release", requireAuth(), (async (req, res) => {
+  const session = req.session!;
+  logger.info(
+    {
+      by: session.username,
+      fahrzeug: session.fahrzeugId,
+      viaHandoff: session.viaHandoff === true,
+      autoReleaseAt: session.autoReleaseAt,
+    },
+    "Sitzung manuell freigegeben",
+  );
+  res.json({ ok: true, releasedAt: new Date().toISOString() });
 }) as RequestHandler);
 
 // — GET /api/auth/handoff/:code/status —

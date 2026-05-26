@@ -24,6 +24,7 @@ import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimel
 import { DemoBanner } from "../components/DemoBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
+import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
@@ -632,6 +633,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <EinsatzTabs tabs={tabs} activeId={einsatzId} onSelect={() => {}} onNew={() => {}} />
 
       <DemoBanner />
+      <HandoffBanner onReleased={onHandoffLogout} />
 
       <main className="page">
         {/* Hauptbericht-Header */}

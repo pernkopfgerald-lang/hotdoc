@@ -40,6 +40,8 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
           ok: true;
           token: string;
           expiresAt: string;
+          autoReleaseAt?: string;
+          viaHandoff?: boolean;
           rolle: string;
           fahrzeugId?: string;
           einsatzId?: string;
@@ -47,6 +49,18 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
         // Token gleich speichern damit der nächste apiCall die Auth hat.
         try {
           localStorage.setItem(TOKEN_KEY, r.token);
+          // Handoff-Metadaten getrennt speichern damit UI sie ohne
+          // JWT-Decode lesen kann (Auto-Release-Countdown, Release-Banner)
+          localStorage.setItem(
+            "hotdoc.handoffInfo",
+            JSON.stringify({
+              viaHandoff: true,
+              autoReleaseAt: r.autoReleaseAt,
+              claimedAt: new Date().toISOString(),
+              ...(r.einsatzId ? { einsatzId: r.einsatzId } : {}),
+              ...(r.fahrzeugId ? { fahrzeugId: r.fahrzeugId } : {}),
+            }),
+          );
         } catch {
           // Quota/Private-Mode — Fehler explizit zeigen damit User merkt was Sache ist
           setState({

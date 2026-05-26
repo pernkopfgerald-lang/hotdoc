@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
 import { db, getFahrzeugConfig } from "./db/pouch";
 import { seedIfEmpty } from "./db/seed";
+import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { BerichtPage } from "./pages/BerichtPage";
 import { Setup } from "./pages/Setup";
 import { ZentralePage } from "./pages/ZentralePage";
@@ -38,6 +39,25 @@ export function App() {
     const handoffCode = readHandoffCodeFromUrl();
     if (handoffCode) {
       setState({ kind: "handoff-claim", code: handoffCode });
+      return;
+    }
+    // Auto-Release-Check: Hat eine Handoff-Sitzung ihre 24h überschritten?
+    // Dann lokales Token + handoffInfo löschen — der User landet im Setup,
+    // und das eigentliche Tablet kann sich wieder mit PIN einloggen.
+    const handoffInfo = getHandoffInfo();
+    if (handoffInfo && isHandoffExpired(handoffInfo)) {
+      clearHandoffLocal();
+      // Fahrzeug-Konfig auch entfernen — das hier ist ein Handy nach
+      // Auto-Release, soll nicht weiter als „Pumpe Eberstalzell" auftreten.
+      const fc = await getFahrzeugConfig();
+      if (fc) {
+        try {
+          await db.remove(fc._id, fc._rev);
+        } catch {
+          // egal
+        }
+      }
+      setState({ kind: "setup" });
       return;
     }
     await seedIfEmpty();

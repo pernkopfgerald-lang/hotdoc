@@ -2,6 +2,7 @@ import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, T
 import { useEffect, useMemo, useState } from "react";
 
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
+import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
 import { AbschlussModal, type AbschlussCheck } from "../components/AbschlussModal";
 import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
@@ -527,6 +528,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       />
 
       {!active.abgeschlossen ? <DemoBanner /> : null}
+      <HandoffBanner onReleased={onHandoffLogout} />
 
       <main className="page">
         {active.abgeschlossen ? (
