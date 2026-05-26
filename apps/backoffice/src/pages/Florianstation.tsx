@@ -8,6 +8,24 @@ import { BETEILIGTE_STELLEN, EINSATZARTEN, SONSTIGE_FF } from "@hotdoc/shared";
 import { Activity, Map as MapIcon, Save } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { listEinsaetze, type EinsatzListItem } from "../api/einsaetze";
+import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
+
+const HOME = { lat: 48.0884, lng: 13.9586 };
+
+/**
+ * Mock-Fahrzeugpositionen — kommen in Phase 4 vom SSE-Endpoint
+ * `/api/positions/stream`. Bis dahin platzieren wir die Fahrzeuge
+ * leicht um das Gerätehaus + Einsatzort.
+ */
+function mockFleet(einsatzLat?: number, einsatzLng?: number): FahrzeugPos[] {
+  const E = einsatzLat && einsatzLng ? { lat: einsatzLat, lng: einsatzLng } : HOME;
+  return [
+    { fahrzeugId: "kdo",        funkrufname: "Kommando Eberstalzell", abk: "KDO",   status: "im_einsatz",     lat: E.lat - 0.0009, lng: E.lng + 0.0007 },
+    { fahrzeugId: "tlf",        funkrufname: "Tank Eberstalzell",     abk: "TANK",  status: "im_einsatz",     lat: E.lat + 0.0006, lng: E.lng - 0.0006 },
+    { fahrzeugId: "lfa-b",      funkrufname: "Pumpe Eberstalzell",    abk: "LFA-B", status: "abgeschlossen",  lat: HOME.lat + 0.0003, lng: HOME.lng + 0.0001 },
+    { fahrzeugId: "mtf",        funkrufname: "MTF Eberstalzell",      abk: "MTF",   status: "wartend",        lat: HOME.lat,          lng: HOME.lng - 0.0003 },
+  ];
+}
 
 export function Florianstation() {
   const [aktive, setAktive] = useState<EinsatzListItem[]>([]);
@@ -86,31 +104,42 @@ export function Florianstation() {
           </ul>
         </section>
 
-        <section className="card" style={{ minHeight: 320 }}>
+        <section className="card">
           <div className="card-head">
             <div className="card-title">
               <MapIcon size={18} />
               Karte · Live-Positionen
             </div>
-            <span className="card-meta">Phase 8 — Leaflet portiert</span>
+            <span className="card-meta">
+              {selected ? "Auto-Center auf Einsatzort" : "Standort Eberstalzell"}
+            </span>
           </div>
-          <div
+          <FlorianMap
+            {...(selected?.koordinaten
+              ? {
+                  einsatzort: {
+                    lat: selected.koordinaten.lat,
+                    lng: selected.koordinaten.lng,
+                    label: selected.einsatzort,
+                  },
+                }
+              : {})}
+            fahrzeuge={mockFleet(selected?.koordinaten?.lat, selected?.koordinaten?.lng)}
+            zoom={selected ? 16 : 14}
+          />
+          <p
             style={{
-              flex: 1,
-              minHeight: 220,
-              borderRadius: 14,
-              border: "1px dashed var(--border-strong)",
-              background: "var(--surface-2)",
-              display: "grid",
-              placeItems: "center",
+              marginTop: 8,
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
               color: "var(--fg-3)",
-              fontSize: 13,
-              padding: 24,
-              textAlign: "center",
             }}
           >
-            Leaflet-Karte mit eigenen Fahrzeugen, Einsatzort und Hydranten
-          </div>
+            Live-Position-Sharing via SSE folgt mit Phase 4 — aktuell Demo-Positionen.
+          </p>
         </section>
       </div>
 

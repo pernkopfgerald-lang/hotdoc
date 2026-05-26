@@ -11,6 +11,7 @@ export interface EinsatzListItem {
   schreibschutz: boolean;
   einsatzende?: string;
   reaktivierungen?: Array<{ am: string; grund: string }>;
+  koordinaten?: { lat: number; lng: number };
 }
 
 export async function listEinsaetze(status?: "aktiv" | "abgeschlossen"): Promise<EinsatzListItem[]> {
