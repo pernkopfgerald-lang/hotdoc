@@ -1,5 +1,5 @@
 import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
@@ -430,21 +430,38 @@ function ArchivPanel() {
   );
 }
 
+interface HealthItem {
+  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch";
+  name: string;
+  sub: string;
+  state: "ok" | "warn" | "off" | "error";
+  detail: string;
+  metrics?: Record<string, number | string>;
+}
+
 function SchnittstellenPanel() {
   const [busy, setBusy] = useState(false);
-  const [healthData, setHealthData] = useState<unknown>(null);
+  const [items, setItems] = useState<HealthItem[] | null>(null);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  async function check() {
+  const load = useCallback(async () => {
     setBusy(true);
+    setErr(null);
     try {
-      const r = await apiCall<unknown>("/api/admin/health", { method: "GET" });
-      setHealthData(r);
+      const r = await apiCall<{ items: HealthItem[]; checkedAt: string }>("/api/admin/health");
+      setItems(r.items);
+      setCheckedAt(r.checkedAt);
     } catch (e) {
-      setHealthData({ error: e instanceof Error ? e.message : String(e) });
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
     <section className="card">
@@ -453,50 +470,86 @@ function SchnittstellenPanel() {
           <Signal size={20} />
           Schnittstellen-Status
         </div>
-        <button
-          type="button"
-          className="themetoggle"
-          onClick={check}
-          disabled={busy}
-          style={{ width: "auto", padding: "0 14px", gap: 6 }}
-        >
-          <RefreshCw size={14} />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>
-            {busy ? "Prüfe …" : "Status prüfen"}
-          </span>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {checkedAt ? (
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--fg-3)",
+              }}
+            >
+              geprüft {formatChecked(checkedAt)}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="themetoggle"
+            onClick={() => void load()}
+            disabled={busy}
+            style={{ width: "auto", padding: "0 14px", gap: 6 }}
+          >
+            <RefreshCw size={14} className={busy ? "spin" : undefined} />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              {busy ? "Prüfe …" : "Status prüfen"}
+            </span>
+          </button>
+        </div>
       </div>
-      <div className="grid-2" style={{ gap: 12 }}>
-        <HealthLed name="BlaulichtSMS" sub="Alarm-Polling alle 15 s" tone="ok" detail="Letzter Poll: vor 8 s · 0 neue Alarme · Audio-Cache 12 MB" />
-        <HealthLed name="syBOS" sub="Personal &amp; Material" tone="warn" detail="Token nicht gesetzt — Fallback-Liste aktiv (45 Personen aus letztem Sync 12.04.26)" />
-        <HealthLed name="wasserkarte.info" sub="Hydranten-Layer" tone="off" detail="Access-Key noch nicht beantragt" />
-        <HealthLed name="CouchDB-Replikation" sub="PWA ⇄ Backend" tone="ok" detail="3 Tablets online · 0 Konflikte · letzter Sync vor 4 s" />
-      </div>
-      {healthData ? (
-        <pre
+      {err ? (
+        <div
           style={{
-            marginTop: 16,
-            padding: 12,
-            background: "var(--surface-2)",
-            border: "1px solid var(--border)",
+            marginBottom: 12,
+            padding: "10px 12px",
             borderRadius: 10,
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--fg-2)",
-            overflowX: "auto",
+            background: "var(--red-tint)",
+            color: "var(--red)",
+            fontSize: 13,
+            border: "1px solid var(--red-border)",
           }}
         >
-          {JSON.stringify(healthData, null, 2)}
-        </pre>
+          {err}
+        </div>
       ) : null}
+      <div className="grid-2" style={{ gap: 12 }}>
+        {items
+          ? items.map((it) => <HealthLed key={it.key} item={it} />)
+          : !err
+            ? Array.from({ length: 4 }).map((_, i) => <HealthSkeleton key={i} />)
+            : null}
+      </div>
     </section>
   );
 }
 
-function HealthLed({ name, sub, tone, detail }: { name: string; sub: string; tone: "ok" | "warn" | "off"; detail: string }) {
-  const color = tone === "ok" ? "var(--ok)" : tone === "warn" ? "var(--warn)" : "var(--fg-3)";
-  const bg = tone === "ok" ? "var(--ok-tint)" : tone === "warn" ? "var(--warn-tint)" : "var(--surface-2)";
-  const label = tone === "ok" ? "OK" : tone === "warn" ? "TEILWEISE" : "OFFLINE";
+function HealthLed({ item }: { item: HealthItem }) {
+  const color =
+    item.state === "ok"
+      ? "var(--ok)"
+      : item.state === "warn"
+        ? "var(--warn)"
+        : item.state === "error"
+          ? "var(--red)"
+          : "var(--fg-3)";
+  const bg =
+    item.state === "ok"
+      ? "var(--ok-tint)"
+      : item.state === "warn"
+        ? "var(--warn-tint)"
+        : item.state === "error"
+          ? "var(--red-tint)"
+          : "var(--surface-2)";
+  const label =
+    item.state === "ok"
+      ? "OK"
+      : item.state === "warn"
+        ? "TEILWEISE"
+        : item.state === "error"
+          ? "FEHLER"
+          : "OFF";
   return (
     <div
       style={{
@@ -508,7 +561,7 @@ function HealthLed({ name, sub, tone, detail }: { name: string; sub: string; ton
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)" }} dangerouslySetInnerHTML={{ __html: name }} />
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)" }}>{item.name}</div>
           <div
             style={{
               fontFamily: "var(--font-mono)",
@@ -519,8 +572,9 @@ function HealthLed({ name, sub, tone, detail }: { name: string; sub: string; ton
               color: "var(--fg-3)",
               marginTop: 2,
             }}
-            dangerouslySetInnerHTML={{ __html: sub }}
-          />
+          >
+            {item.sub}
+          </div>
         </div>
         <span
           style={{
@@ -530,7 +584,7 @@ function HealthLed({ name, sub, tone, detail }: { name: string; sub: string; ton
             padding: "4px 10px",
             borderRadius: 999,
             background: bg,
-            color: color,
+            color,
             fontFamily: "var(--font-mono)",
             fontSize: 10,
             fontWeight: 700,
@@ -538,13 +592,44 @@ function HealthLed({ name, sub, tone, detail }: { name: string; sub: string; ton
             textTransform: "uppercase",
           }}
         >
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, animation: tone === "ok" ? "blink 1.6s infinite" : undefined }} />
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: color,
+              animation: item.state === "ok" ? "blink 1.6s infinite" : undefined,
+            }}
+          />
           {label}
         </span>
       </div>
-      <p style={{ margin: 0, fontSize: 12, color: "var(--fg-2)", lineHeight: 1.4 }}>{detail}</p>
+      <p style={{ margin: 0, fontSize: 12, color: "var(--fg-2)", lineHeight: 1.45 }}>{item.detail}</p>
     </div>
   );
+}
+
+function HealthSkeleton() {
+  return (
+    <div
+      style={{
+        padding: 14,
+        height: 96,
+        border: "1px solid var(--border)",
+        borderRadius: 14,
+        background: "var(--surface-2)",
+        opacity: 0.6,
+      }}
+    />
+  );
+}
+
+function formatChecked(iso: string): string {
+  const ageSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (ageSec < 30) return "gerade";
+  if (ageSec < 60) return `vor ${ageSec} s`;
+  if (ageSec < 3600) return `vor ${Math.floor(ageSec / 60)} min`;
+  return new Date(iso).toLocaleString("de-AT");
 }
 
 function EinsatzstichwortePanel() {

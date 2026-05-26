@@ -1,8 +1,20 @@
 import { Router } from "express";
 import { runSyBosSync } from "../workers/sybos-sync.js";
+import { collectHealth } from "../services/health.js";
 import { logger } from "../lib/logger.js";
 
 export const adminRouter: Router = Router();
+
+/**
+ * Echte Status-Probe aller Schnittstellen — wird vom Backoffice-Tab
+ * "Schnittstellen" pro Click auf "Status prüfen" aufgerufen.
+ * Liefert keine Auth-Anforderung; sollte vor Live-Schaltung mit
+ * Admin-Auth-Middleware versehen werden (FR-15).
+ */
+adminRouter.get("/api/admin/health", async (_req, res) => {
+  const health = await collectHealth();
+  res.json(health);
+});
 
 /**
  * Manueller Trigger für syBOS-Sync — z. B. nach syBOS-Stammdaten-Änderung

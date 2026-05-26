@@ -12,20 +12,28 @@ import { env } from "../config.js";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
 import { listAlarms, type BlaulichtAlarmData } from "../services/blaulichtsms/client.js";
+import { recordBlaulichtSmsPoll } from "../services/state.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
 export async function pollOnce(): Promise<{ neu: number; gesamt: number }> {
-  const alarms = await listAlarms();
-  let neu = 0;
-  for (const a of alarms) {
-    const created = await upsertEinsatz(a);
-    if (created) neu += 1;
+  try {
+    const alarms = await listAlarms();
+    let neu = 0;
+    for (const a of alarms) {
+      const created = await upsertEinsatz(a);
+      if (created) neu += 1;
+    }
+    if (alarms.length > 0) {
+      logger.info({ neu, gesamt: alarms.length }, "BlaulichtSMS-Poll fertig");
+    }
+    recordBlaulichtSmsPoll(neu);
+    return { neu, gesamt: alarms.length };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    recordBlaulichtSmsPoll(0, msg);
+    throw err;
   }
-  if (alarms.length > 0) {
-    logger.info({ neu, gesamt: alarms.length }, "BlaulichtSMS-Poll fertig");
-  }
-  return { neu, gesamt: alarms.length };
 }
 
 async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {

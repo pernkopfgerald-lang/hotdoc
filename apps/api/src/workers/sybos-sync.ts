@@ -19,6 +19,7 @@ import {
   getPersUeberpruefungen,
 } from "../services/sybos/client.js";
 import { buildAtemschutzSet, mapMaterial, mapPerson } from "../services/sybos/mapper.js";
+import { recordSyBosSync } from "../services/state.js";
 
 interface SyncResult {
   ok: boolean;
@@ -80,6 +81,7 @@ export async function runSyBosSync(): Promise<SyncResult> {
     logger.error({ err, result }, "syBOS-Sync fehlgeschlagen");
   }
 
+  recordSyBosSync(result);
   return result;
 }
 
