@@ -11,7 +11,7 @@ import {
   Truck,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { DemoBanner } from "../components/DemoBanner";
@@ -19,6 +19,7 @@ import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { DEMO_ALARM } from "../data/demo-alarm";
+import { fetchChronikDiff } from "../lib/chronik-sync";
 import { useGeolocation } from "../lib/geo";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
@@ -66,36 +67,43 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
   const abgeschlossenCount = fahrzeugStatus.filter((f) => f.status === "abgeschlossen").length;
   const aktivCount = fahrzeugStatus.filter((f) => f.status === "im_einsatz").length;
 
-  const chronik: ChronikEintrag[] = [
+  // Globale Einsatzchronik — wird aus dem CouchDB-Einsatz-Doc gepollt,
+  // identischer Cross-Sync wie auf den Tablets. Anfangs Demo-Einträge
+  // damit die UI nicht leer ist; sobald echte Daten via Sync kommen,
+  // werden sie zusätzlich gemerged.
+  const [chronik, setChronik] = useState<ChronikEintrag[]>([
     {
-      id: "z1",
+      id: "z1-demo",
       zeitstempel: new Date(Date.now() - 1000 * 60 * 14).toISOString(),
       funkrufname: "BlaulichtSMS",
       source: "blaulichtsms",
       text: "Alarmierung · Brand KFZ · Eberstalzeller Straße 5",
     },
-    {
-      id: "z2",
-      zeitstempel: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-      funkrufname: "Pumpe Eberstalzell",
-      source: "fahrzeug",
-      text: "Ausrückung mit voller Besatzung.",
-    },
-    {
-      id: "z3",
-      zeitstempel: new Date(Date.now() - 1000 * 60 * 6).toISOString(),
-      funkrufname: "Tank Eberstalzell",
-      source: "fahrzeug",
-      text: "Eintreffen am Einsatzort, Wasserabgabe vorbereiten.",
-    },
-    {
-      id: "z4",
-      zeitstempel: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-      funkrufname: "Atemschutz",
-      source: "atemschutz",
-      text: "Huemer Manfred unter Atemschutz im Einsatz",
-    },
-  ];
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      const knownIds = new Set(chronik.map((c) => c.id));
+      const neue = await fetchChronikDiff(DEMO_ALARM.alarmId, knownIds);
+      if (cancelled || neue.length === 0) return;
+      setChronik((prev) => {
+        const own = new Set(prev.map((c) => c.id));
+        const toAdd = neue.filter((n) => !own.has(n.id));
+        if (toAdd.length === 0) return prev;
+        return [...prev, ...toAdd].sort(
+          (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
+        );
+      });
+    };
+    void tick();
+    const t = setInterval(() => void tick(), 8_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>

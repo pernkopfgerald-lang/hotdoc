@@ -275,6 +275,86 @@ einsaetzeRouter.put(
   }) as RequestHandler,
 );
 
+// ─── POST /api/einsaetze/:id/chronik ──────────────────────────
+// Append-only Endpoint für Einsatzchronik. Wird von jedem Fahrzeug-
+// Tablet aufgerufen wenn ein Diktat / Auftrag / Status-Event eintritt.
+// Idempotent über entry.id — wenn der Eintrag schon vorhanden ist,
+// 200 OK ohne erneutes Insert (verhindert Duplikate bei Retry/Sync).
+// Tablets pollen GET .../chronik in 8s-Intervallen und mergen
+// Einträge ihrer Geschwister-Fahrzeuge → echter Cross-Check.
+const ChronikEintragBodySchema = z.object({
+  id: z.string().min(1),
+  zeitstempel: z.string(),
+  funkrufname: z.string().min(1),
+  fahrzeugId: z.string().min(1),
+  source: z.enum(["blaulichtsms", "fahrzeug", "manuell", "atemschutz"]),
+  text: z.string().min(1).max(2000),
+  pending: z.boolean().optional(),
+  transkriptStatus: z.enum(["pending", "verfuegbar", "fehlgeschlagen"]).optional(),
+});
+
+einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), (async (req, res) => {
+  const id = decodeURIComponent(String(req.params.id));
+  const parsed = ChronikEintragBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
+    return;
+  }
+  let doc: Record<string, unknown>;
+  try {
+    doc = (await db.get(id)) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      res.status(404).json({ error: "einsatz_not_found" });
+      return;
+    }
+    throw err;
+  }
+  if (doc.schreibschutz === true) {
+    res.status(423).json({ error: "schreibschutz_aktiv" });
+    return;
+  }
+
+  const chronik = ((doc.chronik as unknown[] | undefined) ?? []) as Array<{ id: string }>;
+  const exists = chronik.find((e) => e.id === parsed.data.id);
+  if (exists) {
+    // Idempotent — Eintrag schon vorhanden
+    res.json({ ok: true, deduped: true, total: chronik.length });
+    return;
+  }
+
+  const updated = {
+    ...doc,
+    chronik: [...chronik, parsed.data],
+    geaendertAm: new Date().toISOString(),
+  };
+  const result = await db.insert(updated);
+  logger.info(
+    { id, source: parsed.data.source, fzg: parsed.data.fahrzeugId },
+    "Chronik-Eintrag broadcast",
+  );
+  res.json({ ok: true, rev: result.rev, total: chronik.length + 1 });
+}) as RequestHandler);
+
+// ─── GET /api/einsaetze/:id/chronik ───────────────────────────
+// Liefert nur die chronik-Sub-Liste. Tablets pollen das alle 8s und
+// vergleichen mit ihrem lokalen Set — neue Einträge werden lokal
+// angehängt, Duplikate über entry.id gefiltert.
+einsaetzeRouter.get("/api/einsaetze/:id/chronik", requireAuth(), (async (req, res) => {
+  const id = decodeURIComponent(String(req.params.id));
+  try {
+    const doc = (await db.get(id)) as Record<string, unknown>;
+    const chronik = (doc.chronik as unknown[] | undefined) ?? [];
+    res.json({ ok: true, id, chronik, geaendertAm: doc.geaendertAm });
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      res.status(404).json({ error: "einsatz_not_found" });
+      return;
+    }
+    throw err;
+  }
+}) as RequestHandler);
+
 // ─── GET /api/einsaetze/:id/fahrzeugberichte ───────────────────
 einsaetzeRouter.get(
   "/api/einsaetze/:id/fahrzeugberichte",

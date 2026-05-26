@@ -33,6 +33,7 @@ import {
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import { getAllPersonen } from "../db/seed";
 import type { RecordingResult } from "../lib/audio";
+import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
@@ -166,6 +167,36 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
     return () => clearInterval(id);
   }, [selfPos.lat, selfPos.lng]);
 
+  // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
+  // Pausiert wenn Bericht abgeschlossen (kein Schreibschutz-Bypass nötig).
+  useEffect(() => {
+    if (active.abgeschlossen) return;
+    let cancelled = false;
+    const tick = async () => {
+      const knownIds = new Set(active.chronik.map((c) => c.id));
+      const neue = await fetchChronikDiff(activeId, knownIds);
+      if (cancelled || neue.length === 0) return;
+      patchActive((e) => {
+        const own = new Set(e.chronik.map((c) => c.id));
+        const toAdd = neue.filter((n) => !own.has(n.id));
+        if (toAdd.length === 0) return e;
+        return {
+          ...e,
+          chronik: [...e.chronik, ...toAdd].sort(
+            (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
+          ),
+        };
+      });
+    };
+    void tick();
+    const t = setInterval(() => void tick(), 8_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, active.abgeschlossen]);
+
   function patchActive(updater: (e: EinsatzInstance) => EinsatzInstance) {
     setEinsaetze((prev) => prev.map((e) => (e.id === activeId ? updater(e) : e)));
   }
@@ -214,28 +245,65 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
 
   function onDictateResult(result: RecordingResult) {
     const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const zeitstempel = new Date().toISOString();
+    const text = `🎤 Audio · ${formatDuration(result.durationMs)} · Transkript folgt`;
     patchActive((e) => ({
       ...e,
       chronik: [
         ...e.chronik,
         {
           id,
-          zeitstempel: new Date().toISOString(),
+          zeitstempel,
           funkrufname: fahrzeug.funkrufname,
           source: "fahrzeug",
           pending: true,
-          text: `🎤 Audio · ${formatDuration(result.durationMs)} · Transkript folgt`,
+          text,
         },
       ],
     }));
+    // Broadcast an alle anderen Fahrzeuge + Florianstation
+    void broadcastChronikEntry(activeId, {
+      id,
+      zeitstempel,
+      funkrufname: fahrzeug.funkrufname,
+      fahrzeugId,
+      source: "fahrzeug",
+      pending: true,
+      text,
+    });
   }
 
   function addAuftrag(text: string) {
     const id = `auf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const zeitstempel = new Date().toISOString();
     patchActive((e) => ({
       ...e,
-      auftraege: [...e.auftraege, { id, text, zeitstempel: new Date().toISOString() }],
+      auftraege: [...e.auftraege, { id, text, zeitstempel }],
     }));
+    // Auch in der Chronik vermerken — andere Fahrzeuge sehen "Auftrag begonnen: X"
+    const chronikId = `chr-auf-${id}`;
+    const chronikText = `Auftrag begonnen: ${text}`;
+    patchActive((e) => ({
+      ...e,
+      chronik: [
+        ...e.chronik,
+        {
+          id: chronikId,
+          zeitstempel,
+          funkrufname: fahrzeug.funkrufname,
+          source: "fahrzeug",
+          text: chronikText,
+        },
+      ],
+    }));
+    void broadcastChronikEntry(activeId, {
+      id: chronikId,
+      zeitstempel,
+      funkrufname: fahrzeug.funkrufname,
+      fahrzeugId,
+      source: "fahrzeug",
+      text: chronikText,
+    });
   }
   function removeAuftrag(id: string) {
     patchActive((e) => ({ ...e, auftraege: e.auftraege.filter((a) => a.id !== id) }));
