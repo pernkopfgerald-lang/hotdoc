@@ -23,6 +23,11 @@ async function main(): Promise<void> {
   const app = express();
 
   // — Middleware —
+  // trust proxy: damit req.ip die echte Client-IP aus X-Forwarded-For nimmt
+  // (Fly setzt das automatisch). Wichtig für das Login-Rate-Limit damit
+  // wir nicht alle Logins durch den fly-Edge-Proxy zusammenwerfen.
+  app.set("trust proxy", true);
+
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({ origin: true, credentials: true }));
   app.use(compression());

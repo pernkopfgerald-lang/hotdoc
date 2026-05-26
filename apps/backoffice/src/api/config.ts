@@ -45,6 +45,11 @@ export interface StammdatenData {
   heimkoord?: { lat: number; lng: number };
   bezirk?: string;
   feuerwehrhausAdresse?: string;
+  /**
+   * Auto-Release-Zeit nach QR-Handoff in Stunden.
+   * Erlaubte Werte: 1 / 4 / 12 / 24 / 48. 0 = nie. Default 24.
+   */
+  handoffAutoReleaseHours?: number;
 }
 
 export interface TabletPinsData {

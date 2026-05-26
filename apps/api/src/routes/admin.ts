@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import { runSyBosSync } from "../workers/sybos-sync.js";
 import { collectHealth } from "../services/health.js";
+import { loadRecentAuditEvents } from "../services/audit.js";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -58,5 +59,17 @@ adminRouter.get("/api/admin/personen", requireAuth(), (async (_req, res) => {
       aktiv: d.aktiv as boolean | undefined,
     }))
     .filter((p) => p.aktiv !== false);
+  res.json({ ok: true, count: items.length, items });
+}) as RequestHandler);
+
+/**
+ * Audit-Events — die letzten N Events (Default 50). Für Verwaltung-Tab
+ * „Aktivität". Nur funktionaer+ darf das sehen (Datenschutz: Login-Fails
+ * mit Username/IP sind sensibel).
+ */
+adminRouter.get("/api/admin/audit", requireAuth("funktionaer"), (async (req, res) => {
+  const rawLimit = req.query.limit;
+  const limit = Math.min(200, Math.max(1, Number(rawLimit) || 50));
+  const items = await loadRecentAuditEvents(limit);
   res.json({ ok: true, count: items.length, items });
 }) as RequestHandler);

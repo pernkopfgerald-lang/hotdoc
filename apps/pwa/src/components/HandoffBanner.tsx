@@ -1,4 +1,4 @@
-import { AlertTriangle, Smartphone, Undo2 } from "lucide-react";
+import { AlertTriangle, Monitor, Smartphone, Undo2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   getHandoffInfo,
@@ -6,6 +6,7 @@ import {
   releaseHandoff,
   type HandoffInfo,
 } from "../lib/handoff";
+import { HandoffModal } from "./HandoffModal";
 
 interface Props {
   /** Wird gerufen wenn der User „Jetzt freigeben" klickt — App entscheidet was als nächstes passiert (üblich: Setup-Screen). */
@@ -26,6 +27,7 @@ export function HandoffBanner({ onReleased }: Props) {
   const [info, setInfo] = useState<HandoffInfo | null>(() => getHandoffInfo());
   const [hoursLeft, setHoursLeft] = useState<number | null>(() => handoffHoursLeft());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reverseQrOpen, setReverseQrOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Countdown alle 30 s aktualisieren — Stunden-genau reicht, niemand
@@ -109,6 +111,28 @@ export function HandoffBanner({ onReleased }: Props) {
         </span>
         <button
           type="button"
+          onClick={() => setReverseQrOpen(true)}
+          style={{
+            background: "var(--info)",
+            border: "1px solid var(--info)",
+            color: "#fff",
+            padding: "4px 10px",
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            minHeight: 0,
+          }}
+          title="QR-Code generieren — Tablet kann scannen und übernehmen"
+        >
+          <Monitor size={11} /> QR fürs Tablet
+        </button>
+        <button
+          type="button"
           onClick={() => setConfirmOpen(true)}
           style={{
             background: "transparent",
@@ -125,10 +149,23 @@ export function HandoffBanner({ onReleased }: Props) {
             gap: 4,
             minHeight: 0,
           }}
+          title="Sitzung beenden ohne QR — Tablet muss sich mit PIN neu einloggen"
         >
-          <Undo2 size={11} /> Jetzt freigeben
+          <Undo2 size={11} /> Nur freigeben
         </button>
       </div>
+
+      <HandoffModal
+        open={reverseQrOpen}
+        onClose={() => setReverseQrOpen(false)}
+        {...(info?.einsatzId ? { einsatzId: info.einsatzId } : {})}
+        mode="reverse"
+        onClaimed={() => {
+          // Tablet hat den QR gescannt und übernommen → Handy logged sich aus
+          setReverseQrOpen(false);
+          void release();
+        }}
+      />
 
       {confirmOpen ? (
         <div

@@ -1,4 +1,4 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
 import {
@@ -80,6 +80,7 @@ type Tab =
   | "berichte"
   | "florian"
   | "archiv"
+  | "aktivitaet"
   | "schnittstellen"
   | "einsatzstichworte"
   | "nummerierung"
@@ -149,6 +150,9 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "archiv"} onClick={() => setTab("archiv")} icon={<Archive size={16} />}>
           Archiv
         </TabButton>
+        <TabButton active={tab === "aktivitaet"} onClick={() => setTab("aktivitaet")} icon={<History size={16} />}>
+          Aktivität
+        </TabButton>
         <TabButton active={tab === "schnittstellen"} onClick={() => setTab("schnittstellen")} icon={<Signal size={16} />}>
           Schnittstellen
         </TabButton>
@@ -188,6 +192,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "berichte" && <BerichteBrowser />}
         {tab === "florian" && <Florianstation />}
         {tab === "archiv" && <ArchivPanel />}
+        {tab === "aktivitaet" && <AktivitaetPanel />}
         {tab === "schnittstellen" && <SchnittstellenPanel />}
         {tab === "einsatzstichworte" && <EinsatzstichwortePanel />}
         {tab === "nummerierung" && <NummerierungPanel />}
@@ -1335,8 +1340,295 @@ function StammdatenPanel() {
           />
         </div>
       </div>
+
+      <h4 style={{ margin: "18px 0 12px", fontSize: 14, color: "var(--fg)" }}>
+        Notfall-Übergabe (QR-Handoff)
+      </h4>
+      <div className="grid-2" style={{ gap: 12 }}>
+        <div className="field">
+          <label className="caption">Auto-Release nach</label>
+          <select
+            className="input"
+            value={String(data.handoffAutoReleaseHours ?? 24)}
+            onChange={(e) =>
+              setData({ ...data, handoffAutoReleaseHours: Number(e.target.value) })
+            }
+          >
+            <option value="1">1 Stunde</option>
+            <option value="4">4 Stunden</option>
+            <option value="12">12 Stunden</option>
+            <option value="24">24 Stunden (Default)</option>
+            <option value="48">48 Stunden</option>
+            <option value="0">Nie (Token bleibt bis Standard-Login-TTL gültig)</option>
+          </select>
+        </div>
+        <div
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "var(--surface-2)",
+            border: "1px dashed var(--border)",
+            fontSize: 12,
+            color: "var(--fg-2)",
+            lineHeight: 1.55,
+          }}
+        >
+          Nach einer Notfall-Übergabe Tablet → Handy wird die Handy-Sitzung nach
+          dieser Zeit automatisch ungültig. Das Tablet kann sich dann wieder mit
+          PIN einloggen.
+        </div>
+      </div>
     </section>
   );
+}
+
+/**
+ * Aktivitäts-Tab — letzte Audit-Events (Handoff-Flow, Logins, Config-Änderungen).
+ * Funktionär+ Berechtigung. Auto-Refresh alle 30 s.
+ */
+interface AuditEventItem {
+  _id: string;
+  type: string;
+  timestamp: string;
+  code?: string;
+  actorUsername?: string;
+  actorRolle?: string;
+  fahrzeugId?: string;
+  einsatzId?: string;
+  ipAddress?: string;
+  autoReleaseAt?: string;
+  userAgent?: string;
+  details?: Record<string, unknown>;
+}
+
+function AktivitaetPanel() {
+  const [items, setItems] = useState<AuditEventItem[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"alle" | "handoff" | "login" | "config">("alle");
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const r = await apiCall<{ ok: boolean; items: AuditEventItem[] }>(
+        "/api/admin/audit?limit=100",
+      );
+      setItems(r.items);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 30_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const filtered = (items ?? []).filter((it) => {
+    if (filter === "alle") return true;
+    if (filter === "handoff") return it.type.startsWith("handoff");
+    if (filter === "login") return it.type.startsWith("login");
+    if (filter === "config") return it.type === "config-changed";
+    return true;
+  });
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <History size={20} />
+          Aktivität · Audit-Trail
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="cta"
+            style={{ width: "auto", padding: "6px 12px", fontSize: 12, gap: 6 }}
+            title="Aktualisieren"
+          >
+            <RefreshCw size={12} /> Aktualisieren
+          </button>
+        </div>
+      </div>
+
+      {err ? <ErrorBanner msg={err} /> : null}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {(
+          [
+            ["alle", "Alle"],
+            ["handoff", "Handoff"],
+            ["login", "Login"],
+            ["config", "Config"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setFilter(key)}
+            style={{
+              background: filter === key ? "var(--info)" : "var(--surface-2)",
+              color: filter === key ? "#fff" : "var(--fg-2)",
+              border: `1px solid ${filter === key ? "var(--info)" : "var(--border)"}`,
+              padding: "6px 14px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              minHeight: 32,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {!items ? (
+        <p style={{ color: "var(--fg-3)" }}>lade …</p>
+      ) : filtered.length === 0 ? (
+        <p style={{ color: "var(--fg-3)", padding: "20px 8px", textAlign: "center" }}>
+          Keine Events gefunden.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {filtered.map((it) => (
+            <AuditEventRow key={it._id} event={it} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AuditEventRow({ event }: { event: AuditEventItem }) {
+  const meta = describeEvent(event.type);
+  const d = new Date(event.timestamp);
+  const dateStr = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(-2)}`;
+  const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "auto 120px 1fr auto",
+        gap: 12,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        alignItems: "center",
+      }}
+    >
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: `${meta.color}26`,
+          color: meta.color,
+        }}
+      >
+        {meta.Icon}
+      </span>
+      <div>
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--fg-3)",
+          }}
+        >
+          {dateStr}
+        </div>
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "var(--fg)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {timeStr}
+        </div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{meta.label}</div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--fg-3)",
+            fontFamily: "var(--font-mono)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {[
+            event.actorUsername && `User: ${event.actorUsername}`,
+            event.fahrzeugId && `Fahrzeug: ${event.fahrzeugId}`,
+            event.code && `Code: ${event.code}`,
+            event.einsatzId && `Einsatz: ${event.einsatzId.replace(/^einsatz:/, "").slice(0, 12)}…`,
+            event.ipAddress && `IP: ${event.ipAddress}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      </div>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          fontWeight: 700,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: meta.color,
+          padding: "3px 8px",
+          borderRadius: 99,
+          background: `${meta.color}1A`,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {event.type}
+      </span>
+    </div>
+  );
+}
+
+function describeEvent(type: string): { Icon: React.ReactNode; label: string; color: string } {
+  switch (type) {
+    case "handoff-create":
+      return { Icon: <Smartphone size={16} />, label: "QR-Code für Übergabe erzeugt", color: "var(--red)" };
+    case "handoff-claim":
+      return { Icon: <ArrowRightLeft size={16} />, label: "Sitzung am Handy übernommen", color: "var(--warn)" };
+    case "handoff-release":
+      return { Icon: <Undo2 size={16} />, label: "Sitzung manuell freigegeben", color: "var(--ok)" };
+    case "handoff-reverse-create":
+      return { Icon: <Monitor size={16} />, label: "QR fürs Tablet erzeugt", color: "var(--info)" };
+    case "handoff-reverse-claim":
+      return { Icon: <ArrowRightLeft size={16} />, label: "Sitzung ans Tablet zurückgegeben", color: "var(--info)" };
+    case "login-success":
+      return { Icon: <LogIn size={16} />, label: "Login erfolgreich", color: "var(--ok)" };
+    case "login-failed":
+      return { Icon: <AlertTriangle size={16} />, label: "Login fehlgeschlagen", color: "var(--red)" };
+    case "einsatz-abschluss":
+      return { Icon: <CheckCircle2 size={16} />, label: "Einsatz abgeschlossen", color: "var(--ok)" };
+    case "einsatz-reaktivierung":
+      return { Icon: <RefreshCw size={16} />, label: "Einsatz reaktiviert", color: "var(--warn)" };
+    case "config-changed":
+      return { Icon: <Settings size={16} />, label: "Konfiguration geändert", color: "var(--info)" };
+    default:
+      return { Icon: <History size={16} />, label: type, color: "var(--fg-2)" };
+  }
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
 /**

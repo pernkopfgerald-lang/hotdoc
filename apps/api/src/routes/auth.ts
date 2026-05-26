@@ -23,13 +23,20 @@ import {
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
+import {
+  loginRateLimit,
+  recordFailedLogin,
+  recordSuccessfulLogin,
+} from "../lib/rate-limit.js";
+import { writeAuditEvent } from "../services/audit.js";
 import { signSession, verifySession } from "../services/auth/jwt.js";
 import { verifyPassword } from "../services/auth/password.js";
 
 export const authRouter: Router = Router();
 
 // — POST /api/auth/login —
-authRouter.post("/api/auth/login", (async (req, res) => {
+// Rate-Limited: max 5 fehlgeschlagene Versuche pro IP / 15 min → 30 min Sperre
+authRouter.post("/api/auth/login", loginRateLimit, (async (req, res) => {
   const parsed = LoginRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -39,13 +46,27 @@ authRouter.post("/api/auth/login", (async (req, res) => {
 
   const benutzer = await findBenutzerByUsername(username);
   if (!benutzer || !benutzer.aktiv) {
-    logger.info({ username }, "Login fehlgeschlagen — Benutzer unbekannt/inaktiv");
+    logger.info({ username, ip: req.ip }, "Login fehlgeschlagen — Benutzer unbekannt/inaktiv");
+    recordFailedLogin(req);
+    await writeAuditEvent({
+      type: "login-failed",
+      actorUsername: username,
+      details: { reason: "unknown_or_inactive" },
+      ipAddress: req.ip,
+    });
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
   const ok = await verifyPassword(password, benutzer.passwordHash);
   if (!ok) {
-    logger.info({ username }, "Login fehlgeschlagen — Passwort falsch");
+    logger.info({ username, ip: req.ip }, "Login fehlgeschlagen — Passwort falsch");
+    recordFailedLogin(req);
+    await writeAuditEvent({
+      type: "login-failed",
+      actorUsername: username,
+      details: { reason: "wrong_password" },
+      ipAddress: req.ip,
+    });
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
@@ -59,6 +80,14 @@ authRouter.post("/api/auth/login", (async (req, res) => {
   await db.insert({
     ...benutzer,
     letzterLogin: new Date().toISOString(),
+  });
+
+  recordSuccessfulLogin(req);
+  await writeAuditEvent({
+    type: "login-success",
+    actorUsername: benutzer.username,
+    actorRolle: benutzer.rolle,
+    ipAddress: req.ip,
   });
 
   const response: AuthResponse = {
@@ -101,7 +130,7 @@ authRouter.get("/api/auth/me", (async (req, res) => {
 // Im config:tablet-pins-Doc liegt für jeden Fahrzeug-Slug eine vier-stellige
 // PIN. Default beim Bootstrap "1234" — Funktionär ändert sie in der
 // Verwaltung/Stammdaten.
-authRouter.post("/api/auth/tablet/pin-register", (async (req, res) => {
+authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, res) => {
   const body = req.body as { fahrzeugId?: string; pin?: string; deviceId?: string };
   const fahrzeugId = String(body.fahrzeugId ?? "");
   const pin = String(body.pin ?? "");
@@ -115,10 +144,20 @@ authRouter.post("/api/auth/tablet/pin-register", (async (req, res) => {
   const pins = await loadTabletPins();
   const expected = pins[fahrzeugId];
   if (!expected || expected !== pin) {
-    logger.info({ fahrzeugId }, "Tablet-PIN-Login fehlgeschlagen");
+    logger.info({ fahrzeugId, ip: req.ip }, "Tablet-PIN-Login fehlgeschlagen");
+    recordFailedLogin(req);
+    await writeAuditEvent({
+      type: "login-failed",
+      actorUsername: `tablet:${fahrzeugId}`,
+      details: { reason: "wrong_pin" },
+      fahrzeugId,
+      ipAddress: req.ip,
+    });
     res.status(401).json({ error: "invalid_pin" });
     return;
   }
+
+  recordSuccessfulLogin(req);
 
   const { token, expiresAt } = await signSession({
     sub: `tablet:${fahrzeugId}:${deviceId}`,
@@ -284,7 +323,7 @@ async function findTabletByMsisdn(msisdn: string): Promise<TabletAuth | null> {
 //    = 32^8 ≈ 10^12 Permutationen. Brute-Force nicht möglich.
 
 const HANDOFF_TTL_MS = 5 * 60 * 1000;
-const HANDOFF_AUTO_RELEASE_MS = 24 * 60 * 60 * 1000; // 24 Std
+const HANDOFF_AUTO_RELEASE_DEFAULT_HOURS = 24;
 const HANDOFF_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // ohne 0/O/1/I-Verwechslung
 const HANDOFF_CODE_LEN = 8;
 
@@ -296,6 +335,26 @@ function generateHandoffCode(): string {
     out += HANDOFF_CODE_ALPHABET[byte % HANDOFF_CODE_ALPHABET.length];
   }
   return out;
+}
+
+/**
+ * Liest die konfigurierte Auto-Release-Dauer aus den Stammdaten.
+ * Erlaubte Werte: 1 / 4 / 12 / 24 / 48 / 0 (= nie auto-releasen).
+ * Default: 24 h.
+ */
+async function loadHandoffAutoReleaseHours(): Promise<number> {
+  try {
+    const doc = (await db.get("config:stammdaten")) as {
+      data?: { handoffAutoReleaseHours?: number };
+    };
+    const h = doc.data?.handoffAutoReleaseHours;
+    if (typeof h === "number" && Number.isFinite(h) && h >= 0 && h <= 168) {
+      return h;
+    }
+  } catch {
+    // Doc fehlt oder nicht lesbar → Default
+  }
+  return HANDOFF_AUTO_RELEASE_DEFAULT_HOURS;
 }
 
 interface HandoffDoc {
@@ -310,11 +369,17 @@ interface HandoffDoc {
   sourceRolle: Benutzer["rolle"];
   /** Aktiv-Einsatz beim Erstellen — der Empfänger landet darauf. */
   einsatzId?: string;
+  /**
+   * Reverse-Handoff: das übergebende Gerät war selbst ein Handoff-Empfänger
+   * (Handy mit viaHandoff=true) und gibt jetzt zurück ans Tablet. Der
+   * Empfänger bekommt einen normalen Token (kein autoReleaseAt, kein viaHandoff).
+   */
+  isReverseHandoff: boolean;
   /** Wann erstellt. */
   createdAt: string;
   /** Ablauf-Zeitpunkt. */
   expiresAt: string;
-  /** Wer hat gecla​imt + wann. */
+  /** Wer hat geclaimt + wann. */
   claimedAt?: string;
   claimedByUserAgent?: string;
   /** Single-Use: nach erstem Claim true. */
@@ -333,6 +398,10 @@ authRouter.post("/api/auth/handoff/create", requireAuth(), (async (req, res) => 
     return;
   }
   const session = req.session!;
+  // Wenn die Quell-Sitzung selbst via Handoff entstanden ist (Handy
+  // gibt zurück), markieren wir das — der Empfänger bekommt dann einen
+  // „normalen" Token ohne autoReleaseAt.
+  const isReverseHandoff = session.viaHandoff === true;
   const code = generateHandoffCode();
   const now = new Date();
   const doc: HandoffDoc = {
@@ -344,6 +413,7 @@ authRouter.post("/api/auth/handoff/create", requireAuth(), (async (req, res) => 
     sourceUsername: session.username,
     sourceRolle: session.rolle,
     ...(parsed.data.einsatzId ? { einsatzId: parsed.data.einsatzId } : {}),
+    isReverseHandoff,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + HANDOFF_TTL_MS).toISOString(),
     claimed: false,
@@ -361,15 +431,31 @@ authRouter.post("/api/auth/handoff/create", requireAuth(), (async (req, res) => 
       throw err;
     }
   }
+  // Audit-Event-Doc
+  await writeAuditEvent({
+    type: isReverseHandoff ? "handoff-reverse-create" : "handoff-create",
+    code: doc.code,
+    fahrzeugId: session.fahrzeugId,
+    actorUsername: session.username,
+    actorRolle: session.rolle,
+    einsatzId: parsed.data.einsatzId,
+  });
   logger.info(
-    { code: doc.code, by: session.username, fahrzeug: session.fahrzeugId, einsatzId: parsed.data.einsatzId },
-    "Handoff-Code erstellt",
+    {
+      code: doc.code,
+      by: session.username,
+      fahrzeug: session.fahrzeugId,
+      einsatzId: parsed.data.einsatzId,
+      isReverseHandoff,
+    },
+    isReverseHandoff ? "Reverse-Handoff-Code erstellt (Handy → Tablet)" : "Handoff-Code erstellt",
   );
   res.json({
     ok: true,
     code: doc.code,
     expiresAt: doc.expiresAt,
     ttlSeconds: HANDOFF_TTL_MS / 1000,
+    isReverseHandoff,
   });
 }) as RequestHandler);
 
@@ -421,15 +507,23 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
     throw err;
   }
 
-  // Neuen JWT-Token für das Handy ausstellen (gleiche Rolle wie Quell-Session,
-  // gleiche fahrzeugId, gleiche Identität — Handy übernimmt die Sitzung).
+  // Neuen JWT-Token für das übernehmende Gerät ausstellen.
   //
-  // Auto-Release: nach 24 h wird der Token als ungültig markiert. Das Handy
-  // bekommt dann beim nächsten API-Call 401, sieht den Setup-Screen, und das
-  // Tablet kann sich mit normaler PIN wieder einloggen. Manuelles „Sitzung
-  // freigeben" geht über das clearen von localStorage am Handy (rein
-  // clientseitig — Token ist eh self-contained).
-  const autoReleaseAt = new Date(Date.now() + HANDOFF_AUTO_RELEASE_MS).toISOString();
+  // Reverse-Handoff (Handy → Tablet zurück): KEIN autoReleaseAt, KEIN viaHandoff —
+  // das Tablet bekommt einen ganz normalen Sitzungs-Token zurück.
+  //
+  // Forward-Handoff (Tablet → Handy): autoReleaseAt = jetzt + N Stunden
+  // (N kommt aus Stammdaten, Default 24). N=0 bedeutet „kein Auto-Release".
+  let autoReleaseAt: string | undefined;
+  const signOpts: { autoReleaseAt?: string; viaHandoff?: boolean } = {};
+  if (!doc.isReverseHandoff) {
+    const hours = await loadHandoffAutoReleaseHours();
+    if (hours > 0) {
+      autoReleaseAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+      signOpts.autoReleaseAt = autoReleaseAt;
+    }
+    signOpts.viaHandoff = true;
+  }
   const { token, expiresAt } = await signSession(
     {
       sub: doc.sourceSub,
@@ -437,8 +531,19 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
       rolle: doc.sourceRolle,
       ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
     },
-    { autoReleaseAt, viaHandoff: true },
+    signOpts,
   );
+
+  await writeAuditEvent({
+    type: doc.isReverseHandoff ? "handoff-reverse-claim" : "handoff-claim",
+    code,
+    fahrzeugId: doc.sourceFahrzeugId,
+    actorUsername: doc.sourceUsername,
+    actorRolle: doc.sourceRolle,
+    einsatzId: doc.einsatzId,
+    userAgent: ua.slice(0, 200),
+    autoReleaseAt,
+  });
 
   logger.warn(
     {
@@ -446,18 +551,22 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
       from: doc.sourceUsername,
       fahrzeug: doc.sourceFahrzeugId,
       einsatzId: doc.einsatzId,
-      autoReleaseAt,
+      autoReleaseAt: autoReleaseAt ?? "nie",
+      isReverseHandoff: doc.isReverseHandoff,
       ua: ua.slice(0, 60),
     },
-    "Handoff geclaimt — Quell-Tablet sollte sich selbst ausloggen · Auto-Release in 24h",
+    doc.isReverseHandoff
+      ? "Reverse-Handoff geclaimt — Tablet übernimmt Sitzung als normaler Token"
+      : "Handoff geclaimt — Quell-Tablet sollte sich selbst ausloggen",
   );
 
   res.json({
     ok: true,
     token,
     expiresAt,
-    autoReleaseAt,
-    viaHandoff: true,
+    ...(autoReleaseAt ? { autoReleaseAt } : {}),
+    viaHandoff: !doc.isReverseHandoff,
+    isReverseHandoff: doc.isReverseHandoff,
     rolle: doc.sourceRolle,
     ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
     ...(doc.einsatzId ? { einsatzId: doc.einsatzId } : {}),
@@ -475,6 +584,13 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
 // hätten.
 authRouter.post("/api/auth/handoff/release", requireAuth(), (async (req, res) => {
   const session = req.session!;
+  await writeAuditEvent({
+    type: "handoff-release",
+    actorUsername: session.username,
+    actorRolle: session.rolle,
+    fahrzeugId: session.fahrzeugId,
+    details: { viaHandoff: session.viaHandoff === true },
+  });
   logger.info(
     {
       by: session.username,

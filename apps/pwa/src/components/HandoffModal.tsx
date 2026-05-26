@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Loader2, QrCode, Smartphone, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Monitor, QrCode, Smartphone, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useRef, useState } from "react";
 import { apiCall } from "../lib/api";
@@ -10,6 +10,13 @@ interface Props {
   einsatzId?: string;
   /** Wird aufgerufen wenn der QR vom Handy geclaimt wurde — Tablet loggt sich dann selbst aus. */
   onClaimed: () => void;
+  /**
+   * "forward" = Tablet → Handy (Notfall-Übergabe, mit Auto-Release)
+   * "reverse" = Handy → Tablet (Sitzung sofort zurückgeben, kein Auto-Release)
+   * Affektet nur die UI-Wording — die Backend-Logik leitet sich vom
+   * source-Token-viaHandoff-Flag ab.
+   */
+  mode?: "forward" | "reverse";
 }
 
 type HandoffState =
@@ -33,7 +40,7 @@ type HandoffState =
  * triggert die Komponente sofort `onClaimed`. Beim Schließen / Unmount
  * wird das Polling beendet.
  */
-export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
+export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forward" }: Props) {
   const [state, setState] = useState<HandoffState>({ kind: "idle" });
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -136,6 +143,19 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
 
+  const reverse = mode === "reverse";
+  const TargetIcon = reverse ? Monitor : Smartphone;
+  const title = reverse ? "Sitzung ans Tablet zurückgeben" : "Notfall-Übergabe an Handy";
+  const subtitle = reverse
+    ? "QR scannen am Tablet · Sitzung normalisieren · Handy logt sich aus"
+    : "QR scannen · Sitzung übernehmen · Tablet logt sich aus";
+  const scanInstruction = reverse
+    ? "Öffne am Tablet die Kamera oder den HotDoc-Scanner und scanne den QR-Code. Sobald das Tablet übernimmt, loggt sich dieses Handy automatisch aus."
+    : "Öffne am Handy die Kamera und scanne den QR-Code. Sobald das Handy übernimmt, loggt sich dieses Tablet automatisch aus.";
+  const successText = reverse
+    ? "Das Tablet hat die Sitzung übernommen. Dieses Handy wird in einem Moment ausgeloggt."
+    : "Das Handy hat die Sitzung übernommen. Dieses Tablet wird in einem Moment ausgeloggt.";
+
   return (
     <div
       role="dialog"
@@ -175,13 +195,16 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
               width: 42,
               height: 42,
               borderRadius: 12,
-              background:
-                "linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 60%, #000) 100%)",
+              background: reverse
+                ? "linear-gradient(135deg, var(--info) 0%, color-mix(in srgb, var(--info) 60%, #000) 100%)"
+                : "linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 60%, #000) 100%)",
               color: "#fff",
-              boxShadow: "0 8px 20px -6px rgba(200,16,46,0.5)",
+              boxShadow: reverse
+                ? "0 8px 20px -6px rgba(37,99,235,0.5)"
+                : "0 8px 20px -6px rgba(200,16,46,0.5)",
             }}
           >
-            <Smartphone size={20} strokeWidth={2.2} />
+            <TargetIcon size={20} strokeWidth={2.2} />
           </span>
           <div style={{ flex: 1 }}>
             <h2
@@ -193,7 +216,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
                 letterSpacing: "-0.01em",
               }}
             >
-              Notfall-Übergabe an Handy
+              {title}
             </h2>
             <p
               style={{
@@ -206,7 +229,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
                 color: "var(--fg-3)",
               }}
             >
-              QR scannen · Sitzung übernehmen · Tablet logt sich aus
+              {subtitle}
             </p>
           </div>
           {state.kind !== "claimed" ? (
@@ -331,8 +354,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
                 color: "var(--fg-3)",
               }}
             >
-              Öffne am Handy die Kamera und scanne den QR-Code. Sobald das Handy übernimmt,
-              loggt sich dieses Tablet automatisch aus.
+              {scanInstruction}
             </p>
           </>
         ) : state.kind === "claimed" ? (
@@ -349,10 +371,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed }: Props) {
           >
             <CheckCircle2 size={48} strokeWidth={1.8} />
             <strong style={{ fontSize: 16 }}>Übernahme erfolgreich</strong>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>
-              Das Handy hat die Sitzung übernommen. Dieses Tablet wird in einem Moment
-              ausgeloggt.
-            </p>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>{successText}</p>
           </div>
         ) : state.kind === "expired" ? (
           <div

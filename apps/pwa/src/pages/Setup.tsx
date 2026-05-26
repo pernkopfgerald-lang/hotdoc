@@ -257,6 +257,43 @@ export function Setup({ onSetupDone }: Props) {
       >
         Diese Einstellung kann später nur durch einen Funktionär geändert werden.
       </p>
+
+      <div
+        style={{
+          marginTop: 24,
+          padding: 14,
+          borderRadius: 12,
+          background: "var(--surface)",
+          border: "1px dashed var(--border)",
+          fontSize: 12,
+          color: "var(--fg-2)",
+          lineHeight: 1.55,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--fg-3)",
+            marginBottom: 6,
+          }}
+        >
+          Datenschutz-Hinweis
+        </div>
+        HotDoc speichert nur Daten die für die Einsatzdokumentation der FF Eberstalzell
+        notwendig sind:
+        <ul style={{ margin: "6px 0 4px", paddingLeft: 18 }}>
+          <li>Personalliste (aus syBOS, nur aktive Mitglieder)</li>
+          <li>GPS-Position des Tablets nur während des Einsatzes</li>
+          <li>Audio-Aufnahmen werden nach 30 Tagen automatisch gelöscht</li>
+          <li>Login-Versuche werden für Audit-Zwecke 1 Jahr aufbewahrt</li>
+        </ul>
+        Bei Fragen wende dich an den Funktionär oder die Datenschutz-Beauftragte
+        der Feuerwehr.
+      </div>
     </main>
   );
 }

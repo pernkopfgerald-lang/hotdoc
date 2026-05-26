@@ -21,7 +21,22 @@ kill_timeout    = 10
   COUCH_URL = "http://hotdoc-db.internal:5984"
   COUCH_DB  = "hotdoc"
   AUDIO_RETENTION_DAYS = "30"
-  # WARNUNG: Test-Defaults — bitte mit `fly secrets set` rotieren.
+  # ────────────────────────────────────────────────────────────────────
+  # TODO: PRODUKTIV-SCHUTZ — siehe docs/PRODUCTION-SECRETS.md
+  # ────────────────────────────────────────────────────────────────────
+  # Folgende Werte MÜSSEN vor Produktiv-Schaltung als `fly secrets`
+  # gesetzt werden und aus dieser Datei entfernt:
+  #   - JWT_SECRET                  (rotieren — aktueller Wert ist in Git-History)
+  #   - COUCH_USER / COUCH_PASS     (in Secrets verschieben, aktueller Wert behalten)
+  #   - BOOTSTRAP_ADMIN_USERNAME / _PASSWORD  (in Secrets verschieben oder löschen)
+  #
+  # Anleitung:
+  #     fly secrets set JWT_SECRET="$(python -c 'import secrets;print(secrets.token_hex(48))')" -a hotdoc-api --stage
+  #     fly secrets set COUCH_USER=admin -a hotdoc-api --stage
+  #     fly secrets set COUCH_PASS=<aktueller Wert> -a hotdoc-api --stage
+  #     fly secrets deploy -a hotdoc-api
+  #     # → dann diese vier Zeilen unten ENTFERNEN + committen
+  # ────────────────────────────────────────────────────────────────────
   COUCH_USER = "admin"
   COUCH_PASS = "hotdoc-dev-changeme-now"
   JWT_SECRET = "hotdoc-dev-jwt-secret-bitte-rotieren-mit-fly-secrets-mindestens-32-zeichen"
