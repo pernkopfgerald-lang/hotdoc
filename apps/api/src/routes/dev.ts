@@ -81,3 +81,63 @@ devRouter.get("/api/dev/db-test", (async (_req, res) => {
   }
   res.json(result);
 }) as RequestHandler);
+
+/**
+ * Liefert die Egress-IP der Fly-Machine.
+ *
+ * Wird von 3 verschiedenen "what is my IP"-Services gefragt, damit
+ * mindestens eine Antwort kommt auch wenn ein Anbieter blockt.
+ * Wir brauchen das, damit der syBOS-Admin die IP in die
+ * Server-IPs-Whitelist eintragen kann (sonst gibt syBOS 401 zurück).
+ */
+devRouter.get("/api/dev/egress-ip", (async (_req, res) => {
+  const probes = [
+    "https://api.ipify.org?format=json",
+    "https://ipv4.icanhazip.com",
+    "https://checkip.amazonaws.com",
+  ];
+  const results: Record<string, unknown> = {};
+  for (const url of probes) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const text = (await r.text()).trim();
+      results[url] = text.startsWith("{") ? JSON.parse(text) : text;
+    } catch (err) {
+      results[url] = `ERR: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+  res.json({ ok: true, probes: results });
+}) as RequestHandler);
+
+/**
+ * Roh-Probe gegen syBOS. Liefert HTTP-Status + Body, damit der echte
+ * Fehlertext (z. B. `<error>falsche Server-IP (152.236.9.7)</error>`)
+ * sichtbar wird — die Sync-Route normalisiert das auf "HTTP 401" und
+ * verschluckt damit die Diagnose-Info.
+ */
+devRouter.get("/api/dev/sybos-probe", (async (_req, res) => {
+  if (!env.SYBOS_API_URL || !env.SYBOS_TOKEN) {
+    res.status(412).json({ error: "SYBOS_API_URL oder SYBOS_TOKEN nicht gesetzt" });
+    return;
+  }
+  const url = new URL(env.SYBOS_API_URL.replace(/\/$/, "") + "/API/Personal.php");
+  url.searchParams.set("token", env.SYBOS_TOKEN);
+  url.searchParams.set("json", "1");
+  url.searchParams.set("Art", "MITGLIEDER");
+  try {
+    const r = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json, text/xml" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await r.text();
+    res.json({
+      ok: r.ok,
+      status: r.status,
+      contentType: r.headers.get("content-type"),
+      body: body.slice(0, 2000),
+    });
+  } catch (err) {
+    res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+}) as RequestHandler);
