@@ -607,6 +607,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
       <VorschauModal
         open={vorschauOpen}
         data={{
+          fahrzeugId,
           funkrufname: fahrzeug.funkrufname,
           alarm: active.alarm,
           fahrer: active.fahrer,
@@ -614,6 +615,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
           mannschaft: active.mannschaft,
           gearList,
           gearSelected: active.gearSelected,
+          oelSaecke: active.oelSaecke,
           auftraege: active.auftraege,
           chronik: active.chronik,
           kmGefahren: kmRound,
