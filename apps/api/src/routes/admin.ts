@@ -73,3 +73,33 @@ adminRouter.get("/api/admin/audit", requireAuth("funktionaer"), (async (req, res
   const items = await loadRecentAuditEvents(limit);
   res.json({ ok: true, count: items.length, items });
 }) as RequestHandler);
+
+/**
+ * Client-side Error-Reports von der PWA Error-Boundary.
+ * Bewusst PUBLIC (Bearer ist optional) — auch ein offline-rebootendes
+ * Tablet ohne gültigen Token soll den Crash melden können. Wir limitieren
+ * Body-Größe, droppen PII (User-Agent ja, Referrer-PII nein).
+ */
+adminRouter.post("/api/admin/client-error", (async (req, res) => {
+  const b = req.body as Record<string, unknown> | undefined;
+  if (!b || typeof b !== "object") {
+    res.status(400).json({ error: "invalid_body" });
+    return;
+  }
+  const message = String(b.message ?? "").slice(0, 500);
+  const stack = String(b.stack ?? "").slice(0, 2000);
+  const url = String(b.url ?? "").slice(0, 200);
+  const ua = String(b.ua ?? "").slice(0, 200);
+  logger.error(
+    {
+      msg: "PWA client-side error",
+      clientMessage: message,
+      stack,
+      url,
+      ua,
+      ip: req.ip,
+    },
+    "client_error_report",
+  );
+  res.json({ ok: true });
+}) as RequestHandler);

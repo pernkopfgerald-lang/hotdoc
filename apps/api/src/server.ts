@@ -32,7 +32,50 @@ async function main(): Promise<void> {
   app.use(cors({ origin: true, credentials: true }));
   app.use(compression());
   app.use(express.json({ limit: "2mb" }));
-  app.use(pinoHttp({ logger }));
+
+  // pino-http mit PII-Filter — Authorization-Header, PINs, Passwörter werden
+  // im Logger redaktiert. Wichtig für DSGVO-Konformität: Logs landen in fly's
+  // Logging-Backend und werden ggf. an externe Tools weitergegeben. Niemals
+  // Bearer-Tokens oder Passwörter dort speichern.
+  app.use(
+    pinoHttp({
+      logger,
+      // pino's eingebaute Redact-Engine
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.headers["x-forwarded-for"]', // kann PII enthalten — IP wird über req.ip korrekt aufgelöst
+          'req.body.password',
+          'req.body.pin',
+          'req.body.passwordHash',
+          'req.body.token',
+          'req.body.sessionId',
+          'res.headers["set-cookie"]',
+        ],
+        remove: false,  // wir wollen sehen DASS das Feld da war, nur den Wert nicht
+        censor: '[REDACTED]',
+      },
+      // Custom serializers — pino-http defaultet eigentlich auf was sinnvolles
+      // aber wir wollen Token nirgendwo durchrutschen lassen
+      serializers: {
+        req(req: { headers?: Record<string, unknown>; method?: string; url?: string }) {
+          const safeHeaders = { ...(req.headers ?? {}) };
+          if (typeof safeHeaders.authorization === 'string') {
+            safeHeaders.authorization = '[REDACTED]';
+          }
+          if (typeof safeHeaders.cookie === 'string') {
+            safeHeaders.cookie = '[REDACTED]';
+          }
+          return {
+            method: req.method,
+            url: req.url,
+            headers: safeHeaders,
+          };
+        },
+      },
+    }),
+  );
 
   // — Routes —
   app.use(healthRouter);

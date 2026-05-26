@@ -70,9 +70,43 @@ export const EinsatzSchema = z.object({
   _rev: z.string().optional(),
   type: z.literal("einsatz"),
 
-  /** Quelle des Einsatzes: BlaulichtSMS-Alarm oder manuell angelegt (FR-12). */
-  einsatzTyp: z.enum(["alarm", "manuell"]).default("alarm"),
+  /**
+   * Typ des Einsatzes:
+   *  - "alarm"        : aus BlaulichtSMS gepullt (FR-1)
+   *  - "manuell"      : Sonstige Tätigkeit ohne Alarm (FR-12)
+   *  - "lotsendienst" : Lotsendienst (Polizei/Rettung/Gemeinde)
+   *  - "uebung"       : Übung / Training / Bewerbsvorbereitung
+   * Wird im Bericht-Header sichtbar gemacht (Badge) und im Archiv-Filter
+   * sowie im PDF unterschiedlich behandelt.
+   */
+  einsatzTyp: z
+    .enum(["alarm", "manuell", "lotsendienst", "uebung"])
+    .default("alarm"),
   manuellAngelegt: ManuellAnlageSchema.optional(),
+
+  /** Lotsendienst-spezifisch: wer hat den Auftrag erteilt? */
+  lotsendienstAuftraggeber: z.string().optional(),
+  /** Lotsendienst-spezifisch: kurze Routen-Beschreibung. */
+  lotsendienstRoute: z.string().optional(),
+  /** Lotsendienst-spezifisch: Verrechnungs-Adresse (Default aus verrechnung.rechnungsadresse). */
+
+  /** Übungs-spezifisch: Thema / Schwerpunkt. */
+  uebungThema: z.string().optional(),
+  /** Übungs-spezifisch: Übungsleiter-Name. */
+  uebungsleiter: z.string().optional(),
+  /** Übungs-spezifisch: Übungstyp (z. B. Atemschutz, Höhenrettung, Bewerb). */
+  uebungsTyp: z
+    .enum([
+      "Atemschutz",
+      "Technische Hilfeleistung",
+      "Höhenrettung",
+      "Sanitätsdienst",
+      "Funk",
+      "Allgemeine Übung",
+      "Bewerb",
+      "Sonstige",
+    ])
+    .optional(),
 
   /** Audit-Trail aller Reaktivierungen nach Abschluss (FR-14). */
   reaktivierungen: z.array(ReaktivierungSchema).default([]),

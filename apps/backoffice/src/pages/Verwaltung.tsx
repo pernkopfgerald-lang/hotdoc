@@ -10,7 +10,7 @@ import {
   type StammdatenData,
   type TabletPinsData,
 } from "../api/config";
-import { listEinsaetze, type EinsatzListItem } from "../api/einsaetze";
+import { listEinsaetze, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { Florianstation } from "./Florianstation";
@@ -565,24 +565,40 @@ function AuftragstypenPanel() {
   );
 }
 
+type StatusFilter = "alle" | "aktiv" | "abgeschlossen";
+type TypFilter = "alle" | "alarm" | "manuell" | "lotsendienst" | "uebung";
+
 function ArchivPanel() {
   const [items, setItems] = useState<EinsatzListItem[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"alle" | "aktiv" | "abgeschlossen">("alle");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("alle");
+  const [typFilter, setTypFilter] = useState<TypFilter>("alle");
 
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const r = await listEinsaetze(filter === "alle" ? undefined : filter);
+      const r = await listEinsaetze(statusFilter === "alle" ? undefined : statusFilter);
       setItems(r);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [filter]);
+  }, [statusFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const filtered = (items ?? []).filter((it) => {
+    if (typFilter === "alle") return true;
+    return (it.einsatzTyp ?? "alarm") === typFilter;
+  });
+
+  // Aggregation pro Type für die Statistik-Anzeige
+  const counts = (items ?? []).reduce<Record<string, number>>((acc, it) => {
+    const k = it.einsatzTyp ?? "alarm";
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <section className="card">
@@ -591,58 +607,115 @@ function ArchivPanel() {
           <Archive size={20} />
           Archiv · alle Berichte
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div className="chips">
-            {(["alle", "aktiv", "abgeschlossen"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className="chip"
-                style={
-                  filter === f
-                    ? { background: "var(--fg)", color: "var(--bg)", borderColor: "var(--fg)" }
-                    : undefined
-                }
-              >
-                {f === "alle" ? "Alle" : f === "aktiv" ? "Aktiv" : "Abgeschlossen"}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="themetoggle"
-            onClick={() => void load()}
-            style={{ width: "auto", padding: "0 12px", gap: 6 }}
+        <button
+          type="button"
+          className="themetoggle"
+          onClick={() => void load()}
+          style={{ width: "auto", padding: "0 12px", gap: 6 }}
+        >
+          <RefreshCw size={13} />
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Refresh</span>
+        </button>
+      </div>
+
+      {/* Filter-Reihen */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+              minWidth: 60,
+            }}
           >
-            <RefreshCw size={13} />
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Refresh</span>
-          </button>
+            Status
+          </span>
+          {(["alle", "aktiv", "abgeschlossen"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setStatusFilter(f)}
+              className="chip"
+              style={
+                statusFilter === f
+                  ? { background: "var(--fg)", color: "var(--bg)", borderColor: "var(--fg)" }
+                  : undefined
+              }
+            >
+              {f === "alle" ? "Alle" : f === "aktiv" ? "Aktiv" : "Abgeschlossen"}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+              minWidth: 60,
+            }}
+          >
+            Typ
+          </span>
+          {(
+            [
+              ["alle", "Alle"],
+              ["alarm", `Alarm (${counts.alarm ?? 0})`],
+              ["manuell", `Manuell (${counts.manuell ?? 0})`],
+              ["lotsendienst", `Lotsendienst (${counts.lotsendienst ?? 0})`],
+              ["uebung", `Übung (${counts.uebung ?? 0})`],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTypFilter(key)}
+              className="chip"
+              style={
+                typFilter === key
+                  ? { background: "var(--fg)", color: "var(--bg)", borderColor: "var(--fg)" }
+                  : undefined
+              }
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
+
       {err ? <ErrorBanner msg={err} /> : null}
       {!items ? (
         <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
-      ) : items.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <p style={{ color: "var(--fg-3)", fontSize: 13, padding: 16, textAlign: "center" }}>
-          Keine Einsätze gefunden ({filter}).
+          Keine Einsätze gefunden ({statusFilter}, {typFilter}).
         </p>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <th style={archTh}>Typ</th>
               <th style={archTh}>Bericht-Nr / ID</th>
               <th style={archTh}>Datum</th>
-              <th style={archTh}>Einsatzart</th>
+              <th style={archTh}>Bezeichnung</th>
               <th style={archTh}>Ort</th>
               <th style={archTh}>Status</th>
-              <th style={archTh}>Quelle</th>
               <th style={archTh}>PDF</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((it) => (
+            {filtered.map((it) => (
               <tr key={it._id} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={archTd}>
+                  <TypBadge typ={(it.einsatzTyp ?? "alarm") as EinsatzTyp} />
+                </td>
                 <td style={archTd}>
                   <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11 }}>
                     {it._id.replace(/^einsatz:/, "").slice(0, 18)}
@@ -650,7 +723,13 @@ function ArchivPanel() {
                   </span>
                 </td>
                 <td style={archTd}>{formatDate(it.alarmierungZeit)}</td>
-                <td style={archTd}>{it.einsatzart ?? it.einsatzartFreitext ?? "—"}</td>
+                <td style={archTd}>
+                  {it.einsatzTyp === "uebung"
+                    ? it.uebungThema ?? "—"
+                    : it.einsatzTyp === "lotsendienst"
+                      ? it.lotsendienstAuftraggeber ?? "—"
+                      : it.einsatzart ?? it.einsatzartFreitext ?? "—"}
+                </td>
                 <td style={archTd} title={it.einsatzort}>
                   {it.einsatzort.length > 32 ? it.einsatzort.slice(0, 32) + "…" : it.einsatzort}
                 </td>
@@ -660,11 +739,6 @@ function ArchivPanel() {
                   ) : (
                     <span className="badge neutral" style={{ gap: 4 }}>geschützt</span>
                   )}
-                </td>
-                <td style={archTd}>
-                  <span className="badge neutral" style={{ fontSize: 9 }}>
-                    {it.einsatzTyp === "manuell" ? "MAN" : "BLM"}
-                  </span>
                 </td>
                 <td style={archTd}>
                   <button
@@ -697,9 +771,37 @@ function ArchivPanel() {
           textTransform: "uppercase",
         }}
       >
-        {items?.length ?? 0} Einträge · syBOS-Übergabe-Tracking folgt mit Phase 7
+        {filtered.length} angezeigt · {items?.length ?? 0} gesamt
       </p>
     </section>
+  );
+}
+
+function TypBadge({ typ }: { typ: EinsatzTyp }) {
+  const meta: Record<EinsatzTyp, { label: string; color: string }> = {
+    alarm: { label: "ALARM", color: "var(--red)" },
+    manuell: { label: "MANUELL", color: "var(--info)" },
+    lotsendienst: { label: "LOTSE", color: "var(--warn)" },
+    uebung: { label: "ÜBUNG", color: "var(--ok)" },
+  };
+  const m = meta[typ];
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "3px 8px",
+        borderRadius: 6,
+        background: `color-mix(in srgb, ${m.color} 18%, transparent)`,
+        color: m.color,
+        fontFamily: "var(--font-mono)",
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: "0.12em",
+        border: `1px solid color-mix(in srgb, ${m.color} 40%, transparent)`,
+      }}
+    >
+      {m.label}
+    </span>
   );
 }
 
@@ -713,7 +815,10 @@ function formatDate(iso: string): string {
 }
 
 interface HealthItem {
+  // wasserkarte ausgeklammert in V1.0 — Key bleibt zur Vorwärts-Kompat im Typ
   key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch";
+  // (Backend liefert "wasserkarte" aktuell nicht mehr — die Variante bleibt nur
+  // damit alte gecachte Responses nicht crashen.)
   name: string;
   sub: string;
   state: "ok" | "warn" | "off" | "error";

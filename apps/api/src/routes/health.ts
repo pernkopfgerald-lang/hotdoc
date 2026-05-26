@@ -15,7 +15,7 @@ healthRouter.get("/api/version", (_req, res) => {
     features: {
       blaulichtSms: !!env.BLAULICHTSMS_CUSTOMER_ID,
       syBos: !!env.SYBOS_API_URL,
-      wasserkarte: !!env.WASSERKARTE_ACCESS_KEY,
+      // wasserkarte: ausgeklammert (Phase ?)
       webPush: !!env.VAPID_PUBLIC,
     },
   });

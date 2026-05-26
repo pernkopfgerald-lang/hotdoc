@@ -33,10 +33,13 @@ export interface HealthItem {
 
 export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt: string }> {
   const checkedAt = new Date().toISOString();
+  // wasserkarte.info wurde aus V1.0-Scope entfernt — der Hydranten-Layer wird
+  // optional in einer späteren Phase wieder aktiviert. Bis dahin bleibt
+  // `checkWasserkarte()` als Dead-Code vorhanden (nicht aufgerufen) damit
+  // die Re-Aktivierung trivial ist.
   const items: HealthItem[] = [
     await checkBlaulichtSms(),
     await checkSyBos(),
-    checkWasserkarte(),
     await checkCouch(),
   ];
   return { items, checkedAt };
@@ -117,6 +120,12 @@ async function checkSyBos(): Promise<HealthItem> {
   };
 }
 
+/**
+ * @deprecated Wasserkarte/Hydranten-Layer ist aus V1.0-Scope entfernt.
+ * Wird aktuell NICHT aufgerufen — Funktion bleibt für Re-Aktivierung
+ * in einer späteren Phase als Skelett bestehen.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function checkWasserkarte(): HealthItem {
   const sub = "Hydranten-Layer";
   if (!hasWasserkarte()) {
@@ -125,7 +134,7 @@ function checkWasserkarte(): HealthItem {
       name: "wasserkarte.info",
       sub,
       state: "off",
-      detail: "Access-Key noch nicht beantragt. Anfrage bei wasserkarte.info nötig.",
+      detail: "Aus V1.0-Scope entfernt — Re-Aktivierung in späterer Phase.",
     };
   }
   return {

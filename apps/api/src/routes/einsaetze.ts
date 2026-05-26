@@ -61,13 +61,39 @@ einsaetzeRouter.get("/api/einsaetze/:id", requireAuth(), (async (req, res) => {
   }
 }) as RequestHandler);
 
-// ─── POST /api/einsaetze/manuell ─── FR-12 ──────────────────
+// ─── POST /api/einsaetze/manuell ─── FR-12 + Lotsendienst + Übung ───
 const ManuellAnlageBodySchema = z.object({
+  /**
+   * Welcher Typ: manuell (Default = Sonstiges ohne Alarm), lotsendienst,
+   * oder uebung. Alle drei laufen durch dieselbe Anlage-Route, weil die
+   * UI-Felder ähnlich sind und der Workflow (kein BlaulichtSMS) gleich.
+   */
+  einsatzTyp: z.enum(["manuell", "lotsendienst", "uebung"]).default("manuell"),
   einsatzort: z.string().min(3),
   einsatzart: z.string().optional(),
   einsatzartFreitext: z.string().optional(),
   alarmierungZeit: z.string().datetime().optional(),
   grund: z.string().optional(),
+  // Lotsendienst-Felder
+  lotsendienstAuftraggeber: z.string().optional(),
+  lotsendienstRoute: z.string().optional(),
+  // Übungs-Felder
+  uebungThema: z.string().optional(),
+  uebungsleiter: z.string().optional(),
+  uebungsTyp: z
+    .enum([
+      "Atemschutz",
+      "Technische Hilfeleistung",
+      "Höhenrettung",
+      "Sanitätsdienst",
+      "Funk",
+      "Allgemeine Übung",
+      "Bewerb",
+      "Sonstige",
+    ])
+    .optional(),
+  verrechenbar: z.boolean().optional(),
+  rechnungsadresse: z.string().optional(),
 });
 
 einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (async (req, res) => {
@@ -78,26 +104,43 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (as
   }
   const session = req.session!;
   const now = new Date().toISOString();
+  const d = parsed.data;
+  // ID-Präfix je nach Typ damit man im CouchDB direkt sieht was es ist
+  const idPrefix =
+    d.einsatzTyp === "lotsendienst"
+      ? "einsatz:lotsendienst-"
+      : d.einsatzTyp === "uebung"
+        ? "einsatz:uebung-"
+        : "einsatz:manuell-";
   const doc = {
-    _id: `einsatz:manuell-${randomUUID()}`,
+    _id: `${idPrefix}${randomUUID()}`,
     type: "einsatz" as const,
-    einsatzTyp: "manuell" as const,
+    einsatzTyp: d.einsatzTyp,
     manuellAngelegt: {
       vonBenutzerId: session.sub,
       am: now,
-      ...(parsed.data.grund ? { grund: parsed.data.grund } : {}),
+      ...(d.grund ? { grund: d.grund } : {}),
     },
-    einsatzort: parsed.data.einsatzort,
-    alarmierungZeit: parsed.data.alarmierungZeit ?? now,
-    ...(parsed.data.einsatzart ? { einsatzart: parsed.data.einsatzart } : {}),
-    ...(parsed.data.einsatzartFreitext
-      ? { einsatzartFreitext: parsed.data.einsatzartFreitext }
+    einsatzort: d.einsatzort,
+    alarmierungZeit: d.alarmierungZeit ?? now,
+    ...(d.einsatzart ? { einsatzart: d.einsatzart } : {}),
+    ...(d.einsatzartFreitext ? { einsatzartFreitext: d.einsatzartFreitext } : {}),
+    // Typ-spezifische Felder — alle optional im Schema
+    ...(d.lotsendienstAuftraggeber
+      ? { lotsendienstAuftraggeber: d.lotsendienstAuftraggeber }
       : {}),
+    ...(d.lotsendienstRoute ? { lotsendienstRoute: d.lotsendienstRoute } : {}),
+    ...(d.uebungThema ? { uebungThema: d.uebungThema } : {}),
+    ...(d.uebungsleiter ? { uebungsleiter: d.uebungsleiter } : {}),
+    ...(d.uebungsTyp ? { uebungsTyp: d.uebungsTyp } : {}),
     zeitmarken: {},
     beteiligteStellen: [],
     sonstigeAnwesendeFF: { aktive: [] },
     mannschaft: { bereitschaft: 0, sonstige: 0 },
-    verrechnung: { verrechenbar: false },
+    verrechnung: {
+      verrechenbar: d.verrechenbar ?? d.einsatzTyp === "lotsendienst",
+      ...(d.rechnungsadresse ? { rechnungsadresse: d.rechnungsadresse } : {}),
+    },
     oelbindemittel: { verwendet: false, gesamtSaecke: 0 },
     meldungEinsatzleitung: "",
     reaktivierungen: [],
