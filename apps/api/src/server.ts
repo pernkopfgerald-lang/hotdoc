@@ -9,6 +9,7 @@ import { ensureDatabase } from "./couch/client.js";
 import { logger } from "./lib/logger.js";
 import { adminRouter } from "./routes/admin.js";
 import { authRouter } from "./routes/auth.js";
+import { configRouter } from "./routes/config.js";
 import { devRouter } from "./routes/dev.js";
 import { einsaetzeRouter } from "./routes/einsaetze.js";
 import { healthRouter } from "./routes/health.js";
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   app.use(healthRouter);
   app.use(authRouter);
   app.use(adminRouter);
+  app.use(configRouter);
   app.use(einsaetzeRouter);
   app.use(pdfRouter);
   app.use(devRouter);

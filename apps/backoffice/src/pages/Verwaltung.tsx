@@ -1,10 +1,66 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
+import { getConfig, putConfig, type AuftragstypenData, type EinsatzstichworteData, type GeraeteData, type StammdatenData } from "../api/config";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { Florianstation } from "./Florianstation";
 import type { AuthResponse } from "@hotdoc/shared";
+
+/** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
+function AddItemForm({ onAdd, placeholder }: { onAdd: (text: string) => void; placeholder: string }) {
+  const [text, setText] = useState("");
+  return (
+    <div className="freeform" style={{ marginTop: 0 }}>
+      <input
+        type="text"
+        className="input"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            onAdd(text);
+            setText("");
+          }
+        }}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        className="add-btn"
+        onClick={() => {
+          onAdd(text);
+          setText("");
+        }}
+        disabled={!text.trim()}
+        aria-label="Hinzufügen"
+      >
+        <Plus size={18} />
+      </button>
+    </div>
+  );
+}
+
+function ErrorBanner({ msg }: { msg: string }) {
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        padding: "10px 12px",
+        borderRadius: 10,
+        background: "var(--red-tint)",
+        color: "var(--red)",
+        fontSize: 13,
+        border: "1px solid var(--red-border)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <AlertTriangle size={14} /> {msg}
+    </div>
+  );
+}
 
 interface Props {
   auth: AuthResponse;
@@ -257,6 +313,76 @@ function PersonalPanel() {
 }
 
 function GeraetePanel() {
+  const [data, setData] = useState<GeraeteData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [activeFzg, setActiveFzg] = useState<string>("lfa-b");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await getConfig<GeraeteData>("geraete");
+        setData(r.data);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, []);
+
+  async function save() {
+    if (!data) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await putConfig("geraete", data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addItem(fzg: string, bezeichnung: string) {
+    if (!data || !bezeichnung.trim()) return;
+    const id = bezeichnung
+      .toLowerCase()
+      .replace(/[äöü]/g, (c) => ({ ä: "ae", ö: "oe", ü: "ue" })[c]!)
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    setData({
+      ...data,
+      byFahrzeug: {
+        ...data.byFahrzeug,
+        [fzg]: [...(data.byFahrzeug[fzg] ?? []), { id, bezeichnung: bezeichnung.trim() }],
+      },
+    });
+  }
+
+  function removeItem(fzg: string, id: string) {
+    if (!data) return;
+    setData({
+      ...data,
+      byFahrzeug: {
+        ...data.byFahrzeug,
+        [fzg]: (data.byFahrzeug[fzg] ?? []).filter((it) => it.id !== id),
+      },
+    });
+  }
+
+  const items = data?.byFahrzeug[activeFzg] ?? [];
+  const fahrzeuge = ["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const;
+  const labels: Record<string, string> = {
+    kdo: "KDO",
+    "tlf-a-4000": "TANK",
+    "lfa-b": "LFA-B",
+    mtf: "MTF",
+  };
+
   return (
     <section className="card">
       <div className="card-head">
@@ -264,49 +390,108 @@ function GeraetePanel() {
           <Wrench size={20} />
           Geräte &amp; Mittel pro Fahrzeug
         </div>
-        <span className="card-meta">Backend-Endpoint folgt</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? <span className="badge ok">gespeichert</span> : null}
+          <button
+            type="button"
+            className="cta"
+            onClick={save}
+            disabled={busy || !data}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "Speichern"}
+          </button>
+        </div>
       </div>
-      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55 }}>
-        Verwaltung der fahrzeug-spezifischen Geräte- und Material-Listen.
-        Im PWA werden diese Listen als Chip-Auswahl auf den Tablets angezeigt.
-      </p>
-      <p style={{ marginTop: 12, fontSize: 13, color: "var(--fg-2)" }}>
-        Aktuell sind Default-Listen in der PWA hinterlegt (KDO 5 Items, TLF 7 Items,
-        LFA-B 11 Items, MTF 6 Items). Mit dem nächsten Slice kommen{" "}
-        <strong>CouchDB-Persistenz</strong> und eine{" "}
-        <strong>Editor-Maske</strong> zum Hinzufügen/Entfernen von Items pro Fahrzeug.
-      </p>
-      <div className="vehicle-row" style={{ marginTop: 16 }}>
-        {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => (
+
+      {err ? <ErrorBanner msg={err} /> : null}
+
+      <div className="vehicle-row" style={{ marginBottom: 16 }}>
+        {fahrzeuge.map((id) => (
           <button
             key={id}
             type="button"
-            className="vehicle-chip"
-            disabled
-            style={{ opacity: 0.55, cursor: "not-allowed" }}
+            className={`vehicle-chip${activeFzg === id ? " active" : ""}`}
+            onClick={() => setActiveFzg(id)}
           >
-            <div className="code">{id.toUpperCase().replace("-A-4000", "")}</div>
-            <div className="sub">Folgt</div>
+            <div className="code">{labels[id]}</div>
+            <div className="sub">{(data?.byFahrzeug[id] ?? []).length} Items</div>
           </button>
         ))}
       </div>
+
+      {data ? (
+        <>
+          <div className="chips" style={{ marginBottom: 12 }}>
+            {items.length === 0 ? (
+              <span style={{ fontSize: 13, color: "var(--fg-3)" }}>Noch keine Geräte für {labels[activeFzg]}</span>
+            ) : (
+              items.map((it) => (
+                <span key={it.id} className="chip selected" style={{ gap: 8, cursor: "default" }}>
+                  <span className="dot" />
+                  {it.bezeichnung}
+                  <button
+                    type="button"
+                    onClick={() => removeItem(activeFzg, it.id)}
+                    aria-label="Entfernen"
+                    style={{ background: "transparent", border: 0, color: "inherit", cursor: "pointer", padding: 0, marginLeft: 4, display: "inline-flex" }}
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
+          <AddItemForm onAdd={(t) => addItem(activeFzg, t)} placeholder={`Neues Gerät für ${labels[activeFzg]} …`} />
+        </>
+      ) : (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      )}
     </section>
   );
 }
 
 function AuftragstypenPanel() {
-  const defaults = [
-    "Brandbekämpfung außen",
-    "Brandbekämpfung innen",
-    "Atemschutz-Trupp",
-    "Verkehrsabsicherung",
-    "Wassertransport",
-    "Personenrettung",
-    "Technische Hilfeleistung",
-    "Drehleiter-Einsatz",
-    "Nachlöscharbeiten",
-    "Beleuchtung sichern",
-  ];
+  const [data, setData] = useState<AuftragstypenData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await getConfig<AuftragstypenData>("auftragstypen");
+        setData(r.data);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, []);
+
+  async function save() {
+    if (!data) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await putConfig("auftragstypen", data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function add(text: string) {
+    if (!data || !text.trim()) return;
+    setData({ ...data, items: [...data.items, text.trim()] });
+  }
+  function remove(text: string) {
+    if (!data) return;
+    setData({ ...data, items: data.items.filter((t) => t !== text) });
+  }
+
   return (
     <section className="card">
       <div className="card-head">
@@ -314,30 +499,49 @@ function AuftragstypenPanel() {
           <Truck size={20} />
           Auftrag-Typen (global)
         </div>
-        <span className="card-meta">{defaults.length} Standard-Typen</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? <span className="badge ok">gespeichert</span> : null}
+          <span className="card-meta">
+            <span className="num">{data?.items.length ?? 0}</span> Typen
+          </span>
+          <button
+            type="button"
+            className="cta"
+            onClick={save}
+            disabled={busy || !data}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "Speichern"}
+          </button>
+        </div>
       </div>
       <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
-        Diese Liste erscheint als Schnellauswahl-Chips im Auftrag-Bereich
-        der Fahrzeug-Tablets. Änderungen wirken sich auf alle Fahrzeuge aus.
+        Diese Liste erscheint als Schnellauswahl-Chips im Auftrag-Bereich der Fahrzeug-Tablets. Änderungen wirken sich auf alle Fahrzeuge aus, sobald die Tablets das nächste Mal online sind.
       </p>
-      <div className="chips">
-        {defaults.map((t) => (
-          <span key={t} className="chip task" style={{ cursor: "default" }}>
-            {t}
-          </span>
-        ))}
-      </div>
-      <p
-        style={{
-          marginTop: 18,
-          fontSize: 12,
-          color: "var(--fg-3)",
-          fontFamily: "var(--font-mono)",
-        }}
-      >
-        Editor zum Hinzufügen/Entfernen folgt — Backend-Endpoint{" "}
-        <strong>GET/POST /api/config/auftrag-typen</strong>.
-      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {data ? (
+        <>
+          <div className="chips" style={{ marginBottom: 12 }}>
+            {data.items.map((t) => (
+              <span key={t} className="chip task selected" style={{ gap: 8 }}>
+                <span className="dot" />
+                {t}
+                <button
+                  type="button"
+                  onClick={() => remove(t)}
+                  aria-label="Entfernen"
+                  style={{ background: "transparent", border: 0, color: "inherit", cursor: "pointer", padding: 0, marginLeft: 4, display: "inline-flex" }}
+                >
+                  <X size={13} />
+                </button>
+              </span>
+            ))}
+          </div>
+          <AddItemForm onAdd={add} placeholder="Neuer Auftrag-Typ …" />
+        </>
+      ) : (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      )}
     </section>
   );
 }
@@ -633,23 +837,56 @@ function formatChecked(iso: string): string {
 }
 
 function EinsatzstichwortePanel() {
-  const items = [
-    { art: "Brand KFZ", kat: "brand" },
-    { art: "Brand Wohnhaus", kat: "brand" },
-    { art: "BMA", kat: "brand" },
-    { art: "Brand Kamin", kat: "brand" },
-    { art: "Flurbrand", kat: "brand" },
-    { art: "Brandverdacht", kat: "brand" },
-    { art: "VU Eingekl. Per.", kat: "technisch" },
-    { art: "Personenrettung", kat: "technisch" },
-    { art: "Sturm", kat: "technisch" },
-    { art: "Ölspur", kat: "technisch" },
-    { art: "Pumparbeiten", kat: "technisch" },
-    { art: "Lift", kat: "technisch" },
-    { art: "Wasserschaden", kat: "technisch" },
-    { art: "Höhenrettungseins.", kat: "technisch" },
-    { art: "Bienen / Wespen", kat: "technisch" },
-  ];
+  const [data, setData] = useState<EinsatzstichworteData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await getConfig<EinsatzstichworteData>("einsatzstichworte");
+        setData(r.data);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, []);
+
+  async function save() {
+    if (!data) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await putConfig("einsatzstichworte", data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function add(art: string) {
+    if (!data || !art.trim()) return;
+    if (data.items.find((i) => i.art === art.trim())) return;
+    setData({ ...data, items: [...data.items, { art: art.trim(), kategorie: "technisch" }] });
+  }
+  function remove(art: string) {
+    if (!data) return;
+    setData({ ...data, items: data.items.filter((i) => i.art !== art) });
+  }
+  function toggleKategorie(art: string) {
+    if (!data) return;
+    setData({
+      ...data,
+      items: data.items.map((i) =>
+        i.art === art ? { ...i, kategorie: i.kategorie === "brand" ? "technisch" : "brand" } : i,
+      ),
+    });
+  }
+
   return (
     <section className="card">
       <div className="card-head">
@@ -657,61 +894,82 @@ function EinsatzstichwortePanel() {
           <BookOpen size={20} />
           Einsatzstichworte &amp; Kategorisierung
         </div>
-        <span className="card-meta">
-          <span className="num">{items.length}</span> Stichworte · global
-        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? <span className="badge ok">gespeichert</span> : null}
+          <span className="card-meta">
+            <span className="num">{data?.items.length ?? 0}</span> Stichworte
+          </span>
+          <button
+            type="button"
+            className="cta"
+            onClick={save}
+            disabled={busy || !data}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "Speichern"}
+          </button>
+        </div>
       </div>
       <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
-        Liste aller Einsatzarten und ihre Zuordnung zu Brand (B-Prefix) oder Technisch (T-Prefix).
-        Die Zuordnung steuert die Bericht-Nummerierung und PDF-Template-Auswahl.
+        Klick auf die Kategorie-Pille toggelt zwischen Brand und Technisch. Steuert das Nummerierungs-Prefix (B / T) und das PDF-Template.
       </p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border)" }}>
-            <th style={archTh}>Einsatzart</th>
-            <th style={archTh}>Kategorie</th>
-            <th style={archTh}>Nummern-Prefix</th>
-            <th style={archTh}>Standard-Stufe</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((i) => (
-            <tr key={i.art} style={{ borderBottom: "1px solid var(--border)" }}>
-              <td style={archTd}>{i.art}</td>
-              <td style={archTd}>
-                {i.kat === "brand" ? (
-                  <span className="badge red" style={{ gap: 4 }}>Brand</span>
-                ) : (
-                  <span className="badge rank" style={{ gap: 4 }}>Technisch</span>
-                )}
-              </td>
-              <td style={archTd}>
-                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                  {i.kat === "brand" ? "B" : "T"}YY-NNN
-                </span>
-              </td>
-              <td style={archTd}>
-                <span style={{ fontFamily: "var(--font-mono)" }}>
-                  {i.kat === "brand" ? "B-1" : "T-1"}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p
-        style={{
-          marginTop: 16,
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          color: "var(--fg-3)",
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-        }}
-      >
-        Editor (Stichwort hinzufügen / umkategorisieren) folgt — Backend-Endpoint{" "}
-        <strong>POST /api/config/einsatzstichwort</strong>.
-      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {data ? (
+        <>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                <th style={archTh}>Einsatzart</th>
+                <th style={archTh}>Kategorie</th>
+                <th style={archTh}>Nr-Prefix</th>
+                <th style={archTh}>Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((i) => (
+                <tr key={i.art} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <td style={archTd}>{i.art}</td>
+                  <td style={archTd}>
+                    <button
+                      type="button"
+                      onClick={() => toggleKategorie(i.art)}
+                      className={i.kategorie === "brand" ? "badge red" : "badge rank"}
+                      style={{
+                        gap: 4,
+                        cursor: "pointer",
+                        border: "1px solid currentColor",
+                        background: "transparent",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                      title="Klick zum Umschalten"
+                    >
+                      {i.kategorie === "brand" ? "Brand" : "Technisch"}
+                    </button>
+                  </td>
+                  <td style={archTd}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                      {i.kategorie === "brand" ? "B" : "T"}YY-NNN
+                    </span>
+                  </td>
+                  <td style={archTd}>
+                    <button
+                      type="button"
+                      onClick={() => remove(i.art)}
+                      className="icon-btn danger"
+                      aria-label="Entfernen"
+                    >
+                      <X size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <AddItemForm onAdd={add} placeholder="Neue Einsatzart (Default-Kategorie: technisch) …" />
+        </>
+      ) : (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      )}
     </section>
   );
 }
@@ -825,6 +1083,45 @@ const archTd: React.CSSProperties = {
 };
 
 function StammdatenPanel() {
+  const [data, setData] = useState<StammdatenData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await getConfig<StammdatenData>("stammdaten");
+        setData(r.data);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, []);
+
+  async function save() {
+    if (!data) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await putConfig("stammdaten", data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!data) {
+    return (
+      <section className="card">
+        <p style={{ color: "var(--fg-3)" }}>lade …</p>
+      </section>
+    );
+  }
+
   return (
     <section className="card">
       <div className="card-head">
@@ -832,12 +1129,139 @@ function StammdatenPanel() {
           <Settings size={20} />
           Stammdaten
         </div>
-        <span className="card-meta">Phase 6</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? <span className="badge ok">gespeichert</span> : null}
+          <button
+            type="button"
+            className="cta"
+            onClick={save}
+            disabled={busy}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "Speichern"}
+          </button>
+        </div>
       </div>
-      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55 }}>
-        Funkrufnamen, AS-Konfiguration (max-Dauer, Trupp-Größe), BlaulichtSMS-Status,
-        wasserkarte.info-Layer-Konfiguration, Globale Default-Werte.
-      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+
+      <h4 style={{ margin: "8px 0 12px", fontSize: 14, color: "var(--fg)" }}>Funkrufnamen</h4>
+      <div className="grid-2" style={{ gap: 12, marginBottom: 18 }}>
+        {(["kdo", "tlf-a-4000", "lfa-b", "mtf", "zentrale"] as const).map((id) => (
+          <div className="field" key={id}>
+            <label className="caption">{id.toUpperCase()}</label>
+            <input
+              className="input"
+              value={data.funkrufnamen?.[id] ?? ""}
+              onChange={(e) =>
+                setData({
+                  ...data,
+                  funkrufnamen: { ...(data.funkrufnamen ?? {}), [id]: e.target.value },
+                })
+              }
+            />
+          </div>
+        ))}
+      </div>
+
+      <h4 style={{ margin: "8px 0 12px", fontSize: 14, color: "var(--fg)" }}>Atemschutz-Konfiguration</h4>
+      <div className="grid-2" style={{ gap: 12, marginBottom: 18 }}>
+        <div className="field">
+          <label className="caption">Max. AS-Dauer (min)</label>
+          <input
+            type="number"
+            className="input num"
+            min={1}
+            max={120}
+            value={data.atemschutz?.maxDauerMin ?? 30}
+            onChange={(e) =>
+              setData({
+                ...data,
+                atemschutz: {
+                  schritteMin: data.atemschutz?.schritteMin ?? 5,
+                  maxDauerMin: Number(e.target.value) || 30,
+                },
+              })
+            }
+          />
+        </div>
+        <div className="field">
+          <label className="caption">Stepper-Schritte (min)</label>
+          <input
+            type="number"
+            className="input num"
+            min={1}
+            max={15}
+            value={data.atemschutz?.schritteMin ?? 5}
+            onChange={(e) =>
+              setData({
+                ...data,
+                atemschutz: {
+                  maxDauerMin: data.atemschutz?.maxDauerMin ?? 30,
+                  schritteMin: Number(e.target.value) || 5,
+                },
+              })
+            }
+          />
+        </div>
+      </div>
+
+      <h4 style={{ margin: "8px 0 12px", fontSize: 14, color: "var(--fg)" }}>Standort</h4>
+      <div className="grid-2" style={{ gap: 12, marginBottom: 12 }}>
+        <div className="field">
+          <label className="caption">Feuerwehrhaus-Adresse</label>
+          <input
+            className="input"
+            value={data.feuerwehrhausAdresse ?? ""}
+            onChange={(e) => setData({ ...data, feuerwehrhausAdresse: e.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label className="caption">Bezirk</label>
+          <input
+            className="input"
+            value={data.bezirk ?? ""}
+            onChange={(e) => setData({ ...data, bezirk: e.target.value })}
+          />
+        </div>
+      </div>
+      <div className="grid-2" style={{ gap: 12 }}>
+        <div className="field">
+          <label className="caption">Heim-Koordinaten · Lat</label>
+          <input
+            type="number"
+            className="input num"
+            step="0.0001"
+            value={data.heimkoord?.lat ?? 48.0884}
+            onChange={(e) =>
+              setData({
+                ...data,
+                heimkoord: {
+                  lng: data.heimkoord?.lng ?? 13.9586,
+                  lat: Number(e.target.value),
+                },
+              })
+            }
+          />
+        </div>
+        <div className="field">
+          <label className="caption">Heim-Koordinaten · Lng</label>
+          <input
+            type="number"
+            className="input num"
+            step="0.0001"
+            value={data.heimkoord?.lng ?? 13.9586}
+            onChange={(e) =>
+              setData({
+                ...data,
+                heimkoord: {
+                  lat: data.heimkoord?.lat ?? 48.0884,
+                  lng: Number(e.target.value),
+                },
+              })
+            }
+          />
+        </div>
+      </div>
     </section>
   );
 }

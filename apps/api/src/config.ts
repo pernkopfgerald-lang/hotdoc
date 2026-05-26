@@ -18,7 +18,7 @@ const EnvSchema = z.object({
   BLAULICHTSMS_CUSTOMER_ID: z.string().optional(),
   BLAULICHTSMS_USER: z.string().optional(),
   BLAULICHTSMS_PW: z.string().optional(),
-  BLAULICHTSMS_BASE_URL: z.string().url().default("https://api.blaulichtsms.net"),
+  BLAULICHTSMS_BASE_URL: z.string().url().default("https://api.blaulichtsms.net/blaulicht"),
   BLAULICHTSMS_POLL_INTERVAL_SEC: z.coerce.number().int().positive().default(15),
 
   // syBOS — Phase 1+3

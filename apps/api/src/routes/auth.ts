@@ -91,6 +91,62 @@ authRouter.get("/api/auth/me", (async (req, res) => {
   });
 }) as RequestHandler);
 
+// — POST /api/auth/tablet/pin-register —
+// PIN-basierte Auth pro Fahrzeug (FR-15 Alternative zur MSISDN-Variante).
+// Im config:tablet-pins-Doc liegt für jeden Fahrzeug-Slug eine vier-stellige
+// PIN. Default beim Bootstrap "1234" — Funktionär ändert sie in der
+// Verwaltung/Stammdaten.
+authRouter.post("/api/auth/tablet/pin-register", (async (req, res) => {
+  const body = req.body as { fahrzeugId?: string; pin?: string; deviceId?: string };
+  const fahrzeugId = String(body.fahrzeugId ?? "");
+  const pin = String(body.pin ?? "");
+  const deviceId = String(body.deviceId ?? randomUUID());
+
+  if (!fahrzeugId || !/^\d{4,6}$/.test(pin)) {
+    res.status(400).json({ error: "invalid_body", details: "fahrzeugId + 4-6stellige PIN erforderlich" });
+    return;
+  }
+
+  const pins = await loadTabletPins();
+  const expected = pins[fahrzeugId];
+  if (!expected || expected !== pin) {
+    logger.info({ fahrzeugId }, "Tablet-PIN-Login fehlgeschlagen");
+    res.status(401).json({ error: "invalid_pin" });
+    return;
+  }
+
+  const { token, expiresAt } = await signSession({
+    sub: `tablet:${fahrzeugId}:${deviceId}`,
+    username: `tablet:${fahrzeugId}`,
+    rolle: "mannschaft",
+    fahrzeugId,
+  });
+
+  logger.info({ fahrzeugId, deviceId }, "Tablet via PIN registriert");
+
+  const response: AuthResponse = {
+    ok: true,
+    rolle: "mannschaft",
+    token,
+    expiresAt,
+    fahrzeugId,
+  };
+  res.json(response);
+}) as RequestHandler);
+
+async function loadTabletPins(): Promise<Record<string, string>> {
+  try {
+    const doc = (await db.get("config:tablet-pins")) as { data?: Record<string, string> };
+    return doc.data ?? {};
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      // Default-PINs (alle "1234") wenn Doc noch nicht angelegt
+      return { kdo: "1234", "tlf-a-4000": "1234", "lfa-b": "1234", mtf: "1234", zentrale: "1234" };
+    }
+    throw err;
+  }
+}
+
 // — POST /api/auth/tablet/register —
 authRouter.post("/api/auth/tablet/register", (async (req, res) => {
   const parsed = TabletRegisterRequestSchema.safeParse(req.body);

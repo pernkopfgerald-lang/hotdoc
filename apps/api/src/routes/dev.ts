@@ -8,7 +8,7 @@ import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { env } from "../config.js";
 import { logger } from "../lib/logger.js";
-import { pushMockAlarm } from "../services/blaulichtsms/client.js";
+import { probeBlaulichtSms, pushMockAlarm } from "../services/blaulichtsms/client.js";
 import { pollOnce } from "../workers/blaulichtsms-poller.js";
 
 export const devRouter: Router = Router();
@@ -115,6 +115,16 @@ devRouter.get("/api/dev/egress-ip", (async (_req, res) => {
  * sichtbar wird — die Sync-Route normalisiert das auf "HTTP 401" und
  * verschluckt damit die Diagnose-Info.
  */
+/**
+ * Roh-Probe gegen BlaulichtSMS-Dashboard-API. Login + erster
+ * Dashboard-Call, liefert sessionId-Prefix und Alarm-Anzahl.
+ * Erspart Smoke-Test-Skripte für die Inbetriebnahme.
+ */
+devRouter.get("/api/dev/blaulichtsms-probe", (async (_req, res) => {
+  const probe = await probeBlaulichtSms();
+  res.status(probe.ok ? 200 : 502).json(probe);
+}) as RequestHandler);
+
 devRouter.get("/api/dev/sybos-probe", (async (_req, res) => {
   if (!env.SYBOS_API_URL || !env.SYBOS_TOKEN) {
     res.status(412).json({ error: "SYBOS_API_URL oder SYBOS_TOKEN nicht gesetzt" });
