@@ -1,7 +1,15 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
-import { getConfig, putConfig, type AuftragstypenData, type EinsatzstichworteData, type GeraeteData, type StammdatenData } from "../api/config";
+import {
+  getConfig,
+  putConfig,
+  type AuftragstypenData,
+  type EinsatzstichworteData,
+  type GeraeteData,
+  type StammdatenData,
+  type TabletPinsData,
+} from "../api/config";
 import { listEinsaetze, type EinsatzListItem } from "../api/einsaetze";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
@@ -78,7 +86,8 @@ type Tab =
   | "personal"
   | "geraete"
   | "auftragstypen"
-  | "stammdaten";
+  | "stammdaten"
+  | "tablet-pins";
 
 export function Verwaltung({ auth, onLogout }: Props) {
   const [tab, setTab] = useState<Tab>("berichte");
@@ -161,6 +170,9 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")} icon={<Settings size={16} />}>
           Stammdaten
         </TabButton>
+        <TabButton active={tab === "tablet-pins"} onClick={() => setTab("tablet-pins")} icon={<KeyRound size={16} />}>
+          Tablet-PINs
+        </TabButton>
       </nav>
 
       <main
@@ -183,6 +195,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "geraete" && <GeraetePanel />}
         {tab === "auftragstypen" && <AuftragstypenPanel />}
         {tab === "stammdaten" && <StammdatenPanel />}
+        {tab === "tablet-pins" && <TabletPinsPanel currentUser={auth.benutzer?.username ?? "—"} />}
       </main>
     </div>
   );
@@ -1320,6 +1333,266 @@ function StammdatenPanel() {
               })
             }
           />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Tablet-PIN-Editor (FR-15-Erweiterung).
+ *
+ * Bietet jedem Fahrzeug einen eigenen vier- bis sechsstelligen Login-PIN.
+ * Default ist 1234 — sobald ein Tablet in den Wagen geht, ändert der
+ * Funktionär die PIN hier. Bei jedem Speichern wird `geaendertVon`
+ * mitgeschrieben (kleiner Audit-Trail) und ein Banner zeigt das Datum.
+ *
+ * Das Panel ist absichtlich vorsichtig gehalten:
+ * - PINs werden default verdeckt (•••) und einzeln aufgedeckt
+ * - Pro-PIN-Validierung: 4–6 Ziffern, nichts anderes
+ * - Save deaktiviert wenn auch nur eine PIN ungültig ist
+ * - Nur lesbar/schreibbar für funktionaer+ (Server-side enforced)
+ */
+function TabletPinsPanel({ currentUser }: { currentUser: string }) {
+  const FAHRZEUG_LABELS: Array<{ id: string; label: string }> = [
+    { id: "kdo", label: "Kommando Eberstalzell · KDO" },
+    { id: "tlf-a-4000", label: "Tank Eberstalzell · TLF-A 4000" },
+    { id: "lfa-b", label: "Pumpe Eberstalzell · LFA-B" },
+    { id: "mtf", label: "MTF Eberstalzell · MTF" },
+    { id: "zentrale", label: "Florian Eberstalzell · Zentrale" },
+  ];
+
+  const [data, setData] = useState<TabletPinsData | null>(null);
+  const [visible, setVisible] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      setErr(null);
+      try {
+        const r = await getConfig<TabletPinsData>("tablet-pins");
+        setData(r.data);
+        setSavedAt(r.geaendertAm);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setErr(`Konnte PINs nicht laden: ${msg}`);
+      }
+    })();
+  }, []);
+
+  const invalid: Record<string, boolean> = {};
+  if (data?.pins) {
+    for (const { id } of FAHRZEUG_LABELS) {
+      const v = data.pins[id] ?? "";
+      if (!/^\d{4,6}$/.test(v)) invalid[id] = true;
+    }
+  }
+  const anyInvalid = Object.keys(invalid).length > 0;
+
+  function setPin(id: string, val: string) {
+    if (!data) return;
+    // nur Ziffern, max 6
+    const clean = val.replace(/\D/g, "").slice(0, 6);
+    setData({ ...data, pins: { ...data.pins, [id]: clean } });
+    setSaved(null);
+  }
+
+  async function save() {
+    if (!data || anyInvalid) return;
+    setBusy(true);
+    setErr(null);
+    setSaved(null);
+    try {
+      const payload: TabletPinsData = {
+        pins: data.pins,
+        geaendertVon: currentUser,
+      };
+      const r = await putConfig<TabletPinsData>("tablet-pins", payload);
+      setSaved(`PINs gespeichert · ${new Date().toLocaleTimeString("de-AT")}`);
+      setSavedAt(r.geaendertAm);
+      setData(r.data);
+      setTimeout(() => setSaved(null), 4000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setErr(`Speichern fehlgeschlagen: ${msg}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (err && !data) {
+    return (
+      <section className="card">
+        <ErrorBanner msg={err} />
+        <p style={{ fontSize: 13, color: "var(--fg-3)" }}>
+          PIN-Verwaltung benötigt funktionaer- oder admin-Login.
+        </p>
+      </section>
+    );
+  }
+  if (!data) {
+    return (
+      <section className="card">
+        <p style={{ color: "var(--fg-3)" }}>lade …</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <KeyRound size={20} />
+          Tablet-PINs
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? (
+            <span className="badge ok" style={{ gap: 5 }}>
+              <CheckCircle2 size={11} /> {saved}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="cta"
+            onClick={() => void save()}
+            disabled={busy || anyInvalid}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "PINs speichern"}
+          </button>
+        </div>
+      </div>
+
+      {err ? <ErrorBanner msg={err} /> : null}
+
+      <p style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 18 }}>
+        Jedes Fahrzeug-Tablet meldet sich beim Setup mit einer 4- bis 6-stelligen PIN
+        an. Default ist <code>1234</code> — bitte vor Übergabe ändern. Nach dem
+        Speichern müssen sich bereits laufende Tablets <strong>nicht</strong> neu
+        anmelden (der Token bleibt gültig), nur Neu-Setups brauchen die aktuelle PIN.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+        {FAHRZEUG_LABELS.map(({ id, label }) => {
+          const val = data.pins?.[id] ?? "";
+          const bad = invalid[id];
+          const isVisible = visible[id] === true;
+          return (
+            <div
+              key={id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 220px 44px",
+                gap: 10,
+                alignItems: "center",
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: `1px solid ${bad ? "var(--red-border)" : "var(--border)"}`,
+                background: bad ? "var(--red-tint)" : "var(--surface-2)",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{label}</div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "var(--fg-3)",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {id}
+                </div>
+              </div>
+              <input
+                className="input num"
+                type={isVisible ? "text" : "password"}
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={6}
+                value={val}
+                onChange={(e) => setPin(id, e.target.value)}
+                placeholder="1234"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 16,
+                  letterSpacing: "0.2em",
+                  textAlign: "center",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setVisible((v) => ({ ...v, [id]: !isVisible }))}
+                aria-label={isVisible ? "PIN verbergen" : "PIN anzeigen"}
+                title={isVisible ? "PIN verbergen" : "PIN anzeigen"}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: 8,
+                  cursor: "pointer",
+                  color: "var(--fg-2)",
+                  minHeight: 38,
+                }}
+              >
+                {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {anyInvalid ? (
+        <div
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "var(--red-tint)",
+            color: "var(--red)",
+            fontSize: 12,
+            border: "1px solid var(--red-border)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          <AlertTriangle size={13} />
+          Mindestens eine PIN ist ungültig (nur 4–6 Ziffern). Speichern deaktiviert.
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 10,
+          background: "var(--surface)",
+          border: "1px dashed var(--border)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--fg-3)",
+          }}
+        >
+          Audit
+        </div>
+        <div style={{ fontSize: 13, color: "var(--fg-2)" }}>
+          Zuletzt geändert von <strong>{data.geaendertVon ?? "system-default"}</strong>
+          {savedAt ? ` · ${new Date(savedAt).toLocaleString("de-AT")}` : null}
         </div>
       </div>
     </section>

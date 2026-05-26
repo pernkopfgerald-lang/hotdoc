@@ -135,13 +135,33 @@ authRouter.post("/api/auth/tablet/pin-register", (async (req, res) => {
 }) as RequestHandler);
 
 async function loadTabletPins(): Promise<Record<string, string>> {
+  const fallback: Record<string, string> = {
+    kdo: "1234",
+    "tlf-a-4000": "1234",
+    "lfa-b": "1234",
+    mtf: "1234",
+    zentrale: "1234",
+  };
   try {
-    const doc = (await db.get("config:tablet-pins")) as { data?: Record<string, string> };
-    return doc.data ?? {};
+    const doc = (await db.get("config:tablet-pins")) as {
+      data?: {
+        // Aktuelles Format (config-route): { pins: { kdo: "1234", … } }
+        pins?: Record<string, string>;
+      } & Record<string, string>;
+    };
+    if (doc.data?.pins && typeof doc.data.pins === "object") return doc.data.pins;
+    // Legacy-Format: data direkt = Map → Backwards-Compat lesen
+    if (doc.data && typeof doc.data === "object") {
+      const flat: Record<string, string> = {};
+      for (const [k, v] of Object.entries(doc.data)) {
+        if (typeof v === "string") flat[k] = v;
+      }
+      if (Object.keys(flat).length > 0) return { ...fallback, ...flat };
+    }
+    return fallback;
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode === 404) {
-      // Default-PINs (alle "1234") wenn Doc noch nicht angelegt
-      return { kdo: "1234", "tlf-a-4000": "1234", "lfa-b": "1234", mtf: "1234", zentrale: "1234" };
+      return fallback;
     }
     throw err;
   }

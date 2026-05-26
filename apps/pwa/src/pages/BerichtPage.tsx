@@ -33,6 +33,7 @@ import {
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import { getAllPersonen } from "../db/seed";
 import type { RecordingResult } from "../lib/audio";
+import { apiCall } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
@@ -382,6 +383,85 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
     return luftlinie * ROAD_FACTOR * 2;
   }
 
+  // Sync-Zustand für den Upload — wird nach abschliessen() befüllt damit
+  // der User sieht ob der Bericht im Backend angekommen ist.
+  const [uploadState, setUploadState] = useState<
+    | { kind: "idle" }
+    | { kind: "uploading" }
+    | { kind: "ok"; einsatzId: string; at: string }
+    | { kind: "error"; msg: string }
+  >({ kind: "idle" });
+
+  /**
+   * Fahrzeugbericht-Upload — wird beim Abschließen versucht. Findet den
+   * aktiven Einsatz im Backend (per /api/einsaetze?status=aktiv) und PUTtet
+   * den Bericht. Bei Offline / fehlendem Einsatz: lokaler Stand bleibt
+   * erhalten, der User sieht eine "lokal gespeichert"-Meldung und kann
+   * beim nächsten Reconnect erneut hochladen.
+   */
+  async function uploadFahrzeugbericht(
+    einsatz: EinsatzInstance,
+    kmGefahren: number,
+  ): Promise<void> {
+    setUploadState({ kind: "uploading" });
+    try {
+      // Aktiven Einsatz im Backend suchen
+      const list = await apiCall<{ items: Array<{ _id: string; alarmId?: string }> }>(
+        "/api/einsaetze?status=aktiv",
+      );
+      const matchByAlarmId = list.items.find((d) => d.alarmId === einsatz.alarm.alarmId);
+      const firstActive = list.items[0];
+      const target = matchByAlarmId ?? firstActive;
+      if (!target) {
+        setUploadState({
+          kind: "error",
+          msg: "Kein aktiver Einsatz im Backend gefunden — Bericht nur lokal gespeichert.",
+        });
+        return;
+      }
+      const einsatzId = target._id;
+      const now = new Date().toISOString();
+
+      const body = {
+        zeit: {
+          von: einsatz.alarm.alarmierungZeit,
+          bis: now,
+        },
+        km: { gefahrenKm: kmGefahren },
+        gpsTrack: [],
+        ...(einsatz.fahrer?.syBosId ? { fahrerPersonId: einsatz.fahrer.syBosId } : {}),
+        ...(einsatz.kdt?.syBosId ? { fahrzeugKdtPersonId: einsatz.kdt.syBosId } : {}),
+        mannschaft: einsatz.mannschaft
+          .map((m, idx) =>
+            m.person
+              ? {
+                  slot: idx + 1,
+                  personId: m.person.syBosId,
+                  atemschutzAktiv: !!m.atemschutzAktiv,
+                  ...(m.atemschutzAktiv && typeof m.atemschutzDauerMin === "number"
+                    ? { atemschutzDauerMin: m.atemschutzDauerMin }
+                    : {}),
+                }
+              : null,
+          )
+          .filter((x): x is NonNullable<typeof x> => x !== null),
+        geraete: Array.from(einsatz.gearSelected).map((id) => ({ materialId: id })),
+        oelbindemittelSaecke: Math.max(0, Math.min(99, Math.floor(einsatz.oelSaecke))),
+        taetigkeitsbericht: einsatz.auftraege.map((a) => `· ${a.text}`).join("\n"),
+        status: "abgeschlossen" as const,
+      };
+
+      await apiCall(
+        `/api/einsaetze/${encodeURIComponent(einsatzId)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
+        { method: "PUT", body },
+      );
+      setUploadState({ kind: "ok", einsatzId, at: new Date().toLocaleTimeString("de-AT") });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setUploadState({ kind: "error", msg });
+    }
+  }
+
   function abschliessen() {
     const km = computeKm();
     patchActive((e) => ({
@@ -393,6 +473,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
       },
     }));
     setAbschlussModalOpen(false);
+    // Upload im Hintergrund anstoßen — UI ist schon abgeschlossen, der
+    // User sieht die Sync-Statusbadge in der Abschluss-View.
+    void uploadFahrzeugbericht(active, km);
   }
 
   const tabs: EinsatzTabSummary[] = einsaetze.map((e) => ({
@@ -453,6 +536,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
               { label: "Geräte", value: String(active.gearSelected.size) },
               { label: "Aufträge", value: String(active.auftraege.length) },
             ]}
+            syncState={uploadState}
+            onRetryUpload={() => active.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
             onSwitchFahrzeug={() => setVehicleSwitcherOpen(true)}
           />
         ) : (

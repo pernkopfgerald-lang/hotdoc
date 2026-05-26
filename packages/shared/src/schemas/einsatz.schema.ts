@@ -24,16 +24,33 @@ const FahrzeugPositionSchema = z.object({
   accuracyM: z.number().optional(),
 });
 
-export const ChronikEintragSchema = z.object({
-  id: z.string().uuid(),
-  zeitstempel: z.string().datetime(),
-  fahrzeugId: z.string(),
-  typ: z.enum(["diktat", "manuell", "auto-blaulichtsms"]),
-  audioBlobId: z.string().optional(),
-  transkript: z.string().optional(),
-  transkriptStatus: z.enum(["pending", "verfuegbar", "manuell-korrigiert"]),
-  tags: z.array(z.string()).optional(),
-});
+/**
+ * Chronik-Eintrag — wird sowohl vom Cross-Sync-Broadcast (`source`/`text`/
+ * `funkrufname`) als auch vom klassischen Tablet-Diktat (`typ`/`transkript`)
+ * geschrieben. Die beiden Shapes laufen historisch nebeneinander; das Schema
+ * akzeptiert beide damit der Round-Trip Read→Write durch `PUT /api/einsaetze/:id`
+ * nicht an strikten Field-Constraints scheitert.
+ */
+export const ChronikEintragSchema = z
+  .object({
+    id: z.string().min(1),
+    zeitstempel: z.string(),
+    // Cross-Sync-Broadcast-Shape (Florianstation + Fahrzeug-Tablets):
+    funkrufname: z.string().optional(),
+    fahrzeugId: z.string().optional(),
+    source: z.enum(["blaulichtsms", "fahrzeug", "manuell", "atemschutz"]).optional(),
+    text: z.string().optional(),
+    pending: z.boolean().optional(),
+    // Legacy/Tablet-Diktat-Shape:
+    typ: z.enum(["diktat", "manuell", "auto-blaulichtsms"]).optional(),
+    audioBlobId: z.string().optional(),
+    transkript: z.string().optional(),
+    transkriptStatus: z
+      .enum(["pending", "verfuegbar", "manuell-korrigiert", "fehlgeschlagen"])
+      .optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .passthrough();
 
 export const ReaktivierungSchema = z.object({
   vonBenutzerId: z.string(),
@@ -74,7 +91,9 @@ export const EinsatzSchema = z.object({
   alarmierungText: z.string().optional(),
 
   // — Manuell vom Einsatzleiter erfasst (Hauptbericht, Anhang B) —
-  einsatzart: z.enum(EINSATZARTEN).optional(),
+  // einsatzart kann aus BlaulichtSMS frei kommen ("Brand KFZ" matched bei uns
+  // den Enum, "B2-Verkehrsunfall" aber nicht). Wir akzeptieren beides.
+  einsatzart: z.union([z.enum(EINSATZARTEN), z.string()]).optional(),
   einsatzartFreitext: z.string().optional(),
   warnAlarmsystemNr: z.string().optional(),
   pflichtbereich: z.boolean().optional(),

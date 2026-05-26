@@ -19,12 +19,26 @@
 
 import { Router, type RequestHandler } from "express";
 import { db } from "../couch/client.js";
+import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
 export const configRouter: Router = Router();
 
-const KEYS = ["auftragstypen", "einsatzstichworte", "geraete", "stammdaten"] as const;
+const KEYS = [
+  "auftragstypen",
+  "einsatzstichworte",
+  "geraete",
+  "stammdaten",
+  "tablet-pins",
+] as const;
 type ConfigKey = (typeof KEYS)[number];
+
+/**
+ * Manche Config-Keys enthalten Secrets (Tablet-PINs) und dürfen nur
+ * Funktionäre lesen — eine Mannschafts-Session vom Fahrzeug-Tablet
+ * darf NICHT die PINs aller anderen Fahrzeuge enumerieren.
+ */
+const RESTRICTED_KEYS = new Set<ConfigKey>(["tablet-pins"]);
 
 interface ConfigDoc {
   _id: string;
@@ -126,6 +140,18 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
     bezirk: "Wels-Land",
     feuerwehrhausAdresse: "Solarstraße 1, 4653 Eberstalzell",
   },
+  "tablet-pins": {
+    // Default-PINs beim Bootstrap. Funktionär ändert sie über die
+    // Verwaltung sobald die Tablets ausgegeben werden.
+    pins: {
+      kdo: "1234",
+      "tlf-a-4000": "1234",
+      "lfa-b": "1234",
+      mtf: "1234",
+      zentrale: "1234",
+    },
+    geaendertVon: "system-default",
+  },
 };
 
 function isValidKey(k: string): k is ConfigKey {
@@ -151,10 +177,15 @@ async function loadConfig(key: ConfigKey): Promise<ConfigDoc> {
 }
 
 /** GET /api/config/:key — liefert das Doc, oder Defaults wenn noch nicht angelegt. */
-configRouter.get("/api/config/:key", (async (req, res) => {
+configRouter.get("/api/config/:key", requireAuth(), (async (req, res) => {
   const key = String(req.params.key);
   if (!isValidKey(key)) {
     res.status(404).json({ error: "unknown_config_key", validKeys: KEYS });
+    return;
+  }
+  // tablet-pins enthält Secrets — nur Funktionäre dürfen sie sehen.
+  if (RESTRICTED_KEYS.has(key) && req.session?.rolle !== "funktionaer" && req.session?.rolle !== "admin") {
+    res.status(403).json({ error: "insufficient_role", required: "funktionaer" });
     return;
   }
   const doc = await loadConfig(key);
@@ -162,12 +193,14 @@ configRouter.get("/api/config/:key", (async (req, res) => {
 }) as RequestHandler);
 
 /** PUT /api/config/:key — überschreibt data. Server setzt geaendertAm und upsertet. */
-configRouter.put("/api/config/:key", (async (req, res) => {
+configRouter.put("/api/config/:key", requireAuth("funktionaer"), (async (req, res) => {
   const key = String(req.params.key);
   if (!isValidKey(key)) {
     res.status(404).json({ error: "unknown_config_key", validKeys: KEYS });
     return;
   }
+  // tablet-pins-Änderung verlangt mindestens funktionaer (admin via Rang-OK)
+  // — der Auth-Guard oben deckt das ab.
   const data: Record<string, unknown> = req.body?.data ?? {};
   const id = `config:${key}`;
   let _rev: string | undefined;
@@ -186,6 +219,6 @@ configRouter.put("/api/config/:key", (async (req, res) => {
     geaendertAm: new Date().toISOString(),
   };
   const result = await db.insert(doc);
-  logger.info({ key, rev: result.rev }, "Config aktualisiert");
+  logger.info({ key, rev: result.rev, by: req.session?.username }, "Config aktualisiert");
   res.json({ ok: true, key, data, geaendertAm: doc.geaendertAm, rev: result.rev });
 }) as RequestHandler);

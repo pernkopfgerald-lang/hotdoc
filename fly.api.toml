@@ -12,9 +12,8 @@ kill_signal     = "SIGTERM"
 kill_timeout    = 10
 
 [build]
-  # Relativ zum fly.toml-Verzeichnis; deploy via CLI passt den Pfad an,
-  # falls aus dem Repo-Root deployt wird.
-  dockerfile = "Dockerfile"
+  # Pfad relativ zum fly.toml-Verzeichnis (= Repo-Root).
+  dockerfile = "deploy/api/Dockerfile"
 
 [env]
   NODE_ENV = "production"

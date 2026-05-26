@@ -1,21 +1,26 @@
 /**
- * Entwickler-Endpoints für lokales Testen ohne echte externe Services.
- * Werden nur in NODE_ENV !== "production" exponiert.
+ * Diagnose- + Setup-Endpoints. Ursprünglich als Dev-Tooling gedacht, in
+ * Produktion aber für Inbetriebnahme/Smoke-Test benötigt.
+ *
+ * Alle Routen verlangen einen funktionaer/admin-Login — das verhindert,
+ * dass jemand Anonymes Mock-Alarme triggert oder Egress-IPs/Konfig-
+ * Details abfragt. Diese Auth-Härtung ergänzt FR-15 (Tablet-Auth) für
+ * den Backoffice-Bereich.
  */
 
 import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { env } from "../config.js";
+import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { probeBlaulichtSms, pushMockAlarm } from "../services/blaulichtsms/client.js";
 import { pollOnce } from "../workers/blaulichtsms-poller.js";
 
 export const devRouter: Router = Router();
 
-// Hinweis: Dev-Endpoints sind aktuell auch in production aktiv, damit das
-// erste Live-Setup ohne echte BlaulichtSMS-Credentials getestet werden kann.
-// Für den Produktivbetrieb hinter Auth-Gate + Feature-Flag setzen.
+// Alle /api/dev/*-Routen verlangen mindestens funktionaer. Schreibende
+// Routen (trigger, poll) sogar admin-Login — siehe pro Route.
 
 const TriggerSchema = z.object({
   einsatzort: z.string().default("Eberstalzeller Straße 5, 4653 Eberstalzell"),
@@ -27,7 +32,7 @@ const TriggerSchema = z.object({
 });
 
 /** Triggert einen Mock-Alarm — der nächste Poll legt einen Einsatz an. */
-devRouter.post("/api/dev/blaulichtsms/trigger", (async (req, res) => {
+devRouter.post("/api/dev/blaulichtsms/trigger", requireAuth("admin"), (async (req, res) => {
   const parsed = TriggerSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -51,13 +56,13 @@ devRouter.post("/api/dev/blaulichtsms/trigger", (async (req, res) => {
 }) as RequestHandler);
 
 /** Manueller Poll-Trigger ohne Cron-Intervall abzuwarten. */
-devRouter.post("/api/dev/blaulichtsms/poll", (async (_req, res) => {
+devRouter.post("/api/dev/blaulichtsms/poll", requireAuth("admin"), (async (_req, res) => {
   const result = await pollOnce();
   res.json({ ok: true, ...result });
 }) as RequestHandler);
 
 /** Diagnostic: testet die CouchDB-Konnektivität direkt. */
-devRouter.get("/api/dev/db-test", (async (_req, res) => {
+devRouter.get("/api/dev/db-test", requireAuth("funktionaer"), (async (_req, res) => {
   const result: Record<string, unknown> = {
     couchUrl: env.COUCH_URL,
     couchDb: env.COUCH_DB,
@@ -90,7 +95,7 @@ devRouter.get("/api/dev/db-test", (async (_req, res) => {
  * Wir brauchen das, damit der syBOS-Admin die IP in die
  * Server-IPs-Whitelist eintragen kann (sonst gibt syBOS 401 zurück).
  */
-devRouter.get("/api/dev/egress-ip", (async (_req, res) => {
+devRouter.get("/api/dev/egress-ip", requireAuth("funktionaer"), (async (_req, res) => {
   const probes = [
     "https://api.ipify.org?format=json",
     "https://ipv4.icanhazip.com",
@@ -120,12 +125,12 @@ devRouter.get("/api/dev/egress-ip", (async (_req, res) => {
  * Dashboard-Call, liefert sessionId-Prefix und Alarm-Anzahl.
  * Erspart Smoke-Test-Skripte für die Inbetriebnahme.
  */
-devRouter.get("/api/dev/blaulichtsms-probe", (async (_req, res) => {
+devRouter.get("/api/dev/blaulichtsms-probe", requireAuth("funktionaer"), (async (_req, res) => {
   const probe = await probeBlaulichtSms();
   res.status(probe.ok ? 200 : 502).json(probe);
 }) as RequestHandler);
 
-devRouter.get("/api/dev/sybos-probe", (async (_req, res) => {
+devRouter.get("/api/dev/sybos-probe", requireAuth("funktionaer"), (async (_req, res) => {
   if (!env.SYBOS_API_URL || !env.SYBOS_TOKEN) {
     res.status(412).json({ error: "SYBOS_API_URL oder SYBOS_TOKEN nicht gesetzt" });
     return;

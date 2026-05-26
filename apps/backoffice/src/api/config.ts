@@ -1,6 +1,11 @@
 import { apiCall } from "./client";
 
-export type ConfigKey = "auftragstypen" | "einsatzstichworte" | "geraete" | "stammdaten";
+export type ConfigKey =
+  | "auftragstypen"
+  | "einsatzstichworte"
+  | "geraete"
+  | "stammdaten"
+  | "tablet-pins";
 
 export interface ConfigEnvelope<T = Record<string, unknown>> {
   ok: boolean;
@@ -40,6 +45,13 @@ export interface StammdatenData {
   heimkoord?: { lat: number; lng: number };
   bezirk?: string;
   feuerwehrhausAdresse?: string;
+}
+
+export interface TabletPinsData {
+  /** PIN je Fahrzeug-Slug (kdo / tlf-a-4000 / lfa-b / mtf / zentrale). */
+  pins: Record<string, string>;
+  /** Audit: Wer hat zuletzt gespeichert. */
+  geaendertVon?: string;
 }
 
 export async function getConfig<T>(key: ConfigKey): Promise<ConfigEnvelope<T>> {

@@ -9,7 +9,7 @@ app             = "hotdoc-backoffice"
 primary_region  = "fra"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "deploy/backoffice/Dockerfile"
 
 [env]
   PORT = "8080"

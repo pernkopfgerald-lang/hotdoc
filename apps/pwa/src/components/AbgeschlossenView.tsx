@@ -1,4 +1,4 @@
-import { CheckCircle2, Lock, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Lock, RotateCcw, UploadCloud } from "lucide-react";
 
 interface Props {
   funkrufname: string;
@@ -9,6 +9,14 @@ interface Props {
   /** Nur Funktionäre dürfen Reaktivieren — UI-Hint, Server validiert */
   onReaktivieren?: () => void;
   onSwitchFahrzeug: () => void;
+  /** Upload-Status des Berichts ins Backend. */
+  syncState?:
+    | { kind: "idle" }
+    | { kind: "uploading" }
+    | { kind: "ok"; einsatzId: string; at: string }
+    | { kind: "error"; msg: string };
+  /** Manueller Retry für den Upload (nur sichtbar wenn syncState=error). */
+  onRetryUpload?: () => void;
 }
 
 /**
@@ -22,6 +30,8 @@ export function AbgeschlossenView({
   summary,
   onReaktivieren,
   onSwitchFahrzeug,
+  syncState,
+  onRetryUpload,
 }: Props) {
   return (
     <div
@@ -89,6 +99,63 @@ export function AbgeschlossenView({
           </div>
         ))}
       </dl>
+
+      {syncState && syncState.kind !== "idle" ? (
+        <div
+          className="mt-4 flex items-center gap-3 rounded-s border px-3 py-2"
+          style={{
+            borderColor:
+              syncState.kind === "ok"
+                ? "var(--emerald-border)"
+                : syncState.kind === "error"
+                  ? "var(--red-border)"
+                  : "var(--border-strong)",
+            background:
+              syncState.kind === "ok"
+                ? "var(--ok-tint)"
+                : syncState.kind === "error"
+                  ? "var(--red-tint)"
+                  : "var(--surface-2)",
+          }}
+        >
+          {syncState.kind === "uploading" ? (
+            <>
+              <Loader2 size={14} className="animate-spin" style={{ color: "var(--fg-2)" }} />
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-text-2">
+                Bericht wird an Florian übermittelt …
+              </span>
+            </>
+          ) : syncState.kind === "ok" ? (
+            <>
+              <UploadCloud size={14} style={{ color: "var(--emerald)" }} />
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--emerald)" }}>
+                Im Backend gespeichert · {syncState.at}
+              </span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={14} style={{ color: "var(--red)" }} />
+              <span className="flex-1 font-mono text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--red)" }}>
+                Upload fehlgeschlagen: {syncState.msg}
+              </span>
+              {onRetryUpload ? (
+                <button
+                  type="button"
+                  onClick={onRetryUpload}
+                  className="rounded border px-2 py-1 text-[11px] font-semibold"
+                  style={{
+                    borderColor: "var(--red-border)",
+                    background: "var(--red-tint)",
+                    color: "var(--red)",
+                  }}
+                >
+                  Erneut versuchen
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <button

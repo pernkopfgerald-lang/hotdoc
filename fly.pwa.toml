@@ -9,7 +9,7 @@ app             = "hotdoc-eberstalzell"
 primary_region  = "fra"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "deploy/pwa/Dockerfile"
 
 [env]
   PORT = "8080"
