@@ -1,7 +1,8 @@
-import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Truck, Users } from "lucide-react";
+import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, Truck, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
+import { HandoffModal } from "../components/HandoffModal";
 import { AbschlussModal, type AbschlussCheck } from "../components/AbschlussModal";
 import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
 import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
@@ -74,6 +75,8 @@ interface Props {
   fahrzeugId: FahrzeugId;
   onSwitchFahrzeug: (id: FahrzeugId) => void;
   onResetSetup: () => void;
+  /** Single-Device-Logout nach erfolgreichem QR-Handoff. */
+  onHandoffLogout: () => void;
 }
 
 /**
@@ -81,7 +84,7 @@ interface Props {
  * Mannschaftsplätze und Geräteliste kommen aus der Fahrzeugkonfiguration.
  * Für Zentrale gibt es eine eigene Page (Hauptbericht, Anhang B des Spec).
  */
-export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Props) {
+export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE[fahrzeugId];
   const gearList = GEAR_BY_FAHRZEUG[fahrzeugId];
 
@@ -91,6 +94,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
   const [neuerAuftragOpen, setNeuerAuftragOpen] = useState(false);
   const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
   const [vorschauOpen, setVorschauOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
 
   const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => [
     {
@@ -720,6 +724,47 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
         <span className="sep">·</span>
         <button
           type="button"
+          onClick={() => setHandoffOpen(true)}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "var(--red)",
+            font: "inherit",
+            fontWeight: 600,
+            cursor: "pointer",
+            textDecoration: "underline",
+            minHeight: 0,
+            padding: 0,
+            marginRight: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+          title="Sitzung per QR-Code aufs Handy übertragen (z. B. Tablet-Akku leer)"
+        >
+          <Smartphone size={11} /> An Handy übergeben
+        </button>
+        <span className="sep">·</span>
+        <button
+          type="button"
+          onClick={() => setVehicleSwitcherOpen(true)}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "inherit",
+            font: "inherit",
+            cursor: "pointer",
+            textDecoration: "underline",
+            minHeight: 0,
+            padding: 0,
+            marginRight: 8,
+          }}
+        >
+          Fahrzeug wechseln
+        </button>
+        <span className="sep">·</span>
+        <button
+          type="button"
           onClick={onResetSetup}
           style={{
             background: "transparent",
@@ -735,6 +780,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup }: Prop
           Setup
         </button>
       </div>
+
+      <HandoffModal
+        open={handoffOpen}
+        onClose={() => setHandoffOpen(false)}
+        einsatzId={activeId}
+        onClaimed={() => {
+          setHandoffOpen(false);
+          onHandoffLogout();
+        }}
+      />
 
       <PersonPickerModal
         open={!!pickerOpen}

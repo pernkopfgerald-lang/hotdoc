@@ -1,14 +1,18 @@
 /**
  * Auth-Routes — FR-15.
  *
- * - POST /api/auth/login            Backoffice/Florianstation (Username + Passwort)
- * - GET  /api/auth/me               Token validieren + Benutzer-Info zurück
- * - POST /api/auth/tablet/register  Tablet-Setup (MSISDN + Fahrzeug → DeviceToken)
- * - POST /api/auth/tablet/login     Bestehender Tablet-Token gegen DB validieren
+ * - POST /api/auth/login                  Backoffice/Florianstation (Username + Passwort)
+ * - GET  /api/auth/me                     Token validieren + Benutzer-Info zurück
+ * - POST /api/auth/tablet/register        Tablet-Setup (MSISDN + Fahrzeug → DeviceToken)
+ * - POST /api/auth/tablet/pin-register    Vereinfachte PIN-Auth pro Fahrzeug
+ * - POST /api/auth/handoff/create         QR-Notfall-Übergabe: Erstellt Short-Code
+ * - GET  /api/auth/handoff/:code          Claim: liefert neuen Token, invalidiert Tablet
+ * - GET  /api/auth/handoff/:code/status   Tablet pollt ob Übergabe erfolgt ist
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { Router, type RequestHandler } from "express";
+import { z } from "zod";
 import {
   LoginRequestSchema,
   TabletRegisterRequestSchema,
@@ -17,6 +21,7 @@ import {
   type TabletAuth,
 } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
+import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { signSession, verifySession } from "../services/auth/jwt.js";
 import { verifyPassword } from "../services/auth/password.js";
@@ -252,3 +257,223 @@ async function findTabletByMsisdn(msisdn: string): Promise<TabletAuth | null> {
     return null;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// QR-Handoff — Notfall-Übergabe Tablet → Handy
+// ─────────────────────────────────────────────────────────────────────
+//
+// Flow:
+//  1. Tablet ruft `POST /api/auth/handoff/create` (mit aktuellem Tablet-Token)
+//     → Server erzeugt 8-Zeichen-Short-Code, speichert handoff-Doc mit
+//       neuem JWT-Token-Payload + Tablet-Token-Refs. Ablauf in 5 min.
+//  2. Server liefert {code, claimUrl}, der Tablet rendert das als QR.
+//  3. Handy scannt → öffnet `https://<pwa>/handoff/<code>`
+//     → PWA ruft `GET /api/auth/handoff/<code>`
+//     → Server markiert Doc als `claimed=true`, gibt neuen Token zurück.
+//  4. Tablet pollt `GET /api/auth/handoff/<code>/status` alle 5 s.
+//     Wenn `claimed=true` → Tablet löscht eigenen Token + zeigt PIN-Screen.
+//     (Single-Device-Modell, der User wollte das so.)
+//
+// Sicherheit:
+//  - Codes single-use (zweiter Claim → 410 Gone).
+//  - 5 Minuten TTL — danach 410 Gone.
+//  - Tablet-Token wird in handoff-Doc gespeichert damit der Tablet die
+//    eigene Token-ID erkennt (für späteren Server-side-Revoke; für jetzt
+//    macht der Tablet-Client den Logout selbst).
+//  - Rate-Limit-Plausibilität: 8-Zeichen-Code aus 32 Zeichen Alphabet
+//    = 32^8 ≈ 10^12 Permutationen. Brute-Force nicht möglich.
+
+const HANDOFF_TTL_MS = 5 * 60 * 1000;
+const HANDOFF_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // ohne 0/O/1/I-Verwechslung
+const HANDOFF_CODE_LEN = 8;
+
+function generateHandoffCode(): string {
+  const bytes = randomBytes(HANDOFF_CODE_LEN);
+  let out = "";
+  for (let i = 0; i < HANDOFF_CODE_LEN; i++) {
+    const byte = bytes[i] ?? 0;
+    out += HANDOFF_CODE_ALPHABET[byte % HANDOFF_CODE_ALPHABET.length];
+  }
+  return out;
+}
+
+interface HandoffDoc {
+  _id: string;
+  _rev?: string;
+  type: "handoff";
+  code: string;
+  /** Quell-Tablet — zur Identifikation des zu invalidierenden Tokens. */
+  sourceSub: string;
+  sourceFahrzeugId?: string;
+  sourceUsername: string;
+  sourceRolle: Benutzer["rolle"];
+  /** Aktiv-Einsatz beim Erstellen — der Empfänger landet darauf. */
+  einsatzId?: string;
+  /** Wann erstellt. */
+  createdAt: string;
+  /** Ablauf-Zeitpunkt. */
+  expiresAt: string;
+  /** Wer hat gecla​imt + wann. */
+  claimedAt?: string;
+  claimedByUserAgent?: string;
+  /** Single-Use: nach erstem Claim true. */
+  claimed: boolean;
+}
+
+const HandoffCreateBodySchema = z.object({
+  einsatzId: z.string().optional(),
+});
+
+// — POST /api/auth/handoff/create —
+authRouter.post("/api/auth/handoff/create", requireAuth(), (async (req, res) => {
+  const parsed = HandoffCreateBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
+    return;
+  }
+  const session = req.session!;
+  const code = generateHandoffCode();
+  const now = new Date();
+  const doc: HandoffDoc = {
+    _id: `handoff:${code}`,
+    type: "handoff",
+    code,
+    sourceSub: session.sub,
+    ...(session.fahrzeugId ? { sourceFahrzeugId: session.fahrzeugId } : {}),
+    sourceUsername: session.username,
+    sourceRolle: session.rolle,
+    ...(parsed.data.einsatzId ? { einsatzId: parsed.data.einsatzId } : {}),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + HANDOFF_TTL_MS).toISOString(),
+    claimed: false,
+  };
+  try {
+    await db.insert(doc);
+  } catch (err) {
+    // Sehr unwahrscheinlich (Collision in 32^8) — einmaliger Retry mit neuem Code
+    if ((err as { statusCode?: number }).statusCode === 409) {
+      const retryCode = generateHandoffCode();
+      doc._id = `handoff:${retryCode}`;
+      doc.code = retryCode;
+      await db.insert(doc);
+    } else {
+      throw err;
+    }
+  }
+  logger.info(
+    { code: doc.code, by: session.username, fahrzeug: session.fahrzeugId, einsatzId: parsed.data.einsatzId },
+    "Handoff-Code erstellt",
+  );
+  res.json({
+    ok: true,
+    code: doc.code,
+    expiresAt: doc.expiresAt,
+    ttlSeconds: HANDOFF_TTL_MS / 1000,
+  });
+}) as RequestHandler);
+
+// — GET /api/auth/handoff/:code — Claim
+// Public-Endpoint, aber jeder gültige Claim verlangt Vorwissen des Codes.
+// Der Code wird single-use: zweiter Claim liefert 410 Gone.
+authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
+  const code = String(req.params.code ?? "").toUpperCase().trim();
+  if (!/^[A-Z0-9]{8}$/.test(code)) {
+    res.status(400).json({ error: "invalid_code_format" });
+    return;
+  }
+  let doc: HandoffDoc;
+  try {
+    doc = (await db.get(`handoff:${code}`)) as HandoffDoc;
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      res.status(404).json({ error: "code_not_found" });
+      return;
+    }
+    throw err;
+  }
+  if (doc.claimed) {
+    res.status(410).json({ error: "already_claimed", claimedAt: doc.claimedAt });
+    return;
+  }
+  if (new Date(doc.expiresAt).getTime() < Date.now()) {
+    res.status(410).json({ error: "expired", expiresAt: doc.expiresAt });
+    return;
+  }
+
+  // Markiere als claimed (idempotent: weitere Aufrufe → 410)
+  const ua = String(req.headers["user-agent"] ?? "").slice(0, 200);
+  const claimedAt = new Date().toISOString();
+  const updated: HandoffDoc = {
+    ...doc,
+    claimed: true,
+    claimedAt,
+    claimedByUserAgent: ua,
+  };
+  try {
+    await db.insert(updated);
+  } catch (err) {
+    // Konkurrierende Claims — wer das Update schreibt, gewinnt; wer 409 bekommt verliert.
+    if ((err as { statusCode?: number }).statusCode === 409) {
+      res.status(410).json({ error: "race_lost_already_claimed" });
+      return;
+    }
+    throw err;
+  }
+
+  // Neuen JWT-Token für das Handy ausstellen (gleiche Rolle wie Quell-Session,
+  // gleiche fahrzeugId, gleiche Identität — Handy übernimmt die Sitzung).
+  const { token, expiresAt } = await signSession({
+    sub: doc.sourceSub,
+    username: doc.sourceUsername,
+    rolle: doc.sourceRolle,
+    ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
+  });
+
+  logger.warn(
+    {
+      code,
+      from: doc.sourceUsername,
+      fahrzeug: doc.sourceFahrzeugId,
+      einsatzId: doc.einsatzId,
+      ua: ua.slice(0, 60),
+    },
+    "Handoff geclaimt — Quell-Tablet sollte sich selbst ausloggen",
+  );
+
+  res.json({
+    ok: true,
+    token,
+    expiresAt,
+    rolle: doc.sourceRolle,
+    ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
+    ...(doc.einsatzId ? { einsatzId: doc.einsatzId } : {}),
+  });
+}) as RequestHandler);
+
+// — GET /api/auth/handoff/:code/status —
+// Tablet pollt diese Route alle 5 s. Sobald der Claim erfolgt ist,
+// sendet das Tablet sich selbst in den Logout.
+authRouter.get("/api/auth/handoff/:code/status", (async (req, res) => {
+  const code = String(req.params.code ?? "").toUpperCase().trim();
+  if (!/^[A-Z0-9]{8}$/.test(code)) {
+    res.status(400).json({ error: "invalid_code_format" });
+    return;
+  }
+  try {
+    const doc = (await db.get(`handoff:${code}`)) as HandoffDoc;
+    const expired = new Date(doc.expiresAt).getTime() < Date.now();
+    res.json({
+      ok: true,
+      claimed: !!doc.claimed,
+      expired,
+      claimedAt: doc.claimedAt,
+      expiresAt: doc.expiresAt,
+    });
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      res.status(404).json({ error: "code_not_found" });
+      return;
+    }
+    throw err;
+  }
+}) as RequestHandler);

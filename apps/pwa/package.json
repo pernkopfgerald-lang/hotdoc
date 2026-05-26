@@ -13,16 +13,17 @@
   },
   "dependencies": {
     "@hotdoc/shared": "workspace:*",
+    "clsx": "2.1.1",
+    "events": "3.3.0",
+    "leaflet": "1.9.4",
+    "lucide-react": "0.469.0",
+    "pouchdb-browser": "9.0.0",
+    "qrcode.react": "4.2.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-router-dom": "6.28.1",
-    "pouchdb-browser": "9.0.0",
-    "leaflet": "1.9.4",
     "react-leaflet": "4.2.1",
-    "zod": "3.24.1",
-    "clsx": "2.1.1",
-    "lucide-react": "0.469.0",
-    "events": "3.3.0"
+    "react-router-dom": "6.28.1",
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "@types/leaflet": "1.9.15",

@@ -14,6 +14,7 @@ import {
   Phone,
   Save,
   Siren,
+  Smartphone,
   Truck,
   Users,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimel
 import { DemoBanner } from "../components/DemoBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
+import { HandoffModal } from "../components/HandoffModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { DEMO_ALARM } from "../data/demo-alarm";
@@ -53,6 +55,8 @@ interface FahrzeugberichtApiDoc {
 interface Props {
   onSwitchFahrzeug: (id: FahrzeugId) => void;
   onResetSetup: () => void;
+  /** Single-Device-Logout nach erfolgreichem QR-Handoff. */
+  onHandoffLogout: () => void;
 }
 
 interface EinsatzApiDoc {
@@ -229,10 +233,11 @@ function hhmmToIso(hhmm: string, refDateIso: string): string | undefined {
  * Vollständige Backend-Anbindung (Aggregation aus CouchDB-Views) kommt
  * in Phase 6 — aktuell sind die Werte aus dem Mock-Alarm-Demo.
  */
-export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
+export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE.zentrale;
   const geo = useGeolocation();
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
   const [aktiverEinsatz, setAktiverEinsatz] = useState<EinsatzApiDoc | null>(null);
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
@@ -1389,6 +1394,29 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
         <span className="sep">·</span>
         <button
           type="button"
+          onClick={() => setHandoffOpen(true)}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "var(--red)",
+            font: "inherit",
+            fontWeight: 600,
+            cursor: "pointer",
+            textDecoration: "underline",
+            minHeight: 0,
+            padding: 0,
+            marginRight: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+          title="Sitzung per QR-Code aufs Handy übertragen (z. B. Tablet-Akku leer)"
+        >
+          <Smartphone size={11} /> An Handy übergeben
+        </button>
+        <span className="sep">·</span>
+        <button
+          type="button"
           onClick={() => setVehicleSwitcherOpen(true)}
           style={{
             background: "transparent",
@@ -1422,6 +1450,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup }: Props) {
           Setup
         </button>
       </div>
+
+      <HandoffModal
+        open={handoffOpen}
+        onClose={() => setHandoffOpen(false)}
+        {...(aktiverEinsatzId ? { einsatzId: aktiverEinsatzId } : {})}
+        onClaimed={() => {
+          setHandoffOpen(false);
+          onHandoffLogout();
+        }}
+      />
 
       <VehicleSwitcherModal
         open={vehicleSwitcherOpen}
