@@ -10,7 +10,7 @@ import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
 import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { DemoBanner } from "../components/DemoBanner";
-import { DictateButton } from "../components/DictateButton";
+import { DictateButton, type DictateResult } from "../components/DictateButton";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { GearChips } from "../components/GearChips";
 import {
@@ -35,7 +35,6 @@ import {
 } from "../data/demo-alarm";
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import { getAllPersonen } from "../db/seed";
-import type { RecordingResult } from "../lib/audio";
 import { apiCall } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
@@ -342,21 +341,47 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   }
 
   /**
-   * Flow nach Aufnahme:
-   *  1. Sofort einen Pending-Chronik-Eintrag schreiben + broadcasten
-   *     ("🎤 transkribiere …" mit Dauer) — User sieht Feedback ohne Latenz.
-   *  2. Audio-Blob parallel an /api/audio/transcribe hochladen.
-   *  3. Bei Erfolg → Eintrag durch echten Transkript-Text ersetzen + neu broadcasten.
-   *  4. Bei Fehler → Eintrag bleibt, Text wird zu "🎤 Audio · X — Transkription
-   *     fehlgeschlagen: <grund>" (User kann manuell nachtragen oder neu diktieren).
+   * Zwei-Pfade-Flow:
+   *  - kind="speech" (Chrome/Edge): Text ist sofort da, KEIN Server-Upload nötig.
+   *    Chronik-Eintrag wird direkt mit dem Text geschrieben (kein Pending-State).
+   *  - kind="audio" (iOS-Safari/Firefox): Audio-Blob hochladen an Whisper-API.
+   *    Bei nicht-konfigurierter API erscheint ein klarer Hinweis-Text im Eintrag.
    */
-  function onDictateResult(result: RecordingResult) {
+  function onDictateResult(result: DictateResult) {
     const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const zeitstempel = new Date().toISOString();
     const dauer = formatDuration(result.durationMs);
-    const pendingText = `🎤 Audio · ${dauer} · transkribiere …`;
 
-    // Schritt 1+2: Pending-Eintrag im lokalen State + Broadcast
+    if (result.kind === "speech") {
+      // ─── Pfad A: Web-Speech-API direktes Transkript ───
+      const text = result.text.trim();
+      const finalText = text || `🎤 Audio · ${dauer} · (keine Sprache erkannt)`;
+      patchActive((e) => ({
+        ...e,
+        chronik: [
+          ...e.chronik,
+          {
+            id,
+            zeitstempel,
+            funkrufname: fahrzeug.funkrufname,
+            source: "fahrzeug",
+            text: finalText,
+          },
+        ],
+      }));
+      void broadcastChronikEntry(activeId, {
+        id,
+        zeitstempel,
+        funkrufname: fahrzeug.funkrufname,
+        fahrzeugId,
+        source: "fahrzeug",
+        text: finalText,
+      });
+      return;
+    }
+
+    // ─── Pfad B: Audio-Blob → Whisper-Backend (iOS-Safari / Firefox) ───
+    const pendingText = `🎤 Audio · ${dauer} · transkribiere …`;
     patchActive((e) => ({
       ...e,
       chronik: [
@@ -381,7 +406,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       text: pendingText,
     });
 
-    // Schritt 3+4: Transkription asynchron
     void (async () => {
       const outcome = await transcribeAudio(result.blob, { lang: "de" });
       const finalText = outcome.ok
@@ -807,7 +831,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 <span className="card-meta">Whisper · offline</span>
               </div>
               <ChronikTimeline eintraege={active.chronik} />
-              <DictateButton onAudio={onDictateResult} />
+              <DictateButton onResult={onDictateResult} />
             </section>
 
             <div className="cta-wrap">
