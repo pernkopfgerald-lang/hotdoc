@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from "express";
 import { runSyBosSync } from "../workers/sybos-sync.js";
 import { collectHealth } from "../services/health.js";
 import { loadRecentAuditEvents } from "../services/audit.js";
+import { computeStats } from "../services/stats.js";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -72,6 +73,21 @@ adminRouter.get("/api/admin/audit", requireAuth("funktionaer"), (async (req, res
   const limit = Math.min(200, Math.max(1, Number(rawLimit) || 50));
   const items = await loadRecentAuditEvents(limit);
   res.json({ ok: true, count: items.length, items });
+}) as RequestHandler);
+
+/**
+ * Statistik-Dashboard — Aggregation über Einsätze + Fahrzeugberichte.
+ * Query-Params: ?from=YYYY-MM-DD&to=YYYY-MM-DD. Default: aktuelles Jahr.
+ * Nur funktionaer+ — sensibel weil Mannschafts-Stunden personalisiert sind.
+ */
+adminRouter.get("/api/admin/stats", requireAuth("funktionaer"), (async (req, res) => {
+  const from = typeof req.query.from === "string" ? req.query.from : undefined;
+  const to = typeof req.query.to === "string" ? req.query.to : undefined;
+  const stats = await computeStats({
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  });
+  res.json(stats);
 }) as RequestHandler);
 
 /**
