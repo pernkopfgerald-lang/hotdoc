@@ -1099,6 +1099,255 @@
   body::after { animation: none; }
 }
 
+/* ============================================================
+   RESPONSIVE — Phone (< 640px) + Tablet-Hochkant (< 920px)
+   Tablet-Querformat / Desktop = Default-Layout oben.
+   ============================================================ */
+
+/* ─── Tablet-Hochkant + kleines Tablet ────────────────────── */
+@media (max-width: 920px) {
+  .page {
+    padding: 18px 18px 56px;
+    gap: 14px;
+  }
+  .appheader {
+    padding: 12px 16px 14px;
+    gap: 12px;
+  }
+  .alarm {
+    padding: 22px 22px 20px;
+    border-radius: var(--radius-l);
+  }
+  .alarm-title {
+    font-size: 28px;
+  }
+  .alarm-meta {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px 0;
+  }
+  .alarm-meta .cell {
+    padding: 6px 14px;
+    border-right: 1px solid var(--glass-divider);
+  }
+  /* Bei 2 Spalten den Right-Border in jeder geraden Zelle entfernen */
+  .alarm-meta .cell:nth-child(2n) { border-right: 0; }
+  /* Und in der ersten Zeile (Index 1-2) den Bottom-Border setzen */
+  .alarm-meta .cell:nth-child(-n+2) {
+    border-bottom: 1px solid var(--glass-divider);
+    padding-bottom: 10px;
+  }
+  .alarm-meta .cell:nth-child(n+3) {
+    padding-top: 10px;
+  }
+}
+
+/* ─── Phone (Handy, Hochkant) ─────────────────────────────── */
+@media (max-width: 640px) {
+  .page {
+    padding: 14px 12px 48px;
+    gap: 12px;
+  }
+
+  /* App-Header schmaler, weniger Text */
+  .appheader {
+    padding: 10px 12px 12px;
+    gap: 10px;
+  }
+  .applogo {
+    width: 38px;
+    height: 38px;
+  }
+  .applogo svg { width: 22px; height: 22px; }
+  .appname {
+    font-size: 15px;
+  }
+  .appsub {
+    font-size: 9.5px;
+    /* Drei Zeilen verhindern — Ellipsis */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Zeitstempel auf Handy in eine Zeile */
+  .headerstamp {
+    display: none;
+  }
+  .themetoggle {
+    width: 38px;
+    height: 38px;
+  }
+
+  /* Card spaciger */
+  .card {
+    padding: 16px 16px;
+    border-radius: var(--radius-m);
+  }
+  .card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .card-title { font-size: 15.5px; }
+
+  /* Alarm: noch kompakter */
+  .alarm {
+    padding: 18px 16px 16px;
+  }
+  .alarm-top {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .alarm-left {
+    gap: 12px;
+  }
+  .alarm-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+  }
+  .alarm-icon svg { width: 24px; height: 24px; }
+  .alarm-title {
+    font-size: 22px;
+    line-height: 1.1;
+  }
+  .alarm-addr {
+    font-size: 14px;
+  }
+  .alarm-meta {
+    padding: 10px 4px;
+  }
+  .alarm-meta .lbl { font-size: 9px; }
+  .alarm-meta .val { font-size: 15px; }
+  .alarm-meta .val .unit { font-size: 11px; }
+
+  /* Grid-Helper: alle auf Single-Column auf Handy */
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Vehicle-Row: 2 oder 3 Spalten, NICHT 5 */
+  .vehicle-row {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .vehicle-chip {
+    padding: 10px 6px;
+  }
+  .vehicle-chip .code { font-size: 12.5px; }
+  .vehicle-chip .sub { font-size: 9px; letter-spacing: 0.04em; }
+
+  /* Chips kleiner */
+  .chip {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 34px;
+  }
+
+  /* Inputs: Font-Size 16px+ bleibt erhalten (iOS-Auto-Zoom-Prevention) */
+  .input {
+    padding: 12px 14px;
+    font-size: 16px;     /* niemals < 16px sonst iOS zoomt automatisch */
+    border-radius: var(--radius-s);
+  }
+
+  /* Inputs in Setup PIN-Field bleiben groß, aber Padding sanfter */
+
+  /* Timeline: weniger Platz für Zeit-Spalte */
+  .tl-row {
+    grid-template-columns: 52px 1fr;
+    gap: 10px;
+  }
+  .tl-time { font-size: 12.5px; padding-top: 8px; }
+  .tl-text { font-size: 14.5px; }
+
+  /* Chronik-Body weniger Bottom-Padding */
+  .tl-body { padding-bottom: 14px; padding-left: 18px; }
+
+  /* CTA-Sekundär gleich-große Spalten und kleineres Padding */
+  .cta {
+    padding: 18px;
+    font-size: 15px;
+    border-radius: var(--radius-m);
+  }
+  .cta-secondary {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cta-secondary button {
+    width: 100%;
+  }
+
+  /* Section-Heads etwas tighter */
+  .section-head { padding: 6px 4px 0; }
+
+  /* Person/Crew Rows: kleinere Avatare + Padding */
+  .person {
+    padding: 8px 12px 8px 10px;
+    gap: 10px;
+  }
+  .person .avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 11.5px;
+  }
+  .person .name { font-size: 15px; }
+
+  .crew-row {
+    padding: 10px 12px 10px 10px;
+    gap: 10px;
+  }
+  .crew-name { font-size: 15px; }
+
+  /* Diktat-Button: kompakter */
+  .dictate {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .dictate-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .dictate-text .t1 { font-size: 14px; }
+  .dictate-text .t2 { font-size: 9.5px; }
+
+  /* App-Footer auf Handy: Pipes als Zeilenumbruch (kleinere Mass) */
+  .appfoot {
+    padding: 16px 12px;
+    font-size: 9.5px;
+    line-height: 1.8;
+  }
+  .appfoot .sep { margin: 0 5px; }
+}
+
+/* ─── Sehr kleine Phones (< 380px) — Notfall ──────────────── */
+@media (max-width: 380px) {
+  .page { padding: 12px 10px 48px; gap: 10px; }
+  .appname { font-size: 14px; }
+  .appsub { display: none; }
+  .alarm-title { font-size: 20px; }
+  .vehicle-row { grid-template-columns: repeat(2, 1fr); }
+  .alarm-meta {
+    grid-template-columns: 1fr;
+    padding: 8px;
+  }
+  .alarm-meta .cell {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--glass-divider);
+    padding: 8px 12px !important;
+  }
+  .alarm-meta .cell:last-child { border-bottom: 0; }
+}
+
+/* ─── Landscape Phone (max-height < 500px) — Modal nicht zu groß ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .page { padding-top: 14px; }
+  .appheader { padding: 8px 16px; }
+}
+
 /* ─── App footer ──────────────────────────────────────────── */
 .appfoot {
   text-align: center;

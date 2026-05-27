@@ -40,6 +40,7 @@ import { apiCall } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
 import { loadReportStates, saveReportState } from "../lib/report-state";
+import { describeFailure, transcribeAudio } from "../lib/transcribe";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
@@ -340,10 +341,22 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     }));
   }
 
+  /**
+   * Flow nach Aufnahme:
+   *  1. Sofort einen Pending-Chronik-Eintrag schreiben + broadcasten
+   *     ("🎤 transkribiere …" mit Dauer) — User sieht Feedback ohne Latenz.
+   *  2. Audio-Blob parallel an /api/audio/transcribe hochladen.
+   *  3. Bei Erfolg → Eintrag durch echten Transkript-Text ersetzen + neu broadcasten.
+   *  4. Bei Fehler → Eintrag bleibt, Text wird zu "🎤 Audio · X — Transkription
+   *     fehlgeschlagen: <grund>" (User kann manuell nachtragen oder neu diktieren).
+   */
   function onDictateResult(result: RecordingResult) {
     const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const zeitstempel = new Date().toISOString();
-    const text = `🎤 Audio · ${formatDuration(result.durationMs)} · Transkript folgt`;
+    const dauer = formatDuration(result.durationMs);
+    const pendingText = `🎤 Audio · ${dauer} · transkribiere …`;
+
+    // Schritt 1+2: Pending-Eintrag im lokalen State + Broadcast
     patchActive((e) => ({
       ...e,
       chronik: [
@@ -354,11 +367,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           funkrufname: fahrzeug.funkrufname,
           source: "fahrzeug",
           pending: true,
-          text,
+          text: pendingText,
         },
       ],
     }));
-    // Broadcast an alle anderen Fahrzeuge + Florianstation
     void broadcastChronikEntry(activeId, {
       id,
       zeitstempel,
@@ -366,8 +378,34 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       fahrzeugId,
       source: "fahrzeug",
       pending: true,
-      text,
+      text: pendingText,
     });
+
+    // Schritt 3+4: Transkription asynchron
+    void (async () => {
+      const outcome = await transcribeAudio(result.blob, { lang: "de" });
+      const finalText = outcome.ok
+        ? outcome.text.trim() || `🎤 Audio · ${dauer} · (leer)`
+        : `🎤 Audio · ${dauer} — ${describeFailure(outcome.reason)}`;
+
+      patchActive((e) => ({
+        ...e,
+        chronik: e.chronik.map((entry) =>
+          entry.id === id
+            ? { ...entry, pending: false, text: finalText }
+            : entry,
+        ),
+      }));
+      void broadcastChronikEntry(activeId, {
+        id,
+        zeitstempel,
+        funkrufname: fahrzeug.funkrufname,
+        fahrzeugId,
+        source: "fahrzeug",
+        pending: false,
+        text: finalText,
+      });
+    })();
   }
 
   function addAuftrag(text: string) {

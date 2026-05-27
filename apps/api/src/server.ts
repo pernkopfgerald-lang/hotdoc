@@ -8,6 +8,7 @@ import { env } from "./config.js";
 import { ensureDatabase } from "./couch/client.js";
 import { logger } from "./lib/logger.js";
 import { adminRouter } from "./routes/admin.js";
+import { audioRouter } from "./routes/audio.js";
 import { authRouter } from "./routes/auth.js";
 import { configRouter } from "./routes/config.js";
 import { devRouter } from "./routes/dev.js";
@@ -85,6 +86,7 @@ async function main(): Promise<void> {
   app.use(configRouter);
   app.use(einsaetzeRouter);
   app.use(pdfRouter);
+  app.use(audioRouter);
   app.use(devRouter);
 
   // — DB-Bootstrap —
