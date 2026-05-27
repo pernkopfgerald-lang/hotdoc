@@ -39,6 +39,7 @@ import type { RecordingResult } from "../lib/audio";
 import { apiCall } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
+import { loadReportStates, saveReportState } from "../lib/report-state";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
@@ -98,25 +99,32 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   const [vorschauOpen, setVorschauOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
 
-  const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => [
-    {
-      id: DEMO_ALARM.alarmId,
-      alarm: DEMO_ALARM,
-      einsatzPos: EINSATZ_POS,
-      manuell: false,
-      fahrer: null,
-      kdt: null,
-      mannschaft: Array.from(
-        { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
-        (_, i) => emptySlot(i + 1),
-      ),
-      gearSelected: new Set(),
-      oelSaecke: 0,
-      auftraege: [],
-      chronik: initialChronik(fahrzeug.funkrufname),
-      abgeschlossen: null,
-    },
-  ]);
+  const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => {
+    // localStorage hat den Vorzug: schneller Mount ohne Backend-Roundtrip.
+    // Falls Backend einen abweichenden Stand hat, korrigiert der Mount-
+    // Effekt (siehe useEffect weiter unten) das nachträglich.
+    const persistedStates = loadReportStates(fahrzeugId);
+    const persistedDemo = persistedStates[DEMO_ALARM.alarmId] ?? null;
+    return [
+      {
+        id: DEMO_ALARM.alarmId,
+        alarm: DEMO_ALARM,
+        einsatzPos: EINSATZ_POS,
+        manuell: false,
+        fahrer: null,
+        kdt: null,
+        mannschaft: Array.from(
+          { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
+          (_, i) => emptySlot(i + 1),
+        ),
+        gearSelected: new Set(),
+        oelSaecke: 0,
+        auftraege: [],
+        chronik: initialChronik(fahrzeug.funkrufname),
+        abgeschlossen: persistedDemo,
+      },
+    ];
+  });
   const [activeId, setActiveId] = useState<string>(DEMO_ALARM.alarmId);
   const [fleet, setFleet] = useState<MapPosition[]>(() => makeInitialFleet());
 
@@ -156,6 +164,76 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         ),
       );
     })();
+  }, [fahrzeugId]);
+
+  // Persist abgeschlossen-Status in localStorage bei jeder Änderung —
+  // damit der Reload nicht den frisch abgeschlossenen Bericht wieder
+  // auf "aktiv" zurücksetzt (war das User-Bug-Symptom: nach Refresh war
+  // der Dummy-Bericht zurück).
+  useEffect(() => {
+    for (const e of einsaetze) {
+      saveReportState(fahrzeugId, e.id, e.abgeschlossen);
+    }
+  }, [einsaetze, fahrzeugId]);
+
+  // Beim Mount zusätzlich aus Backend laden — für den Fall dass:
+  //   - Tablet gewechselt (anderes Gerät hat keinen localStorage-Eintrag)
+  //   - Backend hat neueren abgeschlossen-Stand (z. B. von Florianstation
+  //     reaktiviert oder manuell abgeschlossen)
+  // Wir suchen den aktiven Einsatz mit matching alarmId und prüfen ob mein
+  // Fahrzeugbericht status="abgeschlossen" hat.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await apiCall<{
+          items: Array<{ _id: string; alarmId?: string }>;
+        }>("/api/einsaetze?status=aktiv");
+        if (cancelled) return;
+        const matchByAlarmId = list.items.find(
+          (d) => d.alarmId === DEMO_ALARM.alarmId,
+        );
+        const target = matchByAlarmId ?? list.items[0];
+        if (!target) return;
+        const einsatzIdEnc = encodeURIComponent(target._id);
+        const fz = await apiCall<{
+          items?: Array<{
+            fahrzeugId?: string;
+            status?: "in_arbeit" | "abgeschlossen";
+            geaendertAm?: string;
+            km?: { gefahrenKm?: number };
+            fahrzeugKdtPersonId?: number;
+          }>;
+        }>(`/api/einsaetze/${einsatzIdEnc}/fahrzeugberichte`);
+        if (cancelled) return;
+        const mine = fz.items?.find((b) => b.fahrzeugId === fahrzeugId);
+        if (!mine || mine.status !== "abgeschlossen") return;
+        // Backend hat einen abgeschlossenen Bericht für mein Fahrzeug.
+        // Setze lokalen State entsprechend, falls noch nicht abgeschlossen.
+        setEinsaetze((prev) =>
+          prev.map((e) =>
+            e.id === DEMO_ALARM.alarmId && !e.abgeschlossen
+              ? {
+                  ...e,
+                  abgeschlossen: {
+                    ts: mine.geaendertAm ?? new Date().toISOString(),
+                    durch:
+                      mine.fahrzeugKdtPersonId !== undefined
+                        ? `Pers-${mine.fahrzeugKdtPersonId}`
+                        : "—",
+                    kmGefahren: mine.km?.gefahrenKm ?? 0,
+                  },
+                }
+              : e,
+          ),
+        );
+      } catch {
+        // Backend nicht erreichbar — localStorage-Stand bleibt maßgeblich.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [fahrzeugId]);
 
   useEffect(() => {
