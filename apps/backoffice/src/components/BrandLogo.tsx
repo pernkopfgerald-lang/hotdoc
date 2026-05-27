@@ -1,3 +1,9 @@
+/**
+ * Logo wird via Vite-Asset-Import gebunden — Vite generiert beim Build
+ * einen hash-versionierten Pfad. Umgeht das Caddy-Cache-Problem.
+ */
+import logoUrl from "../assets/ff-eberstalzell-logo.png";
+
 interface Props {
   /**
    * "full" = volles Logo (Wappen + Schriftzug). Standard.
@@ -10,11 +16,8 @@ interface Props {
 
 /**
  * Markenlogo der FF Eberstalzell. **Verwendet ausschließlich das
- * offizielle Logo** unter `/ff-eberstalzell-logo.png` — keine SVG-
- * Annäherung, keine selbstgestalteten Wappen.
- *
- * Original-Verhältnis 656 × 185 ≈ 3.55 : 1. Bei "mark" zeigen wir nur
- * den linken Wappen-Bereich (≈ 28 % der Breite).
+ * offizielle Logo** (importiert als Vite-Asset).
+ * Originalverhältnis 656 × 185 ≈ 3.55 : 1.
  */
 export function BrandLogo({ variant = "full", size = 56 }: Props) {
   const fullRatio = 656 / 185;
@@ -37,7 +40,7 @@ export function BrandLogo({ variant = "full", size = 56 }: Props) {
         }}
       >
         <img
-          src="/ff-eberstalzell-logo.png"
+          src={logoUrl}
           alt="FF Eberstalzell"
           width={fullWidth}
           height={height}
@@ -49,7 +52,7 @@ export function BrandLogo({ variant = "full", size = 56 }: Props) {
 
   return (
     <img
-      src="/ff-eberstalzell-logo.png"
+      src={logoUrl}
       alt="Freiwillige Feuerwehr Eberstalzell"
       style={{
         height: size,
