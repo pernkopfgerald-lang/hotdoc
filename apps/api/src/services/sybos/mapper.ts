@@ -14,18 +14,34 @@ import type {
 } from "./client.js";
 
 /**
+ * Coerce einer syBOS-numerischen Antwort (kommt oft als String) zu einer
+ * sauberen number. Liefert null wenn nicht parsbar — Aufrufer skipt das Item.
+ */
+function coerceId(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return n;
+}
+
+/**
  * Mappt eine syBOS-Personal-Antwort + Set von Atemschutz-gültigen Namen
- * auf unsere Person-Domain-Type.
+ * auf unsere Person-Domain-Type. Liefert null wenn die ID ungültig ist
+ * (z. B. wenn syBOS einen Datensatz ohne ID liefert) — der Aufrufer skipt
+ * das Item dann statt mit einer "person:undefined"-Sammler-Doc-Kollision
+ * zu kämpfen.
  */
 export function mapPerson(
   raw: SyBosPersonRaw,
   atemschutzGueltigeNamen: ReadonlySet<string>,
-): Person {
+): Person | null {
+  const id = coerceId(raw.ID);
+  if (id === null) return null;
   const vollname = `${raw.Nachname} ${raw.Vorname}`.trim();
   return {
-    _id: `person:${raw.id}`,
+    _id: `person:${id}`,
     type: "person",
-    syBosId: raw.id,
+    syBosId: id,
     nachname: raw.Nachname,
     vorname: raw.Vorname,
     dienstgrad: raw.Dienstgrad ?? "",
@@ -34,7 +50,7 @@ export function mapPerson(
     mobil2: raw.Mobil2 || undefined,
     funktionen: parseFunktionen(raw.Funktionen),
     atemschutzGueltig: atemschutzGueltigeNamen.has(vollname),
-    aktiv: true, // Endpoint liefert nur Aktive (Art=MITGLIEDER)
+    aktiv: true,
     letztesSync: new Date().toISOString(),
   };
 }
@@ -47,27 +63,37 @@ function parseFunktionen(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Atemschutz-gültige Namen aus PersUeberpruefung-Antwort sammeln. */
+/**
+ * Atemschutz-gültige Namen aus PersUeberpruefung-Antwort sammeln.
+ * syBOS liefert Status sowohl als Code-Letter (`o` / `e` / `w`) als auch als
+ * Klar-Text (`gültig` / `nicht gültig` / `Warnung`). Wir akzeptieren beide.
+ */
 export function buildAtemschutzSet(rows: SyBosPersUeberpruefungRaw[]): Set<string> {
   const result = new Set<string>();
   for (const r of rows) {
     if (!r.Name || !r.Pruefungsbezeichnung) continue;
     if (!/atemschutz/i.test(r.Pruefungsbezeichnung)) continue;
-    if (r.Status === "o") result.add(r.Name);
+    const status = (r.Status ?? "").toString().toLowerCase().trim();
+    // "o" = ok, "gültig" / "gueltig" (ohne Umlaut) — alles andere = nicht gültig
+    if (status === "o" || /^g(ü|ue)ltig$/.test(status)) {
+      result.add(r.Name);
+    }
   }
   return result;
 }
 
 /**
- * Mappt syBOS-Material auf unsere Material-Domain-Type.
- * Die fahrzeugId muss in einem späteren Schritt manuell zugeordnet werden
- * (in der Backoffice-Stammdaten-Pflege).
+ * Mappt syBOS-Material auf unsere Material-Domain-Type. Liefert null
+ * wenn die ID ungültig ist (analog zu mapPerson — syBOS sendet IDs als
+ * Strings, die wir hier zu number coercen).
  */
-export function mapMaterial(raw: SyBosMaterialRaw): Material {
+export function mapMaterial(raw: SyBosMaterialRaw): Material | null {
+  const id = coerceId(raw.ID);
+  if (id === null) return null;
   return {
-    _id: `material:${raw.ID}`,
+    _id: `material:${id}`,
     type: "material",
-    syBosId: raw.ID,
+    syBosId: id,
     bezeichnung: raw.Bezeichnung,
     klasse1: raw.Klasse1 || undefined,
     klasse2: raw.Klasse2 || undefined,
@@ -104,9 +130,11 @@ export interface AbteilungSummary {
   ort?: string;
 }
 
-export function mapAbteilung(raw: SyBosAbteilungRaw): AbteilungSummary {
+export function mapAbteilung(raw: SyBosAbteilungRaw): AbteilungSummary | null {
+  const id = coerceId(raw.ID);
+  if (id === null) return null;
   return {
-    id: raw.ID,
+    id,
     name: raw.Bezeichnung ?? raw.Name,
     ort: raw.Ort || undefined,
   };

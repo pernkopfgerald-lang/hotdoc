@@ -81,8 +81,13 @@ async function call<T>(endpoint: string, options: QueryOptions = {}): Promise<T>
 
 // ─── Konkrete Endpunkte ──────────────────────────────────────────
 
+/**
+ * syBOS-Personal-Raw — Achtung: alle Felder kommen als STRING von syBOS,
+ * auch numerische (ID, GRnr). Mapper muss zu number coercen.
+ * Die ID heißt im JSON `ID` (Großbuchstaben) — nicht `id`!
+ */
 export interface SyBosPersonRaw {
-  id: number;
+  ID: string | number;
   Nachname: string;
   Vorname: string;
   Titel1?: string;
@@ -95,7 +100,7 @@ export interface SyBosPersonRaw {
   Mobil1?: string;
   Mobil2?: string;
   Foto?: string;
-  GRnr?: number;
+  GRnr?: string | number;
   Funktionen?: string;
 }
 
@@ -115,7 +120,7 @@ export async function getPersonalAktiv(): Promise<SyBosPersonRaw[]> {
 }
 
 export interface SyBosMaterialRaw {
-  ID: number;
+  ID: string | number;
   Klasse1?: string;
   Klasse2?: string;
   Klasse3?: string;
@@ -137,8 +142,8 @@ export async function getMaterial(watCodes?: string[]): Promise<SyBosMaterialRaw
 }
 
 export interface SyBosAbteilungRaw {
-  ID: number;
-  RefID?: number;
+  ID: string | number;
+  RefID?: string | number;
   Name: string;
   Bezeichnung?: string;
   Strasse?: string;
@@ -151,7 +156,7 @@ export interface SyBosAbteilungRaw {
   Homepage?: string;
   Gruendung?: string;
   Code?: string;
-  OrganisationsID?: number;
+  OrganisationsID?: string | number;
 }
 
 /** Lädt eigene Abteilung + ggf. übergeordnete (z. B. Bezirk). */
@@ -165,27 +170,69 @@ export async function getAbteilungen(): Promise<SyBosAbteilungRaw[]> {
 export interface SyBosPersUeberpruefungRaw {
   /** Personalname (Anzeige). */
   Name?: string;
-  /** Prüfungsbezeichnung — z.B. "Atemschutz-Tauglichkeit". */
+  /** Prüfungsbezeichnung — kommt vom Gruppen-Key. */
   Pruefungsbezeichnung?: string;
-  /** Gültig-Bis Datum YYYY-MM-DD. */
-  GueltigBis?: string;
-  Status?: "o" | "e" | "w";
+  /** Gültig-Bis Datum YYYY-MM-DD (kann null sein). */
+  GueltigBis?: string | null;
+  /** Status-String: "gültig", "nicht gültig", "Warnung", oder Code-Letter. */
+  Status?: string;
+  /** Personal-ID. */
+  ID?: string | number;
+}
+
+/**
+ * syBOS-Antwort für PersUeberpruefung ist NICHT flach wie die anderen Endpoints!
+ * Statt `{number, item: []}` ist es `{number, <PruefungsName>: {item: []}, …}` —
+ * also gruppiert nach Prüfungstyp.
+ *
+ * Beispiel:
+ * {
+ *   "number": "27",
+ *   "UnterweisungRueckhaltesystem": { "item": [{ "Name": "…", "Status": "…" }, …] },
+ *   "AtemschutzTauglichkeit":       { "item": [...] },
+ *   …
+ * }
+ *
+ * Wir reichen das in eine flache Liste mit eingebettetem Prüfungsbezeichnung-Feld.
+ */
+interface SyBosPersUeberpruefungResponse {
+  number?: number | string;
+  [key: string]: unknown;
 }
 
 /**
  * Lädt Personal-Überprüfungen — wir nutzen das primär für die Atemschutz-Gültigkeit.
- * Filterbar nach Status (o=gültig, e=nicht-gültig, w=Warnung).
+ * Filter `status` bleibt aus syBOS-Sicht ein Pre-Filter; wir filtern den Status-
+ * String aber CLIENT-SIDE nach dem Flatten weil syBOS den Filter aktuell ignoriert.
+ *
+ * Liefert flache Liste mit `Pruefungsbezeichnung` aus dem Gruppen-Key.
  */
 export async function getPersUeberpruefungen(
   status?: "o" | "e" | "w",
 ): Promise<SyBosPersUeberpruefungRaw[]> {
   const params: Record<string, string> = {};
   if (status) params.Status = status;
-  const res = await call<SyBosListResponse<SyBosPersUeberpruefungRaw>>(
-    "PersUeberpruefung.php",
-    { params },
+  const res = await call<SyBosPersUeberpruefungResponse>("PersUeberpruefung.php", { params });
+
+  // Über alle Top-Level-Keys außer "number" iterieren — jeder ist ein Prüfungstyp
+  const flat: SyBosPersUeberpruefungRaw[] = [];
+  for (const [key, group] of Object.entries(res)) {
+    if (key === "number") continue;
+    if (!group || typeof group !== "object") continue;
+    const item = (group as { item?: unknown }).item;
+    const list = Array.isArray(item) ? item : item ? [item] : [];
+    for (const raw of list) {
+      if (raw && typeof raw === "object") {
+        flat.push({
+          ...(raw as Record<string, unknown>),
+          Pruefungsbezeichnung: key,
+        } as SyBosPersUeberpruefungRaw);
+      }
+    }
+  }
+  logger.debug(
+    { count: flat.length, declared: res.number, gruppen: Object.keys(res).filter((k) => k !== "number").length },
+    "syBOS PersUeberpruefungen geladen",
   );
-  const items = Array.isArray(res.item) ? res.item : res.item ? [res.item] : [];
-  logger.debug({ count: items.length, total: res.number }, "syBOS PersUeberpruefungen geladen");
-  return items;
+  return flat;
 }

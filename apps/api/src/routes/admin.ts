@@ -56,8 +56,11 @@ adminRouter.get("/api/admin/personen", requireAuth(), (async (_req, res) => {
       syBosId: d.syBosId as number,
       vorname: d.vorname as string | undefined,
       nachname: d.nachname as string | undefined,
-      rang: d.rang as string | undefined,
+      // dienstgrad ist das echte Feld im person-Doc (vom syBOS-Mapper),
+      // wir mappen es nach `rang` damit das UI nicht beide Namen kennen muss.
+      rang: (d.dienstgrad as string | undefined) || (d.rang as string | undefined),
       aktiv: d.aktiv as boolean | undefined,
+      atemschutzGueltig: d.atemschutzGueltig as boolean | undefined,
     }))
     .filter((p) => p.aktiv !== false);
   res.json({ ok: true, count: items.length, items });

@@ -29,7 +29,7 @@ describe("buildAtemschutzSet", () => {
 
 describe("mapPerson", () => {
   const raw: SyBosPersonRaw = {
-    id: 107452,
+    ID: 107452,
     Nachname: "Huemer",
     Vorname: "Manfred",
     Dienstgrad: "OBM",
@@ -41,6 +41,8 @@ describe("mapPerson", () => {
   it("baut korrekt das CouchDB-Dokument", () => {
     const asSet = new Set<string>(["Huemer Manfred"]);
     const doc = mapPerson(raw, asSet);
+    expect(doc).not.toBeNull();
+    if (!doc) throw new Error("doc null");
     expect(doc._id).toBe("person:107452");
     expect(doc.type).toBe("person");
     expect(doc.syBosId).toBe(107452);
@@ -54,19 +56,35 @@ describe("mapPerson", () => {
     expect(doc.funktionen).toEqual(["Maschinist", "Atemschutzwart"]);
   });
 
+  it("akzeptiert ID als String (syBOS sendet so)", () => {
+    const doc = mapPerson({ ...raw, ID: "107452" }, new Set());
+    expect(doc).not.toBeNull();
+    if (!doc) throw new Error("doc null");
+    expect(doc._id).toBe("person:107452");
+    expect(doc.syBosId).toBe(107452);
+  });
+
+  it("liefert null bei fehlender / ungültiger ID", () => {
+    expect(mapPerson({ ...raw, ID: undefined as unknown as string }, new Set())).toBeNull();
+    expect(mapPerson({ ...raw, ID: "" }, new Set())).toBeNull();
+    expect(mapPerson({ ...raw, ID: "abc" }, new Set())).toBeNull();
+    expect(mapPerson({ ...raw, ID: 0 }, new Set())).toBeNull();
+    expect(mapPerson({ ...raw, ID: -5 }, new Set())).toBeNull();
+  });
+
   it("setzt atemschutzGueltig auf false wenn Name nicht im Set", () => {
     const doc = mapPerson(raw, new Set());
-    expect(doc.atemschutzGueltig).toBe(false);
+    expect(doc?.atemschutzGueltig).toBe(false);
   });
 
   it("filtert leere Email", () => {
     const doc = mapPerson({ ...raw, Email1: "" }, new Set());
-    expect(doc.email).toBeUndefined();
+    expect(doc?.email).toBeUndefined();
   });
 
   it("filtert Email ohne @", () => {
     const doc = mapPerson({ ...raw, Email1: "noemail" }, new Set());
-    expect(doc.email).toBeUndefined();
+    expect(doc?.email).toBeUndefined();
   });
 });
 
@@ -77,7 +95,7 @@ describe("mapMaterial", () => {
       Klasse1: "Atemschutz",
       Bezeichnung: "PA-Gerät MSA",
     };
-    expect(mapMaterial(raw).watCode).toBe("atems");
+    expect(mapMaterial(raw)?.watCode).toBe("atems");
   });
 
   it("erkennt Fahrzeug", () => {
@@ -86,7 +104,7 @@ describe("mapMaterial", () => {
       Klasse1: "Fahrzeug",
       Bezeichnung: "TLF-A 4000",
     };
-    expect(mapMaterial(raw).watCode).toBe("fuhrp");
+    expect(mapMaterial(raw)?.watCode).toBe("fuhrp");
   });
 
   it("erkennt Ölbindemittel als gerae", () => {
@@ -94,7 +112,7 @@ describe("mapMaterial", () => {
       ID: 3,
       Bezeichnung: "Ölbindemittel Sack",
     };
-    expect(mapMaterial(raw).watCode).toBe("gerae");
+    expect(mapMaterial(raw)?.watCode).toBe("gerae");
   });
 
   it("Fallback ist sachm", () => {
@@ -102,12 +120,22 @@ describe("mapMaterial", () => {
       ID: 4,
       Bezeichnung: "Irgendwas Komisches",
     };
-    expect(mapMaterial(raw).watCode).toBe("sachm");
+    expect(mapMaterial(raw)?.watCode).toBe("sachm");
   });
 
   it("setzt das richtige _id-Format", () => {
     const doc = mapMaterial({ ID: 12345, Bezeichnung: "Test" });
-    expect(doc._id).toBe("material:12345");
-    expect(doc.type).toBe("material");
+    expect(doc?._id).toBe("material:12345");
+    expect(doc?.type).toBe("material");
+  });
+
+  it("akzeptiert ID als String", () => {
+    const doc = mapMaterial({ ID: "12345", Bezeichnung: "Test" });
+    expect(doc?._id).toBe("material:12345");
+    expect(doc?.syBosId).toBe(12345);
+  });
+
+  it("liefert null bei ungültiger ID", () => {
+    expect(mapMaterial({ ID: "abc", Bezeichnung: "Test" })).toBeNull();
   });
 });

@@ -24,10 +24,14 @@ import { recordSyBosSync } from "../services/state.js";
 interface SyncResult {
   ok: boolean;
   personalCount: number;
+  personalErrors: number;
   materialCount: number;
+  materialErrors: number;
   abteilungenCount: number;
   durationMs: number;
   error?: string;
+  /** Erste 5 Fehler-Details für Debugging. */
+  errorSamples?: Array<{ id: string; error: string; reason?: string }>;
 }
 
 /**
@@ -38,7 +42,9 @@ export async function runSyBosSync(): Promise<SyncResult> {
   const result: SyncResult = {
     ok: false,
     personalCount: 0,
+    personalErrors: 0,
     materialCount: 0,
+    materialErrors: 0,
     abteilungenCount: 0,
     durationMs: 0,
   };
@@ -56,17 +62,54 @@ export async function runSyBosSync(): Promise<SyncResult> {
     const atemschutzSet = buildAtemschutzSet(ueberpruefungen);
     logger.info({ count: atemschutzSet.size }, "AS-Berechtigte erkannt");
 
-    // Personal
+    // Personal — mapPerson liefert null bei ungültiger ID, die filtern wir hier raus
     const personalRaw = await getPersonalAktiv();
-    const personalDocs = personalRaw.map((p) => mapPerson(p, atemschutzSet));
+    const personalDocs = personalRaw
+      .map((p) => mapPerson(p, atemschutzSet))
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+    const personalSkipped = personalRaw.length - personalDocs.length;
+    if (personalSkipped > 0) {
+      logger.warn(
+        { skipped: personalSkipped, totalRaw: personalRaw.length },
+        "syBOS-Sync: Personal-Mapping skipped (ungültige IDs)",
+      );
+    }
     const personalResults = await upsertBulk(personalDocs);
-    result.personalCount = personalResults.length;
+    const personalErrors = personalResults.filter((r) => r.error);
+    result.personalCount = personalResults.length - personalErrors.length;
+    result.personalErrors = personalErrors.length + personalSkipped;
+    if (personalErrors.length > 0) {
+      result.errorSamples = personalErrors.slice(0, 5).map((r) => ({
+        id: r.id ?? "?",
+        error: r.error ?? "unknown",
+        ...(r.reason ? { reason: r.reason } : {}),
+      }));
+      logger.warn(
+        { count: personalErrors.length, samples: result.errorSamples },
+        "syBOS-Sync: Personal-Bulk hatte Fehler",
+      );
+    }
 
-    // Material
+    // Material — analog
     const materialRaw = await getMaterial();
-    const materialDocs = materialRaw.map(mapMaterial);
+    const materialDocs = materialRaw
+      .map(mapMaterial)
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+    const materialSkipped = materialRaw.length - materialDocs.length;
     const materialResults = await upsertBulk(materialDocs);
-    result.materialCount = materialResults.length;
+    const materialErrors = materialResults.filter((r) => r.error);
+    result.materialCount = materialResults.length - materialErrors.length;
+    result.materialErrors = materialErrors.length + materialSkipped;
+    if (materialErrors.length > 0) {
+      logger.warn(
+        { count: materialErrors.length, sample: materialErrors.slice(0, 3) },
+        "syBOS-Sync: Material-Bulk hatte Fehler",
+      );
+    }
+    logger.info(
+      { materialRawCount: materialRaw.length, materialDocsCount: materialDocs.length, materialSkipped },
+      "syBOS-Sync: Material-Stats",
+    );
 
     // Abteilungen (Header-Info, für später wenn Hauptbericht detaillierter)
     const abteilungenRaw = await getAbteilungen();

@@ -130,27 +130,69 @@ devRouter.get("/api/dev/blaulichtsms-probe", requireAuth("funktionaer"), (async 
   res.status(probe.ok ? 200 : 502).json(probe);
 }) as RequestHandler);
 
-devRouter.get("/api/dev/sybos-probe", requireAuth("funktionaer"), (async (_req, res) => {
+/**
+ * Generischer syBOS-Probe. Query-Params:
+ *  - endpoint=Personal.php (Default) | Material.php | Abteilung.php | PersUeberpruefung.php
+ *  - Art=MITGLIEDER  (für Personal)
+ *  - WATcode=…       (für Material — Filter optional)
+ *  - Status=o|e|w    (für PersUeberpruefung)
+ *  - Alle weiteren Query-Params werden 1:1 an syBOS weitergegeben.
+ *
+ * Liefert die ersten 4000 Zeichen der Roh-Antwort + Status + content-type.
+ * Praktisch um zu sehen wie syBOS auf bestimmte Aufrufe reagiert.
+ */
+devRouter.get("/api/dev/sybos-probe", requireAuth("funktionaer"), (async (req, res) => {
   if (!env.SYBOS_API_URL || !env.SYBOS_TOKEN) {
     res.status(412).json({ error: "SYBOS_API_URL oder SYBOS_TOKEN nicht gesetzt" });
     return;
   }
-  const url = new URL(env.SYBOS_API_URL.replace(/\/$/, "") + "/API/Personal.php");
+  const endpoint = String(req.query.endpoint ?? "Personal.php");
+  // Whitelist um Path-Traversal zu verhindern
+  if (!/^[A-Za-z][A-Za-z0-9_-]{0,50}\.php$/.test(endpoint)) {
+    res.status(400).json({ error: "invalid_endpoint", hint: "Format: <Name>.php" });
+    return;
+  }
+  const url = new URL(env.SYBOS_API_URL.replace(/\/$/, "") + "/API/" + endpoint);
   url.searchParams.set("token", env.SYBOS_TOKEN);
   url.searchParams.set("json", "1");
-  url.searchParams.set("Art", "MITGLIEDER");
+  // Default-Params je nach Endpoint
+  if (endpoint === "Personal.php" && !req.query.Art) {
+    url.searchParams.set("Art", "MITGLIEDER");
+  }
+  // Alle Query-Params außer token/endpoint weiterreichen
+  for (const [k, v] of Object.entries(req.query)) {
+    if (k === "endpoint" || k === "token") continue;
+    if (typeof v === "string") url.searchParams.set(k, v);
+  }
   try {
     const r = await fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json, text/xml" },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(30_000),
     });
     const body = await r.text();
+    // Parsing-Versuch + Count
+    let parsedNumber: number | string | undefined;
+    let itemCount: number | undefined;
+    try {
+      const j = JSON.parse(body) as { number?: number | string; item?: unknown };
+      parsedNumber = j.number;
+      const item = j.item;
+      itemCount = Array.isArray(item) ? item.length : item ? 1 : 0;
+    } catch {
+      /* HTML/XML-Antwort, kein JSON */
+    }
     res.json({
       ok: r.ok,
       status: r.status,
+      endpoint,
+      url: url.toString().replace(env.SYBOS_TOKEN, "[REDACTED]"),
       contentType: r.headers.get("content-type"),
-      body: body.slice(0, 2000),
+      parsedNumber,
+      itemCount,
+      body: body.slice(0, 4000),
+      bodyTruncated: body.length > 4000,
+      bodyTotalBytes: body.length,
     });
   } catch (err) {
     res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
