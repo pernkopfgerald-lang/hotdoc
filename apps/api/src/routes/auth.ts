@@ -159,18 +159,25 @@ authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, re
 
   recordSuccessfulLogin(req);
 
+  // Rollen-Mapping pro Fahrzeug:
+  //   - "zentrale" (Florianstation/PC) → einsatzleiter (darf abschließen + Einsatz-Felder editieren)
+  //   - alle anderen Fahrzeug-Tablets → mannschaft (darf nur eigenen Fahrzeugbericht)
+  // Begründung: das Florian-Gerät steht im FF-Haus, wird vom diensthabenden
+  // Einsatzleiter bedient. Höhere Rechte sind dort organisatorisch gedeckt.
+  const rolle = fahrzeugId === "zentrale" ? "einsatzleiter" : "mannschaft";
+
   const { token, expiresAt } = await signSession({
     sub: `tablet:${fahrzeugId}:${deviceId}`,
     username: `tablet:${fahrzeugId}`,
-    rolle: "mannschaft",
+    rolle,
     fahrzeugId,
   });
 
-  logger.info({ fahrzeugId, deviceId }, "Tablet via PIN registriert");
+  logger.info({ fahrzeugId, deviceId, rolle }, "Tablet via PIN registriert");
 
   const response: AuthResponse = {
     ok: true,
-    rolle: "mannschaft",
+    rolle,
     token,
     expiresAt,
     fahrzeugId,

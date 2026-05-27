@@ -39,16 +39,18 @@
   /* Status-Farben */
   --ok:           #16A34A;
   --ok-tint:      #DCFCE7;
+  --ok-border:    rgba(22, 163, 74, 0.30);
   --emerald:      var(--ok);
   --emerald-bg:   var(--ok-tint);
-  --emerald-border: rgba(22, 163, 74, 0.30);
+  --emerald-border: var(--ok-border);
   --emerald-glow: rgba(22, 163, 74, 0.30);
 
   --warn:         #D97706;
   --warn-tint:    #FEF3C7;
+  --warn-border:  rgba(217, 119, 6, 0.40);
   --amber:        var(--warn);
   --amber-soft:   var(--warn-tint);
-  --amber-border: rgba(217, 119, 6, 0.40);
+  --amber-border: var(--warn-border);
   --amber-glow:   rgba(217, 119, 6, 0.30);
 
   --info:         #2563EB;
@@ -111,16 +113,18 @@
 
   --ok:           #2DD4A5;
   --ok-tint:      rgba(45, 212, 165, 0.14);
+  --ok-border:    rgba(45, 212, 165, 0.32);
   --emerald:      var(--ok);
   --emerald-bg:   var(--ok-tint);
-  --emerald-border: rgba(45, 212, 165, 0.32);
+  --emerald-border: var(--ok-border);
   --emerald-glow: rgba(45, 212, 165, 0.32);
 
   --warn:         #F5A524;
   --warn-tint:    rgba(245, 165, 36, 0.14);
+  --warn-border:  rgba(245, 165, 36, 0.40);
   --amber:        var(--warn);
   --amber-soft:   var(--warn-tint);
-  --amber-border: rgba(245, 165, 36, 0.40);
+  --amber-border: var(--warn-border);
   --amber-glow:   rgba(245, 165, 36, 0.30);
 
   --info:         #5AA9FF;

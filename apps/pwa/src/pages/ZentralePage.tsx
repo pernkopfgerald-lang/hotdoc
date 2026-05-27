@@ -251,6 +251,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  // Abschluss-Workflow: separater State-Slot, damit der Confirm-Dialog
+  // unabhängig vom normalen Save funktioniert und der Einsatzleiter eine
+  // explizite Bestätigung sehen muss bevor der Schreibschutz aktiviert wird.
+  const [abschlussConfirmOpen, setAbschlussConfirmOpen] = useState(false);
+  const [abschlussBusy, setAbschlussBusy] = useState(false);
+  const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
+  const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
   const schreibschutz = aktiverEinsatz?.schreibschutz === true;
 
   // Helper für Editor-Mutation — markiert immer auch als „dirty" und
@@ -444,6 +451,80 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
 
   function toggleArrayItem<T>(arr: T[], item: T): T[] {
     return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
+  }
+
+  /**
+   * Abschluss-Workflow für den Einsatzleiter.
+   *
+   * Voraussetzungen (vom Backend nochmal geprüft):
+   *  - Token-Rolle = "einsatzleiter" (PIN auf Zentrale → mappt auf einsatzleiter)
+   *  - Einsatz existiert + status ≠ "abgeschlossen"
+   *
+   * Bei Erfolg:
+   *  - Backend setzt status="abgeschlossen", schreibschutz=true,
+   *    einsatzende=now
+   *  - PWA lädt aktiverEinsatz neu (Schreibschutz-Banner wird sichtbar)
+   *  - aktiverEinsatzId NICHT auf null setzen — die Florianstation soll den
+   *    abgeschlossenen Bericht read-only zur Übersicht behalten bis der
+   *    nächste Alarm reinkommt oder der User manuell wechselt.
+   *
+   * Bei 409 (already_closed): das Tablet hatte einen veralteten Stand
+   * — wir laden nur neu, kein Fehler.
+   */
+  async function handleAbschluss(): Promise<void> {
+    if (!aktiverEinsatzId) {
+      setAbschlussErr("Kein aktiver Einsatz ausgewählt.");
+      return;
+    }
+    setAbschlussBusy(true);
+    setAbschlussErr(null);
+    setAbschlussOk(null);
+    try {
+      await apiCall<{ ok: true; id: string; rev: string }>(
+        `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/abschluss`,
+        { method: "POST" },
+      );
+      // Doc neu laden — der Schreibschutz-Status soll sofort sichtbar werden.
+      try {
+        const reloaded = await apiCall<EinsatzApiDoc>(
+          `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
+        );
+        setAktiverEinsatz(reloaded);
+      } catch {
+        // Falls Reload nicht klappt — nächster Poll holt es. Nicht blockieren.
+      }
+      setAbschlussConfirmOpen(false);
+      setAbschlussOk(
+        `Einsatz abgeschlossen · ${new Date().toLocaleTimeString("de-AT")} · Bericht ist jetzt schreibgeschützt`,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // 409 = bereits abgeschlossen → kein echter Fehler, nur Neu-Laden.
+      if (msg.includes("already_closed") || msg.includes("409")) {
+        try {
+          const reloaded = await apiCall<EinsatzApiDoc>(
+            `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
+          );
+          setAktiverEinsatz(reloaded);
+        } catch {
+          // egal
+        }
+        setAbschlussConfirmOpen(false);
+        setAbschlussOk("Einsatz war bereits abgeschlossen.");
+      } else if (msg.includes("403") || msg.includes("insufficient_role")) {
+        setAbschlussErr(
+          "Dieses Tablet darf den Einsatz nicht abschließen (nur Florianstation/Einsatzleiter).",
+        );
+      } else if (msg.includes("401")) {
+        setAbschlussErr(
+          "Sitzung abgelaufen — bitte die Seite neu laden und erneut anmelden.",
+        );
+      } else {
+        setAbschlussErr(`Abschluss fehlgeschlagen: ${msg}`);
+      }
+    } finally {
+      setAbschlussBusy(false);
+    }
   }
 
   async function downloadPdf(einsatzId: string): Promise<void> {
@@ -1361,22 +1442,74 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               {downloadBusy === "spick" ? "Lade …" : "syBOS-Spickzettel"}
             </button>
           </div>
+          {abschlussOk ? (
+            <div
+              role="status"
+              style={{
+                marginTop: 8,
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                background: "var(--ok-tint)",
+                color: "var(--ok)",
+                border: "1px solid var(--ok-border)",
+              }}
+            >
+              {abschlussOk}
+            </div>
+          ) : null}
+          {abschlussErr ? (
+            <div
+              role="alert"
+              style={{
+                marginTop: 8,
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                background: "var(--red-tint)",
+                color: "var(--red)",
+                border: "1px solid var(--red-border)",
+              }}
+            >
+              {abschlussErr}
+            </div>
+          ) : null}
           <button
             type="button"
             className="cta"
-            disabled={abgeschlossenCount < fahrzeugStatus.length}
+            onClick={() => {
+              setAbschlussErr(null);
+              setAbschlussOk(null);
+              setAbschlussConfirmOpen(true);
+            }}
+            disabled={
+              schreibschutz ||
+              !aktiverEinsatzId ||
+              abschlussBusy ||
+              abgeschlossenCount < fahrzeugStatus.length
+            }
             style={
+              schreibschutz ||
+              !aktiverEinsatzId ||
+              abschlussBusy ||
               abgeschlossenCount < fahrzeugStatus.length
                 ? { opacity: 0.55, cursor: "not-allowed" }
                 : undefined
             }
           >
             <CheckCircle2 size={22} />
-            Einsatz abschließen &amp; archivieren
+            {schreibschutz
+              ? "Einsatz bereits abgeschlossen"
+              : "Einsatz abschließen & archivieren"}
             <ArrowRight size={22} />
           </button>
           <div className="cta-hint">
-            {abgeschlossenCount < fahrzeugStatus.length ? (
+            {schreibschutz ? (
+              <>
+                <strong>Bericht ist schreibgeschützt.</strong> Reaktivierung nur durch einen
+                Funktionär möglich.
+              </>
+            ) : abgeschlossenCount < fahrzeugStatus.length ? (
               <>
                 <strong>{fahrzeugStatus.length - abgeschlossenCount}</strong> Fahrzeugberichte
                 fehlen noch — Abschluss erst nach Eingang aller Berichte möglich.
@@ -1473,6 +1606,179 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         }}
         onClose={() => setVehicleSwitcherOpen(false)}
       />
+
+      {abschlussConfirmOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="abschluss-title"
+          onClick={() => !abschlussBusy && setAbschlussConfirmOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(15,23,42,0.55)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(440px, 100%)",
+              background: "var(--surface)",
+              color: "var(--fg)",
+              borderRadius: 18,
+              border: "1px solid var(--border-strong)",
+              boxShadow: "0 24px 64px -24px rgba(15,23,42,0.5)",
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  background:
+                    "linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 60%, #000) 100%)",
+                  color: "#fff",
+                  boxShadow: "0 8px 20px -6px rgba(200,16,46,0.5)",
+                }}
+              >
+                <Lock size={20} strokeWidth={2.2} />
+              </span>
+              <div style={{ flex: 1 }}>
+                <h2
+                  id="abschluss-title"
+                  style={{
+                    margin: 0,
+                    fontSize: 17,
+                    fontWeight: 700,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  Einsatz wirklich abschließen?
+                </h2>
+                <p
+                  style={{
+                    margin: "2px 0 0",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "var(--fg-3)",
+                  }}
+                >
+                  Schreibschutz wird sofort aktiviert
+                </p>
+              </div>
+            </header>
+
+            <div
+              style={{
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: "var(--fg-2)",
+                background: "var(--warn-tint)",
+                border: "1px solid var(--warn-border)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+              }}
+            >
+              <AlertTriangle
+                size={18}
+                style={{ color: "var(--warn)", flexShrink: 0, marginTop: 1 }}
+              />
+              <div>
+                Nach dem Abschluss kann der Hauptbericht <strong>nicht mehr direkt bearbeitet</strong>{" "}
+                werden. Eine Reaktivierung ist nur durch einen Funktionär (Backoffice) mit
+                Begründung möglich.
+                <br />
+                <br />
+                Bitte vor dem Abschluss prüfen, dass alle Fahrzeugberichte, Mannschaftszahlen und
+                Zeitmarken vollständig sind.
+              </div>
+            </div>
+
+            {abschlussErr ? (
+              <div
+                role="alert"
+                style={{
+                  fontSize: 12,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "var(--red-tint)",
+                  color: "var(--red)",
+                  border: "1px solid var(--red-border)",
+                }}
+              >
+                {abschlussErr}
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                justifyContent: "flex-end",
+                marginTop: 4,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setAbschlussConfirmOpen(false)}
+                disabled={abschlussBusy}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border-strong)",
+                  color: "var(--fg)",
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  fontWeight: 600,
+                  cursor: abschlussBusy ? "not-allowed" : "pointer",
+                  opacity: abschlussBusy ? 0.55 : 1,
+                }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAbschluss()}
+                disabled={abschlussBusy}
+                style={{
+                  background: "var(--red)",
+                  border: 0,
+                  color: "#fff",
+                  padding: "10px 18px",
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  cursor: abschlussBusy ? "wait" : "pointer",
+                  opacity: abschlussBusy ? 0.7 : 1,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 12px -4px rgba(200,16,46,0.45)",
+                }}
+              >
+                <Lock size={16} />
+                {abschlussBusy ? "Schließt ab …" : "Ja, abschließen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
