@@ -1,6 +1,7 @@
 import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, Truck, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { APP_BUILD, APP_VERSION } from "../version";
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
@@ -720,7 +721,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
-        v0.7 UC2
+        {APP_VERSION} · {APP_BUILD}
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
         <span className="sep">·</span>

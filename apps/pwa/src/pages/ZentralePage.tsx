@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { APP_BUILD, APP_VERSION } from "../version";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { DemoBanner } from "../components/DemoBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
@@ -1390,7 +1391,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
-        v0.7 UC2
+        {APP_VERSION} · {APP_BUILD}
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
         <span className="sep">·</span>
