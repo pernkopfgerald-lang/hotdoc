@@ -29,6 +29,21 @@ export function Setup({ onSetupDone }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Wenn der Boot-Check festgestellt hat, dass der vorhandene Token eine
+  // veraltete Rolle hatte (z. B. zentrale-Tablet mit altem "mannschaft"-Token
+  // nach dem Backend-Rollen-Fix), wird in sessionStorage ein Reason-Flag
+  // gesetzt. Wir zeigen dem User dann einen freundlichen Hinweis statt eines
+  // unerwarteten Setup-Screens.
+  const setupReason = (() => {
+    try {
+      const r = sessionStorage.getItem("hotdoc.setupReason");
+      if (r) sessionStorage.removeItem("hotdoc.setupReason");
+      return r;
+    } catch {
+      return null;
+    }
+  })();
+
   async function selectFahrzeug(fId: FahrzeugId) {
     setSelectedFzg(fId);
     setStage("pin");
@@ -101,6 +116,26 @@ export function Setup({ onSetupDone }: Props) {
           Die Einstellung lässt sich später durch einen Funktionär ändern.
         </p>
       </header>
+
+      {setupReason === "role-stale" ? (
+        <div
+          role="status"
+          style={{
+            margin: "20px 0 0",
+            padding: "12px 14px",
+            borderRadius: 12,
+            background: "var(--info-tint)",
+            border: "1px solid var(--blue-border)",
+            color: "var(--fg)",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Sitzung aufgefrischt.</strong> Die alte Anmeldung dieses Tablets
+          stammte noch aus einer früheren Version mit anderer Rollen-Zuordnung.
+          Bitte gib jetzt einmal die PIN ein — danach läuft alles wie gewohnt.
+        </div>
+      ) : null}
 
       {stage === "pin" && selectedFzg ? (
         <section className="card" style={{ marginTop: 24 }}>

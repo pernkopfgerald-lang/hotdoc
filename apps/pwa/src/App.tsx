@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
 import { db, getFahrzeugConfig } from "./db/pouch";
 import { seedIfEmpty } from "./db/seed";
+import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { BerichtPage } from "./pages/BerichtPage";
 import { Setup } from "./pages/Setup";
@@ -63,6 +64,39 @@ export function App() {
     await seedIfEmpty();
     const doc = await getFahrzeugConfig();
     if (doc?.fahrzeugId) {
+      // Token-Drift-Check: Wenn dieses Tablet als "zentrale" konfiguriert ist,
+      // muss der vorhandene Token die Rolle einsatzleiter (oder höher) tragen.
+      // Hintergrund: bis zum 27.05.2026 wurde die Rolle beim PIN-Login hart auf
+      // "mannschaft" gemappt — auch für zentrale. Nach dem Backend-Fix tragen
+      // bestehende Tokens noch die alte Rolle und stoßen beim Abschluss auf 403.
+      // Statt den User auf den Fehler laufen zu lassen, erkennen wir den Drift
+      // beim Boot und zwingen einen frischen PIN-Login.
+      if (doc.fahrzeugId === "zentrale" && getTabletToken()) {
+        try {
+          const me = await apiCall<{ ok: true; rolle: string; fahrzeugId?: string }>(
+            "/api/auth/me",
+          );
+          if (me.rolle === "mannschaft") {
+            // Alter Token mit zu niedriger Rolle — verwerfen und Setup öffnen.
+            try {
+              localStorage.removeItem(TOKEN_KEY);
+              sessionStorage.setItem("hotdoc.setupReason", "role-stale");
+            } catch {
+              // egal
+            }
+            setState({ kind: "setup" });
+            return;
+          }
+        } catch (err) {
+          // 401 wurde bereits in apiCall behandelt (Token-Cleanup + Reload).
+          // Andere Fehler (Netz weg, Backend down): wir machen normal weiter,
+          // der User kann immerhin offline arbeiten. Beim nächsten Online-Call
+          // wird der Token-Check erneut angestoßen.
+          if (err instanceof ApiError && err.status >= 500) {
+            // Backend gerade kaputt — egal, weiter ohne Check.
+          }
+        }
+      }
       setState({ kind: "ready", fahrzeugId: doc.fahrzeugId });
     } else {
       setState({ kind: "setup" });

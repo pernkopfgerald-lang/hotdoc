@@ -258,6 +258,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [abschlussBusy, setAbschlussBusy] = useState(false);
   const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
+  /** Wenn der 403 vom Abschluss-Endpoint zurückkommt, ist meist der Token
+   *  veraltet (alte Rolle "mannschaft" für zentrale). Wir zeigen dann einen
+   *  direkten Re-Auth-Button im Fehler-Banner statt nur Text. */
+  const [abschlussNeedsReauth, setAbschlussNeedsReauth] = useState(false);
   const schreibschutz = aktiverEinsatz?.schreibschutz === true;
 
   // Helper für Editor-Mutation — markiert immer auch als „dirty" und
@@ -513,8 +517,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         setAbschlussOk("Einsatz war bereits abgeschlossen.");
       } else if (msg.includes("403") || msg.includes("insufficient_role")) {
         setAbschlussErr(
-          "Dieses Tablet darf den Einsatz nicht abschließen (nur Florianstation/Einsatzleiter).",
+          "Sitzung veraltet — diese Anmeldung wurde noch mit der alten Rollen-Zuordnung ausgestellt. Bitte einmal neu anmelden, danach funktioniert der Abschluss.",
         );
+        setAbschlussNeedsReauth(true);
       } else if (msg.includes("401")) {
         setAbschlussErr(
           "Sitzung abgelaufen — bitte die Seite neu laden und erneut anmelden.",
@@ -1469,9 +1474,39 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 border: "1px solid var(--red-border)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
               }}
             >
-              {abschlussErr}
+              <span>{abschlussErr}</span>
+              {abschlussNeedsReauth ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem("hotdoc.tabletToken");
+                      sessionStorage.setItem("hotdoc.setupReason", "role-stale");
+                    } catch {
+                      // egal
+                    }
+                    window.location.reload();
+                  }}
+                  style={{
+                    alignSelf: "flex-start",
+                    background: "var(--red)",
+                    color: "#fff",
+                    border: 0,
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  Jetzt neu anmelden
+                </button>
+              ) : null}
             </div>
           ) : null}
           <button
