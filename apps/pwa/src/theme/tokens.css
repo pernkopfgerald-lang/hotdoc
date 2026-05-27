@@ -1,156 +1,337 @@
 /* ============================================================
-   HotDoc — Design-Tokens (portiert aus Claude Design)
-   Tablet-Hochformat · Inter + JetBrains Mono · Apple-style
-   Brand: FF Eberstalzell — Rot #C8102E
+   HotDoc — Design-Tokens v2.0
+   „Calm Command Bridge" — Frozen Glass · Aurora · FF-Rot
+   ============================================================
+
+   Konzept:
+     Eine ruhige, autoritative Behörden-Operationssaal-Optik in
+     Apple-Vision-Pro-Glas. FF-Rot ist die einzige laute Farbe.
+     Alles andere wird zur klimatischen Tiefe: Aurora-Gradient-
+     Meshes statt Solid-Backgrounds, vier Glas-Schicht-Stufen,
+     gezielte Glows nur auf aktive Zustände.
+
+   Schichten von hinten nach vorne:
+     Aurora        - globaler Mesh-Gradient (fixed, im body::before)
+     Surface       - rein semantisch (z. B. Card-Bezugspunkt)
+     Glass-light   - dünne Schicht für inline-Elemente
+     Glass-medium  - Standard-Card
+     Glass-heavy   - Topbar / Hero / Modal
+     Accent        - solid Glow-Pille (Status, CTA)
    ============================================================ */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 :root {
-  /* Schichten */
-  --bg:           #F4F6F9;
-  --bg-deep:      #F4F6F9;          /* Alias für Bestandscode */
-  --bg-page:      #F4F6F9;
-  --surface:      #FFFFFF;
-  --surface-1:    #FFFFFF;
-  --surface-2:    #F1F4F8;
-  --surface-3:    #E8ECF2;
-  --border:       #E4E8EE;
-  --border-strong:#D2D8E0;
+  /* ────────────────────────────────────────────────
+     LIGHT THEME — Tageinsatz, hoher Außenlicht-Kontrast
+     ──────────────────────────────────────────────── */
 
-  /* Text-Hierarchie */
-  --fg:           #0F172A;
-  --fg-2:         #475569;
-  --fg-3:         #94A3B8;
-  --fg-4:         #CBD5E1;
-  --text-1:       var(--fg);        /* Aliase für Bestandscode */
-  --text-2:       var(--fg-2);
-  --text-3:       var(--fg-3);
+  /* Substrat (hinter dem Glas) */
+  --bg:               #EEF0F4;
+  --bg-deep:          #E5E8EE;
+  --bg-page:          #EEF0F4;
+
+  /* Auroras — gestapelte Radial-Gradients als Background-Image */
+  --aurora-stack:
+    radial-gradient(ellipse 60% 50% at 12% 6%,  rgba(200, 16, 46, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 40% at 88% 8%,  rgba(56, 95, 232, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 45% at 50% 100%, rgba(124, 58, 237, 0.08) 0%, transparent 60%),
+    linear-gradient(180deg, #F2F4F8 0%, #E8ECF2 100%);
+
+  /* Solide Flächen (für Modals/Drucke wo Transparenz stört) */
+  --surface:          #FFFFFF;
+  --surface-1:        #FFFFFF;
+  --surface-2:        #F5F7FA;
+  --surface-3:        #EAEEF3;
+
+  /* Glas-Schichten — werden mit backdrop-filter kombiniert */
+  --glass-1:          rgba(255, 255, 255, 0.62);   /* heavy   — Topbar/Hero */
+  --glass-2:          rgba(255, 255, 255, 0.50);   /* medium  — Cards */
+  --glass-3:          rgba(255, 255, 255, 0.38);   /* light   — Inline */
+  --glass-4:          rgba(255, 255, 255, 0.20);   /* ghost   — Subtle */
+
+  /* Glas-Borders */
+  --glass-border:     rgba(15, 23, 42, 0.10);
+  --glass-border-strong: rgba(15, 23, 42, 0.16);
+  --glass-divider:    rgba(15, 23, 42, 0.06);
+
+  /* Klassische Border-Aliase (Bestandscode kompatibel) */
+  --border:           rgba(15, 23, 42, 0.08);
+  --border-strong:    rgba(15, 23, 42, 0.14);
+
+  /* Text-Hierarchie — präziser Kontrast */
+  --fg:               #0B1220;
+  --fg-2:             #475569;
+  --fg-3:             #8693A8;
+  --fg-4:             #B9C2D0;
+  --text-1:           var(--fg);
+  --text-2:           var(--fg-2);
+  --text-3:           var(--fg-3);
 
   /* FF-Brand */
-  --red:          #C8102E;
-  --red-strong:   #A30B25;
-  --red-tint:     #FFF1F2;
-  --red-tint-2:   #FEE2E2;
-  --red-bg:       var(--red-tint);
-  --red-border:   #F3C2C8;
-  --red-glow:     rgba(200, 16, 46, 0.30);
+  --red:              #C8102E;
+  --red-strong:       #A30B25;
+  --red-tint:         rgba(200, 16, 46, 0.10);
+  --red-tint-2:       rgba(200, 16, 46, 0.16);
+  --red-bg:           var(--red-tint);
+  --red-border:       rgba(200, 16, 46, 0.28);
+  --red-glow:         rgba(200, 16, 46, 0.40);
 
   /* Status-Farben */
-  --ok:           #16A34A;
-  --ok-tint:      #DCFCE7;
-  --ok-border:    rgba(22, 163, 74, 0.30);
-  --emerald:      var(--ok);
-  --emerald-bg:   var(--ok-tint);
-  --emerald-border: var(--ok-border);
-  --emerald-glow: rgba(22, 163, 74, 0.30);
+  --ok:               #047857;
+  --ok-tint:          rgba(4, 120, 87, 0.10);
+  --ok-border:        rgba(4, 120, 87, 0.28);
+  --emerald:          var(--ok);
+  --emerald-bg:       var(--ok-tint);
+  --emerald-border:   var(--ok-border);
+  --emerald-glow:     rgba(4, 120, 87, 0.35);
 
-  --warn:         #D97706;
-  --warn-tint:    #FEF3C7;
-  --warn-border:  rgba(217, 119, 6, 0.40);
-  --amber:        var(--warn);
-  --amber-soft:   var(--warn-tint);
-  --amber-border: var(--warn-border);
-  --amber-glow:   rgba(217, 119, 6, 0.30);
+  --warn:             #B45309;
+  --warn-tint:        rgba(180, 83, 9, 0.12);
+  --warn-border:      rgba(180, 83, 9, 0.32);
+  --amber:            var(--warn);
+  --amber-soft:       var(--warn-tint);
+  --amber-border:     var(--warn-border);
+  --amber-glow:       rgba(180, 83, 9, 0.35);
 
-  --info:         #2563EB;
-  --info-tint:    #DBEAFE;
-  --blue:         var(--info);
-  --blue-bg:      var(--info-tint);
-  --blue-border:  rgba(37, 99, 235, 0.30);
-  --blue-glow:    rgba(37, 99, 235, 0.30);
+  --info:             #1D4ED8;
+  --info-tint:        rgba(29, 78, 216, 0.10);
+  --info-strong:      rgba(29, 78, 216, 0.18);
+  --blue:             var(--info);
+  --blue-bg:          var(--info-tint);
+  --blue-border:      rgba(29, 78, 216, 0.32);
+  --blue-glow:        rgba(29, 78, 216, 0.36);
 
-  --as:           #7C3AED;     /* Atemschutz */
-  --as-tint:      #F1ECFE;
-  --rank:         #2563EB;     /* Dienstgrad-Badges */
+  --as:               #6D28D9;
+  --as-tint:          rgba(109, 40, 217, 0.12);
+  --rank:             var(--info);
 
-  /* Fonts */
-  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono:    "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  /* ────────────────────────────────────────────────
+     GLAS-SHADOWS — gestapelte Schatten erzeugen Tiefe
+     ──────────────────────────────────────────────── */
+  --glass-shadow-1:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 0 0 1px var(--glass-border),
+    0 24px 64px -24px rgba(15, 23, 42, 0.18),
+    0 8px 32px -16px rgba(15, 23, 42, 0.12);
+  --glass-shadow-2:
+    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 0 0 1px var(--glass-border),
+    0 12px 40px -20px rgba(15, 23, 42, 0.14),
+    0 4px 16px -8px rgba(15, 23, 42, 0.08);
+  --glass-shadow-3:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 0 0 1px var(--glass-border);
 
-  /* Shadows */
-  --shadow-card:  0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04);
-  --shadow-alarm: 0 1px 2px rgba(200, 16, 46, 0.10), 0 8px 32px rgba(200, 16, 46, 0.18);
-  --shadow-cta:   0 2px 6px rgba(200, 16, 46, 0.20), 0 12px 32px rgba(200, 16, 46, 0.30);
+  /* Glow-Aura (für aktive Buttons / Status) */
+  --glow-red:
+    0 0 0 1px rgba(200, 16, 46, 0.36),
+    0 18px 48px -12px rgba(200, 16, 46, 0.42),
+    0 6px 18px -4px rgba(200, 16, 46, 0.28);
+  --glow-red-soft:
+    0 12px 32px -10px rgba(200, 16, 46, 0.32),
+    0 4px 12px -2px rgba(200, 16, 46, 0.18);
+  --glow-ok:    0 12px 32px -10px rgba(4, 120, 87, 0.38);
+  --glow-warn:  0 12px 32px -10px rgba(180, 83, 9, 0.40);
+  --glow-info:  0 12px 32px -10px rgba(29, 78, 216, 0.38);
 
-  --card-gradient: var(--surface);
+  /* Legacy-Shadow-Aliase (Bestandscode) */
+  --shadow-card:      var(--glass-shadow-2);
+  --shadow-alarm:     var(--glow-red-soft);
+  --shadow-cta:       var(--glow-red);
 
-  /* Radii */
-  --radius-s: 10px;
-  --radius-m: 14px;
-  --radius-l: 18px;
+  --card-gradient:    var(--glass-2);
+
+  /* ────────────────────────────────────────────────
+     RADIEN — leicht großzügiger für Glas-Optik
+     ──────────────────────────────────────────────── */
+  --radius-xs:        8px;
+  --radius-s:         12px;
+  --radius-m:         16px;
+  --radius-l:         20px;
+  --radius-xl:        28px;
+  --radius-pill:      999px;
+
+  /* ────────────────────────────────────────────────
+     BACKDROP-BLUR Stufen
+     ──────────────────────────────────────────────── */
+  --blur-1:           saturate(180%) blur(40px);   /* heavy */
+  --blur-2:           saturate(170%) blur(24px);   /* medium */
+  --blur-3:           saturate(160%) blur(16px);   /* light */
+  --blur-4:           saturate(150%) blur(8px);    /* subtle */
+
+  /* ────────────────────────────────────────────────
+     TYPOGRAPHIE
+     ──────────────────────────────────────────────── */
+  --font-sans:        "Onest", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", sans-serif;
+  --font-display:     var(--font-sans);
+  --font-mono:        "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* Letter-Spacing-Tokens */
+  --tracking-display: -0.038em;
+  --tracking-tight:   -0.022em;
+  --tracking-ui:      -0.011em;
+  --tracking-caps:    0.14em;
+  --tracking-mono:    0.04em;
+
+  /* ────────────────────────────────────────────────
+     MOTION — vier Curves für unterschiedliche Charaktere
+     ──────────────────────────────────────────────── */
+  --ease-spring:      cubic-bezier(0.34, 1.56, 0.64, 1);    /* playful entry */
+  --ease-smooth:      cubic-bezier(0.32, 0.72, 0.32, 1);    /* UI standard */
+  --ease-decel:       cubic-bezier(0.05, 0.7, 0.1, 1);      /* entering */
+  --ease-accel:       cubic-bezier(0.4, 0, 1, 1);           /* exiting */
+  --ease-glass:       cubic-bezier(0.22, 1, 0.36, 1);       /* glas-typisch */
+
+  --dur-fast:         140ms;
+  --dur-base:         220ms;
+  --dur-med:          360ms;
+  --dur-slow:         520ms;
+
+  /* Hover-Lift / Active-Press */
+  --lift-1:           translateY(-1px);
+  --lift-2:           translateY(-2px);
+  --press:            scale(0.985) translateY(0);
 }
 
 /* ============================================================
-   DARK THEME — Nacht-Einsatz, hoher Kontrast
+   DARK THEME — Nacht-Einsatz · Priorität
+   Aurora wird tiefer, Glas heller, Brand-Rot strahlender
    ============================================================ */
 [data-theme="dark"] {
-  --bg:           #0E1116;
-  --bg-deep:      #0E1116;
-  --bg-page:      #0E1116;
-  --surface:      #181C24;
-  --surface-1:    #181C24;
-  --surface-2:    #1F242E;
-  --surface-3:    #262C38;
-  --border:       #2A3140;
-  --border-strong:#3A4254;
+  --bg:               #06080C;
+  --bg-deep:          #03050A;
+  --bg-page:          #06080C;
 
-  --fg:           #F1F4F9;
-  --fg-2:         #B0B8C7;
-  --fg-3:         #7B8494;
-  --fg-4:         #4E5666;
-  --text-1:       var(--fg);
-  --text-2:       var(--fg-2);
-  --text-3:       var(--fg-3);
+  --aurora-stack:
+    radial-gradient(ellipse 65% 55% at 14% 6%,  rgba(200, 16, 46, 0.28) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 45% at 86% 10%, rgba(56, 95, 232, 0.16) 0%, transparent 50%),
+    radial-gradient(ellipse 75% 50% at 50% 100%, rgba(124, 58, 237, 0.14) 0%, transparent 60%),
+    linear-gradient(180deg, #0A0E15 0%, #04060B 100%);
 
-  --red:          #FF4D5E;
-  --red-strong:   #FF2C44;
-  --red-tint:     rgba(255, 77, 94, 0.10);
-  --red-tint-2:   rgba(255, 77, 94, 0.18);
-  --red-bg:       var(--red-tint);
-  --red-border:   rgba(255, 77, 94, 0.35);
-  --red-glow:     rgba(255, 77, 94, 0.35);
+  --surface:          #11151E;
+  --surface-1:        #11151E;
+  --surface-2:        #161A24;
+  --surface-3:        #1C2230;
 
-  --ok:           #2DD4A5;
-  --ok-tint:      rgba(45, 212, 165, 0.14);
-  --ok-border:    rgba(45, 212, 165, 0.32);
-  --emerald:      var(--ok);
-  --emerald-bg:   var(--ok-tint);
-  --emerald-border: var(--ok-border);
-  --emerald-glow: rgba(45, 212, 165, 0.32);
+  --glass-1:          rgba(20, 26, 38, 0.62);
+  --glass-2:          rgba(20, 26, 38, 0.48);
+  --glass-3:          rgba(20, 26, 38, 0.32);
+  --glass-4:          rgba(20, 26, 38, 0.20);
 
-  --warn:         #F5A524;
-  --warn-tint:    rgba(245, 165, 36, 0.14);
-  --warn-border:  rgba(245, 165, 36, 0.40);
-  --amber:        var(--warn);
-  --amber-soft:   var(--warn-tint);
-  --amber-border: var(--warn-border);
-  --amber-glow:   rgba(245, 165, 36, 0.30);
+  --glass-border:     rgba(255, 255, 255, 0.10);
+  --glass-border-strong: rgba(255, 255, 255, 0.16);
+  --glass-divider:    rgba(255, 255, 255, 0.06);
 
-  --info:         #5AA9FF;
-  --info-tint:    rgba(90, 169, 255, 0.14);
-  --blue:         var(--info);
-  --blue-bg:      var(--info-tint);
-  --blue-border:  rgba(90, 169, 255, 0.40);
-  --blue-glow:    rgba(90, 169, 255, 0.30);
+  --border:           rgba(255, 255, 255, 0.08);
+  --border-strong:    rgba(255, 255, 255, 0.14);
 
-  --as:           #B388FF;
-  --as-tint:      rgba(179, 136, 255, 0.14);
-  --rank:         #5AA9FF;
+  --fg:               #F2F5FA;
+  --fg-2:             #ACB6C8;
+  --fg-3:             #6E7A8E;
+  --fg-4:             #424B5C;
+  --text-1:           var(--fg);
+  --text-2:           var(--fg-2);
+  --text-3:           var(--fg-3);
 
-  --shadow-card:  0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 18px rgba(0, 0, 0, 0.30);
-  --shadow-alarm: 0 1px 2px rgba(255, 77, 94, 0.18), 0 8px 32px rgba(255, 77, 94, 0.18);
-  --shadow-cta:   0 2px 6px rgba(255, 77, 94, 0.30), 0 12px 32px rgba(255, 77, 94, 0.34);
+  --red:              #FF5468;
+  --red-strong:       #FF3148;
+  --red-tint:         rgba(255, 84, 104, 0.14);
+  --red-tint-2:       rgba(255, 84, 104, 0.22);
+  --red-bg:           var(--red-tint);
+  --red-border:       rgba(255, 84, 104, 0.38);
+  --red-glow:         rgba(255, 84, 104, 0.55);
 
-  --card-gradient: var(--surface);
+  --ok:               #34D399;
+  --ok-tint:          rgba(52, 211, 153, 0.14);
+  --ok-border:        rgba(52, 211, 153, 0.34);
+  --emerald:          var(--ok);
+  --emerald-bg:       var(--ok-tint);
+  --emerald-border:   var(--ok-border);
+  --emerald-glow:     rgba(52, 211, 153, 0.45);
+
+  --warn:             #FBBF24;
+  --warn-tint:        rgba(251, 191, 36, 0.14);
+  --warn-border:      rgba(251, 191, 36, 0.40);
+  --amber:            var(--warn);
+  --amber-soft:       var(--warn-tint);
+  --amber-border:     var(--warn-border);
+  --amber-glow:       rgba(251, 191, 36, 0.42);
+
+  --info:             #60A5FA;
+  --info-tint:        rgba(96, 165, 250, 0.14);
+  --info-strong:      rgba(96, 165, 250, 0.24);
+  --blue:             var(--info);
+  --blue-bg:          var(--info-tint);
+  --blue-border:      rgba(96, 165, 250, 0.40);
+  --blue-glow:        rgba(96, 165, 250, 0.42);
+
+  --as:               #C4B5FD;
+  --as-tint:          rgba(196, 181, 253, 0.16);
+  --rank:             var(--info);
+
+  --glass-shadow-1:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 0 0 1px var(--glass-border),
+    0 28px 80px -24px rgba(0, 0, 0, 0.65),
+    0 12px 32px -12px rgba(0, 0, 0, 0.45);
+  --glass-shadow-2:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 0 0 1px var(--glass-border),
+    0 16px 48px -20px rgba(0, 0, 0, 0.55),
+    0 6px 18px -6px rgba(0, 0, 0, 0.35);
+  --glass-shadow-3:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 0 0 1px var(--glass-border);
+
+  --glow-red:
+    0 0 0 1px rgba(255, 84, 104, 0.45),
+    0 22px 56px -14px rgba(255, 84, 104, 0.55),
+    0 8px 20px -4px rgba(255, 84, 104, 0.38);
+  --glow-red-soft:
+    0 14px 36px -10px rgba(255, 84, 104, 0.42),
+    0 4px 14px -2px rgba(255, 84, 104, 0.22);
+  --glow-ok:    0 14px 36px -10px rgba(52, 211, 153, 0.42);
+  --glow-warn:  0 14px 36px -10px rgba(251, 191, 36, 0.42);
+  --glow-info:  0 14px 36px -10px rgba(96, 165, 250, 0.42);
+
+  --shadow-card:      var(--glass-shadow-2);
+  --shadow-alarm:     var(--glow-red-soft);
+  --shadow-cta:       var(--glow-red);
+
+  --card-gradient:    var(--glass-2);
 }
 
 /* ============================================================
-   Animationen
+   GLOBAL KEYFRAMES — Tiefe via Animation
    ============================================================ */
+
+/* Sanftes Atmen für aktive Brand-Indikatoren */
+@keyframes breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(200, 16, 46, 0.36),
+                0 8px 20px -6px rgba(200, 16, 46, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(200, 16, 46, 0.04),
+                0 12px 28px -8px rgba(200, 16, 46, 0.42);
+  }
+}
+[data-theme="dark"] @keyframes breathe {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 84, 104, 0.45),
+                0 8px 20px -6px rgba(255, 84, 104, 0.40);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 84, 104, 0.05),
+                0 14px 32px -8px rgba(255, 84, 104, 0.55);
+  }
+}
+
+/* Klassische Pulse-Variante — Bestand-kompatibel */
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(200, 16, 46, 0.18); }
-  50%      { box-shadow: 0 0 0 7px rgba(200, 16, 46, 0.05); }
+  0%, 100% { box-shadow: 0 0 0 4px var(--red-glow); }
+  50%      { box-shadow: 0 0 0 9px transparent; }
 }
 
 @keyframes blink {
@@ -159,11 +340,39 @@
 }
 
 @keyframes pulse-ring {
-  0%   { transform: scale(1);    opacity: 0.8; }
-  100% { transform: scale(1.18); opacity: 0;   }
+  0%   { transform: scale(1);    opacity: 0.85; }
+  100% { transform: scale(1.40); opacity: 0;    }
 }
 
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+/* Staggered Reveal — wird auf Page-Mount-Children gesetzt */
+@keyframes glass-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Aurora-Drift — sehr langsam, sehr subtil */
+@keyframes aurora-drift {
+  0%   { transform: translate(0, 0)     scale(1);    }
+  33%  { transform: translate(2%, -1%) scale(1.04);  }
+  66%  { transform: translate(-1%, 2%) scale(0.98);  }
+  100% { transform: translate(0, 0)    scale(1);     }
+}
+
+/* Pulsendes Glow für Status-Dots */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%      { opacity: 0.4; transform: scale(0.85); }
 }

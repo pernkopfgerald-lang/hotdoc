@@ -98,47 +98,114 @@ export function Setup({ onSetupDone }: Props) {
   }
 
   return (
-    <main className="page" style={{ minHeight: "100vh", maxWidth: 560, margin: "0 auto", paddingTop: 64 }}>
-      <header style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <BrandLogo variant="full" size={64} />
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--fg)", marginTop: 8 }}>
-          HotDoc
-        </h1>
+    <main
+      className="page"
+      style={{
+        minHeight: "100vh",
+        maxWidth: 580,
+        margin: "0 auto",
+        paddingTop: "min(8vh, 64px)",
+      }}
+    >
+      {/* ─── Hero-Header ─── */}
+      <header
+        style={{
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 18,
+          marginBottom: 8,
+          position: "relative",
+        }}
+      >
+        {/* Logo mit Glow-Aura */}
+        <div
+          style={{
+            position: "relative",
+            display: "grid",
+            placeItems: "center",
+            padding: 22,
+            borderRadius: 32,
+            background: "var(--glass-2)",
+            backdropFilter: "var(--blur-2)",
+            WebkitBackdropFilter: "var(--blur-2)",
+            border: "1px solid var(--glass-border)",
+            boxShadow: "var(--glass-shadow-2), 0 0 60px -10px rgba(200,16,46,0.20)",
+          }}
+        >
+          <BrandLogo variant="full" size={64} />
+        </div>
+
+        <div>
+          <h1
+            style={{
+              fontSize: 38,
+              fontWeight: 700,
+              letterSpacing: "var(--tracking-display)",
+              color: "var(--fg)",
+              margin: 0,
+              lineHeight: 1.05,
+            }}
+          >
+            HotDoc
+          </h1>
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "var(--tracking-caps)",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+              marginTop: 6,
+            }}
+          >
+            FF Eberstalzell · Einsatzdokumentation
+          </div>
+        </div>
+
         <p
           style={{
-            fontSize: 14,
+            fontSize: 14.5,
             color: "var(--fg-2)",
-            maxWidth: 420,
-            lineHeight: 1.5,
+            maxWidth: 440,
+            lineHeight: 1.55,
+            letterSpacing: "var(--tracking-ui)",
+            margin: 0,
           }}
         >
           Erstes Setup — wähle das Fahrzeug, auf dem dieses Tablet fix verlastet ist.
-          Die Einstellung lässt sich später durch einen Funktionär ändern.
         </p>
       </header>
 
+      {/* ─── Role-Stale-Hinweis ─── */}
       {setupReason === "role-stale" ? (
         <div
           role="status"
           style={{
-            margin: "20px 0 0",
-            padding: "12px 14px",
-            borderRadius: 12,
+            margin: "8px 0 0",
+            padding: "14px 16px",
+            borderRadius: "var(--radius-m)",
             background: "var(--info-tint)",
+            backdropFilter: "var(--blur-3)",
+            WebkitBackdropFilter: "var(--blur-3)",
             border: "1px solid var(--blue-border)",
             color: "var(--fg)",
             fontSize: 13,
-            lineHeight: 1.5,
+            lineHeight: 1.55,
+            boxShadow: "var(--glow-info)",
           }}
         >
-          <strong>Sitzung aufgefrischt.</strong> Die alte Anmeldung dieses Tablets
-          stammte noch aus einer früheren Version mit anderer Rollen-Zuordnung.
-          Bitte gib jetzt einmal die PIN ein — danach läuft alles wie gewohnt.
+          <strong style={{ color: "var(--info)" }}>Sitzung aufgefrischt.</strong> Die
+          alte Anmeldung dieses Tablets stammte noch aus einer früheren Version mit
+          anderer Rollen-Zuordnung. Bitte gib jetzt einmal die PIN ein — danach läuft
+          alles wie gewohnt.
         </div>
       ) : null}
 
       {stage === "pin" && selectedFzg ? (
-        <section className="card" style={{ marginTop: 24 }}>
+        <section className="card hero" style={{ marginTop: 8 }}>
           <div className="card-head">
             <div className="card-title">
               <KeyRound size={18} />
@@ -146,9 +213,17 @@ export function Setup({ onSetupDone }: Props) {
             </div>
             <span className="card-meta">{FAHRZEUGE[selectedFzg].bezeichnung}</span>
           </div>
-          <p style={{ fontSize: 14, color: "var(--fg-2)", marginBottom: 16 }}>
-            Gib die vom Funktionär ausgegebene PIN ein (4–6 Ziffern). Default {" "}
-            <strong>1234</strong> wenn noch keine eigene gesetzt wurde.
+          <p
+            style={{
+              fontSize: 14,
+              color: "var(--fg-2)",
+              marginBottom: 18,
+              letterSpacing: "var(--tracking-ui)",
+            }}
+          >
+            Gib die vom Funktionär ausgegebene PIN ein (4–6 Ziffern). Default{" "}
+            <strong style={{ color: "var(--fg)" }}>1234</strong> wenn noch keine eigene
+            gesetzt wurde.
           </p>
           <input
             type="tel"
@@ -162,18 +237,149 @@ export function Setup({ onSetupDone }: Props) {
             autoFocus
             style={{
               textAlign: "center",
-              letterSpacing: "0.5em",
-              fontSize: 28,
+              letterSpacing: "0.6em",
+              fontSize: 32,
               fontWeight: 700,
-              padding: "18px",
+              padding: "20px",
+              fontFamily: "var(--font-mono)",
             }}
           />
           {error ? (
             <div
               style={{
                 marginTop: 14,
-                padding: "10px 12px",
-                borderRadius: 10,
+                padding: "12px 14px",
+                borderRadius: "var(--radius-s)",
+                background: "var(--red-tint)",
+                backdropFilter: "var(--blur-3)",
+                WebkitBackdropFilter: "var(--blur-3)",
+                color: "var(--red)",
+                fontSize: 13,
+                fontWeight: 500,
+                border: "1px solid var(--red-border)",
+                boxShadow: "var(--glow-red-soft)",
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setStage("vehicle");
+                setError(null);
+              }}
+              className="icon-btn"
+              style={{
+                width: "auto",
+                padding: "0 16px",
+                gap: 8,
+                display: "flex",
+                alignItems: "center",
+                minHeight: 56,
+                fontWeight: 600,
+                fontSize: 14,
+              }}
+            >
+              <ArrowLeft size={14} /> Zurück
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitPin()}
+              disabled={busy || pin.length < 4}
+              className="cta"
+              style={{ flex: 1, padding: "16px 18px", fontSize: 15 }}
+            >
+              {busy ? "Anmelden …" : "Tablet registrieren"}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="card hero" style={{ marginTop: 8 }}>
+          <div className="card-head">
+            <div className="card-title">Fahrzeugauswahl</div>
+            <span className="card-meta">{FAHRZEUG_IDS.length} Fahrzeuge</span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {FAHRZEUG_IDS.map((id) => {
+              const f = FAHRZEUGE[id];
+              const isZentrale = id === "zentrale";
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => selectFahrzeug(id)}
+                  className="person filled"
+                  style={{
+                    cursor: "pointer",
+                    padding: "12px 14px 12px 12px",
+                    ...(isZentrale
+                      ? {
+                          background:
+                            "linear-gradient(135deg, var(--red-tint) 0%, transparent 60%), var(--glass-2)",
+                          borderColor: "var(--red-border)",
+                        }
+                      : {}),
+                  }}
+                >
+                  <span
+                    className="avatar"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      background: isZentrale
+                        ? "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)"
+                        : "linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%)",
+                      color: isZentrale ? "#fff" : "var(--bg)",
+                      letterSpacing: "0.06em",
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      boxShadow: isZentrale ? "var(--glow-red-soft)" : "none",
+                    }}
+                  >
+                    {shortCode(id)}
+                  </span>
+                  <div
+                    className="name"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      gap: 3,
+                    }}
+                  >
+                    <span style={{ fontSize: 16, fontWeight: 600 }}>{f.funkrufname}</span>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        letterSpacing: "var(--tracking-caps)",
+                        textTransform: "uppercase",
+                        color: "var(--fg-3)",
+                      }}
+                    >
+                      {f.bezeichnung} · Besatzung {f.besatzung.typ}
+                    </span>
+                  </div>
+                  <div className="chev">
+                    <ChevronRight size={14} strokeWidth={2.5} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {error && stage === "vehicle" ? (
+            <div
+              style={{
+                marginTop: 16,
+                padding: "12px 14px",
+                borderRadius: "var(--radius-s)",
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 fontSize: 13,
@@ -184,150 +390,49 @@ export function Setup({ onSetupDone }: Props) {
               {error}
             </div>
           ) : null}
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setStage("vehicle");
-                setError(null);
-              }}
-              className="themetoggle"
-              style={{ width: "auto", padding: "0 14px", gap: 8, display: "flex", alignItems: "center" }}
-            >
-              <ArrowLeft size={14} /> Zurück
-            </button>
-            <button
-              type="button"
-              onClick={() => void submitPin()}
-              disabled={busy || pin.length < 4}
-              className="cta"
-              style={{ flex: 1, padding: "14px 18px", fontSize: 15 }}
-            >
-              {busy ? "Anmelden …" : "Tablet registrieren"}
-            </button>
-          </div>
         </section>
-      ) : (
-      <section className="card" style={{ marginTop: 24 }}>
-        <div className="card-head">
-          <div className="card-title">Fahrzeugauswahl</div>
-          <span className="card-meta">{FAHRZEUG_IDS.length} Fahrzeuge</span>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {FAHRZEUG_IDS.map((id) => {
-            const f = FAHRZEUGE[id];
-            return (
-              <button
-                key={id}
-                type="button"
-                disabled={busy}
-                onClick={() => selectFahrzeug(id)}
-                className="person filled"
-                style={{ cursor: "pointer" }}
-              >
-                <span
-                  className="avatar"
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 12,
-                    background: "var(--fg)",
-                    color: "var(--bg)",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {shortCode(id)}
-                </span>
-                <div className="name" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                  <span>{f.funkrufname}</span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      color: "var(--fg-3)",
-                    }}
-                  >
-                    {f.bezeichnung} · Besatzung {f.besatzung.typ}
-                  </span>
-                </div>
-                <div className="chev">
-                  <ChevronRight size={14} strokeWidth={2.5} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {error && stage === "vehicle" ? (
-          <div
-            style={{
-              marginTop: 16,
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: "var(--red-tint)",
-              color: "var(--red)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
-      </section>
       )}
 
       <p
         style={{
-          marginTop: 16,
+          marginTop: 10,
           textAlign: "center",
           fontFamily: "var(--font-mono)",
           fontSize: 10,
           textTransform: "uppercase",
-          letterSpacing: "0.12em",
+          letterSpacing: "var(--tracking-caps)",
           color: "var(--fg-3)",
         }}
       >
         Diese Einstellung kann später nur durch einen Funktionär geändert werden.
       </p>
 
+      {/* ─── Datenschutz-Karte ─── */}
       <div
+        className="card"
         style={{
-          marginTop: 24,
-          padding: 14,
-          borderRadius: 12,
-          background: "var(--surface)",
-          border: "1px dashed var(--border)",
-          fontSize: 12,
-          color: "var(--fg-2)",
-          lineHeight: 1.55,
+          marginTop: 16,
+          padding: 18,
+          borderStyle: "dashed",
+          borderColor: "var(--glass-border)",
+          background: "var(--glass-4)",
         }}
       >
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "var(--fg-3)",
-            marginBottom: 6,
-          }}
-        >
+        <div className="caption" style={{ marginBottom: 8 }}>
           Datenschutz-Hinweis
         </div>
-        HotDoc speichert nur Daten die für die Einsatzdokumentation der FF Eberstalzell
-        notwendig sind:
-        <ul style={{ margin: "6px 0 4px", paddingLeft: 18 }}>
-          <li>Personalliste (aus syBOS, nur aktive Mitglieder)</li>
-          <li>GPS-Position des Tablets nur während des Einsatzes</li>
-          <li>Audio-Aufnahmen werden nach 30 Tagen automatisch gelöscht</li>
-          <li>Login-Versuche werden für Audit-Zwecke 1 Jahr aufbewahrt</li>
-        </ul>
-        Bei Fragen wende dich an den Funktionär oder die Datenschutz-Beauftragte
-        der Feuerwehr.
+        <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
+          HotDoc speichert nur Daten die für die Einsatzdokumentation der FF Eberstalzell
+          notwendig sind:
+          <ul style={{ margin: "8px 0 4px", paddingLeft: 18 }}>
+            <li>Personalliste (aus syBOS, nur aktive Mitglieder)</li>
+            <li>GPS-Position des Tablets nur während des Einsatzes</li>
+            <li>Audio-Aufnahmen werden nach 30 Tagen automatisch gelöscht</li>
+            <li>Login-Versuche werden für Audit-Zwecke 1 Jahr aufbewahrt</li>
+          </ul>
+          Bei Fragen wende dich an den Funktionär oder die Datenschutz-Beauftragte der
+          Feuerwehr.
+        </div>
       </div>
     </main>
   );

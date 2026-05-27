@@ -60,7 +60,7 @@ export function Topbar({ funkrufname, einsatzNr, geo }: Props) {
 }
 
 function GeoChip({ geo }: { geo: GeoState }) {
-  const palette = paletteFor(geo.status);
+  const variant = variantFor(geo.status);
   const Icon = geo.status === "denied" || geo.status === "unavail" ? WifiOff : MapPin;
   const label =
     geo.status === "live"
@@ -74,27 +74,23 @@ function GeoChip({ geo }: { geo: GeoState }) {
             : "kein GPS";
   return (
     <span
-      className="badge"
-      style={palette}
+      className={`status-pill ${variant}`}
       title={geo.errorMessage ?? undefined}
     >
-      <Icon size={11} />
+      <span className="dot" />
+      <Icon size={11} strokeWidth={2.4} />
       <span>{label}</span>
     </span>
   );
 }
 
-function paletteFor(status: GeoState["status"]): React.CSSProperties {
+function variantFor(status: GeoState["status"]): string {
   switch (status) {
-    case "live":
-      return { color: "var(--ok)", background: "var(--ok-tint)" };
-    case "stale":
-      return { color: "var(--warn)", background: "var(--warn-tint)" };
+    case "live":   return "ok";
+    case "stale":  return "warn";
     case "denied":
-    case "unavail":
-      return { color: "var(--red)", background: "var(--red-tint)" };
-    case "loading":
-      return { color: "var(--info)", background: "var(--info-tint)" };
+    case "unavail": return "danger";
+    case "loading": return "";
   }
 }
 

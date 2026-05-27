@@ -1652,26 +1652,34 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             position: "fixed",
             inset: 0,
             zIndex: 1000,
-            background: "rgba(15,23,42,0.55)",
+            background:
+              "radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.75) 100%)",
             display: "grid",
             placeItems: "center",
             padding: 16,
-            backdropFilter: "blur(4px)",
+            backdropFilter: "blur(12px) saturate(150%)",
+            WebkitBackdropFilter: "blur(12px) saturate(150%)",
+            animation: "glass-reveal 220ms var(--ease-decel) both",
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: "min(440px, 100%)",
-              background: "var(--surface)",
+              width: "min(460px, 100%)",
+              background: "var(--glass-1)",
+              backdropFilter: "var(--blur-1)",
+              WebkitBackdropFilter: "var(--blur-1)",
               color: "var(--fg)",
-              borderRadius: 18,
-              border: "1px solid var(--border-strong)",
-              boxShadow: "0 24px 64px -24px rgba(15,23,42,0.5)",
-              padding: 22,
+              borderRadius: "var(--radius-xl)",
+              border: "1px solid var(--glass-border-strong)",
+              boxShadow: "var(--glass-shadow-1), var(--glow-red-soft)",
+              padding: 26,
               display: "flex",
               flexDirection: "column",
-              gap: 14,
+              gap: 16,
+              position: "relative",
+              overflow: "hidden",
+              animation: "glass-reveal 320ms var(--ease-spring) both",
             }}
           >
             <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
