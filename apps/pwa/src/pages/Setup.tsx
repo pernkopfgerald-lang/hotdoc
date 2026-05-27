@@ -60,12 +60,20 @@ export function Setup({ onSetupDone }: Props) {
     setBusy(true);
     setError(null);
     const deviceId = crypto.randomUUID();
+    let gotToken = false;
     try {
       const res = await fetch("/api/auth/tablet/pin-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fahrzeugId: selectedFzg, pin, deviceId }),
       });
+      if (res.status === 429) {
+        const body = (await res.json().catch(() => ({}))) as { retryAfterMinutes?: number };
+        const min = body.retryAfterMinutes ?? 30;
+        setError(`Zu viele Fehlversuche — bitte ${min} min warten.`);
+        setBusy(false);
+        return;
+      }
       if (res.status === 401) {
         setError("PIN falsch — bitte beim Funktionär nachfragen.");
         setBusy(false);
@@ -76,12 +84,35 @@ export function Setup({ onSetupDone }: Props) {
         setBusy(false);
         return;
       }
-      const auth = (await res.json()) as { token: string };
+      const auth = (await res.json()) as { token?: string };
+      if (!auth.token) {
+        // Backend hat 200 geliefert aber keinen Token mitgesendet — abbrechen.
+        setError("Anmeldung unvollständig — Server antwortete ohne Token. Bitte neu versuchen.");
+        setBusy(false);
+        return;
+      }
       localStorage.setItem(PIN_TOKEN_KEY, auth.token);
-    } catch {
-      // Offline-Fallback: PIN-Check beim ersten Sync nachholen
-      console.warn("[setup] Backend nicht erreichbar — Tablet läuft erstmal offline");
+      gotToken = true;
+    } catch (err) {
+      // Echter Netzwerkfehler (Tablet offline) — wir lassen den User NICHT
+      // stillschweigend in die App weiterspringen ohne Token. Das war der Bug,
+      // der „PIN funktioniert nicht" trotz Server-200 verursachte: bei einem
+      // mid-flight-Abbruch wurde gotToken=false und die App rannte trotzdem los.
+      console.warn("[setup] Backend nicht erreichbar:", err);
+      setError(
+        "Server gerade nicht erreichbar. Bitte WLAN/Mobilfunk prüfen und nochmal versuchen.",
+      );
+      setBusy(false);
+      return;
     }
+
+    if (!gotToken) {
+      // Defensiver Sicherheits-Anker — sollte durch obige Logik nie erreicht werden.
+      setError("Anmeldung fehlgeschlagen — kein Token erhalten.");
+      setBusy(false);
+      return;
+    }
+
     try {
       await db.put({
         _id: "fahrzeug:self",
@@ -201,6 +232,28 @@ export function Setup({ onSetupDone }: Props) {
           alte Anmeldung dieses Tablets stammte noch aus einer früheren Version mit
           anderer Rollen-Zuordnung. Bitte gib jetzt einmal die PIN ein — danach läuft
           alles wie gewohnt.
+        </div>
+      ) : setupReason === "auth-failed" ? (
+        <div
+          role="status"
+          style={{
+            margin: "8px 0 0",
+            padding: "14px 16px",
+            borderRadius: "var(--radius-m)",
+            background: "var(--warn-tint)",
+            backdropFilter: "var(--blur-3)",
+            WebkitBackdropFilter: "var(--blur-3)",
+            border: "1px solid var(--warn-border)",
+            color: "var(--fg)",
+            fontSize: 13,
+            lineHeight: 1.55,
+            boxShadow: "var(--glow-warn)",
+          }}
+        >
+          <strong style={{ color: "var(--warn)" }}>Anmeldung erneuern.</strong> Die
+          Sitzung dieses Tablets ist abgelaufen oder vom Server abgelehnt. Bitte gib
+          die PIN erneut ein. Default ist <strong>1234</strong> wenn der Funktionär
+          noch keine eigene gesetzt hat.
         </div>
       ) : null}
 

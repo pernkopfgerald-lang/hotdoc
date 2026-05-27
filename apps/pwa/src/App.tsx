@@ -71,13 +71,18 @@ export function App() {
       // bestehende Tokens noch die alte Rolle und stoßen beim Abschluss auf 403.
       // Statt den User auf den Fehler laufen zu lassen, erkennen wir den Drift
       // beim Boot und zwingen einen frischen PIN-Login.
-      if (doc.fahrzeugId === "zentrale" && getTabletToken()) {
+      // Token-Validity-Check für ALLE Fahrzeuge (nicht nur zentrale): wenn der
+      // Token aus irgendeinem Grund tot ist (Server-Restart, JWT-Secret-Rotation,
+      // localStorage-Race auf iOS-Safari im PWA-Mode), liefert /api/auth/me 401
+      // und wir müssen sofort zurück zum Setup — sonst läuft die App in einen
+      // 401-Folge-Schauer ohne Auto-Recovery.
+      if (getTabletToken()) {
         try {
           const me = await apiCall<{ ok: true; rolle: string; fahrzeugId?: string }>(
             "/api/auth/me",
           );
-          if (me.rolle === "mannschaft") {
-            // Alter Token mit zu niedriger Rolle — verwerfen und Setup öffnen.
+          // Token-Drift: Zentrale-Tablet mit alter mannschaft-Rolle → Re-Auth.
+          if (doc.fahrzeugId === "zentrale" && me.rolle === "mannschaft") {
             try {
               localStorage.removeItem(TOKEN_KEY);
               sessionStorage.setItem("hotdoc.setupReason", "role-stale");
@@ -88,14 +93,32 @@ export function App() {
             return;
           }
         } catch (err) {
-          // 401 wurde bereits in apiCall behandelt (Token-Cleanup + Reload).
-          // Andere Fehler (Netz weg, Backend down): wir machen normal weiter,
-          // der User kann immerhin offline arbeiten. Beim nächsten Online-Call
-          // wird der Token-Check erneut angestoßen.
-          if (err instanceof ApiError && err.status >= 500) {
-            // Backend gerade kaputt — egal, weiter ohne Check.
+          if (err instanceof ApiError && err.status === 401) {
+            // Token ist tot — sauber zum Setup, mit erklärendem Hinweis.
+            try {
+              localStorage.removeItem(TOKEN_KEY);
+              localStorage.removeItem("hotdoc.handoffInfo");
+              sessionStorage.setItem("hotdoc.setupReason", "auth-failed");
+            } catch {
+              // egal
+            }
+            setState({ kind: "setup" });
+            return;
           }
+          // 5xx / Netzfehler: tolerant — der User kann offline weiter arbeiten,
+          // beim nächsten Online-Call greift apiCall's eigene Auto-Logout-Logik.
         }
+      } else {
+        // Kein Token aber Fahrzeug-Doc → die App war mal angemeldet, der Token
+        // ist aber verschwunden (z. B. iOS-Safari hat localStorage gelöscht
+        // wegen 7-Tage-ITP, oder User hat localStorage manuell geleert).
+        try {
+          sessionStorage.setItem("hotdoc.setupReason", "auth-failed");
+        } catch {
+          // egal
+        }
+        setState({ kind: "setup" });
+        return;
       }
       setState({ kind: "ready", fahrzeugId: doc.fahrzeugId });
     } else {
