@@ -160,20 +160,7 @@ function renderHtml(d: VorschauData): string {
   <!-- HEADER -->
   <div class="hd">
     <div class="hd-l">
-      <div class="hd-logo">
-        <svg viewBox="0 0 32 38" width="32" height="38">
-          <path d="M2 2 H30 V24 L16 36 L2 24 Z" fill="#C8102E" stroke="#000" stroke-width="1"/>
-          <path d="M9 13 Q16 6 23 13 L23 17 H9 Z" fill="#F4D6B5" stroke="#000" stroke-width="0.5"/>
-          <rect x="10" y="16" width="12" height="2" fill="#000"/>
-          <line x1="5" y1="20" x2="27" y2="32" stroke="#FFD700" stroke-width="1.6"/>
-          <line x1="27" y1="20" x2="5" y2="32" stroke="#FFD700" stroke-width="1.6"/>
-        </svg>
-      </div>
-      <div class="hd-name">
-        <div class="hd-name-1">FREIWILLIGE</div>
-        <div class="hd-name-2">FEUERWEHR</div>
-        <div class="hd-name-3">EBERSTALZELL</div>
-      </div>
+      <img class="hd-logo" src="/ff-eberstalzell-logo.png" alt="FF Eberstalzell" />
     </div>
     <div class="hd-r">
       <div class="hd-title">Fahrzeugbericht</div>
@@ -370,11 +357,7 @@ html, body { margin: 0; padding: 0; background: #fff; color: #000; font-family: 
 .page { max-width: 180mm; margin: 0 auto; }
 .hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 6px; }
 .hd-l { display: flex; align-items: center; gap: 10px; }
-.hd-logo svg { display: block; }
-.hd-name { line-height: 1.05; }
-.hd-name-1 { font-size: 7pt; letter-spacing: 0.04em; color: #444; }
-.hd-name-2 { font-size: 14pt; font-weight: 800; color: #C8102E; letter-spacing: 0.02em; }
-.hd-name-3 { font-size: 10pt; font-weight: 700; color: #000; }
+.hd-logo { height: 16mm; width: auto; display: block; }
 .hd-r { text-align: right; }
 .hd-title { font-size: 26pt; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
 .hd-nr { font-family: "Courier New", monospace; font-size: 11pt; font-weight: 700; margin-top: 4px; }

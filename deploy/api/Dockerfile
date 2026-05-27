@@ -63,9 +63,10 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml .npmrc package.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/api/package.json apps/api/
 
-# Built artifacts
+# Built artifacts + Static assets (Logo für PDFs)
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
+COPY --from=build /app/apps/api/assets apps/api/assets
 
 # Production-only deps
 RUN pnpm install --frozen-lockfile --prod --filter @hotdoc/api...

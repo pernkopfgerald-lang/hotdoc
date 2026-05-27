@@ -6,9 +6,12 @@
  * Statistik. Übungsleiter unterschreibt → wird als offizieller Nachweis
  * archiviert.
  *
- * Layout: A4 hochkant. Grüner Header damit der Empfänger sofort
- * "ÜBUNG" sieht (nicht zu verwechseln mit Brand-Einsatzbericht).
+ * Layout: A4 hochkant mit dem offiziellen FF-Eberstalzell-Logo links und
+ * großem grünen "Übung"-Banner damit der Empfänger sofort sieht dass das
+ * nicht zu verwechseln ist mit einem Brand-Einsatzbericht.
  */
+
+import { getBrandLogoDataUrl } from "./brand.js";
 
 export type UebungsTyp =
   | "Atemschutz"
@@ -70,20 +73,10 @@ export function renderUebungHtml(d: UebungDaten): string {
     .page { max-width: 182mm; }
 
     .hd { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 6mm; }
-    .hd-left { display: flex; align-items: center; gap: 12px; }
-    .hd-mark {
-      width: 22mm; height: 22mm;
-      border-radius: 50%;
-      background: #16a34a;
-      display: grid; place-items: center;
-      color: #fff;
-      font-weight: 800;
-      font-size: 8pt;
-      letter-spacing: 0.12em;
-      text-align: center;
-      line-height: 1.1;
-    }
-    .hd-title { font-size: 22pt; font-weight: 800; letter-spacing: -0.01em; color: #0f172a; }
+    .hd-left { display: flex; align-items: center; gap: 14px; }
+    .hd-logo { height: 18mm; width: auto; display: block; }
+    .hd-title-block { display: flex; flex-direction: column; }
+    .hd-title { font-size: 22pt; font-weight: 800; letter-spacing: -0.01em; color: #0f172a; line-height: 1.1; }
     .hd-sub { font-size: 9pt; color: #64748b; margin-top: 1mm; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
     .hd-id { font-family: "Courier New", monospace; font-size: 8pt; color: #64748b; text-align: right; }
 
@@ -226,8 +219,8 @@ export function renderUebungHtml(d: UebungDaten): string {
 
   <div class="hd">
     <div class="hd-left">
-      <div class="hd-mark">FF<br>EBER</div>
-      <div>
+      ${renderLogo()}
+      <div class="hd-title-block">
         <div class="hd-title">Übungsdokumentation</div>
         <div class="hd-sub">FF Eberstalzell · Ausbildungsnachweis</div>
       </div>
@@ -352,6 +345,12 @@ export function renderUebungHtml(d: UebungDaten): string {
 </div>
 </body>
 </html>`;
+}
+
+function renderLogo(): string {
+  const dataUrl = getBrandLogoDataUrl();
+  if (!dataUrl) return "";
+  return `<img class="hd-logo" src="${dataUrl}" alt="FF Eberstalzell" />`;
 }
 
 function escape(s: string): string {

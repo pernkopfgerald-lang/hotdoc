@@ -5,10 +5,12 @@
  * Lotsendienst. Im Gegensatz zum Einsatzbericht ist das Wichtigste die
  * **Verrechnungs-Information** — Auftraggeber, Route, KM-Summe, Stunden.
  *
- * Layout: A4 hochkant, eine Seite. Header mit FF-Logo + großem
- * "Lotsendienst"-Schriftzug damit der Empfänger sofort sieht dass das
- * KEIN Brandeinsatz-Bericht ist.
+ * Layout: A4 hochkant, eine Seite. Header mit dem offiziellen FF-
+ * Eberstalzell-Logo + großem "Lotsendienst"-Schriftzug damit der
+ * Empfänger sofort sieht dass das KEIN Brandeinsatz-Bericht ist.
  */
+
+import { getBrandLogoDataUrl } from "./brand.js";
 
 export interface LotsendienstDaten {
   einsatzId: string;
@@ -68,20 +70,10 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
 
     /* Header */
     .hd { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 6mm; }
-    .hd-left { display: flex; align-items: center; gap: 12px; }
-    .hd-mark {
-      width: 22mm; height: 22mm;
-      border-radius: 50%;
-      background: #D97706;
-      display: grid; place-items: center;
-      color: #fff;
-      font-weight: 800;
-      font-size: 8pt;
-      letter-spacing: 0.12em;
-      text-align: center;
-      line-height: 1.1;
-    }
-    .hd-title { font-size: 22pt; font-weight: 800; letter-spacing: -0.01em; color: #0f172a; }
+    .hd-left { display: flex; align-items: center; gap: 14px; }
+    .hd-logo { height: 18mm; width: auto; display: block; }
+    .hd-title-block { display: flex; flex-direction: column; }
+    .hd-title { font-size: 22pt; font-weight: 800; letter-spacing: -0.01em; color: #0f172a; line-height: 1.1; }
     .hd-sub { font-size: 9pt; color: #64748b; margin-top: 1mm; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
     .hd-id { font-family: "Courier New", monospace; font-size: 8pt; color: #64748b; text-align: right; }
 
@@ -224,8 +216,8 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
 
   <div class="hd">
     <div class="hd-left">
-      <div class="hd-mark">FF<br>EBER</div>
-      <div>
+      ${renderLogo()}
+      <div class="hd-title-block">
         <div class="hd-title">Lotsendienst</div>
         <div class="hd-sub">FF Eberstalzell · Bericht für Verrechnung</div>
       </div>
@@ -366,6 +358,18 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
 </div>
 </body>
 </html>`;
+}
+
+/**
+ * Rendert das offizielle FF-Eberstalzell-Logo als img-Tag mit Base64-
+ * Data-URL. Wenn die Logo-Datei nicht gefunden wird (z. B. lokaler
+ * Build ohne assets-Verzeichnis), rendern wir leer statt eines Fake-
+ * Logos — wir sollen NIE eine Annäherung anzeigen.
+ */
+function renderLogo(): string {
+  const dataUrl = getBrandLogoDataUrl();
+  if (!dataUrl) return "";
+  return `<img class="hd-logo" src="${dataUrl}" alt="FF Eberstalzell" />`;
 }
 
 function escape(s: string): string {

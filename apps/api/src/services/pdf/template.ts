@@ -17,7 +17,12 @@
  *  - Verrechenbar / Ölbindemittel
  *  - Meldung von der Einsatzleitung (großes Freitextfeld)
  *  - Einsatzleiter / Einsatzende / Bearbeiter / Unterschrift
+ *
+ * Logo: das **offizielle FF-Eberstalzell-Logo** wird als Base64-Data-URL
+ * embedded (über `getBrandLogoDataUrl()`). Keine SVG-Annäherung mehr.
  */
+
+import { getBrandLogoDataUrl } from "./brand.js";
 
 interface BerichtDaten {
   einsatzId: string;
@@ -80,10 +85,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       margin-bottom: 2mm;
     }
     .hd-l { display: flex; align-items: center; gap: 8px; }
-    .hd-name { line-height: 1.05; }
-    .hd-name-1 { font-size: 6pt; color: #444; letter-spacing: 0.04em; }
-    .hd-name-2 { font-size: 12pt; font-weight: 800; color: #C8102E; letter-spacing: 0.02em; }
-    .hd-name-3 { font-size: 9pt; font-weight: 700; color: #000; }
+    .hd-logo { height: 16mm; width: auto; display: block; }
     .hd-r { text-align: right; }
     .hd-title { font-size: 24pt; font-weight: 700; line-height: 1; letter-spacing: -0.01em; }
 
@@ -139,18 +141,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   <!-- ═══ Header ═══════════════════════════════════════════════ -->
   <div class="hd">
     <div class="hd-l">
-      <svg viewBox="0 0 32 38" width="32" height="38">
-        <path d="M2 2 H30 V24 L16 36 L2 24 Z" fill="#C8102E" stroke="#000" stroke-width="1"/>
-        <path d="M9 13 Q16 6 23 13 L23 17 H9 Z" fill="#F4D6B5" stroke="#000" stroke-width="0.5"/>
-        <rect x="10" y="16" width="12" height="2" fill="#000"/>
-        <line x1="5" y1="20" x2="27" y2="32" stroke="#FFD700" stroke-width="1.6"/>
-        <line x1="27" y1="20" x2="5" y2="32" stroke="#FFD700" stroke-width="1.6"/>
-      </svg>
-      <div class="hd-name">
-        <div class="hd-name-1">FREIWILLIGE</div>
-        <div class="hd-name-2">FEUERWEHR</div>
-        <div class="hd-name-3">EBERSTALZELL</div>
-      </div>
+      ${renderBrandLogo()}
     </div>
     <div class="hd-r">
       <div class="hd-title">Einsatzbericht</div>
@@ -403,4 +394,15 @@ function formatDateTime(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Rendert das offizielle FF-Eberstalzell-Logo als img-Tag mit Base64-
+ * Data-URL. Bei fehlender Logo-Datei rendern wir leer — niemals eine
+ * Fake-Annäherung.
+ */
+function renderBrandLogo(): string {
+  const dataUrl = getBrandLogoDataUrl();
+  if (!dataUrl) return "";
+  return `<img class="hd-logo" src="${dataUrl}" alt="FF Eberstalzell" />`;
 }
