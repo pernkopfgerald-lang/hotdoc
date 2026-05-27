@@ -1,4 +1,4 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
 import {
@@ -13,6 +13,7 @@ import {
 import { listEinsaetze, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
+import { EditableChip } from "../components/EditableChip";
 import { Florianstation } from "./Florianstation";
 import type { AuthResponse } from "@hotdoc/shared";
 
@@ -68,6 +69,107 @@ function ErrorBanner({ msg }: { msg: string }) {
     >
       <AlertTriangle size={14} /> {msg}
     </div>
+  );
+}
+
+/**
+ * Inline-Edit für Tabellen-Zellen. Klick auf den Text → Input.
+ * Enter / Blur = commit · Escape = abort.
+ */
+function InlineTextEdit({
+  value,
+  onCommit,
+  validate,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  validate?: (next: string) => string | null;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  function commit() {
+    const cleaned = draft.trim();
+    if (!cleaned) {
+      setEditing(false);
+      setDraft(value);
+      return;
+    }
+    if (validate) {
+      const e = validate(cleaned);
+      if (e) {
+        setErr(e);
+        return;
+      }
+    }
+    setErr(null);
+    setEditing(false);
+    if (cleaned !== value) onCommit(cleaned);
+  }
+
+  if (editing) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (err) setErr(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+              setDraft(value);
+              setErr(null);
+            }
+          }}
+          onBlur={commit}
+          title={err ?? undefined}
+          style={{
+            background: err ? "var(--red-tint)" : "var(--info-tint)",
+            border: `1px solid ${err ? "var(--red)" : "var(--info)"}`,
+            borderRadius: 6,
+            padding: "2px 6px",
+            font: "inherit",
+            color: "inherit",
+            minWidth: 140,
+          }}
+        />
+      </span>
+    );
+  }
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={() => setEditing(true)}
+      onKeyDown={(e) => e.key === "Enter" && setEditing(true)}
+      title="Klick zum Bearbeiten"
+      style={{
+        cursor: "pointer",
+        padding: "2px 6px",
+        borderRadius: 6,
+        borderBottom: "1px dashed transparent",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = "var(--border-strong)")}
+      onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = "transparent")}
+    >
+      {value}
+      <Pencil size={10} style={{ opacity: 0.4 }} />
+    </span>
   );
 }
 
@@ -397,6 +499,18 @@ function GeraetePanel() {
       },
     });
   }
+  function renameItem(fzg: string, id: string, newBezeichnung: string) {
+    if (!data) return;
+    setData({
+      ...data,
+      byFahrzeug: {
+        ...data.byFahrzeug,
+        [fzg]: (data.byFahrzeug[fzg] ?? []).map((it) =>
+          it.id === id ? { ...it, bezeichnung: newBezeichnung } : it,
+        ),
+      },
+    });
+  }
 
   const items = data?.byFahrzeug[activeFzg] ?? [];
   const fahrzeuge = ["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const;
@@ -451,18 +565,19 @@ function GeraetePanel() {
               <span style={{ fontSize: 13, color: "var(--fg-3)" }}>Noch keine Geräte für {labels[activeFzg]}</span>
             ) : (
               items.map((it) => (
-                <span key={it.id} className="chip selected" style={{ gap: 8, cursor: "default" }}>
-                  <span className="dot" />
-                  {it.bezeichnung}
-                  <button
-                    type="button"
-                    onClick={() => removeItem(activeFzg, it.id)}
-                    aria-label="Entfernen"
-                    style={{ background: "transparent", border: 0, color: "inherit", cursor: "pointer", padding: 0, marginLeft: 4, display: "inline-flex" }}
-                  >
-                    <X size={13} />
-                  </button>
-                </span>
+                <EditableChip
+                  key={it.id}
+                  text={it.bezeichnung}
+                  onUpdate={(next) => renameItem(activeFzg, it.id, next)}
+                  onRemove={() => removeItem(activeFzg, it.id)}
+                  className="chip selected"
+                  validate={(next) =>
+                    next !== it.bezeichnung &&
+                    items.some((x) => x.bezeichnung === next)
+                      ? `"${next}" existiert bereits für ${labels[activeFzg]}`
+                      : null
+                  }
+                />
               ))
             )}
           </div>
@@ -515,6 +630,13 @@ function AuftragstypenPanel() {
     if (!data) return;
     setData({ ...data, items: data.items.filter((t) => t !== text) });
   }
+  function rename(oldText: string, newText: string) {
+    if (!data) return;
+    setData({
+      ...data,
+      items: data.items.map((t) => (t === oldText ? newText : t)),
+    });
+  }
 
   return (
     <section className="card">
@@ -547,18 +669,17 @@ function AuftragstypenPanel() {
         <>
           <div className="chips" style={{ marginBottom: 12 }}>
             {data.items.map((t) => (
-              <span key={t} className="chip task selected" style={{ gap: 8 }}>
-                <span className="dot" />
-                {t}
-                <button
-                  type="button"
-                  onClick={() => remove(t)}
-                  aria-label="Entfernen"
-                  style={{ background: "transparent", border: 0, color: "inherit", cursor: "pointer", padding: 0, marginLeft: 4, display: "inline-flex" }}
-                >
-                  <X size={13} />
-                </button>
-              </span>
+              <EditableChip
+                key={t}
+                text={t}
+                onUpdate={(next) => rename(t, next)}
+                onRemove={() => remove(t)}
+                validate={(next) =>
+                  next !== t && data.items.includes(next)
+                    ? `"${next}" existiert bereits`
+                    : null
+                }
+              />
             ))}
           </div>
           <AddItemForm onAdd={add} placeholder="Neuer Auftrag-Typ …" />
@@ -1074,6 +1195,13 @@ function EinsatzstichwortePanel() {
       ),
     });
   }
+  function renameArt(oldArt: string, newArt: string) {
+    if (!data) return;
+    setData({
+      ...data,
+      items: data.items.map((i) => (i.art === oldArt ? { ...i, art: newArt } : i)),
+    });
+  }
 
   return (
     <section className="card">
@@ -1116,7 +1244,17 @@ function EinsatzstichwortePanel() {
             <tbody>
               {data.items.map((i) => (
                 <tr key={i.art} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={archTd}>{i.art}</td>
+                  <td style={archTd}>
+                    <InlineTextEdit
+                      value={i.art}
+                      onCommit={(next) => renameArt(i.art, next)}
+                      validate={(next) =>
+                        next !== i.art && data.items.some((x) => x.art === next)
+                          ? `"${next}" existiert bereits`
+                          : null
+                      }
+                    />
+                  </td>
                   <td style={archTd}>
                     <button
                       type="button"
