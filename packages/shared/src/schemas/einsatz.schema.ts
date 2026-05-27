@@ -163,6 +163,18 @@ export const EinsatzSchema = z.object({
     })
     .default({}),
 
+  /**
+   * Reserve-Mannschaft — Personen die im Haus blieben aber zum Einsatz
+   * "zur Verfügung standen" (z. B. Bereitschaftsdienst, Reserve-Atemschutz-
+   * Trupp am Florianhaus, Mitglieder die für Auf-/Nachschub angerückt sind
+   * aber nicht ausgerückt). Wird vom Sachbearbeiter in der Florianstation
+   * gepflegt, NICHT von den Fahrzeug-Tablets.
+   *
+   * Personen-Referenzen via syBOS-ID — die Anzeige (Vorname/Nachname) erfolgt
+   * über das `person:*`-Doc-Cache in der PWA/Backoffice.
+   */
+  reservePersonIds: z.array(z.number().int().positive()).default([]),
+
   verrechnung: z
     .object({
       verrechenbar: z.boolean().default(false),

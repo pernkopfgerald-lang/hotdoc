@@ -17,8 +17,9 @@ import {
   Smartphone,
   Truck,
   Users,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
@@ -27,6 +28,7 @@ import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
+import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { DEMO_ALARM } from "../data/demo-alarm";
@@ -90,6 +92,9 @@ interface EinsatzApiDoc {
   };
   verrechnung?: { verrechenbar?: boolean; rechnungsadresse?: string };
   oelbindemittel?: { verwendet?: boolean; gesamtSaecke?: number };
+  einsatzleiterPersonId?: number;
+  bearbeiterPersonId?: number;
+  reservePersonIds?: number[];
 }
 
 /**
@@ -113,6 +118,10 @@ interface EditorState {
   meldungEinsatzleitung: string;
   verrechenbar: boolean;
   oelSaecke: number;
+  /** syBOS-Person-ID des Sachbearbeiters in der Florianstation. */
+  bearbeiterPersonId: number | null;
+  /** syBOS-Person-IDs der Reserve-Mannschaft (zur Verfügung gestanden, nicht ausgerückt). */
+  reservePersonIds: number[];
 }
 
 const EMPTY_EDITOR: EditorState = {
@@ -131,6 +140,8 @@ const EMPTY_EDITOR: EditorState = {
   meldungEinsatzleitung: "",
   verrechenbar: false,
   oelSaecke: 0,
+  bearbeiterPersonId: null,
+  reservePersonIds: [],
 };
 
 /**
@@ -243,7 +254,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
   const [aktiverEinsatz, setAktiverEinsatz] = useState<EinsatzApiDoc | null>(null);
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
-  const [personenMap, setPersonenMap] = useState<Map<number, string>>(new Map());
+  const [personen, setPersonen] = useState<PickPerson[]>([]);
+  const personenMap = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of personen) {
+      const name = `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim();
+      if (name) m.set(p.syBosId, name);
+    }
+    return m;
+  }, [personen]);
+  /** Welcher Picker ist gerade offen — null = keiner, "bearbeiter" oder "reserve". */
+  const [personPickerOpen, setPersonPickerOpen] = useState<null | "bearbeiter" | "reserve">(null);
   const [downloadBusy, setDownloadBusy] = useState<"pdf" | "spick" | null>(null);
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
@@ -326,23 +347,37 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     };
   }, [aktiverEinsatzId]);
 
-  // Personalliste einmalig laden — wird benötigt um aus den
-  // `fahrzeugKdtPersonId`-IDs Klar-Namen für die Status-Liste zu machen.
-  // Default-Cache: leer, dann fall back auf "Pers-ID 123".
+  // Personalliste einmalig laden — wird benötigt um (a) aus den
+  // `fahrzeugKdtPersonId`-IDs Klar-Namen für die Status-Liste zu machen
+  // und (b) den PersonPickerModal für Bearbeiter + Reserve zu füttern.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const r = await apiCall<{
-          items: Array<{ syBosId: number; vorname?: string; nachname?: string }>;
+          items: Array<{
+            syBosId: number;
+            vorname?: string;
+            nachname?: string;
+            rang?: string;
+            atemschutzGueltig?: boolean;
+            aktiv?: boolean;
+          }>;
         }>("/api/admin/personen");
         if (cancelled) return;
-        const m = new Map<number, string>();
-        for (const p of r.items) {
-          const name = `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim();
-          if (name) m.set(p.syBosId, name);
-        }
-        setPersonenMap(m);
+        // Map auf PickPerson-Shape — fülle Pflichtfelder defensiv auf.
+        const list: PickPerson[] = r.items
+          .filter((p) => p.aktiv !== false)
+          .map((p) => ({
+            _id: `person:${p.syBosId}`,
+            syBosId: p.syBosId,
+            nachname: p.nachname ?? "",
+            vorname: p.vorname ?? "",
+            dienstgrad: p.rang ?? "",
+            atemschutzGueltig: p.atemschutzGueltig === true,
+          }))
+          .sort((a, b) => `${a.nachname} ${a.vorname}`.localeCompare(`${b.nachname} ${b.vorname}`));
+        setPersonen(list);
       } catch {
         // Endpoint vielleicht (noch) nicht vorhanden — ignorieren, UI zeigt IDs
       }
@@ -382,6 +417,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       meldungEinsatzleitung: aktiverEinsatz.meldungEinsatzleitung ?? "",
       verrechenbar: aktiverEinsatz.verrechnung?.verrechenbar ?? false,
       oelSaecke: aktiverEinsatz.oelbindemittel?.gesamtSaecke ?? 0,
+      bearbeiterPersonId:
+        typeof aktiverEinsatz.bearbeiterPersonId === "number"
+          ? aktiverEinsatz.bearbeiterPersonId
+          : null,
+      reservePersonIds: Array.isArray(aktiverEinsatz.reservePersonIds)
+        ? aktiverEinsatz.reservePersonIds
+        : [],
     });
   }, [aktiverEinsatz, editorDirty]);
 
@@ -429,6 +471,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       if (editor.einsatzauftragVia) body.einsatzauftragVia = editor.einsatzauftragVia;
       if (editor.anrufer.trim()) body.anrufer = editor.anrufer.trim();
       if (editor.anruferTel.trim()) body.anruferTel = editor.anruferTel.trim();
+      if (editor.bearbeiterPersonId !== null) {
+        body.bearbeiterPersonId = editor.bearbeiterPersonId;
+      }
+      body.reservePersonIds = editor.reservePersonIds;
 
       await apiCall(`/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`, {
         method: "PUT",
@@ -1269,6 +1315,156 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </button>
         </section>
 
+        <SectionHead title="Sachbearbeiter & Reserve" />
+        <section className="card">
+          <div className="card-head">
+            <div className="card-title">
+              <Users size={20} />
+              Bearbeiter / Reserve
+            </div>
+            <span className="card-meta">
+              <span className="num">{editor.reservePersonIds.length}</span> in Reserve
+            </span>
+          </div>
+
+          {/* ─── Bearbeiter (Sachbearbeiter Florianstation) ─── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="caption" style={{ marginBottom: 2 }}>
+              Sachbearbeiter
+            </div>
+            {editor.bearbeiterPersonId !== null ? (
+              <div
+                className="person filled"
+                style={{
+                  cursor: schreibschutz ? "default" : "pointer",
+                  opacity: schreibschutz ? 0.7 : 1,
+                }}
+              >
+                <span className="avatar color-a">
+                  {initials(personenMap.get(editor.bearbeiterPersonId) ?? "")}
+                </span>
+                <div
+                  className="name"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 2,
+                  }}
+                >
+                  <span>
+                    {personenMap.get(editor.bearbeiterPersonId) ??
+                      `Pers-ID ${editor.bearbeiterPersonId}`}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "var(--tracking-caps)",
+                      textTransform: "uppercase",
+                      color: "var(--fg-3)",
+                    }}
+                  >
+                    Sachbearbeiter Florianstation
+                  </span>
+                </div>
+                {!schreibschutz ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setPersonPickerOpen("bearbeiter")}
+                      aria-label="Bearbeiter ändern"
+                      title="Bearbeiter ändern"
+                    >
+                      <Users size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      onClick={() => patchEditor({ bearbeiterPersonId: null })}
+                      aria-label="Bearbeiter entfernen"
+                      title="Bearbeiter entfernen"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="crew-row empty"
+                disabled={schreibschutz}
+                onClick={() => setPersonPickerOpen("bearbeiter")}
+                style={{ cursor: schreibschutz ? "not-allowed" : "pointer", width: "100%" }}
+              >
+                <span className="crew-num">+</span>
+                <span className="crew-name placeholder">
+                  Sachbearbeiter aus Personalliste wählen …
+                </span>
+              </button>
+            )}
+
+            {/* ─── Reserve-Mannschaft ─── */}
+            <div className="caption" style={{ marginTop: 6, marginBottom: 2 }}>
+              Reserve · zur Verfügung gestanden, nicht ausgerückt
+            </div>
+            {editor.reservePersonIds.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {editor.reservePersonIds.map((pid) => (
+                  <div key={pid} className="person filled">
+                    <span className="avatar color-c">
+                      {initials(personenMap.get(pid) ?? "")}
+                    </span>
+                    <span className="name">
+                      {personenMap.get(pid) ?? `Pers-ID ${pid}`}
+                    </span>
+                    {!schreibschutz ? (
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        onClick={() =>
+                          patchEditor({
+                            reservePersonIds: editor.reservePersonIds.filter((id) => id !== pid),
+                          })
+                        }
+                        aria-label="Aus Reserve entfernen"
+                        title="Aus Reserve entfernen"
+                      >
+                        <X size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--fg-3)",
+                  fontStyle: "italic",
+                  padding: "4px 2px",
+                }}
+              >
+                Keine Reserve-Personen erfasst.
+              </div>
+            )}
+            {!schreibschutz ? (
+              <button
+                type="button"
+                className="crew-row empty"
+                onClick={() => setPersonPickerOpen("reserve")}
+                style={{ cursor: "pointer", width: "100%" }}
+              >
+                <span className="crew-num">+</span>
+                <span className="crew-name placeholder">Person zur Reserve hinzufügen …</span>
+              </button>
+            ) : null}
+          </div>
+        </section>
+
         <SectionHead title="Fahrzeuge im Einsatz" />
         <section className="card">
           <div className="card-head">
@@ -1642,6 +1838,47 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         onClose={() => setVehicleSwitcherOpen(false)}
       />
 
+      {/* ─── PersonPicker für Bearbeiter ODER Reserve ─── */}
+      <PersonPickerModal
+        open={personPickerOpen !== null}
+        title={
+          personPickerOpen === "bearbeiter"
+            ? "Sachbearbeiter wählen"
+            : "Person zur Reserve hinzufügen"
+        }
+        subtitle={
+          personPickerOpen === "bearbeiter"
+            ? "Wer schreibt den Bericht in syBOS?"
+            : "Personal das im Haus geblieben ist"
+        }
+        personen={personen}
+        bereitsGewaehlt={
+          personPickerOpen === "reserve"
+            ? new Set([
+                ...editor.reservePersonIds,
+                ...(editor.bearbeiterPersonId !== null
+                  ? [editor.bearbeiterPersonId]
+                  : []),
+              ])
+            : personPickerOpen === "bearbeiter" && editor.bearbeiterPersonId !== null
+              ? new Set([editor.bearbeiterPersonId])
+              : new Set<number>()
+        }
+        onSelect={(p) => {
+          if (personPickerOpen === "bearbeiter") {
+            patchEditor({ bearbeiterPersonId: p.syBosId });
+          } else if (personPickerOpen === "reserve") {
+            if (!editor.reservePersonIds.includes(p.syBosId)) {
+              patchEditor({
+                reservePersonIds: [...editor.reservePersonIds, p.syBosId],
+              });
+            }
+          }
+          setPersonPickerOpen(null);
+        }}
+        onClose={() => setPersonPickerOpen(null)}
+      />
+
       {abschlussConfirmOpen ? (
         <div
           role="dialog"
@@ -1833,6 +2070,19 @@ function SectionHead({ title }: { title: string }) {
       <span className="line" />
     </div>
   );
+}
+
+/**
+ * Leitet die Avatar-Initialen aus "Nachname Vorname" ab — der personenMap
+ * hält Namen in dieser Reihenfolge. Liefert "??" bei leerem String, damit
+ * der Avatar nie leer ist und der Layout-Slot stabil bleibt.
+ */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0 || !parts[0]) return "??";
+  const a = parts[0].charAt(0).toUpperCase();
+  const b = parts[1]?.charAt(0).toUpperCase() ?? "";
+  return `${a}${b}` || "??";
 }
 
 function ReadOnly({ label, value }: { label: string; value: string }) {
