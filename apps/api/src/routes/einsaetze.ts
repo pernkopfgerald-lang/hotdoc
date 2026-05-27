@@ -17,6 +17,7 @@ import { EinsatzSchema, FahrzeugberichtSchema } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
+import { writeAuditEvent } from "../services/audit.js";
 
 export const einsaetzeRouter: Router = Router();
 
@@ -182,6 +183,16 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("einsatzleiter"
   };
   const result = await db.insert(updated);
   logger.info({ id, by: session.username }, "Einsatz abgeschlossen");
+  // Audit-Trail (Spec §17.1) — Pflicht-Ereignis. Schreib-Fehler werden im
+  // Audit-Service geschluckt, damit der User-flow nicht blockiert wird.
+  await writeAuditEvent({
+    type: "einsatz-abschluss",
+    actorUsername: session.username,
+    actorRolle: session.rolle,
+    einsatzId: id,
+    ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+    ...(req.ip ? { ipAddress: req.ip } : {}),
+  });
   res.json({ ok: true, id, rev: result.rev });
 }) as RequestHandler);
 
@@ -227,6 +238,17 @@ einsaetzeRouter.post(
       { id, by: session.username, grund: parsed.data.grund },
       "Einsatz REAKTIVIERT — Audit-Trail aktualisiert",
     );
+    // Audit-Trail (Spec §17.1) — Reaktivierungen MÜSSEN nachvollziehbar sein.
+    // Pflicht-Begründung wird im `details`-Feld mitgeschrieben.
+    await writeAuditEvent({
+      type: "einsatz-reaktivierung",
+      actorUsername: session.username,
+      actorRolle: session.rolle,
+      einsatzId: id,
+      ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+      details: { grund: parsed.data.grund },
+    });
     res.json({ ok: true, id, rev: result.rev });
   }) as RequestHandler,
 );

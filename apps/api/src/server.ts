@@ -16,6 +16,7 @@ import { healthRouter } from "./routes/health.js";
 import { pdfRouter } from "./routes/pdf.js";
 import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
 import { startAudioRetentionCron } from "./workers/audio-retention.js";
+import { startAuditRetentionCron } from "./workers/audit-retention.js";
 import { startBlaulichtSmsPoller } from "./workers/blaulichtsms-poller.js";
 import { startSyBosSyncCron } from "./workers/sybos-sync.js";
 
@@ -98,6 +99,9 @@ async function main(): Promise<void> {
   startSyBosSyncCron();
   startBlaulichtSmsPoller();
   startAudioRetentionCron();
+  // Audit-Retention: löscht audit:*-Events älter als AUDIT_RETENTION_DAYS.
+  // Schließt die in der Spec §24.1 als Gap markierte DSGVO-Lücke.
+  startAuditRetentionCron();
 
   // — Start —
   app.listen(env.PORT, () => {

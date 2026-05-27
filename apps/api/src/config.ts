@@ -3,54 +3,147 @@ import { z } from "zod";
 /**
  * Strenge Validierung aller env-Variablen beim Start.
  * Failt sofort wenn etwas fehlt — kein silent Fallback.
+ *
+ * Production-Sicherheits-Anker (durch superRefine erzwungen):
+ *  - JWT_SECRET muss ein echter, ≥32-Zeichen langer Wert sein
+ *    (nicht der Dev-Default-String, der öffentlich im Repo steht).
+ *  - BlaulichtSMS-Credentials müssen gesetzt sein, sonst läuft der
+ *    Poller heimlich im Mock-Modus → keine echten Alarme.
+ *  - Bootstrap-Admin-Passwort muss vom Default verschieden sein.
+ *  - Override-Schalter HOTDOC_ALLOW_INSECURE_DEFAULTS=1 für seltene
+ *    Notfälle (Bare-Metal-Restore mit nur teil-bekannter Secret-Liste).
  */
-const EnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.coerce.number().int().positive().default(3000),
 
-  // CouchDB
-  COUCH_URL: z.string().url().default("http://localhost:5984"),
-  COUCH_USER: z.string().default("admin"),
-  COUCH_PASS: z.string().default("admin"),
-  COUCH_DB: z.string().default("hotdoc"),
+/** Default-Marker — wenn das Env-File diesen Wert hat, ist es definitiv unkonfiguriert. */
+const JWT_SECRET_DEV_DEFAULT =
+  "dev-secret-bitte-in-production-ueberschreiben-mit-fly-secrets";
+const BOOTSTRAP_ADMIN_PASSWORD_DEV_DEFAULT = "admin12345678";
 
-  // BlaulichtSMS — Phase 3
-  BLAULICHTSMS_CUSTOMER_ID: z.string().optional(),
-  BLAULICHTSMS_USER: z.string().optional(),
-  BLAULICHTSMS_PW: z.string().optional(),
-  BLAULICHTSMS_BASE_URL: z.string().url().default("https://api.blaulichtsms.net/blaulicht"),
-  BLAULICHTSMS_POLL_INTERVAL_SEC: z.coerce.number().int().positive().default(15),
+const EnvSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    PORT: z.coerce.number().int().positive().default(3000),
 
-  // syBOS — Phase 1+3
-  SYBOS_API_URL: z.string().url().optional(),
-  SYBOS_TOKEN: z.string().optional(),
-  SYBOS_SYNC_CRON: z.string().default("0 4 * * *"),
+    // CouchDB
+    COUCH_URL: z.string().url().default("http://localhost:5984"),
+    COUCH_USER: z.string().default("admin"),
+    COUCH_PASS: z.string().default("admin"),
+    COUCH_DB: z.string().default("hotdoc"),
 
-  // wasserkarte.info — Phase 4
-  WASSERKARTE_ACCESS_KEY: z.string().optional(),
-  WASSERKARTE_BASE_URL: z.string().url().default("https://api.wasserkarte.info"),
+    // BlaulichtSMS — Phase 3
+    BLAULICHTSMS_CUSTOMER_ID: z.string().optional(),
+    BLAULICHTSMS_USER: z.string().optional(),
+    BLAULICHTSMS_PW: z.string().optional(),
+    BLAULICHTSMS_BASE_URL: z.string().url().default("https://api.blaulichtsms.net/blaulicht"),
+    BLAULICHTSMS_POLL_INTERVAL_SEC: z.coerce.number().int().positive().default(15),
 
-  // WebPush (VAPID) — Phase 3
-  VAPID_PUBLIC: z.string().optional(),
-  VAPID_PRIVATE: z.string().optional(),
-  VAPID_SUBJECT: z.string().email().default("admin@ff-eberstalzell.at"),
+    // syBOS — Phase 1+3
+    SYBOS_API_URL: z.string().url().optional(),
+    SYBOS_TOKEN: z.string().optional(),
+    SYBOS_SYNC_CRON: z.string().default("0 4 * * *"),
 
-  // OpenAI Whisper Fallback — Phase 5
-  OPENAI_API_KEY: z.string().optional(),
+    // wasserkarte.info — Phase 4
+    WASSERKARTE_ACCESS_KEY: z.string().optional(),
+    WASSERKARTE_BASE_URL: z.string().url().default("https://api.wasserkarte.info"),
 
-  // Audio-Retention — Phase 8
-  AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    // WebPush (VAPID) — Phase 3
+    VAPID_PUBLIC: z.string().optional(),
+    VAPID_PRIVATE: z.string().optional(),
+    VAPID_SUBJECT: z.string().email().default("admin@ff-eberstalzell.at"),
 
-  // Auth — Phase 3
-  JWT_SECRET: z.string().min(32).default("dev-secret-bitte-in-production-ueberschreiben-mit-fly-secrets"),
-  /** Cookie-Name für Backoffice-Session. */
-  AUTH_COOKIE_NAME: z.string().default("hotdoc.session"),
-  /** Session-Lebensdauer in Sekunden (default 8h). */
-  SESSION_TTL_SEC: z.coerce.number().int().positive().default(8 * 60 * 60),
-  /** Initial-Admin-Anmeldung beim Server-Start auto-anlegen, falls keine Benutzer existieren. */
-  BOOTSTRAP_ADMIN_USERNAME: z.string().default("admin"),
-  BOOTSTRAP_ADMIN_PASSWORD: z.string().default("admin12345678"),
-});
+    // OpenAI Whisper Fallback — Phase 5
+    OPENAI_API_KEY: z.string().optional(),
+
+    // Retention (Phase 8 + Audit) — beide DSGVO-relevant.
+    AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    /** Audit-Events-Lebensdauer in Tagen. Default 365 (1 Jahr — Spec §17.3). */
+    AUDIT_RETENTION_DAYS: z.coerce.number().int().positive().default(365),
+
+    // Auth — Phase 3
+    JWT_SECRET: z.string().min(32).default(JWT_SECRET_DEV_DEFAULT),
+    /** Cookie-Name für Backoffice-Session. */
+    AUTH_COOKIE_NAME: z.string().default("hotdoc.session"),
+    /** Session-Lebensdauer in Sekunden (default 8h). */
+    SESSION_TTL_SEC: z.coerce.number().int().positive().default(8 * 60 * 60),
+    /** Initial-Admin-Anmeldung beim Server-Start auto-anlegen, falls keine Benutzer existieren. */
+    BOOTSTRAP_ADMIN_USERNAME: z.string().default("admin"),
+    BOOTSTRAP_ADMIN_PASSWORD: z.string().default(BOOTSTRAP_ADMIN_PASSWORD_DEV_DEFAULT),
+
+    /**
+     * Notfall-Override für Bare-Metal-Restores oder Test-Setups, die mit
+     * nicht-aufgesetzten Secrets booten sollen. NICHT in Produktion setzen.
+     */
+    HOTDOC_ALLOW_INSECURE_DEFAULTS: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.NODE_ENV !== "production") return;
+    if (data.HOTDOC_ALLOW_INSECURE_DEFAULTS === "1") return;
+
+    /**
+     * Zwei-Stufen-Modell:
+     *  - Default (HOTDOC_STRICT_PRODUCTION ≠ "1"): WARNUNGEN ins Log, kein
+     *    Boot-Fail. Erlaubt schrittweise Migration der Secrets von `[env]`
+     *    in `fly secrets` ohne dass die App zwischendurch nicht mehr bootet.
+     *  - Strict (HOTDOC_STRICT_PRODUCTION = "1"): Boot-Fail. Soll gesetzt
+     *    werden sobald alle Secrets sauber migriert sind und das Repo keine
+     *    Defaults mehr enthält.
+     *
+     * Audit-Trail in Log: jede Warnung erscheint sichtbar in fly-Logs mit
+     * `level=warn` und konkretem Hinweis zur Migration.
+     */
+    const strict = process.env.HOTDOC_STRICT_PRODUCTION === "1";
+    const issues: Array<{ path: string; message: string }> = [];
+
+    if (data.JWT_SECRET === JWT_SECRET_DEV_DEFAULT) {
+      issues.push({
+        path: "JWT_SECRET",
+        message:
+          "JWT_SECRET ist auf dem Dev-Default — in Production muss ein echtes Secret via fly secrets gesetzt sein (min 32 Zeichen).",
+      });
+    }
+    if (data.BOOTSTRAP_ADMIN_PASSWORD === BOOTSTRAP_ADMIN_PASSWORD_DEV_DEFAULT) {
+      issues.push({
+        path: "BOOTSTRAP_ADMIN_PASSWORD",
+        message:
+          "BOOTSTRAP_ADMIN_PASSWORD ist auf dem Dev-Default 'admin12345678' — publicly known. In Production muss ein echtes Passwort via fly secrets gesetzt sein.",
+      });
+    }
+    const hasBlaulichtCreds =
+      !!data.BLAULICHTSMS_CUSTOMER_ID && !!data.BLAULICHTSMS_USER && !!data.BLAULICHTSMS_PW;
+    if (!hasBlaulichtCreds) {
+      issues.push({
+        path: "BLAULICHTSMS_USER",
+        message:
+          "BlaulichtSMS-Credentials fehlen in Production — sonst läuft der Poller heimlich im Mock-Modus und es kommen KEINE echten Alarme an. Setze BLAULICHTSMS_CUSTOMER_ID/USER/PW oder erzwinge HOTDOC_ALLOW_INSECURE_DEFAULTS=1.",
+      });
+    }
+
+    if (strict) {
+      // Strict-Modus: hard-fail über Zod
+      for (const issue of issues) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [issue.path],
+          message: issue.message,
+        });
+      }
+    } else if (issues.length > 0) {
+      // Lax-Modus: console.warn vor pino startet (pino ist noch nicht initialisiert
+      // beim Env-Parse). Sichtbar in fly logs, blockiert nicht.
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[hotdoc/config] PRODUKTIV-WARNUNG — folgende Konfig-Defaults sind unsicher und müssen vor echter Inbetriebnahme migriert werden:",
+      );
+      for (const issue of issues) {
+        // eslint-disable-next-line no-console
+        console.warn(`  ✗ ${issue.path}: ${issue.message}`);
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[hotdoc/config] Aktivere HOTDOC_STRICT_PRODUCTION=1 sobald alles migriert ist — dann blockiert ein Default-Wert den Server-Boot.",
+      );
+    }
+  });
 
 export type Env = z.infer<typeof EnvSchema>;
 
