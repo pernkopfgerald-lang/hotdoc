@@ -2,7 +2,7 @@ import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, T
 import { useEffect, useMemo, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
-import { AbgeschlossenView } from "../components/AbgeschlossenView";
+import { IdleView } from "../components/IdleView";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
 import { AbschlussModal, type AbschlussCheck } from "../components/AbschlussModal";
@@ -728,21 +728,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
 
       <main className="page">
         {active.abgeschlossen ? (
-          <AbgeschlossenView
+          <IdleView
             funkrufname={fahrzeug.funkrufname}
-            abgeschlossenAm={active.abgeschlossen.ts}
-            durch={active.abgeschlossen.durch}
-            summary={[
-              { label: "Mannschaft", value: `${personenAnzahl} Pers.` },
-              { label: "KM (auto)", value: `${active.abgeschlossen.kmGefahren.toFixed(1).replace(".", ",")} km` },
-              { label: "Geräte", value: String(active.gearSelected.size) },
-              { label: "Aufträge", value: String(active.auftraege.length) },
-            ]}
-            syncState={uploadState}
-            onRetryUpload={() => active.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
-            onSwitchFahrzeug={() => setVehicleSwitcherOpen(true)}
             onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
             onArchiv={() => setArchivOpen(true)}
+            syncState={uploadState}
+            onRetryUpload={() => active.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
           />
         ) : (
           <>
