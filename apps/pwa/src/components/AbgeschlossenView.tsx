@@ -1,4 +1,15 @@
-import { AlertTriangle, CheckCircle2, Loader2, Lock, RotateCcw, UploadCloud } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  GraduationCap,
+  Loader2,
+  Lock,
+  MapPin,
+  Plus,
+  RotateCcw,
+  UploadCloud,
+} from "lucide-react";
 
 interface Props {
   funkrufname: string;
@@ -17,6 +28,10 @@ interface Props {
     | { kind: "error"; msg: string };
   /** Manueller Retry für den Upload (nur sichtbar wenn syncState=error). */
   onRetryUpload?: () => void;
+  /** Quick-Action: neuer Einsatz/Übung/Lotsendienst — öffnet Modal mit Typ-Vorwahl. */
+  onNeuerBericht?: (typ: "manuell" | "uebung" | "lotsendienst") => void;
+  /** Quick-Action: Archiv öffnen — read-only Liste der letzten Berichte. */
+  onArchiv?: () => void;
 }
 
 /**
@@ -32,6 +47,8 @@ export function AbgeschlossenView({
   onSwitchFahrzeug,
   syncState,
   onRetryUpload,
+  onNeuerBericht,
+  onArchiv,
 }: Props) {
   return (
     <div
@@ -185,7 +202,153 @@ export function AbgeschlossenView({
       <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-text-3">
         Der Bericht ist nun bei „Florian Eberstalzell" sichtbar
       </p>
+
+      {/* ─── Quick-Actions: was als Nächstes? ─────────────────────── */}
+      {onNeuerBericht || onArchiv ? (
+        <div style={{ marginTop: 20 }}>
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+              marginBottom: 10,
+              textAlign: "center",
+            }}
+          >
+            Was als nächstes
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 10,
+            }}
+          >
+            {onNeuerBericht ? (
+              <>
+                <QuickActionCard
+                  Icon={Plus}
+                  label="Neuer Einsatz"
+                  sub="manuell · ohne Alarm"
+                  color="var(--info)"
+                  glow="var(--glow-info)"
+                  onClick={() => onNeuerBericht("manuell")}
+                />
+                <QuickActionCard
+                  Icon={GraduationCap}
+                  label="Übung"
+                  sub="Training · AS-Stunden"
+                  color="var(--ok)"
+                  glow="var(--glow-ok)"
+                  onClick={() => onNeuerBericht("uebung")}
+                />
+                <QuickActionCard
+                  Icon={MapPin}
+                  label="Lotsendienst"
+                  sub="meist verrechenbar"
+                  color="var(--warn)"
+                  glow="var(--glow-warn)"
+                  onClick={() => onNeuerBericht("lotsendienst")}
+                />
+              </>
+            ) : null}
+            {onArchiv ? (
+              <QuickActionCard
+                Icon={Archive}
+                label="Archiv"
+                sub="letzte Berichte"
+                color="var(--fg-2)"
+                glow="0 10px 28px -8px rgba(15,23,42,0.32)"
+                onClick={onArchiv}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function QuickActionCard({
+  Icon,
+  label,
+  sub,
+  color,
+  glow,
+  onClick,
+}: {
+  Icon: typeof CheckCircle2;
+  label: string;
+  sub: string;
+  color: string;
+  glow: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: 6,
+        padding: "14px 14px 16px",
+        borderRadius: "var(--radius-m)",
+        border: "1px solid var(--glass-border)",
+        background: "var(--glass-2)",
+        backdropFilter: "var(--blur-2)",
+        WebkitBackdropFilter: "var(--blur-2)",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "all 180ms var(--ease-smooth)",
+        color: "var(--fg)",
+        minHeight: 88,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = glow;
+        e.currentTarget.style.borderColor = color;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "";
+        e.currentTarget.style.boxShadow = "";
+        e.currentTarget.style.borderColor = "var(--glass-border)";
+      }}
+    >
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          background: `color-mix(in srgb, ${color} 16%, transparent)`,
+          color,
+          marginBottom: 2,
+        }}
+      >
+        <Icon size={18} strokeWidth={2.2} />
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.011em" }}>
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          color: "var(--fg-3)",
+        }}
+      >
+        {sub}
+      </span>
+    </button>
   );
 }
 

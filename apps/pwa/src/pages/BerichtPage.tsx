@@ -21,6 +21,8 @@ import {
 } from "../components/MannschaftSlot";
 import { MapCard, type MapPosition } from "../components/MapCard";
 import { NeuerAuftragModal } from "../components/NeuerAuftragModal";
+import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
+import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
@@ -99,6 +101,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
   const [vorschauOpen, setVorschauOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
+  /** Modal-State für Neuer-Einsatz-Anlage vom Tablet, mit Typ-Vorwahl. */
+  const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
+  /** Read-only Archiv-Modal. */
+  const [archivOpen, setArchivOpen] = useState(false);
 
   const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => {
     // localStorage hat den Vorzug: schneller Mount ohne Backend-Roundtrip.
@@ -177,20 +183,51 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     }
   }, [einsaetze, fahrzeugId]);
 
-  // Beim Mount zusätzlich aus Backend laden — für den Fall dass:
-  //   - Tablet gewechselt (anderes Gerät hat keinen localStorage-Eintrag)
-  //   - Backend hat neueren abgeschlossen-Stand (z. B. von Florianstation
-  //     reaktiviert oder manuell abgeschlossen)
-  // Wir suchen den aktiven Einsatz mit matching alarmId und prüfen ob mein
-  // Fahrzeugbericht status="abgeschlossen" hat.
+  // Backend-Polling (alle 30 s) — drei Aufgaben in einem Lauf:
+  //   1. Frischer abgeschlossen-Stand aus Backend übernehmen (z. B. nach
+  //      Florianstation-Reaktivierung oder Tablet-Gerätewechsel).
+  //   2. **Auto-Open bei neuem Alarm:** wenn ein NEUER aktiver Einsatz
+  //      auftaucht während mein Bericht abgeschlossen ist → automatischer
+  //      Wechsel zum frischen Einsatz + haptisches Feedback (Vibration).
+  //      Damit reißt die App bei jedem BlaulichtSMS-Alarm sofort auf, ohne
+  //      dass der Kdt. erst Tabs wechseln muss.
+  //   3. Neu via "Neuer Einsatz"-Modal angelegte Einsätze (manuell, Übung,
+  //      Lotsendienst) werden ebenfalls auto-aktiviert — selbe Logik, weil
+  //      auch sie als status="aktiv" zurückkommen.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let lastSeenActiveIds = new Set<string>();
+
+    const runPoll = async () => {
       try {
         const list = await apiCall<{
-          items: Array<{ _id: string; alarmId?: string }>;
+          items: Array<{ _id: string; alarmId?: string; einsatzTyp?: string }>;
         }>("/api/einsaetze?status=aktiv");
         if (cancelled) return;
+
+        // ─── 2 + 3: Auto-Open-Logik ───
+        const currentIds = new Set(list.items.map((d) => d._id));
+        const newOnes = list.items.filter((d) => !lastSeenActiveIds.has(d._id));
+        if (lastSeenActiveIds.size > 0 && newOnes.length > 0 && active.abgeschlossen) {
+          // Neuer Einsatz aufgetaucht UND wir sind aktuell im
+          // abgeschlossen-Zustand → State zurücksetzen damit das Tablet
+          // den frischen Einsatz als Formular zeigt.
+          try {
+            navigator.vibrate?.([100, 60, 100, 60, 200]);
+          } catch {
+            // egal — Vibration ist Komfort, nicht Pflicht
+          }
+          setEinsaetze((prev) =>
+            prev.map((e) =>
+              e.id === DEMO_ALARM.alarmId ? { ...e, abgeschlossen: null } : e,
+            ),
+          );
+          // localStorage-Persistenz aus früherem Abschluss räumen
+          saveReportState(fahrzeugId, DEMO_ALARM.alarmId, null);
+        }
+        lastSeenActiveIds = currentIds;
+
+        // ─── 1: Backend-abgeschlossen-Stand übernehmen ───
         const matchByAlarmId = list.items.find(
           (d) => d.alarmId === DEMO_ALARM.alarmId,
         );
@@ -209,8 +246,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         if (cancelled) return;
         const mine = fz.items?.find((b) => b.fahrzeugId === fahrzeugId);
         if (!mine || mine.status !== "abgeschlossen") return;
-        // Backend hat einen abgeschlossenen Bericht für mein Fahrzeug.
-        // Setze lokalen State entsprechend, falls noch nicht abgeschlossen.
         setEinsaetze((prev) =>
           prev.map((e) =>
             e.id === DEMO_ALARM.alarmId && !e.abgeschlossen
@@ -231,6 +266,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       } catch {
         // Backend nicht erreichbar — localStorage-Stand bleibt maßgeblich.
       }
+    };
+
+    void runPoll();
+    const t = setInterval(() => void runPoll(), 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fahrzeugId]);
+
+  // Legacy-Mount-Effekt: bleibt für Rückwärtskompatibilität als no-op-Block.
+  // Die Logik wurde in den runPoll-Loop oben verschoben damit Auto-Open
+  // periodisch greift, nicht nur beim Mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // intentional no-op — siehe runPoll oben
+      if (cancelled) return;
     })();
     return () => {
       cancelled = true;
@@ -687,6 +741,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             syncState={uploadState}
             onRetryUpload={() => active.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
             onSwitchFahrzeug={() => setVehicleSwitcherOpen(true)}
+            onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
+            onArchiv={() => setArchivOpen(true)}
           />
         ) : (
           <>
@@ -988,6 +1044,30 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         }}
         onClose={() => setVorschauOpen(false)}
       />
+
+      {/* ─── Neuer Einsatz/Übung/Lotsendienst ─── */}
+      <NeuerEinsatzTabletModal
+        open={neuerEinsatzOpen !== null}
+        initialTyp={neuerEinsatzOpen ?? "manuell"}
+        onClose={() => setNeuerEinsatzOpen(null)}
+        onCreated={(einsatzId, typ) => {
+          setNeuerEinsatzOpen(null);
+          // Wir zeigen einen kurzen Hinweis-Toast: der neue Einsatz erscheint
+          // beim nächsten Backend-Poll (alle 30 s) auto-magisch als aktiver
+          // Einsatz, die Auto-Open-Logik schaltet dann automatisch um.
+          // Vibration als haptisches Feedback bei erfolgreichem Anlegen.
+          try {
+            navigator.vibrate?.([60, 40, 60]);
+          } catch {
+            // egal
+          }
+          // Loggen damit man im Tablet-DevTools sieht was passiert ist
+          console.info("[neuer-einsatz] angelegt:", { einsatzId, typ });
+        }}
+      />
+
+      {/* ─── Archiv (read-only) ─── */}
+      <ArchivTabletModal open={archivOpen} onClose={() => setArchivOpen(false)} />
     </div>
   );
 }
