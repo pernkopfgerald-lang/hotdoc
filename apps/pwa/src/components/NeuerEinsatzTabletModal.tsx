@@ -1,7 +1,8 @@
 import { EINSATZARTEN } from "@hotdoc/shared";
-import { Flame, GraduationCap, MapPin, Plus, Wrench, X } from "lucide-react";
+import { Flame, GraduationCap, MapPin, Plus, Users, Wrench, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiCall } from "../lib/api";
+import { PersonPickerModal, type PickPerson } from "./PersonPickerModal";
 
 export type EinsatzTyp = "manuell" | "lotsendienst" | "uebung";
 
@@ -113,6 +114,25 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
   const [einsatzart, setEinsatzart] = useState<string>("");
   const [einsatzartFreitext, setEinsatzartFreitext] = useState("");
   const [grund, setGrund] = useState("");
+  // Lotsendienst-Felder
+  const [auftraggeber, setAuftraggeber] = useState("");
+  const [route, setRoute] = useState("");
+  const [verrechenbar, setVerrechenbar] = useState(true);
+  const [rechnungsadresse, setRechnungsadresse] = useState("");
+  // Übungs-Felder
+  const [uebungThema, setUebungThema] = useState("");
+  /** Person aus der syBOS-Liste, die die Übung leitet. */
+  const [uebungsleiterPerson, setUebungsleiterPerson] = useState<PickPerson | null>(null);
+  const [uebungsTyp, setUebungsTyp] = useState<string>("");
+  /** Person-Picker für Übungsleiter — offen/zu. */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Submit-State
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  /** syBOS-Personalliste (für PickerModal). Wird einmalig beim Öffnen geladen.
+   *  Muss VOR den useEffect-Hooks deklariert sein, damit der Loader-Effekt
+   *  darauf zugreifen kann (block-scoped variable order). */
+  const [personen, setPersonen] = useState<PickPerson[]>([]);
 
   // ─── State-Sync: bei jedem Öffnen den Initial-Typ frisch setzen ───
   // Bug-Fix: useState(initialTyp ?? "manuell") läuft NUR beim ersten Mount.
@@ -123,18 +143,49 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       setTyp(initialTyp ?? "manuell");
     }
   }, [open, initialTyp]);
-  // Lotsendienst-Felder
-  const [auftraggeber, setAuftraggeber] = useState("");
-  const [route, setRoute] = useState("");
-  const [verrechenbar, setVerrechenbar] = useState(true);
-  const [rechnungsadresse, setRechnungsadresse] = useState("");
-  // Übungs-Felder
-  const [uebungThema, setUebungThema] = useState("");
-  const [uebungsleiter, setUebungsleiter] = useState("");
-  const [uebungsTyp, setUebungsTyp] = useState<string>("");
-  // State
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+
+  // ─── Personalliste laden (für Übungsleiter-Picker) ───
+  // Wird nur beim ersten Öffnen geholt — die Liste ist seitens Backend
+  // cached. Bei Backend-Ausfall bleibt der Picker leer und der User
+  // sieht "keine Personen gefunden" im Picker.
+  useEffect(() => {
+    if (!open || personen.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await apiCall<{
+          items: Array<{
+            syBosId: number;
+            vorname?: string;
+            nachname?: string;
+            rang?: string;
+            atemschutzGueltig?: boolean;
+            aktiv?: boolean;
+          }>;
+        }>("/api/admin/personen");
+        if (cancelled) return;
+        const list: PickPerson[] = r.items
+          .filter((p) => p.aktiv !== false)
+          .map((p) => ({
+            _id: `person:${p.syBosId}`,
+            syBosId: p.syBosId,
+            nachname: p.nachname ?? "",
+            vorname: p.vorname ?? "",
+            dienstgrad: p.rang ?? "",
+            atemschutzGueltig: p.atemschutzGueltig === true,
+          }))
+          .sort((a, b) =>
+            `${a.nachname} ${a.vorname}`.localeCompare(`${b.nachname} ${b.vorname}`),
+          );
+        setPersonen(list);
+      } catch {
+        // Backend nicht erreichbar — Picker bleibt leer, kein blockierender Fehler.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, personen.length]);
 
   if (!open) return null;
 
@@ -148,7 +199,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     setVerrechenbar(true);
     setRechnungsadresse("");
     setUebungThema("");
-    setUebungsleiter("");
+    setUebungsleiterPerson(null);
     setUebungsTyp("");
     setErr(null);
   }
@@ -186,7 +237,12 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       }
       if (typ === "uebung") {
         body.uebungThema = uebungThema.trim();
-        if (uebungsleiter.trim()) body.uebungsleiter = uebungsleiter.trim();
+        if (uebungsleiterPerson) {
+          // Voller Name als String — das Schema-Feld bleibt uebungsleiter: string
+          // damit auch externe (Nicht-FF-)Übungsleiter aus historischen Daten
+          // weiterhin angezeigt werden.
+          body.uebungsleiter = `${uebungsleiterPerson.nachname} ${uebungsleiterPerson.vorname}`.trim();
+        }
         if (uebungsTyp) body.uebungsTyp = uebungsTyp;
       }
       const result = await apiCall<{ ok: true; id: string }>(
@@ -501,12 +557,84 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             </div>
             <div className="field">
               <label className="caption">Übungsleiter</label>
-              <input
-                className="input"
-                value={uebungsleiter}
-                onChange={(e) => setUebungsleiter(e.target.value)}
-                placeholder="Name des Übungsleiters"
-              />
+              {uebungsleiterPerson ? (
+                <div
+                  className="person filled"
+                  style={{ cursor: "default", gap: 12 }}
+                >
+                  <span
+                    className="avatar"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, var(--ok-tint), var(--glass-2))",
+                      color: "var(--ok)",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {initials(uebungsleiterPerson)}
+                  </span>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                      minWidth: 0,
+                    }}
+                  >
+                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>
+                      {uebungsleiterPerson.nachname} {uebungsleiterPerson.vorname}
+                    </span>
+                    {uebungsleiterPerson.dienstgrad ? (
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: "var(--tracking-caps)",
+                          textTransform: "uppercase",
+                          color: "var(--fg-3)",
+                        }}
+                      >
+                        {uebungsleiterPerson.dienstgrad}
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => setPickerOpen(true)}
+                    aria-label="Übungsleiter ändern"
+                    title="Übungsleiter ändern"
+                  >
+                    <Users size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn danger"
+                    onClick={() => setUebungsleiterPerson(null)}
+                    aria-label="Übungsleiter entfernen"
+                    title="Übungsleiter entfernen"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="crew-row empty"
+                  onClick={() => setPickerOpen(true)}
+                  style={{ cursor: "pointer", width: "100%" }}
+                >
+                  <span className="crew-num">
+                    <Users size={13} />
+                  </span>
+                  <span className="crew-name placeholder">
+                    Übungsleiter aus Personalliste wählen …
+                  </span>
+                </button>
+              )}
             </div>
             <div className="field">
               <label className="caption">Übungstyp</label>
@@ -587,6 +715,27 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           </button>
         </div>
       </div>
+
+      {/* ─── Person-Picker für Übungsleiter ─── */}
+      <PersonPickerModal
+        open={pickerOpen}
+        title="Übungsleiter wählen"
+        subtitle="Aktive Mitglieder aus der syBOS-Personalliste"
+        personen={personen}
+        bereitsGewaehlt={new Set<number>()}
+        onSelect={(p) => {
+          setUebungsleiterPerson(p);
+          setPickerOpen(false);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
     </div>
   );
+}
+
+/** Leitet "VN" aus "Nachname Vorname" ab — Avatar-Initialen. */
+function initials(p: PickPerson): string {
+  const a = p.nachname.charAt(0).toUpperCase();
+  const b = p.vorname.charAt(0).toUpperCase();
+  return `${a}${b}` || "??";
 }
