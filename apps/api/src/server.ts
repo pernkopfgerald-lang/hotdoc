@@ -13,6 +13,7 @@ import { authRouter } from "./routes/auth.js";
 import { configRouter } from "./routes/config.js";
 import { devRouter } from "./routes/dev.js";
 import { einsaetzeRouter } from "./routes/einsaetze.js";
+import { geocodeRouter } from "./routes/geocode.js";
 import { healthRouter } from "./routes/health.js";
 import { pdfRouter } from "./routes/pdf.js";
 import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
@@ -88,6 +89,7 @@ async function main(): Promise<void> {
   app.use(einsaetzeRouter);
   app.use(pdfRouter);
   app.use(audioRouter);
+  app.use(geocodeRouter);
   app.use(devRouter);
 
   // — DB-Bootstrap —

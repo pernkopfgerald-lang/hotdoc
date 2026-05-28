@@ -2,6 +2,7 @@ import { EINSATZARTEN } from "@hotdoc/shared";
 import { Flame, GraduationCap, MapPin, Plus, Users, Wrench, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiCall } from "../lib/api";
+import { AddressAutocomplete, type GeocodeMatch } from "./AddressAutocomplete";
 import { PersonPickerModal, type PickPerson } from "./PersonPickerModal";
 
 export type EinsatzTyp = "manuell" | "lotsendienst" | "uebung";
@@ -11,6 +12,8 @@ interface ManuellAnlageBody {
   einsatzort: string;
   einsatzart?: string;
   einsatzartFreitext?: string;
+  /** Aus Geocoder — wird auf der Florian-Karte als Marker dargestellt. */
+  koordinaten?: { lat: number; lng: number };
   grund?: string;
   lotsendienstAuftraggeber?: string;
   lotsendienstRoute?: string;
@@ -110,6 +113,10 @@ function sortedEinsatzarten(): string[] {
 export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }: Props) {
   const [typ, setTyp] = useState<EinsatzTyp>(initialTyp ?? "manuell");
   const [einsatzort, setEinsatzort] = useState("");
+  /** Koordinaten aus dem Geocoder (falls der User einen Treffer geklickt hat).
+   *  Wird beim Submit mit ans Backend geschickt — die Florian-Karte zeigt
+   *  dann sofort den Einsatzort-Marker. */
+  const [koord, setKoord] = useState<{ lat: number; lng: number } | null>(null);
   /** Gewählte Einsatzart aus der Pillen-Liste (nur bei typ="manuell" relevant). */
   const [einsatzart, setEinsatzart] = useState<string>("");
   const [einsatzartFreitext, setEinsatzartFreitext] = useState("");
@@ -191,6 +198,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
 
   function resetAll() {
     setEinsatzort("");
+    setKoord(null);
     setEinsatzart("");
     setEinsatzartFreitext("");
     setGrund("");
@@ -227,6 +235,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         ...(einsatzartFreitext.trim()
           ? { einsatzartFreitext: einsatzartFreitext.trim() }
           : {}),
+        ...(koord ? { koordinaten: koord } : {}),
         ...(grund.trim() ? { grund: grund.trim() } : {}),
       };
       if (typ === "lotsendienst") {
@@ -463,13 +472,39 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           <label className="caption">
             {typ === "uebung" ? "Übungsort" : typ === "lotsendienst" ? "Treffpunkt / Strecken-Anfang" : "Einsatzort / Ortsangabe"}
           </label>
-          <input
-            className="input"
-            autoFocus
+          <AddressAutocomplete
             value={einsatzort}
-            onChange={(e) => setEinsatzort(e.target.value)}
+            onChange={(text) => {
+              setEinsatzort(text);
+              // User tippt manuell weiter → Koordinaten-Bezug zur Geocoder-
+              // Auswahl verwerfen, sonst stimmen Anzeige und Koords nicht überein.
+              if (koord !== null) setKoord(null);
+            }}
+            onPick={(m: GeocodeMatch) => {
+              setEinsatzort(m.label);
+              setKoord({ lat: m.lat, lng: m.lng });
+            }}
+            autoFocus
             placeholder="z. B. Solarstraße 5, 4653 Eberstalzell"
           />
+          {koord ? (
+            <div
+              style={{
+                marginTop: 6,
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                color: "var(--ok)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <MapPin size={10} />
+              {koord.lat.toFixed(5)}, {koord.lng.toFixed(5)} · Florian-Karte zeigt Marker direkt an
+            </div>
+          ) : null}
         </div>
         <div className="field">
           <label className="caption">

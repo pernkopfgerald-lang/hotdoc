@@ -75,6 +75,14 @@ const ManuellAnlageBodySchema = z.object({
   einsatzartFreitext: z.string().optional(),
   alarmierungZeit: z.string().datetime().optional(),
   grund: z.string().optional(),
+  /** Aus dem Geocoder (Photon) — wandert ins Einsatz-Doc damit die
+   *  Florian-Karte direkt einen Marker am Einsatzort zeigt. */
+  koordinaten: z
+    .object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    })
+    .optional(),
   // Lotsendienst-Felder
   lotsendienstAuftraggeber: z.string().optional(),
   lotsendienstRoute: z.string().optional(),
@@ -126,6 +134,7 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (as
     alarmierungZeit: d.alarmierungZeit ?? now,
     ...(d.einsatzart ? { einsatzart: d.einsatzart } : {}),
     ...(d.einsatzartFreitext ? { einsatzartFreitext: d.einsatzartFreitext } : {}),
+    ...(d.koordinaten ? { koordinaten: d.koordinaten } : {}),
     // Typ-spezifische Felder — alle optional im Schema
     ...(d.lotsendienstAuftraggeber
       ? { lotsendienstAuftraggeber: d.lotsendienstAuftraggeber }
