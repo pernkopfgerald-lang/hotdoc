@@ -12,6 +12,7 @@ import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimel
 import { DemoBanner } from "../components/DemoBanner";
 import { DictateButton, type DictateResult } from "../components/DictateButton";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
+import { FxToggle } from "../components/FxToggle";
 import { GearChips } from "../components/GearChips";
 import {
   MannschaftSlot,
@@ -922,6 +923,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         >
           Setup
         </button>
+        <span className="sep">·</span>
+        <FxToggle />
       </div>
 
       <HandoffModal

@@ -24,6 +24,31 @@
           /* noop */
         }
       })();
+      // Pre-paint FX-Mode auto-detection — backdrop-filter blur(40px) ist auf
+      // älteren Tablet-GPUs (z. B. Lenovo TB-X606X mit PowerVR GE8320) teuer.
+      // Wir prüfen RAM + Cores + UA und setzen data-fx="lite" für schwache Geräte.
+      // User-Override via localStorage gewinnt immer.
+      (function () {
+        try {
+          var override = localStorage.getItem("hotdoc.fxMode");
+          if (override === "lite" || override === "full") {
+            document.documentElement.dataset.fx = override;
+            return;
+          }
+          var mem = navigator.deviceMemory || 4;
+          var cores = navigator.hardwareConcurrency || 4;
+          var ua = navigator.userAgent || "";
+          // Heuristik: ≤ 4 GB RAM ODER ≤ 4 Kerne ODER bekannte Schwach-Tablets
+          // (Lenovo TB-X606X identifiziert sich oft mit "Lenovo TB-X" prefix)
+          var lite =
+            mem <= 4 ||
+            cores <= 4 ||
+            /Lenovo TB-X|Android [4-9]\.|MediaTek MT|Helio P22|GoTab|Galaxy Tab A/i.test(ua);
+          document.documentElement.dataset.fx = lite ? "lite" : "full";
+        } catch (e) {
+          document.documentElement.dataset.fx = "full";
+        }
+      })();
     </script>
   </head>
   <body>

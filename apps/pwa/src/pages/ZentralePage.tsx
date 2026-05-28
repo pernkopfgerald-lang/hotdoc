@@ -26,6 +26,7 @@ import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimel
 import { DemoBanner } from "../components/DemoBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
+import { FxToggle } from "../components/FxToggle";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
@@ -1816,6 +1817,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         >
           Setup
         </button>
+        <span className="sep">·</span>
+        <FxToggle />
       </div>
 
       <HandoffModal

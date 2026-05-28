@@ -376,3 +376,60 @@
   0%, 100% { opacity: 1;   transform: scale(1);    }
   50%      { opacity: 0.4; transform: scale(0.85); }
 }
+
+/* ============================================================
+   LITE-MODE — Performance-Override für ältere Tablets
+   Aktiv per <html data-fx="lite">. Auto-Detection in index.html
+   prüft RAM/Cores/UA. User kann manuell wechseln (Setup-Footer).
+
+   Strategie:
+     - backdrop-filter komplett raus (PowerVR/Mali-GPUs killen)
+     - Glas-Schichten → solide Surface-Farben mit höherer Opazität
+     - Shadows reduziert (einlagig statt vierfach gestapelt)
+     - Aurora-Drift-Animation aus
+     - Page-Reveal-Stagger aus
+     - Hover-Lift transforms aus
+     - color-mix() ausweichen wo möglich
+   ============================================================ */
+[data-fx="lite"] {
+  /* Glas → solide Surfaces */
+  --glass-1: var(--surface);
+  --glass-2: var(--surface);
+  --glass-3: var(--surface-2);
+  --glass-4: var(--surface-2);
+
+  /* Blur-Tokens auf no-op — Browser parsen es aber tut nichts */
+  --blur-1: saturate(105%);
+  --blur-2: saturate(105%);
+  --blur-3: saturate(102%);
+  --blur-4: saturate(101%);
+
+  /* Schatten — eine Lage statt vier */
+  --glass-shadow-1: 0 6px 18px rgba(15, 23, 42, 0.16), 0 0 0 1px var(--glass-border);
+  --glass-shadow-2: 0 3px 10px rgba(15, 23, 42, 0.12), 0 0 0 1px var(--glass-border);
+  --glass-shadow-3: 0 1px 3px rgba(15, 23, 42, 0.08), 0 0 0 1px var(--glass-border);
+
+  /* Glow-Aura → einlagige Schatten */
+  --glow-red:  0 8px 22px -8px rgba(200, 16, 46, 0.45);
+  --glow-red-soft: 0 4px 12px -4px rgba(200, 16, 46, 0.25);
+  --glow-ok:   0 6px 18px -8px rgba(4, 120, 87, 0.30);
+  --glow-warn: 0 6px 18px -8px rgba(180, 83, 9, 0.32);
+  --glow-info: 0 6px 18px -8px rgba(29, 78, 216, 0.30);
+}
+
+[data-fx="lite"][data-theme="dark"] {
+  --glass-1: var(--surface-1);
+  --glass-2: var(--surface-2);
+  --glass-3: var(--surface-3);
+  --glass-4: var(--surface-3);
+
+  --glass-shadow-1: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--glass-border);
+  --glass-shadow-2: 0 3px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border);
+  --glass-shadow-3: 0 1px 3px rgba(0, 0, 0, 0.30), 0 0 0 1px var(--glass-border);
+
+  --glow-red:  0 8px 22px -8px rgba(255, 84, 104, 0.50);
+  --glow-red-soft: 0 4px 12px -4px rgba(255, 84, 104, 0.32);
+  --glow-ok:   0 6px 18px -8px rgba(52, 211, 153, 0.36);
+  --glow-warn: 0 6px 18px -8px rgba(251, 191, 36, 0.36);
+  --glow-info: 0 6px 18px -8px rgba(96, 165, 250, 0.36);
+}

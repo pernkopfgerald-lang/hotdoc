@@ -1348,6 +1348,149 @@
   .appheader { padding: 8px 16px; }
 }
 
+/* ============================================================
+   DESKTOP+ — ab 1280px breitere Cards, mehr Whitespace
+   Aktuelles Layout zentriert sich um 1200px — auf großen
+   Bildschirmen hatten Cards sehr viel Margin links/rechts.
+   ============================================================ */
+@media (min-width: 1280px) {
+  .page {
+    max-width: 1280px;
+    padding: 32px 32px 64px;
+    gap: 18px;
+  }
+  .appheader {
+    padding: 16px 32px 18px;
+  }
+  .card {
+    padding: 26px 26px;
+  }
+  .alarm {
+    padding: 28px 32px 24px;
+  }
+  .alarm-title {
+    font-size: 36px;
+  }
+}
+
+@media (min-width: 1680px) {
+  .page {
+    max-width: 1440px;
+  }
+}
+
+/* ============================================================
+   LITE-MODE — Verhaltens-Overrides (Animations + Transforms)
+   Tokens werden in tokens.css [data-fx="lite"] gesetzt.
+   Hier deaktivieren wir nur die teuren GPU-Effekte.
+   ============================================================ */
+[data-fx="lite"] body::after {
+  /* Aurora-Drift-Animation killt GPU auf älteren Tablets */
+  animation: none;
+  opacity: 0.18;
+}
+[data-fx="lite"] body::before {
+  /* Aurora-Stack vereinfachen — nur noch eine sehr dünne Tönung */
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+}
+
+/* Page-Reveal-Stagger aus */
+[data-fx="lite"] .page,
+[data-fx="lite"] .page > * {
+  animation: none !important;
+}
+
+/* Modal-Animations aus (sieht nüchtern aus, aber rendert in 1 frame) */
+[data-fx="lite"] [role="dialog"] {
+  animation: none !important;
+}
+[data-fx="lite"] [role="dialog"] > * {
+  animation: none !important;
+}
+
+/* Hover-Lifts aus — auf Touch eh nutzlos, auf alten GPUs teuer */
+[data-fx="lite"] .icon-btn:hover,
+[data-fx="lite"] .chip:hover,
+[data-fx="lite"] .vehicle-chip:hover,
+[data-fx="lite"] .person:hover,
+[data-fx="lite"] .crew-row.empty:hover,
+[data-fx="lite"] .dictate:hover,
+[data-fx="lite"] .cta:hover,
+[data-fx="lite"] .cta-secondary button:hover,
+[data-fx="lite"] .themetoggle:hover,
+[data-fx="lite"] .freeform .add-btn:hover {
+  transform: none;
+}
+
+/* Card-Glanz-Streifen aus */
+[data-fx="lite"] .card::before {
+  display: none;
+}
+
+/* Alarm-Streifen (oben rot) bleibt — ist gradient ohne blur */
+/* Alarm-Pulse-Ring bleibt — wichtige visuelle Markierung */
+
+/* Diktat-Recording-Animation reduziert (kein Multi-Stage-Box-Shadow) */
+[data-fx="lite"] @keyframes dictate-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--red-glow); }
+  50%      { box-shadow: 0 0 0 8px transparent; }
+}
+
+/* Breathe-Animation auf Brand-Dot reduziert */
+[data-fx="lite"] .appname .dot {
+  animation: blink 1.8s ease-in-out infinite;
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red-glow);
+}
+
+/* Touch-Geräte ohne :hover Support → identisch behandeln (extra Safety) */
+@media (hover: none) {
+  .icon-btn:hover,
+  .chip:hover,
+  .vehicle-chip:hover,
+  .person:hover,
+  .crew-row.empty:hover,
+  .dictate:hover,
+  .cta:hover,
+  .cta-secondary button:hover,
+  .themetoggle:hover,
+  .freeform .add-btn:hover {
+    transform: none;
+  }
+}
+
+/* Lite-Mode Indikator-Badge im Footer */
+.fx-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--glass-3);
+  border: 1px solid var(--glass-border);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  cursor: pointer;
+  min-height: 0;
+  transition: background var(--dur-fast) var(--ease-smooth);
+}
+.fx-badge:hover {
+  background: var(--glass-2);
+  color: var(--fg);
+}
+.fx-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.fx-badge.lite .dot { background: var(--warn); }
+.fx-badge.auto .dot { background: var(--info); }
+
 /* ─── App footer ──────────────────────────────────────────── */
 .appfoot {
   text-align: center;
