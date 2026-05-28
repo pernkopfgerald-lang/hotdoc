@@ -48,10 +48,10 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew }: Props) {
           borderColor: "var(--border)",
           color: "var(--fg-2)",
         }}
-        title="Neuer Auftrag — übernimmt Personal aus aktivem Auftrag"
+        title="Neuen Einsatz/Übung/Lotsendienst anlegen"
       >
         <Plus size={13} />
-        Neuer Auftrag
+        Neuer Einsatz
       </button>
     </div>
   );

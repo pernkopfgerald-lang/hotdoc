@@ -20,7 +20,6 @@ import {
   type MannschaftSlotData,
 } from "../components/MannschaftSlot";
 import { MapCard, type MapPosition } from "../components/MapCard";
-import { NeuerAuftragModal } from "../components/NeuerAuftragModal";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { PersonButton } from "../components/PersonButton";
@@ -97,7 +96,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState<PickerTarget | null>(null);
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
-  const [neuerAuftragOpen, setNeuerAuftragOpen] = useState(false);
   const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
   const [vorschauOpen, setVorschauOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
@@ -535,44 +533,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     patchActive((e) => ({ ...e, oelSaecke: n }));
   }
 
-  function createNewAuftrag(einsatzart: string, einsatzortText: string) {
-    const id = `manuell-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const now = new Date();
-    const pos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : EINSATZ_POS;
-    const neueInstance: EinsatzInstance = {
-      id,
-      manuell: true,
-      einsatzPos: pos,
-      alarm: {
-        alarmId: id.toUpperCase(),
-        einsatzart,
-        einsatzort: einsatzortText,
-        alarmierungZeit: now.toISOString(),
-        alarmierungAuthor: "MANUELL",
-        koordinaten: pos,
-        distanzKm: haversineKm(HOME_POS, pos),
-      },
-      fahrer: active.fahrer,
-      kdt: active.kdt,
-      mannschaft: active.mannschaft.map((m) => ({ ...m })),
-      gearSelected: new Set(),
-      oelSaecke: 0,
-      auftraege: [],
-      chronik: [
-        {
-          id: `chr-${Date.now()}`,
-          zeitstempel: now.toISOString(),
-          funkrufname: fahrzeug.funkrufname,
-          source: "manuell",
-          text: `Auftrag manuell angelegt · ${einsatzart} · ${einsatzortText}`,
-        },
-      ],
-      abgeschlossen: null,
-    };
-    setEinsaetze((prev) => [...prev, neueInstance]);
-    setActiveId(id);
-    setNeuerAuftragOpen(false);
-  }
+  // createNewAuftrag entfernt — die Anlage neuer Einsätze läuft jetzt
+  // ausschließlich über das NeuerEinsatzTabletModal, das POST
+  // /api/einsaetze/manuell ruft. Der neue Einsatz erscheint beim nächsten
+  // 30s-Backend-Poll automatisch und triggert Auto-Open + Vibration.
 
   function handleSwitchVehicle(id: FahrzeugId) {
     setVehicleSwitcherOpen(false);
@@ -720,7 +684,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         tabs={tabs}
         activeId={activeId}
         onSelect={setActiveId}
-        onNew={() => setNeuerAuftragOpen(true)}
+        onNew={() => setNeuerEinsatzOpen("manuell")}
       />
 
       {!active.abgeschlossen ? <DemoBanner /> : null}
@@ -1001,12 +965,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         onClose={() => setVehicleSwitcherOpen(false)}
       />
 
-      <NeuerAuftragModal
-        open={neuerAuftragOpen}
-        inheritedCount={personenAnzahl}
-        onConfirm={createNewAuftrag}
-        onCancel={() => setNeuerAuftragOpen(false)}
-      />
+      {/* NeuerAuftragModal entfernt — Konsolidierung mit NeuerEinsatzTabletModal,
+          beide Buttons ("+ Neuer Einsatz" oben im Tab-Header und unten in der
+          IdleView) öffnen jetzt das gleiche Modal. */}
 
       <AbschlussModal
         open={abschlussModalOpen}
