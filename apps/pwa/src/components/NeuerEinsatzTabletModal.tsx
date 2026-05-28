@@ -1,5 +1,6 @@
-import { Activity, GraduationCap, MapPin, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { EINSATZARTEN } from "@hotdoc/shared";
+import { Flame, GraduationCap, MapPin, Plus, Wrench, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { apiCall } from "../lib/api";
 
 export type EinsatzTyp = "manuell" | "lotsendienst" | "uebung";
@@ -41,12 +42,12 @@ const UEBUNGS_TYPEN = [
 
 const TYP_META: Record<
   EinsatzTyp,
-  { label: string; sub: string; icon: typeof Activity; color: string; glow: string }
+  { label: string; sub: string; icon: typeof Wrench; color: string; glow: string }
 > = {
   manuell: {
-    label: "Sonstige Tätigkeit",
+    label: "Neuer Einsatz",
     sub: "Bericht ohne BlaulichtSMS-Alarm",
-    icon: Activity,
+    icon: Wrench,
     color: "var(--info)",
     glow: "var(--glow-info)",
   },
@@ -67,6 +68,33 @@ const TYP_META: Record<
 };
 
 /**
+ * Häufig genutzte Einsatzarten — zuerst gelistet, damit die Mannschaft
+ * sie in zwei Daumen-Klicks erreicht. Reihenfolge in Anlehnung an das
+ * Papier-Formular der FF Eberstalzell. Restliche EINSATZARTEN folgen
+ * darunter alphabetisch.
+ */
+const FREQUENT_EINSATZARTEN: readonly string[] = [
+  "Brand KFZ",
+  "Brand Wohnhaus",
+  "Brand Gewerbe",
+  "BMA",
+  "Brandverdacht",
+  "VU Eingekl. Per.",
+  "Personenrettung",
+  "Pumparbeiten",
+  "Sturm",
+  "Ölspur",
+  "Türöffnung",
+  "Tierrettung",
+];
+
+function sortedEinsatzarten(): string[] {
+  const frequent = new Set(FREQUENT_EINSATZARTEN);
+  const rest = (EINSATZARTEN as readonly string[]).filter((a) => !frequent.has(a));
+  return [...FREQUENT_EINSATZARTEN, ...rest.sort((a, b) => a.localeCompare(b))];
+}
+
+/**
  * Schlanke Tablet-Variante des Manueller-Bericht-Anlage-Modals.
  * Statt eines mehrstufigen Wizards eine flache Form mit Type-Selector
  * oben — Touch-tauglich, ohne unnötiges Scrollen.
@@ -81,8 +109,20 @@ const TYP_META: Record<
 export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }: Props) {
   const [typ, setTyp] = useState<EinsatzTyp>(initialTyp ?? "manuell");
   const [einsatzort, setEinsatzort] = useState("");
+  /** Gewählte Einsatzart aus der Pillen-Liste (nur bei typ="manuell" relevant). */
+  const [einsatzart, setEinsatzart] = useState<string>("");
   const [einsatzartFreitext, setEinsatzartFreitext] = useState("");
   const [grund, setGrund] = useState("");
+
+  // ─── State-Sync: bei jedem Öffnen den Initial-Typ frisch setzen ───
+  // Bug-Fix: useState(initialTyp ?? "manuell") läuft NUR beim ersten Mount.
+  // Wenn das Modal geschlossen wird und mit anderem initialTyp wieder
+  // geöffnet wird, behielt es den alten State. → useEffect.
+  useEffect(() => {
+    if (open) {
+      setTyp(initialTyp ?? "manuell");
+    }
+  }, [open, initialTyp]);
   // Lotsendienst-Felder
   const [auftraggeber, setAuftraggeber] = useState("");
   const [route, setRoute] = useState("");
@@ -100,6 +140,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
 
   function resetAll() {
     setEinsatzort("");
+    setEinsatzart("");
     setEinsatzartFreitext("");
     setGrund("");
     setAuftraggeber("");
@@ -131,6 +172,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       const body: ManuellAnlageBody = {
         einsatzTyp: typ,
         einsatzort: einsatzort.trim(),
+        ...(einsatzart ? { einsatzart } : {}),
         ...(einsatzartFreitext.trim()
           ? { einsatzartFreitext: einsatzartFreitext.trim() }
           : {}),
@@ -302,6 +344,64 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           })}
         </div>
 
+        {/* Einsatzart-Pillen — NUR bei "Neuer Einsatz" (manuell) sichtbar */}
+        {typ === "manuell" ? (
+          <div className="field">
+            <label className="caption">Einsatzart</label>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                maxHeight: 180,
+                overflowY: "auto",
+                padding: 2,
+              }}
+            >
+              {sortedEinsatzarten().map((art) => {
+                const active = einsatzart === art;
+                return (
+                  <button
+                    key={art}
+                    type="button"
+                    onClick={() => setEinsatzart(active ? "" : art)}
+                    className={`chip${active ? " selected" : ""}`}
+                    style={{
+                      fontSize: 13,
+                      padding: "8px 12px",
+                      minHeight: 34,
+                      ...(active
+                        ? {
+                            background: "var(--info-tint)",
+                            color: "var(--info)",
+                            borderColor: "var(--blue-border)",
+                            boxShadow: "var(--glow-info)",
+                          }
+                        : {}),
+                    }}
+                  >
+                    {active ? (
+                      <Flame size={11} strokeWidth={2.4} style={{ color: "var(--info)" }} />
+                    ) : null}
+                    {art}
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: "var(--fg-3)",
+                letterSpacing: "0.06em",
+                marginTop: 6,
+              }}
+            >
+              Optional · falls keine passt, einfach im Stichwort-Feld unten frei tippen.
+            </div>
+          </div>
+        ) : null}
+
         {/* Gemeinsame Felder */}
         <div className="field">
           <label className="caption">
@@ -317,7 +417,11 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         </div>
         <div className="field">
           <label className="caption">
-            {typ === "uebung" ? "Beschreibung (optional)" : "Stichwort/Freitext"}
+            {typ === "uebung"
+              ? "Beschreibung (optional)"
+              : typ === "manuell"
+                ? "Stichwort / Freitext (falls oben nichts passt)"
+                : "Stichwort / Freitext"}
           </label>
           <input
             className="input"
