@@ -21,6 +21,11 @@ kill_timeout    = 10
   COUCH_URL = "http://hotdoc-db.internal:5984"
   COUCH_DB  = "hotdoc"
   AUDIO_RETENTION_DAYS = "30"
+  # PIN-loser Setup-Modus — Tablets registrieren sich nur über fahrzeugId.
+  # Auf "0" oder leer setzen + redeploy = PIN-Pflicht wieder aktiv.
+  # Voraussetzung für Open-Mode: Tablets stehen im Tailscale-Netz oder
+  # im LAN des FF-Hauses (siehe docs/TAILSCALE-SETUP.md).
+  HOTDOC_TABLET_NO_PIN = "1"
   # ────────────────────────────────────────────────────────────────────
   # TODO: PRODUKTIV-SCHUTZ — siehe docs/PRODUCTION-SECRETS.md
   # ────────────────────────────────────────────────────────────────────

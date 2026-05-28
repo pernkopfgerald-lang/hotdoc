@@ -74,6 +74,15 @@ const EnvSchema = z
      * nicht-aufgesetzten Secrets booten sollen. NICHT in Produktion setzen.
      */
     HOTDOC_ALLOW_INSECURE_DEFAULTS: z.string().optional(),
+
+    /**
+     * Tablet-Setup ohne PIN-Prüfung — sinnvoll wenn die Tablets im
+     * geschlossenen Tailscale-Netz hängen und die PIN nur Komfort-Schikane
+     * wäre. "1" = PIN-Check übersprungen, jedes Tablet darf sich für
+     * beliebiges Fahrzeug registrieren.
+     * Default leer = klassische PIN-Prüfung wie bisher.
+     */
+    HOTDOC_TABLET_NO_PIN: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV !== "production") return;

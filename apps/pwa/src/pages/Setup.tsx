@@ -44,11 +44,87 @@ export function Setup({ onSetupDone }: Props) {
     }
   })();
 
+  /**
+   * Fahrzeug-Klick → sofortiger Login-Versuch OHNE PIN.
+   * Wenn das Backend im Open-Modus läuft (HOTDOC_TABLET_NO_PIN=1) → durch.
+   * Wenn das Backend PIN verlangt → 400 invalid_body → Fallback auf PIN-Stage.
+   */
   async function selectFahrzeug(fId: FahrzeugId) {
     setSelectedFzg(fId);
-    setStage("pin");
     setError(null);
     setPin("");
+    // Probe-Login ohne PIN
+    setBusy(true);
+    const ok = await tryRegister(fId, "");
+    setBusy(false);
+    if (!ok) {
+      // Backend will doch eine PIN — Stage wechseln, User tippt PIN ein.
+      setStage("pin");
+    }
+  }
+
+  /**
+   * Sendet die Anmeldung an /api/auth/tablet/pin-register. Behandelt alle
+   * relevanten Fehler-Klassen und liefert true bei Erfolg.
+   *
+   * Bei einem 400 invalid_body (Backend verlangt PIN) liefert false OHNE
+   * Fehlertext — selectFahrzeug() weiß dann, dass der PIN-Stage nötig wird.
+   * Bei allen anderen Fehlern wird setError() gesetzt.
+   */
+  async function tryRegister(fahrzeugId: FahrzeugId, pinValue: string): Promise<boolean> {
+    const deviceId = crypto.randomUUID();
+    try {
+      const res = await fetch("/api/auth/tablet/pin-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fahrzeugId, pin: pinValue, deviceId }),
+      });
+      if (res.status === 429) {
+        const body = (await res.json().catch(() => ({}))) as { retryAfterMinutes?: number };
+        const min = body.retryAfterMinutes ?? 30;
+        setError(`Zu viele Fehlversuche — bitte ${min} min warten.`);
+        return false;
+      }
+      if (res.status === 400) {
+        // PIN-required vom Backend — Fallback auf PIN-Stage, KEIN Fehlertext.
+        return false;
+      }
+      if (res.status === 401) {
+        setError("PIN falsch — bitte beim Funktionär nachfragen.");
+        return false;
+      }
+      if (!res.ok) {
+        setError(`Anmeldung fehlgeschlagen (HTTP ${res.status})`);
+        return false;
+      }
+      const auth = (await res.json()) as { token?: string };
+      if (!auth.token) {
+        setError("Anmeldung unvollständig — Server antwortete ohne Token.");
+        return false;
+      }
+      localStorage.setItem(PIN_TOKEN_KEY, auth.token);
+    } catch (err) {
+      console.warn("[setup] Backend nicht erreichbar:", err);
+      setError(
+        "Server gerade nicht erreichbar. Bitte WLAN/Mobilfunk prüfen und nochmal versuchen.",
+      );
+      return false;
+    }
+
+    try {
+      await db.put({
+        _id: "fahrzeug:self",
+        type: "fahrzeug-config",
+        fahrzeugId,
+        tabletDeviceId: deviceId,
+        setupAm: new Date().toISOString(),
+      });
+      onSetupDone(fahrzeugId);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
   }
 
   async function submitPin() {
@@ -59,73 +135,8 @@ export function Setup({ onSetupDone }: Props) {
     }
     setBusy(true);
     setError(null);
-    const deviceId = crypto.randomUUID();
-    let gotToken = false;
-    try {
-      const res = await fetch("/api/auth/tablet/pin-register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fahrzeugId: selectedFzg, pin, deviceId }),
-      });
-      if (res.status === 429) {
-        const body = (await res.json().catch(() => ({}))) as { retryAfterMinutes?: number };
-        const min = body.retryAfterMinutes ?? 30;
-        setError(`Zu viele Fehlversuche — bitte ${min} min warten.`);
-        setBusy(false);
-        return;
-      }
-      if (res.status === 401) {
-        setError("PIN falsch — bitte beim Funktionär nachfragen.");
-        setBusy(false);
-        return;
-      }
-      if (!res.ok) {
-        setError(`Anmeldung fehlgeschlagen (HTTP ${res.status})`);
-        setBusy(false);
-        return;
-      }
-      const auth = (await res.json()) as { token?: string };
-      if (!auth.token) {
-        // Backend hat 200 geliefert aber keinen Token mitgesendet — abbrechen.
-        setError("Anmeldung unvollständig — Server antwortete ohne Token. Bitte neu versuchen.");
-        setBusy(false);
-        return;
-      }
-      localStorage.setItem(PIN_TOKEN_KEY, auth.token);
-      gotToken = true;
-    } catch (err) {
-      // Echter Netzwerkfehler (Tablet offline) — wir lassen den User NICHT
-      // stillschweigend in die App weiterspringen ohne Token. Das war der Bug,
-      // der „PIN funktioniert nicht" trotz Server-200 verursachte: bei einem
-      // mid-flight-Abbruch wurde gotToken=false und die App rannte trotzdem los.
-      console.warn("[setup] Backend nicht erreichbar:", err);
-      setError(
-        "Server gerade nicht erreichbar. Bitte WLAN/Mobilfunk prüfen und nochmal versuchen.",
-      );
-      setBusy(false);
-      return;
-    }
-
-    if (!gotToken) {
-      // Defensiver Sicherheits-Anker — sollte durch obige Logik nie erreicht werden.
-      setError("Anmeldung fehlgeschlagen — kein Token erhalten.");
-      setBusy(false);
-      return;
-    }
-
-    try {
-      await db.put({
-        _id: "fahrzeug:self",
-        type: "fahrzeug-config",
-        fahrzeugId: selectedFzg,
-        tabletDeviceId: deviceId,
-        setupAm: new Date().toISOString(),
-      });
-      onSetupDone(selectedFzg);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
-    }
+    await tryRegister(selectedFzg, pin);
+    setBusy(false);
   }
 
   return (

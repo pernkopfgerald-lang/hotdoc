@@ -20,6 +20,7 @@ import {
   type Benutzer,
   type TabletAuth,
 } from "@hotdoc/shared";
+import { env } from "../config.js";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -136,25 +137,44 @@ authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, re
   const pin = String(body.pin ?? "");
   const deviceId = String(body.deviceId ?? randomUUID());
 
-  if (!fahrzeugId || !/^\d{4,6}$/.test(pin)) {
-    res.status(400).json({ error: "invalid_body", details: "fahrzeugId + 4-6stellige PIN erforderlich" });
+  /**
+   * Open-Mode: wenn HOTDOC_TABLET_NO_PIN=1 ist, wird die PIN-Prüfung
+   * komplett übersprungen. Sinnvoll wenn die Tablets ausschließlich im
+   * geschlossenen Tailscale-Netz (oder im FF-Haus-LAN) angesteuert werden
+   * und die PIN nur eine zusätzliche Tipp-Schikane wäre.
+   *
+   * Die fahrzeugId muss trotzdem gesetzt sein (Rollen-Mapping zentrale →
+   * einsatzleiter, alle anderen → mannschaft hängt davon ab).
+   */
+  const pinDisabled = env.HOTDOC_TABLET_NO_PIN === "1";
+
+  if (!fahrzeugId) {
+    res.status(400).json({ error: "invalid_body", details: "fahrzeugId erforderlich" });
+    return;
+  }
+  if (!pinDisabled && !/^\d{4,6}$/.test(pin)) {
+    res.status(400).json({ error: "invalid_body", details: "PIN (4-6 Ziffern) erforderlich" });
     return;
   }
 
-  const pins = await loadTabletPins();
-  const expected = pins[fahrzeugId];
-  if (!expected || expected !== pin) {
-    logger.info({ fahrzeugId, ip: req.ip }, "Tablet-PIN-Login fehlgeschlagen");
-    recordFailedLogin(req);
-    await writeAuditEvent({
-      type: "login-failed",
-      actorUsername: `tablet:${fahrzeugId}`,
-      details: { reason: "wrong_pin" },
-      fahrzeugId,
-      ipAddress: req.ip,
-    });
-    res.status(401).json({ error: "invalid_pin" });
-    return;
+  if (!pinDisabled) {
+    const pins = await loadTabletPins();
+    const expected = pins[fahrzeugId];
+    if (!expected || expected !== pin) {
+      logger.info({ fahrzeugId, ip: req.ip }, "Tablet-PIN-Login fehlgeschlagen");
+      recordFailedLogin(req);
+      await writeAuditEvent({
+        type: "login-failed",
+        actorUsername: `tablet:${fahrzeugId}`,
+        details: { reason: "wrong_pin" },
+        fahrzeugId,
+        ipAddress: req.ip,
+      });
+      res.status(401).json({ error: "invalid_pin" });
+      return;
+    }
+  } else {
+    logger.debug({ fahrzeugId, ip: req.ip }, "Tablet-Login im PIN-losen Modus");
   }
 
   recordSuccessfulLogin(req);
