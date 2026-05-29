@@ -25,6 +25,7 @@ import { APP_BUILD, APP_VERSION } from "../version";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
+import type { EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { FxToggle } from "../components/FxToggle";
 import { HandoffBanner } from "../components/HandoffBanner";
@@ -281,6 +282,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [abschlussBusy, setAbschlussBusy] = useState(false);
   const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
+  /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation.
+   *  Read-Seite wird in Task 8 (NeuerEinsatzTabletModal-Mount) genutzt. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   /** Wenn der 403 vom Abschluss-Endpoint zurückkommt, ist meist der Token
    *  veraltet (alte Rolle "mannschaft" für zentrale). Wir zeigen dann einen
    *  direkten Re-Auth-Button im Fehler-Banner statt nur Text. */
@@ -713,17 +718,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  werden (Phantom-Cleanup übernimmt die leeren nach 2 h). */
   const istManuellerTyp = einsatzTyp !== "alarm";
 
-  const tabs: EinsatzTabSummary[] = istIdle
-    ? []
-    : [
-        {
-          id: einsatzId,
-          einsatzart,
-          einsatzort,
-          status: "aktiv",
-          manuell: einsatzTyp === "manuell",
-        },
-      ];
+  const tabs: EinsatzTabSummary[] = aktiveEinsaetze.map((eDoc) => {
+    const id = eDoc._id.replace(/^einsatz:/, "");
+    const art = eDoc.einsatzart ?? eDoc.einsatzartFreitext ?? eDoc.alarmierungText ?? "Einsatz";
+    const ort = eDoc.einsatzort ?? "";
+    return {
+      id,
+      einsatzart: art,
+      einsatzort: ort,
+      status: "aktiv" as const,
+      manuell: eDoc.einsatzTyp === "manuell" || eDoc.einsatzTyp === "uebung" || eDoc.einsatzTyp === "lotsendienst",
+    };
+  });
 
   // Datum nur wenn echter Einsatz vorhanden — sonst Invalid Date.
   const datum = alarmierungZeit ? new Date(alarmierungZeit) : null;
@@ -785,7 +791,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     <div>
       <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={einsatzId} geo={geo} />
 
-      <EinsatzTabs tabs={tabs} activeId={einsatzId} onSelect={() => {}} onNew={() => {}} />
+      <EinsatzTabs
+        tabs={tabs}
+        activeId={einsatzId}
+        onSelect={(id) => {
+          const fullId = id.startsWith("einsatz:") ? id : `einsatz:${id}`;
+          setAktiverEinsatzId(fullId);
+        }}
+        onNew={() => setNeuerEinsatzOpen("manuell")}
+      />
 
       <StatusBanner />
       <HandoffBanner onReleased={onHandoffLogout} />
