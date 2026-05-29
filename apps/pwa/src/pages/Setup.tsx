@@ -1,5 +1,5 @@
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
-import { ChevronRight, KeyRound, ArrowLeft } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { db } from "../db/pouch";
 import { BrandLogo } from "../components/BrandLogo";
@@ -13,27 +13,27 @@ const PIN_TOKEN_KEY = "hotdoc.tabletToken";
 /**
  * Erstes Setup nach Installation:
  * 1. Fahrzeug wählen
- * 2. PIN eingeben (4-6 Ziffern, Default "1234" — Funktionär ändert in
- *    Verwaltung/Stammdaten)
- * 3. Backend registriert das Tablet, gibt JWT zurück → wird in
+ * 2. Backend registriert das Tablet, gibt JWT zurück → wird in
  *    localStorage gespeichert für nachfolgende API-Calls.
+ *
+ * PIN-los: seit der Einführung von QR-Sticker-Anmeldung und dem
+ * Tailscale-/LAN-Modus brauchen Tablets keine PIN mehr. Wer im richtigen
+ * Netz hängt und das passende Fahrzeug auswählt → ist drin.
  *
  * Fallback wenn das Backend nicht erreichbar ist (z. B. erstes Setup
  * ohne Netz): Tablet bleibt offline-tauglich, registriert sich beim
  * ersten Online-Sync nach.
  */
 export function Setup({ onSetupDone }: Props) {
-  const [stage, setStage] = useState<"vehicle" | "pin">("vehicle");
   const [selectedFzg, setSelectedFzg] = useState<FahrzeugId | null>(null);
-  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Wenn der Boot-Check festgestellt hat, dass der vorhandene Token eine
-  // veraltete Rolle hatte (z. B. zentrale-Tablet mit altem "mannschaft"-Token
-  // nach dem Backend-Rollen-Fix), wird in sessionStorage ein Reason-Flag
-  // gesetzt. Wir zeigen dem User dann einen freundlichen Hinweis statt eines
-  // unerwarteten Setup-Screens.
+  // Wenn der Boot-Check festgestellt hat, dass der vorhandene Token tot
+  // war (z. B. nach Backend-Restart, JWT-Secret-Rotation oder iOS-Safari-
+  // ITP-Storage-Cleanup), wird in sessionStorage ein Reason-Flag gesetzt.
+  // Wir zeigen dem User dann einen freundlichen Hinweis statt einer
+  // unerklärten Setup-Seite.
   const setupReason = (() => {
     try {
       const r = sessionStorage.getItem("hotdoc.setupReason");
@@ -45,52 +45,35 @@ export function Setup({ onSetupDone }: Props) {
   })();
 
   /**
-   * Fahrzeug-Klick → sofortiger Login-Versuch OHNE PIN.
-   * Wenn das Backend im Open-Modus läuft (HOTDOC_TABLET_NO_PIN=1) → durch.
-   * Wenn das Backend PIN verlangt → 400 invalid_body → Fallback auf PIN-Stage.
+   * Fahrzeug-Klick → sofortige Backend-Registrierung. Bei Erfolg landet das
+   * Tablet direkt auf der Bericht-Page.
    */
   async function selectFahrzeug(fId: FahrzeugId) {
     setSelectedFzg(fId);
     setError(null);
-    setPin("");
-    // Probe-Login ohne PIN
     setBusy(true);
-    const ok = await tryRegister(fId, "");
+    await tryRegister(fId);
     setBusy(false);
-    if (!ok) {
-      // Backend will doch eine PIN — Stage wechseln, User tippt PIN ein.
-      setStage("pin");
-    }
   }
 
   /**
-   * Sendet die Anmeldung an /api/auth/tablet/pin-register. Behandelt alle
-   * relevanten Fehler-Klassen und liefert true bei Erfolg.
-   *
-   * Bei einem 400 invalid_body (Backend verlangt PIN) liefert false OHNE
-   * Fehlertext — selectFahrzeug() weiß dann, dass der PIN-Stage nötig wird.
-   * Bei allen anderen Fehlern wird setError() gesetzt.
+   * Sendet die Anmeldung an /api/auth/tablet/pin-register (Name ist
+   * historisch — PIN-Body wird ignoriert). Liefert bei Erfolg den
+   * Session-Token, persistiert ihn lokal und schreibt das `fahrzeug:self`-
+   * Doc mit Upsert-Pattern (kein „Document update conflict" mehr).
    */
-  async function tryRegister(fahrzeugId: FahrzeugId, pinValue: string): Promise<boolean> {
+  async function tryRegister(fahrzeugId: FahrzeugId): Promise<boolean> {
     const deviceId = crypto.randomUUID();
     try {
       const res = await fetch("/api/auth/tablet/pin-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fahrzeugId, pin: pinValue, deviceId }),
+        body: JSON.stringify({ fahrzeugId, deviceId }),
       });
       if (res.status === 429) {
         const body = (await res.json().catch(() => ({}))) as { retryAfterMinutes?: number };
         const min = body.retryAfterMinutes ?? 30;
-        setError(`Zu viele Fehlversuche — bitte ${min} min warten.`);
-        return false;
-      }
-      if (res.status === 400) {
-        // PIN-required vom Backend — Fallback auf PIN-Stage, KEIN Fehlertext.
-        return false;
-      }
-      if (res.status === 401) {
-        setError("PIN falsch — bitte beim Funktionär nachfragen.");
+        setError(`Zu viele Versuche — bitte ${min} min warten.`);
         return false;
       }
       if (!res.ok) {
@@ -111,32 +94,41 @@ export function Setup({ onSetupDone }: Props) {
       return false;
     }
 
+    // Upsert: PouchDB kann nach abgebrochenem Setup oder QR-Claim bereits
+    // ein fahrzeug:self-Doc haben. Erst lesen → falls vorhanden mit _rev
+    // updaten, sonst frisch anlegen. Verhindert „Document update conflict".
     try {
-      await db.put({
-        _id: "fahrzeug:self",
-        type: "fahrzeug-config",
-        fahrzeugId,
-        tabletDeviceId: deviceId,
-        setupAm: new Date().toISOString(),
-      });
+      const now = new Date().toISOString();
+      let existing: PouchDB.Core.ExistingDocument<Record<string, unknown>> | null = null;
+      try {
+        existing = (await db.get("fahrzeug:self")) as PouchDB.Core.ExistingDocument<
+          Record<string, unknown>
+        >;
+      } catch (err) {
+        if ((err as PouchDB.Core.Error).status !== 404) throw err;
+      }
+      if (existing) {
+        await db.put({
+          ...existing,
+          fahrzeugId,
+          tabletDeviceId: deviceId,
+          geaendertAm: now,
+        });
+      } else {
+        await db.put({
+          _id: "fahrzeug:self",
+          type: "fahrzeug-config",
+          fahrzeugId,
+          tabletDeviceId: deviceId,
+          setupAm: now,
+        });
+      }
       onSetupDone(fahrzeugId);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return false;
     }
-  }
-
-  async function submitPin() {
-    if (!selectedFzg) return;
-    if (!/^\d{4,6}$/.test(pin)) {
-      setError("PIN muss 4-6 Ziffern haben.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    await tryRegister(selectedFzg, pin);
-    setBusy(false);
   }
 
   return (
@@ -221,8 +213,8 @@ export function Setup({ onSetupDone }: Props) {
         </p>
       </header>
 
-      {/* ─── Role-Stale-Hinweis ─── */}
-      {setupReason === "role-stale" ? (
+      {/* ─── Reason-Hinweis (Boot-Check hat altes Token verworfen) ─── */}
+      {setupReason === "auth-failed" || setupReason === "role-stale" ? (
         <div
           role="status"
           style={{
@@ -239,223 +231,108 @@ export function Setup({ onSetupDone }: Props) {
             boxShadow: "var(--glow-info)",
           }}
         >
-          <strong style={{ color: "var(--info)" }}>Sitzung aufgefrischt.</strong> Die
-          alte Anmeldung dieses Tablets stammte noch aus einer früheren Version mit
-          anderer Rollen-Zuordnung. Bitte gib jetzt einmal die PIN ein — danach läuft
-          alles wie gewohnt.
-        </div>
-      ) : setupReason === "auth-failed" ? (
-        <div
-          role="status"
-          style={{
-            margin: "8px 0 0",
-            padding: "14px 16px",
-            borderRadius: "var(--radius-m)",
-            background: "var(--warn-tint)",
-            backdropFilter: "var(--blur-3)",
-            WebkitBackdropFilter: "var(--blur-3)",
-            border: "1px solid var(--warn-border)",
-            color: "var(--fg)",
-            fontSize: 13,
-            lineHeight: 1.55,
-            boxShadow: "var(--glow-warn)",
-          }}
-        >
-          <strong style={{ color: "var(--warn)" }}>Anmeldung erneuern.</strong> Die
-          Sitzung dieses Tablets ist abgelaufen oder vom Server abgelehnt. Bitte gib
-          die PIN erneut ein. Default ist <strong>1234</strong> wenn der Funktionär
-          noch keine eigene gesetzt hat.
+          <strong style={{ color: "var(--info)" }}>Sitzung aufgefrischt.</strong>{" "}
+          Wähle dein Fahrzeug — du bist sofort wieder drin, kein PIN nötig.
         </div>
       ) : null}
 
-      {stage === "pin" && selectedFzg ? (
-        <section className="card hero" style={{ marginTop: 8 }}>
-          <div className="card-head">
-            <div className="card-title">
-              <KeyRound size={18} />
-              PIN für {FAHRZEUGE[selectedFzg].funkrufname}
-            </div>
-            <span className="card-meta">{FAHRZEUGE[selectedFzg].bezeichnung}</span>
-          </div>
-          <p
-            style={{
-              fontSize: 14,
-              color: "var(--fg-2)",
-              marginBottom: 18,
-              letterSpacing: "var(--tracking-ui)",
-            }}
-          >
-            Gib die vom Funktionär ausgegebene PIN ein (4–6 Ziffern). Default{" "}
-            <strong style={{ color: "var(--fg)" }}>1234</strong> wenn noch keine eigene
-            gesetzt wurde.
-          </p>
-          <input
-            type="tel"
-            inputMode="numeric"
-            pattern="\d*"
-            maxLength={6}
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-            placeholder="• • • •"
-            className="input num"
-            autoFocus
-            style={{
-              textAlign: "center",
-              letterSpacing: "0.6em",
-              fontSize: 32,
-              fontWeight: 700,
-              padding: "20px",
-              fontFamily: "var(--font-mono)",
-            }}
-          />
-          {error ? (
-            <div
-              style={{
-                marginTop: 14,
-                padding: "12px 14px",
-                borderRadius: "var(--radius-s)",
-                background: "var(--red-tint)",
-                backdropFilter: "var(--blur-3)",
-                WebkitBackdropFilter: "var(--blur-3)",
-                color: "var(--red)",
-                fontSize: 13,
-                fontWeight: 500,
-                border: "1px solid var(--red-border)",
-                boxShadow: "var(--glow-red-soft)",
-              }}
-            >
-              {error}
-            </div>
-          ) : null}
-          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setStage("vehicle");
-                setError(null);
-              }}
-              className="icon-btn"
-              style={{
-                width: "auto",
-                padding: "0 16px",
-                gap: 8,
-                display: "flex",
-                alignItems: "center",
-                minHeight: 56,
-                fontWeight: 600,
-                fontSize: 14,
-              }}
-            >
-              <ArrowLeft size={14} /> Zurück
-            </button>
-            <button
-              type="button"
-              onClick={() => void submitPin()}
-              disabled={busy || pin.length < 4}
-              className="cta"
-              style={{ flex: 1, padding: "16px 18px", fontSize: 15 }}
-            >
-              {busy ? "Anmelden …" : "Tablet registrieren"}
-            </button>
-          </div>
-        </section>
-      ) : (
-        <section className="card hero" style={{ marginTop: 8 }}>
-          <div className="card-head">
-            <div className="card-title">Fahrzeugauswahl</div>
-            <span className="card-meta">{FAHRZEUG_IDS.length} Fahrzeuge</span>
-          </div>
+      <section className="card hero" style={{ marginTop: 8 }}>
+        <div className="card-head">
+          <div className="card-title">Fahrzeugauswahl</div>
+          <span className="card-meta">{FAHRZEUG_IDS.length} Fahrzeuge</span>
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {FAHRZEUG_IDS.map((id) => {
-              const f = FAHRZEUGE[id];
-              const isZentrale = id === "zentrale";
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => selectFahrzeug(id)}
-                  className="person filled"
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {FAHRZEUG_IDS.map((id) => {
+            const f = FAHRZEUGE[id];
+            const isZentrale = id === "zentrale";
+            const isSelected = selectedFzg === id && busy;
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={busy}
+                onClick={() => void selectFahrzeug(id)}
+                className="person filled"
+                style={{
+                  cursor: busy ? "wait" : "pointer",
+                  padding: "12px 14px 12px 12px",
+                  opacity: busy && !isSelected ? 0.5 : 1,
+                  ...(isZentrale
+                    ? {
+                        background:
+                          "linear-gradient(135deg, var(--red-tint) 0%, transparent 60%), var(--glass-2)",
+                        borderColor: "var(--red-border)",
+                      }
+                    : {}),
+                }}
+              >
+                <span
+                  className="avatar"
                   style={{
-                    cursor: "pointer",
-                    padding: "12px 14px 12px 12px",
-                    ...(isZentrale
-                      ? {
-                          background:
-                            "linear-gradient(135deg, var(--red-tint) 0%, transparent 60%), var(--glass-2)",
-                          borderColor: "var(--red-border)",
-                        }
-                      : {}),
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    background: isZentrale
+                      ? "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)"
+                      : "linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%)",
+                    color: isZentrale ? "#fff" : "var(--bg)",
+                    letterSpacing: "0.06em",
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    boxShadow: isZentrale ? "var(--glow-red-soft)" : "none",
                   }}
                 >
+                  {shortCode(id)}
+                </span>
+                <div
+                  className="name"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16, fontWeight: 600 }}>{f.funkrufname}</span>
                   <span
-                    className="avatar"
                     style={{
                       fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      background: isZentrale
-                        ? "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)"
-                        : "linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%)",
-                      color: isZentrale ? "#fff" : "var(--bg)",
-                      letterSpacing: "0.06em",
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      boxShadow: isZentrale ? "var(--glow-red-soft)" : "none",
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      letterSpacing: "var(--tracking-caps)",
+                      textTransform: "uppercase",
+                      color: "var(--fg-3)",
                     }}
                   >
-                    {shortCode(id)}
+                    {f.bezeichnung} · Besatzung {f.besatzung.typ}
                   </span>
-                  <div
-                    className="name"
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-start",
-                      gap: 3,
-                    }}
-                  >
-                    <span style={{ fontSize: 16, fontWeight: 600 }}>{f.funkrufname}</span>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10.5,
-                        fontWeight: 600,
-                        letterSpacing: "var(--tracking-caps)",
-                        textTransform: "uppercase",
-                        color: "var(--fg-3)",
-                      }}
-                    >
-                      {f.bezeichnung} · Besatzung {f.besatzung.typ}
-                    </span>
-                  </div>
-                  <div className="chev">
-                    <ChevronRight size={14} strokeWidth={2.5} />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+                <div className="chev">
+                  <ChevronRight size={14} strokeWidth={2.5} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
-          {error && stage === "vehicle" ? (
-            <div
-              style={{
-                marginTop: 16,
-                padding: "12px 14px",
-                borderRadius: "var(--radius-s)",
-                background: "var(--red-tint)",
-                color: "var(--red)",
-                fontSize: 13,
-                fontWeight: 500,
-                border: "1px solid var(--red-border)",
-              }}
-            >
-              {error}
-            </div>
-          ) : null}
-        </section>
-      )}
+        {error ? (
+          <div
+            style={{
+              marginTop: 16,
+              padding: "12px 14px",
+              borderRadius: "var(--radius-s)",
+              background: "var(--red-tint)",
+              color: "var(--red)",
+              fontSize: 13,
+              fontWeight: 500,
+              border: "1px solid var(--red-border)",
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+      </section>
 
       <p
         style={{

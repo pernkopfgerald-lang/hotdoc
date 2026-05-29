@@ -1,7 +1,8 @@
 import { Router, type RequestHandler } from "express";
+import { z } from "zod";
 import { runSyBosSync } from "../workers/sybos-sync.js";
 import { collectHealth } from "../services/health.js";
-import { loadRecentAuditEvents } from "../services/audit.js";
+import { loadRecentAuditEvents, writeAuditEvent } from "../services/audit.js";
 import { computeStats } from "../services/stats.js";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
@@ -121,4 +122,120 @@ adminRouter.post("/api/admin/client-error", (async (req, res) => {
     "client_error_report",
   );
   res.json({ ok: true });
+}) as RequestHandler);
+
+/**
+ * Test-Daten-Cleanup — wipet alle Einsatz-/Bericht-/Handoff-/Tablet-Docs.
+ *
+ * Behalten:
+ *   - config:*           (Auftragstypen, Stichworte, Geräte, Stammdaten, …)
+ *   - user:*             (Benutzer-Accounts inkl. admin)
+ *   - person:*           (syBOS-Personen — wird sowieso aus syBOS neu gefüllt)
+ *   - material:*         (syBOS-Material)
+ *   - fahrzeug:*         (Fahrzeug-Konfig, falls vorhanden)
+ *
+ * Gelöscht je nach scope:
+ *   - "test-data"  (Default): einsatz:* + fzgber:* + handoff:* + tablet:*
+ *   - "incl-audit": zusätzlich audit:*
+ *   - "full":      alles außer der KEEP-Liste oben
+ *
+ * Sicherheits-Doppelbestätigung: Body muss `{ confirm: "ja-alles-loeschen" }`
+ * tragen. Sonst 400. Admin-only.
+ */
+const WipeSchema = z.object({
+  confirm: z.literal("ja-alles-loeschen"),
+  scope: z.enum(["test-data", "incl-audit", "full"]).default("test-data"),
+});
+
+const KEEP_PREFIXES = ["config:", "user:", "person:", "material:", "fahrzeug:"] as const;
+
+const TEST_DATA_PREFIXES = ["einsatz:", "fzgber:", "handoff:", "tablet:"] as const;
+
+adminRouter.post("/api/admin/wipe-test-data", requireAuth("admin"), (async (req, res) => {
+  const parsed = WipeSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_body",
+      details: parsed.error.flatten(),
+      hint: "Body braucht { confirm: \"ja-alles-loeschen\", scope?: \"test-data\"|\"incl-audit\"|\"full\" }",
+    });
+    return;
+  }
+  const { scope } = parsed.data;
+  const session = req.session!;
+  logger.warn({ scope, by: session.username }, "Test-Daten-Cleanup gestartet");
+
+  /** Entscheidet pro Doc ob es gelöscht wird. */
+  function shouldDelete(docId: string): boolean {
+    if (KEEP_PREFIXES.some((p) => docId.startsWith(p))) return false;
+    if (scope === "full") return true;
+    if (scope === "incl-audit" && docId.startsWith("audit:")) return true;
+    if (TEST_DATA_PREFIXES.some((p) => docId.startsWith(p))) return true;
+    return false;
+  }
+
+  /** Holt alle Docs (ohne Inhalt — nur _id + _rev). */
+  const list = await db.list({ limit: 100000 });
+  const rows = list.rows as Array<{ id: string; value: { rev: string } }>;
+  const toDelete: Array<{ _id: string; _rev: string; _deleted: true }> = [];
+  const byPrefix: Record<string, number> = {};
+  let kept = 0;
+  for (const r of rows) {
+    if (r.id.startsWith("_design/")) {
+      kept++;
+      continue;
+    }
+    if (shouldDelete(r.id)) {
+      const prefix = r.id.split(":")[0] + ":";
+      byPrefix[prefix] = (byPrefix[prefix] ?? 0) + 1;
+      toDelete.push({ _id: r.id, _rev: r.value.rev, _deleted: true });
+    } else {
+      kept++;
+    }
+  }
+
+  // Bulk-Delete in Chunks zu 500 — CouchDB verkraftet mehr, aber wir
+  // wollen die HTTP-Body-Größe und das Memory-Profil im Griff halten.
+  let bulkErrors = 0;
+  for (let i = 0; i < toDelete.length; i += 500) {
+    const chunk = toDelete.slice(i, i + 500);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results = (await db.bulk({ docs: chunk as any })) as Array<{
+      ok?: boolean;
+      error?: string;
+      id?: string;
+    }>;
+    for (const r of results) {
+      if (r.error) {
+        bulkErrors++;
+        logger.warn({ id: r.id, error: r.error }, "Bulk-Delete-Eintrag fehlgeschlagen");
+      }
+    }
+  }
+
+  await writeAuditEvent({
+    type: "config-changed",
+    actorUsername: session.username,
+    actorRolle: session.rolle,
+    details: {
+      what: "wipe-test-data",
+      scope,
+      deleted: toDelete.length,
+      bulkErrors,
+      byPrefix,
+    },
+    ipAddress: req.ip,
+  });
+  logger.warn(
+    { scope, deleted: toDelete.length, kept, bulkErrors, byPrefix, by: session.username },
+    "Test-Daten-Cleanup fertig",
+  );
+  res.json({
+    ok: true,
+    scope,
+    deleted: toDelete.length,
+    kept,
+    bulkErrors,
+    byPrefix,
+  });
 }) as RequestHandler);

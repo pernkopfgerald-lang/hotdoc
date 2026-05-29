@@ -128,54 +128,22 @@ authRouter.get("/api/auth/me", (async (req, res) => {
 }) as RequestHandler);
 
 // — POST /api/auth/tablet/pin-register —
-// PIN-basierte Auth pro Fahrzeug (FR-15 Alternative zur MSISDN-Variante).
-// Im config:tablet-pins-Doc liegt für jeden Fahrzeug-Slug eine vier-stellige
-// PIN. Default beim Bootstrap "1234" — Funktionär ändert sie in der
-// Verwaltung/Stammdaten.
+// Tablet-Setup pro Fahrzeug. Body braucht nur { fahrzeugId, deviceId? }.
+// Name historisch — PIN ist seit der QR-Sticker-Einführung tot. Falls
+// jemand noch ein altes PIN-Feld mitschickt, wird es ignoriert (keine
+// Validierung, keine Prüfung).
+//
+// Zugriffsschutz läuft jetzt über die Netzwerk-Ebene (Tailscale / LAN /
+// QR-Sticker pro Fahrzeug), nicht mehr über Tipp-PINs. Rate-Limit bleibt
+// als Defence-in-Depth aktiv.
 authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, res) => {
-  const body = req.body as { fahrzeugId?: string; pin?: string; deviceId?: string };
+  const body = req.body as { fahrzeugId?: string; deviceId?: string };
   const fahrzeugId = String(body.fahrzeugId ?? "");
-  const pin = String(body.pin ?? "");
   const deviceId = String(body.deviceId ?? randomUUID());
 
-  /**
-   * Open-Mode: wenn HOTDOC_TABLET_NO_PIN=1 ist, wird die PIN-Prüfung
-   * komplett übersprungen. Sinnvoll wenn die Tablets ausschließlich im
-   * geschlossenen Tailscale-Netz (oder im FF-Haus-LAN) angesteuert werden
-   * und die PIN nur eine zusätzliche Tipp-Schikane wäre.
-   *
-   * Die fahrzeugId muss trotzdem gesetzt sein (Rollen-Mapping zentrale →
-   * einsatzleiter, alle anderen → mannschaft hängt davon ab).
-   */
-  const pinDisabled = env.HOTDOC_TABLET_NO_PIN === "1";
-
-  if (!fahrzeugId) {
+  if (!/^(kdo|tlf-a-4000|lfa-b|mtf|zentrale)$/.test(fahrzeugId)) {
     res.status(400).json({ error: "invalid_body", details: "fahrzeugId erforderlich" });
     return;
-  }
-  if (!pinDisabled && !/^\d{4,6}$/.test(pin)) {
-    res.status(400).json({ error: "invalid_body", details: "PIN (4-6 Ziffern) erforderlich" });
-    return;
-  }
-
-  if (!pinDisabled) {
-    const pins = await loadTabletPins();
-    const expected = pins[fahrzeugId];
-    if (!expected || expected !== pin) {
-      logger.info({ fahrzeugId, ip: req.ip }, "Tablet-PIN-Login fehlgeschlagen");
-      recordFailedLogin(req);
-      await writeAuditEvent({
-        type: "login-failed",
-        actorUsername: `tablet:${fahrzeugId}`,
-        details: { reason: "wrong_pin" },
-        fahrzeugId,
-        ipAddress: req.ip,
-      });
-      res.status(401).json({ error: "invalid_pin" });
-      return;
-    }
-  } else {
-    logger.debug({ fahrzeugId, ip: req.ip }, "Tablet-Login im PIN-losen Modus");
   }
 
   recordSuccessfulLogin(req);
@@ -194,7 +162,16 @@ authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, re
     fahrzeugId,
   });
 
-  logger.info({ fahrzeugId, deviceId, rolle }, "Tablet via PIN registriert");
+  logger.info({ fahrzeugId, deviceId, rolle }, "Tablet registriert (PIN-los)");
+  await writeAuditEvent({
+    type: "login-success",
+    actorUsername: `tablet:${fahrzeugId}`,
+    actorRolle: rolle,
+    fahrzeugId,
+    userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200),
+    details: { via: "pin-register" },
+    ipAddress: req.ip,
+  });
 
   const response: AuthResponse = {
     ok: true,
@@ -205,39 +182,6 @@ authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, re
   };
   res.json(response);
 }) as RequestHandler);
-
-async function loadTabletPins(): Promise<Record<string, string>> {
-  const fallback: Record<string, string> = {
-    kdo: "1234",
-    "tlf-a-4000": "1234",
-    "lfa-b": "1234",
-    mtf: "1234",
-    zentrale: "1234",
-  };
-  try {
-    const doc = (await db.get("config:tablet-pins")) as {
-      data?: {
-        // Aktuelles Format (config-route): { pins: { kdo: "1234", … } }
-        pins?: Record<string, string>;
-      } & Record<string, string>;
-    };
-    if (doc.data?.pins && typeof doc.data.pins === "object") return doc.data.pins;
-    // Legacy-Format: data direkt = Map → Backwards-Compat lesen
-    if (doc.data && typeof doc.data === "object") {
-      const flat: Record<string, string> = {};
-      for (const [k, v] of Object.entries(doc.data)) {
-        if (typeof v === "string") flat[k] = v;
-      }
-      if (Object.keys(flat).length > 0) return { ...fallback, ...flat };
-    }
-    return fallback;
-  } catch (err) {
-    if ((err as { statusCode?: number }).statusCode === 404) {
-      return fallback;
-    }
-    throw err;
-  }
-}
 
 // — POST /api/auth/tablet/register —
 authRouter.post("/api/auth/tablet/register", (async (req, res) => {
