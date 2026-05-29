@@ -1,6 +1,6 @@
-import { AlertCircle, Lock, Plus, Unlock, Zap } from "lucide-react";
+import { AlertCircle, Lock, Plus, Unlock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { listEinsaetze, manuellAnlegen, triggerMockAlarm, type EinsatzListItem } from "../api/einsaetze";
+import { listEinsaetze, manuellAnlegen, type EinsatzListItem } from "../api/einsaetze";
 import { BerichtDetail } from "./BerichtDetail";
 import { ManuellerBerichtModal } from "./ManuellerBerichtModal";
 
@@ -28,18 +28,6 @@ export function BerichteBrowser() {
   useEffect(() => {
     void reload();
   }, [reload]);
-
-  async function onMockAlarm() {
-    setBusy(true);
-    try {
-      await triggerMockAlarm();
-      await reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function onManuellAnlegen(input: { einsatzort: string; einsatzart?: string; grund?: string }) {
     await manuellAnlegen(input);
@@ -69,17 +57,6 @@ export function BerichteBrowser() {
           />
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            onClick={onMockAlarm}
-            disabled={busy}
-            className="themetoggle"
-            style={{ width: "auto", padding: "0 14px", gap: 8, display: "flex", alignItems: "center" }}
-            title="Dev-Endpoint: simuliert einen BlaulichtSMS-Alarm"
-          >
-            <Zap size={14} />
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Mock-Alarm</span>
-          </button>
           <button
             type="button"
             onClick={() => setManuellOpen(true)}

@@ -1,59 +1,26 @@
 /**
- * Diagnose- + Setup-Endpoints. Ursprünglich als Dev-Tooling gedacht, in
- * Produktion aber für Inbetriebnahme/Smoke-Test benötigt.
+ * Diagnose- + Setup-Endpoints. Urspruenglich als Dev-Tooling gedacht, in
+ * Produktion aber fuer Inbetriebnahme/Smoke-Test benoetigt.
  *
  * Alle Routen verlangen einen funktionaer/admin-Login — das verhindert,
- * dass jemand Anonymes Mock-Alarme triggert oder Egress-IPs/Konfig-
- * Details abfragt. Diese Auth-Härtung ergänzt FR-15 (Tablet-Auth) für
- * den Backoffice-Bereich.
+ * dass jemand Anonymes Egress-IPs oder Konfig-Details abfragt. Diese
+ * Auth-Haertung ergaenzt FR-15 (Tablet-Auth) fuer den Backoffice-Bereich.
+ *
+ * (Frueher gab es hier einen /api/dev/blaulichtsms/trigger fuer Mock-
+ * Alarme. Wurde entfernt — Test-Einsätze laufen jetzt sauber ueber den
+ * normalen "Neuer Einsatz → Übung"-Flow im Backoffice/PWA.)
  */
 
-import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler } from "express";
-import { z } from "zod";
 import { env } from "../config.js";
 import { requireAuth } from "../lib/auth-middleware.js";
-import { logger } from "../lib/logger.js";
-import { probeBlaulichtSms, pushMockAlarm } from "../services/blaulichtsms/client.js";
+import { probeBlaulichtSms } from "../services/blaulichtsms/client.js";
 import { pollOnce } from "../workers/blaulichtsms-poller.js";
 
 export const devRouter: Router = Router();
 
 // Alle /api/dev/*-Routen verlangen mindestens funktionaer. Schreibende
-// Routen (trigger, poll) sogar admin-Login — siehe pro Route.
-
-const TriggerSchema = z.object({
-  einsatzort: z.string().default("Eberstalzeller Straße 5, 4653 Eberstalzell"),
-  alarmText: z.string().default("Brand KFZ"),
-  koordinaten: z
-    .object({ lat: z.number(), lng: z.number() })
-    .default({ lat: 48.11, lng: 13.961 }),
-  authorName: z.enum(["BWST", "LWZ"]).default("BWST"),
-});
-
-/** Triggert einen Mock-Alarm — der nächste Poll legt einen Einsatz an. */
-devRouter.post("/api/dev/blaulichtsms/trigger", requireAuth("admin"), (async (req, res) => {
-  const parsed = TriggerSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
-    return;
-  }
-  const alarmId = `MOCK-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 4)}`;
-  pushMockAlarm({
-    customerId: "mock",
-    alarmId,
-    alarmDate: new Date().toISOString(),
-    authorName: parsed.data.authorName,
-    alarmText: parsed.data.alarmText,
-    geolocation: {
-      address: parsed.data.einsatzort,
-      coordinates: parsed.data.koordinaten,
-    },
-  });
-  const result = await pollOnce();
-  logger.info({ alarmId, result }, "Mock-Alarm konsumiert");
-  res.json({ ok: true, alarmId, einsatzId: `einsatz:${alarmId}`, ...result });
-}) as RequestHandler);
+// Routen (poll) sogar admin-Login — siehe pro Route.
 
 /** Manueller Poll-Trigger ohne Cron-Intervall abzuwarten. */
 devRouter.post("/api/dev/blaulichtsms/poll", requireAuth("admin"), (async (_req, res) => {

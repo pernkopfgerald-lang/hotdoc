@@ -54,7 +54,7 @@ async function checkBlaulichtSms(): Promise<HealthItem> {
       sub,
       state: "off",
       detail:
-        "BLAULICHTSMS_CUSTOMER_ID / _USER / _PW nicht gesetzt — Mock-Modus aktiv (Alarme nur über /api/dev/blaulichtsms/trigger).",
+        "BLAULICHTSMS_CUSTOMER_ID / _USER / _PW nicht gesetzt — Poller ist inaktiv, es kommen keine Alarme an. Credentials in fly secrets setzen und API redeployen.",
     };
   }
   const s = getBlaulichtSmsState();

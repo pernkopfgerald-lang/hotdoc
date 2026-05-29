@@ -7,8 +7,9 @@ import { z } from "zod";
  * Production-Sicherheits-Anker (durch superRefine erzwungen):
  *  - JWT_SECRET muss ein echter, ≥32-Zeichen langer Wert sein
  *    (nicht der Dev-Default-String, der öffentlich im Repo steht).
- *  - BlaulichtSMS-Credentials müssen gesetzt sein, sonst läuft der
- *    Poller heimlich im Mock-Modus → keine echten Alarme.
+
+ *  - BlaulichtSMS-Credentials muessen gesetzt sein, sonst liefert der
+ *    Poller leere Listen → keine Alarme. (Mock-Modus wurde entfernt.)
  *  - Bootstrap-Admin-Passwort muss vom Default verschieden sein.
  *  - Override-Schalter HOTDOC_ALLOW_INSECURE_DEFAULTS=1 für seltene
  *    Notfälle (Bare-Metal-Restore mit nur teil-bekannter Secret-Liste).
@@ -123,7 +124,7 @@ const EnvSchema = z
       issues.push({
         path: "BLAULICHTSMS_USER",
         message:
-          "BlaulichtSMS-Credentials fehlen in Production — sonst läuft der Poller heimlich im Mock-Modus und es kommen KEINE echten Alarme an. Setze BLAULICHTSMS_CUSTOMER_ID/USER/PW oder erzwinge HOTDOC_ALLOW_INSECURE_DEFAULTS=1.",
+          "BlaulichtSMS-Credentials fehlen in Production — der Poller liefert leere Listen und es kommen KEINE Alarme an. Setze BLAULICHTSMS_CUSTOMER_ID/USER/PW als fly secrets oder erzwinge HOTDOC_ALLOW_INSECURE_DEFAULTS=1.",
       });
     }
 

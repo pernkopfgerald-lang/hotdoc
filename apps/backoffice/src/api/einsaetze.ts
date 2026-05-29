@@ -73,10 +73,3 @@ export interface ManuellAnlageInput {
 export async function manuellAnlegen(input: ManuellAnlageInput): Promise<{ ok: boolean; id: string }> {
   return apiCall("/api/einsaetze/manuell", { method: "POST", body: input });
 }
-
-export async function triggerMockAlarm(input?: {
-  einsatzort?: string;
-  alarmText?: string;
-}): Promise<{ ok: boolean; einsatzId: string }> {
-  return apiCall("/api/dev/blaulichtsms/trigger", { method: "POST", body: input ?? {} });
-}

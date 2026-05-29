@@ -2,7 +2,6 @@ import { AlertTriangle, CheckCircle2, Loader2, QrCode } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BrandLogo } from "./BrandLogo";
 import { db, getFahrzeugConfig } from "../db/pouch";
-import { seedIfEmpty } from "../db/seed";
 import { TOKEN_KEY } from "../lib/api";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
@@ -82,7 +81,6 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
         // egal — beim ersten API-Call würde es auffallen
       }
       // FahrzeugConfig in PouchDB: anlegen oder aktualisieren
-      await seedIfEmpty();
       const existing = await getFahrzeugConfig();
       const fahrzeugId = body.fahrzeugId as FahrzeugId;
       const now = new Date().toISOString();

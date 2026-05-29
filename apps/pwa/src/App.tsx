@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
 import { QrClaim } from "./components/QrClaim";
 import { db, getFahrzeugConfig } from "./db/pouch";
-import { seedIfEmpty } from "./db/seed";
 import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { BerichtPage } from "./pages/BerichtPage";
@@ -83,7 +82,6 @@ export function App() {
       setState({ kind: "setup" });
       return;
     }
-    await seedIfEmpty();
     const doc = await getFahrzeugConfig();
     if (doc?.fahrzeugId) {
       // Token-Drift-Check: Wenn dieses Tablet als "zentrale" konfiguriert ist,
@@ -219,10 +217,8 @@ export function App() {
           // Empfänger übernimmt die Tablet-Konfig — wenn der das Handy
           // ist, hat es vorher keinen `fahrzeug:self`-Eintrag. Wir
           // schreiben ihn jetzt damit beim nächsten Reload kein PIN
-          // mehr nötig ist. Außerdem seedIfEmpty damit die lokale
-          // PouchDB die Personalliste hat (das Handy hatte vorher gar
-          // nichts gestartet).
-          await seedIfEmpty();
+          // mehr nötig ist. Die Personalliste kommt nicht mehr lokal
+          // aus dem Seed, sondern bei Bedarf live aus /api/admin/personen.
           const existing = await getFahrzeugConfig();
           if (!existing) {
             await db.put({

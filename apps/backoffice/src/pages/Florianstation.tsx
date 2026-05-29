@@ -10,27 +10,25 @@ import { useCallback, useEffect, useState } from "react";
 import { listEinsaetze, type EinsatzListItem } from "../api/einsaetze";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 
+/** Feuerwehrhaus FF Eberstalzell — fixer Florianstation-Standort fuer die Karte. */
 const HOME = { lat: 48.0884, lng: 13.9586 };
 
 /**
- * Mock-Fahrzeugpositionen — kommen in Phase 4 vom SSE-Endpoint
- * `/api/positions/stream`. Bis dahin platzieren wir die Fahrzeuge
- * leicht um das Gerätehaus + Einsatzort.
- *
- * Florian Eberstalzell ist fix am Feuerwehrhaus, alle anderen
- * bekommen einen lastSeenAt-Zeitstempel. TANK ist demonstrativ
- * "stale" (>10 min) damit das Offline-Symbol auf der Karte zu sehen ist.
+ * Florianstation-Pin (fix am Geraetehaus) als Map-Basis. Andere Fahrzeuge
+ * werden in Phase 4 ueber den SSE-Endpoint /api/positions/stream live
+ * eingespeist; bis dahin ist die Karte sonst leer.
  */
-function mockFleet(einsatzLat?: number, einsatzLng?: number): FahrzeugPos[] {
-  const E = einsatzLat && einsatzLng ? { lat: einsatzLat, lng: einsatzLng } : HOME;
-  const now = new Date().toISOString();
-  const stale = new Date(Date.now() - 14 * 60 * 1000).toISOString();
+function zentraleMarker(): FahrzeugPos[] {
   return [
-    { fahrzeugId: "kdo",        funkrufname: "Kommando Eberstalzell", abk: "KDO",     status: "im_einsatz",    lat: E.lat - 0.0009, lng: E.lng + 0.0007, lastSeenAt: now },
-    { fahrzeugId: "tlf",        funkrufname: "Tank Eberstalzell",     abk: "TANK",    status: "im_einsatz",    lat: E.lat + 0.0006, lng: E.lng - 0.0006, lastSeenAt: stale },
-    { fahrzeugId: "lfa-b",      funkrufname: "Pumpe Eberstalzell",    abk: "LFA-B",   status: "abgeschlossen", lat: HOME.lat + 0.0003, lng: HOME.lng + 0.0001, lastSeenAt: now },
-    { fahrzeugId: "mtf",        funkrufname: "MTF Eberstalzell",      abk: "MTF",     status: "wartend",       lat: HOME.lat,          lng: HOME.lng - 0.0003, lastSeenAt: now },
-    { fahrzeugId: "zentrale",   funkrufname: "Florian Eberstalzell",  abk: "FLORIAN", status: "wartend",       lat: HOME.lat,          lng: HOME.lng,           isZentrale: true },
+    {
+      fahrzeugId: "zentrale",
+      funkrufname: "Florian Eberstalzell",
+      abk: "FLORIAN",
+      status: "wartend",
+      lat: HOME.lat,
+      lng: HOME.lng,
+      isZentrale: true,
+    },
   ];
 }
 
@@ -87,7 +85,7 @@ export function Florianstation() {
                   color: "var(--fg-3)",
                 }}
               >
-                Keine aktiven Einsätze. Triggere im „Berichte"-Tab einen Mock-Alarm.
+                Keine aktiven Einsätze. Lege im „Berichte"-Tab einen Bericht (Übung / Lotsendienst / sonst.) an oder warte auf einen BlaulichtSMS-Alarm.
               </li>
             ) : (
               aktive.map((e) => (
@@ -131,7 +129,7 @@ export function Florianstation() {
                   },
                 }
               : {})}
-            fahrzeuge={mockFleet(selected?.koordinaten?.lat, selected?.koordinaten?.lng)}
+            fahrzeuge={zentraleMarker()}
             zoom={selected ? 16 : 14}
           />
           <p
@@ -145,7 +143,7 @@ export function Florianstation() {
               color: "var(--fg-3)",
             }}
           >
-            Live-Position-Sharing via SSE folgt mit Phase 4 — aktuell Demo-Positionen.
+            Nur Florianstation eingezeichnet — Live-Position-Sharing via SSE folgt mit Phase 4.
           </p>
         </section>
       </div>

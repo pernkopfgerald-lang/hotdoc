@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
-import { DemoBanner } from "../components/DemoBanner";
+import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { FxToggle } from "../components/FxToggle";
@@ -788,7 +788,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
 
       <EinsatzTabs tabs={tabs} activeId={einsatzId} onSelect={() => {}} onNew={() => {}} />
 
-      <DemoBanner />
+      <StatusBanner />
       <HandoffBanner onReleased={onHandoffLogout} />
 
       <main className="page">

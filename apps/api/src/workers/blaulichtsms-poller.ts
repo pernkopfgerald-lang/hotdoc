@@ -1,10 +1,12 @@
 /**
  * BlaulichtSMS-Poller — wird alle BLAULICHTSMS_POLL_INTERVAL_SEC Sekunden
  * aufgerufen. Neue Alarme werden als Einsatz-Dokument in CouchDB angelegt
- * (falls noch nicht vorhanden, idempotent über alarmId).
+ * (falls noch nicht vorhanden, idempotent ueber alarmId).
  *
- * Im Mock-Modus (keine Credentials): Konsumiert /api/dev/blaulichtsms/trigger
- * Alarme aus dem In-Memory-Buffer.
+ * Wenn keine BlaulichtSMS-Credentials gesetzt sind, liefert listAlarms()
+ * eine leere Liste und der Poller protokolliert das einmalig beim Start.
+ * Mock-Modus wurde entfernt — Test-Einsätze laufen ueber den normalen
+ * "Neuer Einsatz → Uebung"-Flow im Backoffice/PWA.
  */
 
 import { randomUUID } from "node:crypto";

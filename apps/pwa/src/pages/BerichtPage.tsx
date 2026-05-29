@@ -9,7 +9,7 @@ import { AbschlussModal, type AbschlussCheck } from "../components/AbschlussModa
 import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
 import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
-import { DemoBanner } from "../components/DemoBanner";
+import { StatusBanner } from "../components/StatusBanner";
 import { DictateButton, type DictateResult } from "../components/DictateButton";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FxToggle } from "../components/FxToggle";
@@ -27,16 +27,7 @@ import { PersonPickerModal, type PickPerson } from "../components/PersonPickerMo
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { VorschauModal } from "../components/VorschauModal";
-import {
-  DEMO_ALARM,
-  DEMO_HYDRANTEN,
-  EINSATZ_POS,
-  HOME_POS,
-  initialChronik,
-  makeInitialFleet,
-} from "../data/demo-alarm";
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
-import { getAllPersonen } from "../db/seed";
 import { apiCall } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
@@ -47,6 +38,10 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
 
 const ROAD_FACTOR = 1.3;
+
+/** Feuerwehrhaus FF Eberstalzell, Solarstrasse 1 — Bezugspunkt fuer KM-
+ *  Berechnung und Map-Fallback wenn das Tablet noch keine GPS-Position hat. */
+const HOME_POS = { lat: 48.0884, lng: 13.9586 };
 
 const DEFAULT_AUFTRAG_TYPEN: readonly string[] = [
   "Brandbekämpfung außen",
@@ -104,71 +99,57 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   /** Read-only Archiv-Modal. */
   const [archivOpen, setArchivOpen] = useState(false);
 
-  const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>(() => {
-    // localStorage hat den Vorzug: schneller Mount ohne Backend-Roundtrip.
-    // Falls Backend einen abweichenden Stand hat, korrigiert der Mount-
-    // Effekt (siehe useEffect weiter unten) das nachträglich.
-    const persistedStates = loadReportStates(fahrzeugId);
-    const persistedDemo = persistedStates[DEMO_ALARM.alarmId] ?? null;
-    return [
-      {
-        id: DEMO_ALARM.alarmId,
-        alarm: DEMO_ALARM,
-        einsatzPos: EINSATZ_POS,
-        manuell: false,
-        fahrer: null,
-        kdt: null,
-        mannschaft: Array.from(
-          { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
-          (_, i) => emptySlot(i + 1),
-        ),
-        gearSelected: new Set(),
-        oelSaecke: 0,
-        auftraege: [],
-        chronik: initialChronik(fahrzeug.funkrufname),
-        abgeschlossen: persistedDemo,
-      },
-    ];
-  });
-  const [activeId, setActiveId] = useState<string>(DEMO_ALARM.alarmId);
-  const [fleet, setFleet] = useState<MapPosition[]>(() => makeInitialFleet());
+  // einsaetze[] startet leer — kein Phantom-Einsatz, keine Vorbelegung.
+  // Backend-Poll fuegt einen Eintrag hinzu sobald ein echter Einsatz im
+  // CouchDB ist (BlaulichtSMS-Alarm ODER manuelle Anlage via Modal).
+  const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
+  // Fleet ist leer — Live-Positions-Sharing via SSE folgt mit Phase 4.
+  // Bis dahin zeigt die Map nur das eigene Tablet (selfPos via Geolocation).
+  const fleet: MapPosition[] = [];
 
-  const active = einsaetze.find((e) => e.id === activeId) ?? einsaetze[0]!;
+  const active = einsaetze.find((e) => e.id === activeId) ?? null;
 
   const geo = useGeolocation();
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
 
-  // Personalliste laden (für LFA-B mit Demo-Vorbelegung; sonst nur Liste)
+  // Personalliste aus /api/admin/personen — Quelle: syBOS-Sync. Keine
+  // lokale Vorbelegung; der Kdt traegt die tatsaechliche Besatzung manuell ein.
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      const docs = await getAllPersonen();
-      const list = docs as unknown as PickPerson[];
-      setPersonen(list);
-      if (fahrzeugId !== "lfa-b") return;
-      const byId = new Map(list.map((p) => [p.syBosId, p]));
-      const eder = byId.get(107375) ?? null;
-      const bruckner = byId.get(123057) ?? null;
-      const huemer = byId.get(107452);
-      const almhofer = byId.get(107506);
-      setEinsaetze((prev) =>
-        prev.map((e) =>
-          e.id === DEMO_ALARM.alarmId
-            ? {
-                ...e,
-                kdt: eder,
-                fahrer: bruckner,
-                mannschaft: e.mannschaft.map((m, i) => {
-                  if (i === 0 && huemer)
-                    return { ...m, person: huemer, atemschutzAktiv: true, atemschutzDauerMin: 15 };
-                  if (i === 1 && almhofer) return { ...m, person: almhofer };
-                  return m;
-                }),
-                gearSelected: new Set(["ts-pumpe", "schlauchmaterial"]),
-              }
-            : e,
-        ),
-      );
+      try {
+        const r = await apiCall<{
+          items: Array<{
+            syBosId: number;
+            vorname?: string;
+            nachname?: string;
+            rang?: string;
+            atemschutzGueltig?: boolean;
+            aktiv?: boolean;
+          }>;
+        }>("/api/admin/personen");
+        if (cancelled) return;
+        const list: PickPerson[] = r.items
+          .filter((p) => p.aktiv !== false)
+          .map((p) => ({
+            _id: `person:${p.syBosId}`,
+            syBosId: p.syBosId,
+            nachname: p.nachname ?? "",
+            vorname: p.vorname ?? "",
+            dienstgrad: p.rang ?? "",
+            atemschutzGueltig: p.atemschutzGueltig === true,
+          }))
+          .sort((a, b) => a.nachname.localeCompare(b.nachname));
+        setPersonen(list);
+      } catch {
+        // Backend nicht erreichbar — Picker bleibt leer, Auto-Retry beim
+        // naechsten Mount/Vehicle-Switch.
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [fahrzeugId]);
 
   // Persist abgeschlossen-Status in localStorage bei jeder Änderung —
@@ -194,43 +175,87 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   //      auch sie als status="aktiv" zurückkommen.
   useEffect(() => {
     let cancelled = false;
-    let lastSeenActiveIds = new Set<string>();
+
+    interface ApiEinsatzListItem {
+      _id: string;
+      alarmId?: string;
+      einsatzTyp?: string;
+      einsatzart?: string;
+      einsatzartFreitext?: string;
+      einsatzort?: string;
+      alarmierungZeit?: string;
+      alarmierungText?: string;
+      alarmierungAuthor?: string;
+      koordinaten?: { lat: number; lng: number };
+      stichwort?: string;
+    }
+
+    const buildEinsatzFromApi = (api: ApiEinsatzListItem): EinsatzInstance => {
+      const persistedStates = loadReportStates(fahrzeugId);
+      const persisted = persistedStates[api._id] ?? null;
+      const alarm: AlarmDaten = {
+        alarmId: api.alarmId ?? api._id.replace(/^einsatz:/, ""),
+        einsatzart: api.einsatzart ?? api.einsatzartFreitext ?? api.alarmierungText ?? "Einsatz",
+        einsatzort: api.einsatzort ?? "",
+        alarmierungZeit: api.alarmierungZeit ?? new Date().toISOString(),
+        alarmierungAuthor: api.alarmierungAuthor ?? "BWST",
+        koordinaten: api.koordinaten ?? HOME_POS,
+        distanzKm: 0,
+      };
+      if (api.stichwort) {
+        alarm.stichwort = api.stichwort as NonNullable<AlarmDaten["stichwort"]>;
+      }
+      return {
+        id: api._id,
+        alarm,
+        einsatzPos: api.koordinaten ?? HOME_POS,
+        manuell: api.einsatzTyp === "manuell" || api.einsatzTyp === "uebung" || api.einsatzTyp === "lotsendienst",
+        fahrer: null,
+        kdt: null,
+        mannschaft: Array.from(
+          { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
+          (_, i) => emptySlot(i + 1),
+        ),
+        gearSelected: new Set(),
+        oelSaecke: 0,
+        auftraege: [],
+        chronik: [],
+        abgeschlossen: persisted,
+      };
+    };
 
     const runPoll = async () => {
       try {
-        const list = await apiCall<{
-          items: Array<{ _id: string; alarmId?: string; einsatzTyp?: string }>;
-        }>("/api/einsaetze?status=aktiv");
+        const list = await apiCall<{ items: ApiEinsatzListItem[] }>(
+          "/api/einsaetze?status=aktiv",
+        );
         if (cancelled) return;
+        const target = list.items[0];
+        if (!target) return;
 
-        // ─── 2 + 3: Auto-Open-Logik ───
-        const currentIds = new Set(list.items.map((d) => d._id));
-        const newOnes = list.items.filter((d) => !lastSeenActiveIds.has(d._id));
-        if (lastSeenActiveIds.size > 0 && newOnes.length > 0 && active.abgeschlossen) {
-          // Neuer Einsatz aufgetaucht UND wir sind aktuell im
-          // abgeschlossen-Zustand → State zurücksetzen damit das Tablet
-          // den frischen Einsatz als Formular zeigt.
+        // Neuer Einsatz erkannt → in lokale Liste aufnehmen + auto-aktivieren.
+        // Vibration als haptisches Signal damit der Kdt sofort merkt dass
+        // ein Alarm reingekommen ist, auch wenn das Tablet auf der Ladestation
+        // liegt.
+        let isNewToUs = false;
+        setEinsaetze((prev) => {
+          if (prev.some((e) => e.id === target._id)) return prev;
+          isNewToUs = true;
+          return [...prev, buildEinsatzFromApi(target)];
+        });
+        if (isNewToUs) {
+          setActiveId(target._id);
           try {
             navigator.vibrate?.([100, 60, 100, 60, 200]);
           } catch {
             // egal — Vibration ist Komfort, nicht Pflicht
           }
-          setEinsaetze((prev) =>
-            prev.map((e) =>
-              e.id === DEMO_ALARM.alarmId ? { ...e, abgeschlossen: null } : e,
-            ),
-          );
-          // localStorage-Persistenz aus früherem Abschluss räumen
-          saveReportState(fahrzeugId, DEMO_ALARM.alarmId, null);
+          return;
         }
-        lastSeenActiveIds = currentIds;
 
-        // ─── 1: Backend-abgeschlossen-Stand übernehmen ───
-        const matchByAlarmId = list.items.find(
-          (d) => d.alarmId === DEMO_ALARM.alarmId,
-        );
-        const target = matchByAlarmId ?? list.items[0];
-        if (!target) return;
+        // Existierender Einsatz → Abschluss-Status mit Fahrzeugbericht
+        // synchronisieren (Florianstation oder anderes Geraet kann den
+        // Bericht serverseitig abgeschlossen haben).
         const einsatzIdEnc = encodeURIComponent(target._id);
         const fz = await apiCall<{
           items?: Array<{
@@ -246,7 +271,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         if (!mine || mine.status !== "abgeschlossen") return;
         setEinsaetze((prev) =>
           prev.map((e) =>
-            e.id === DEMO_ALARM.alarmId && !e.abgeschlossen
+            e.id === target._id && !e.abgeschlossen
               ? {
                   ...e,
                   abgeschlossen: {
@@ -262,7 +287,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           ),
         );
       } catch {
-        // Backend nicht erreichbar — localStorage-Stand bleibt maßgeblich.
+        // Backend nicht erreichbar — localStorage-Stand bleibt massgeblich.
       }
     };
 
@@ -289,38 +314,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     };
   }, [fahrzeugId]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      const now = new Date().toISOString();
-      setFleet((prev) =>
-        prev.map((f) => {
-          // Self bekommt frische GPS-Position + Zeitstempel
-          if (f.isSelf) {
-            return { ...f, lat: selfPos.lat, lng: selfPos.lng, lastSeenAt: now };
-          }
-          // Florian Eberstalzell ist fix am Feuerwehrhaus — keine Bewegung
-          if (f.isZentrale) return f;
-          // Stale-Fahrzeuge bewegen sich nicht und bleiben offline
-          const t = f.lastSeenAt ? new Date(f.lastSeenAt).getTime() : 0;
-          const ageMin = (Date.now() - t) / 60_000;
-          if (ageMin > 10) return f;
-          // Online-Fahrzeuge wandern leicht und behalten frischen Zeitstempel
-          return {
-            ...f,
-            lat: f.lat + (Math.random() - 0.5) * 0.0008,
-            lng: f.lng + (Math.random() - 0.5) * 0.0008,
-            lastSeenAt: now,
-          };
-        }),
-      );
-    }, 3000);
-    return () => clearInterval(id);
-  }, [selfPos.lat, selfPos.lng]);
+  // (Frueher: kuenstliche Random-Walk-Animation fuer Demo-Fleet-Eintraege.
+  // Entfernt — Live-Positions-Sharing kommt mit Phase 4 ueber SSE.)
 
   // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
   // Pausiert wenn Bericht abgeschlossen (kein Schreibschutz-Bypass nötig).
   useEffect(() => {
-    if (active.abgeschlossen) return;
+    if (!active || active.abgeschlossen) return;
     let cancelled = false;
     const tick = async () => {
       const knownIds = new Set(active.chronik.map((c) => c.id));
@@ -345,7 +345,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, active.abgeschlossen]);
+  }, [activeId, active?.abgeschlossen]);
 
   function patchActive(updater: (e: EinsatzInstance) => EinsatzInstance) {
     setEinsaetze((prev) => prev.map((e) => (e.id === activeId ? updater(e) : e)));
@@ -353,11 +353,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
 
   const bereitsGewaehlt = useMemo(() => {
     const s = new Set<number>();
+    if (!active) return s;
     if (active.fahrer) s.add(active.fahrer.syBosId);
     if (active.kdt) s.add(active.kdt.syBosId);
     for (const m of active.mannschaft) if (m.person) s.add(m.person.syBosId);
     return s;
-  }, [active.fahrer, active.kdt, active.mannschaft]);
+  }, [active]);
 
   function selectPerson(p: PickPerson) {
     if (!pickerOpen) return;
@@ -544,6 +545,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   }
 
   function computeKm(): number {
+    if (!active) return 0;
     const luftlinie = haversineKm(HOME_POS, active.einsatzPos);
     return luftlinie * ROAD_FACTOR * 2;
   }
@@ -628,6 +630,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   }
 
   function abschliessen() {
+    if (!active) return;
     const km = computeKm();
     patchActive((e) => ({
       ...e,
@@ -651,34 +654,38 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     manuell: e.manuell,
   }));
 
-  const mannschaftCount = active.mannschaft.filter((m) => m.person).length;
-  const asAktiv = active.mannschaft.filter((m) => m.person && m.atemschutzAktiv).length;
-  const personenAnzahl = mannschaftCount + (active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0);
-  const fahrerKdtCount = (active.fahrer ? 1 : 0) + (active.kdt ? 1 : 0);
+  // Idle: kein aktiver Einsatz im lokalen State oder Bericht abgeschlossen.
+  // Bei Idle rendern wir die IdleView mit Quick-Actions statt das Formular.
+  const istIdle = !active || !!active.abgeschlossen;
+
+  const mannschaftCount = active?.mannschaft.filter((m) => m.person).length ?? 0;
+  const asAktiv = active?.mannschaft.filter((m) => m.person && m.atemschutzAktiv).length ?? 0;
+  const personenAnzahl = mannschaftCount + (active?.fahrer ? 1 : 0) + (active?.kdt ? 1 : 0);
+  const fahrerKdtCount = (active?.fahrer ? 1 : 0) + (active?.kdt ? 1 : 0);
   const kmRound = computeKm();
   const kmDisplay = `${kmRound.toFixed(1).replace(".", ",")} km`;
 
   const checks: AbschlussCheck[] = [
-    { ok: !!active.fahrer, label: "Fahrer eingetragen" },
-    { ok: !!active.kdt, label: "Fahrzeug-Kommandant eingetragen" },
+    { ok: !!active?.fahrer, label: "Fahrer eingetragen" },
+    { ok: !!active?.kdt, label: "Fahrzeug-Kommandant eingetragen" },
     { ok: mannschaftCount >= 1, label: `Mindestens 1 Mannschaftsplatz besetzt (aktuell ${mannschaftCount})` },
-    { ok: !!active.alarm.einsatzort.trim(), label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" },
+    { ok: !!active?.alarm.einsatzort.trim(), label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" },
   ];
 
   const abschlussSummary = [
     { label: "Mannschaft", value: `${personenAnzahl} Pers.` },
     { label: "KM (auto)", value: kmDisplay },
-    { label: "Geräte", value: String(active.gearSelected.size) },
-    { label: "Aufträge", value: String(active.auftraege.length) },
+    { label: "Geräte", value: String(active?.gearSelected.size ?? 0) },
+    { label: "Aufträge", value: String(active?.auftraege.length ?? 0) },
   ];
 
-  const datum = new Date(active.alarm.alarmierungZeit);
+  const datum = active ? new Date(active.alarm.alarmierungZeit) : new Date();
   const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
   const zeitStr = `${pad(datum.getHours())}:${pad(datum.getMinutes())}`;
 
   return (
     <div>
-      <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={active.alarm.alarmId} geo={geo} />
+      <Topbar funkrufname={fahrzeug.funkrufname} {...(active ? { einsatzNr: active.alarm.alarmId } : {})} geo={geo} />
 
       <EinsatzTabs
         tabs={tabs}
@@ -687,17 +694,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         onNew={() => setNeuerEinsatzOpen("manuell")}
       />
 
-      {!active.abgeschlossen ? <DemoBanner /> : null}
+      <StatusBanner />
       <HandoffBanner onReleased={onHandoffLogout} />
 
       <main className="page">
-        {active.abgeschlossen ? (
+        {istIdle || !active ? (
           <IdleView
             funkrufname={fahrzeug.funkrufname}
             onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
             onArchiv={() => setArchivOpen(true)}
             syncState={uploadState}
-            onRetryUpload={() => active.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
+            onRetryUpload={() => active?.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
           />
         ) : (
           <>
@@ -830,7 +837,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               einsatzPos={active.einsatzPos}
               einsatzAdresse={active.alarm.einsatzort}
               fleet={fleet}
-              hydranten={DEMO_HYDRANTEN}
+              hydranten={[]}
               showLoeschwasser={false}
             />
 
@@ -978,24 +985,26 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         onCancel={() => setAbschlussModalOpen(false)}
       />
 
-      <VorschauModal
-        open={vorschauOpen}
-        data={{
-          fahrzeugId,
-          funkrufname: fahrzeug.funkrufname,
-          alarm: active.alarm,
-          fahrer: active.fahrer,
-          kdt: active.kdt,
-          mannschaft: active.mannschaft,
-          gearList,
-          gearSelected: active.gearSelected,
-          oelSaecke: active.oelSaecke,
-          auftraege: active.auftraege,
-          chronik: active.chronik,
-          kmGefahren: kmRound,
-        }}
-        onClose={() => setVorschauOpen(false)}
-      />
+      {active ? (
+        <VorschauModal
+          open={vorschauOpen}
+          data={{
+            fahrzeugId,
+            funkrufname: fahrzeug.funkrufname,
+            alarm: active.alarm,
+            fahrer: active.fahrer,
+            kdt: active.kdt,
+            mannschaft: active.mannschaft,
+            gearList,
+            gearSelected: active.gearSelected,
+            oelSaecke: active.oelSaecke,
+            auftraege: active.auftraege,
+            chronik: active.chronik,
+            kmGefahren: kmRound,
+          }}
+          onClose={() => setVorschauOpen(false)}
+        />
+      ) : null}
 
       {/* ─── Neuer Einsatz/Übung/Lotsendienst ─── */}
       <NeuerEinsatzTabletModal

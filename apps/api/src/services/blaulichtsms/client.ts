@@ -8,9 +8,9 @@
  *     → { customerId, customerName, integrations[], alarms[], infos[] }
  *     → bei abgelaufener Session: HTTP 401, dann Re-Login
  *
- * Mock-Modus aktiviert sich automatisch wenn keine Credentials gesetzt sind:
- * Der Endpoint /api/dev/blaulichtsms/trigger pusht Mock-Alarme in einen
- * In-Memory-Buffer, den der Poller bei jedem Tick konsumiert.
+ * Fehlende Credentials = harter Fehler. Frueher gab es einen Mock-Modus
+ * mit /api/dev/blaulichtsms/trigger, das wurde komplett entfernt damit
+ * fehlende Credentials nicht still zu Phantom-Alarmen statt echten fuehren.
  *
  * Siehe github.com/blaulichtSMS/docs:
  * - dashboard_api_v1.md (dieser Flow, optimal für Live-Polling)
@@ -78,14 +78,6 @@ interface BlaulichtRawAlarm {
   };
   recipients?: Array<{ name: string; msisdn: string; participation?: string }>;
   alarmGroups?: unknown[];
-}
-
-// ─── Mock-Modus ─────────────────────────────────────────────────────
-const mockAlarms: BlaulichtAlarmData[] = [];
-
-export function pushMockAlarm(a: BlaulichtAlarmData): void {
-  mockAlarms.push(a);
-  logger.info({ alarmId: a.alarmId, mockCount: mockAlarms.length }, "Mock-Alarm gepusht");
 }
 
 // ─── Session-State (in-memory) ──────────────────────────────────────
@@ -208,12 +200,14 @@ function normalize(raw: BlaulichtRawAlarm): BlaulichtAlarmData {
 }
 
 /**
- * Public API für den Poller. Mock-Modus wenn Credentials fehlen.
+ * Public API fuer den Poller. Wenn keine Credentials gesetzt sind, liefert
+ * die Funktion eine leere Liste (kein Crash) — der Poller protokolliert die
+ * fehlende Konfiguration einmalig laut beim Start. Frueher gab es hier
+ * einen Mock-Modus mit In-Memory-Queue, das wurde entfernt.
  */
 export async function listAlarms(): Promise<BlaulichtAlarmData[]> {
   if (!hasBlaulichtSMS()) {
-    const out = mockAlarms.splice(0);
-    return out;
+    return [];
   }
   const dashboard = await fetchDashboard();
   const raws = dashboard.alarms ?? [];

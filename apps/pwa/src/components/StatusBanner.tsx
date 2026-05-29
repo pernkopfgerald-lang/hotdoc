@@ -18,7 +18,7 @@ interface HealthItem {
  *
  * Refresht alle 60 s.
  */
-export function DemoBanner() {
+export function StatusBanner() {
   const [items, setItems] = useState<HealthItem[] | null>(null);
   const [unreachable, setUnreachable] = useState(false);
 
