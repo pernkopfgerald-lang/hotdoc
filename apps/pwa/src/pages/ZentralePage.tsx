@@ -98,6 +98,7 @@ interface EinsatzApiDoc {
   einsatzleiterPersonId?: number;
   bearbeiterPersonId?: number;
   reservePersonIds?: number[];
+  zugewieseneFahrzeuge?: Array<"kdo" | "tlf-a-4000" | "lfa-b" | "mtf">;
 }
 
 /**
@@ -125,6 +126,9 @@ interface EditorState {
   bearbeiterPersonId: number | null;
   /** syBOS-Person-IDs der Reserve-Mannschaft (zur Verfügung gestanden, nicht ausgerückt). */
   reservePersonIds: number[];
+  /** Florianstation-Disposition: welche Fahrzeuge bearbeiten diesen Einsatz?
+   *  Leer → alle Fahrzeuge-Tablets sehen den Einsatz (Default bei BlaulichtSMS-Alarm). */
+  zugewieseneFahrzeuge: Array<"kdo" | "tlf-a-4000" | "lfa-b" | "mtf">;
 }
 
 const EMPTY_EDITOR: EditorState = {
@@ -145,6 +149,7 @@ const EMPTY_EDITOR: EditorState = {
   oelSaecke: 0,
   bearbeiterPersonId: null,
   reservePersonIds: [],
+  zugewieseneFahrzeuge: [],
 };
 
 /**
@@ -437,6 +442,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       reservePersonIds: Array.isArray(aktiverEinsatz.reservePersonIds)
         ? aktiverEinsatz.reservePersonIds
         : [],
+      zugewieseneFahrzeuge: Array.isArray(aktiverEinsatz.zugewieseneFahrzeuge)
+        ? aktiverEinsatz.zugewieseneFahrzeuge
+        : [],
     });
   }, [aktiverEinsatz, editorDirty]);
 
@@ -488,6 +496,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         body.bearbeiterPersonId = editor.bearbeiterPersonId;
       }
       body.reservePersonIds = editor.reservePersonIds;
+      body.zugewieseneFahrzeuge = editor.zugewieseneFahrzeuge;
 
       await apiCall(`/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`, {
         method: "PUT",
@@ -1571,6 +1580,62 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 <span className="crew-name placeholder">Person zur Reserve hinzufügen …</span>
               </button>
             ) : null}
+          </div>
+        </section>
+
+        <SectionHead title="Fahrzeug-Disposition" />
+        <section className="card">
+          <div className="card-head">
+            <div className="card-title">
+              <Truck size={20} />
+              Welche Fahrzeuge bearbeiten diesen Einsatz?
+            </div>
+            <span className="card-meta">
+              {editor.zugewieseneFahrzeuge.length === 0
+                ? "Default: alle Fahrzeuge sehen den Einsatz"
+                : `${editor.zugewieseneFahrzeuge.length} zugewiesen`}
+            </span>
+          </div>
+
+          <p style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
+            Keine Auswahl → alle Fahrzeug-Tablets sehen den Einsatz (Default bei
+            BlaulichtSMS-Alarm). Auswahl filtert die Sichtbarkeit auf die markierten
+            Fahrzeuge — nuetzlich bei Sturm um Adressen aufzuteilen.
+          </p>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => {
+              const aktiv = editor.zugewieseneFahrzeuge.includes(id);
+              const fz = FAHRZEUGE[id];
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={schreibschutz}
+                  onClick={() =>
+                    patchEditor({
+                      zugewieseneFahrzeuge: aktiv
+                        ? editor.zugewieseneFahrzeuge.filter((x) => x !== id)
+                        : [...editor.zugewieseneFahrzeuge, id],
+                    })
+                  }
+                  className={`chip${aktiv ? " active" : ""}`}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    background: aktiv ? "var(--info)" : "var(--surface)",
+                    color: aktiv ? "#fff" : "var(--fg)",
+                    border: `1px solid ${aktiv ? "var(--info)" : "var(--border)"}`,
+                    borderRadius: 10,
+                    cursor: schreibschutz ? "not-allowed" : "pointer",
+                    opacity: schreibschutz ? 0.5 : 1,
+                  }}
+                >
+                  {fz.funkrufname}
+                </button>
+              );
+            })}
           </div>
         </section>
 
