@@ -251,8 +251,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const geo = useGeolocation();
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [aktiveEinsaetze, setAktiveEinsaetze] = useState<EinsatzApiDoc[]>([]);
   const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
-  const [aktiverEinsatz, setAktiverEinsatz] = useState<EinsatzApiDoc | null>(null);
+  const aktiverEinsatz: EinsatzApiDoc | null =
+    aktiveEinsaetze.find((e) => e._id === aktiverEinsatzId) ?? null;
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const personenMap = useMemo(() => {
@@ -306,17 +308,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           "/api/einsaetze?status=aktiv",
         );
         if (cancelled) return;
-        const first = r.items[0];
-        if (first) {
-          setAktiverEinsatzId(first._id);
-          setAktiverEinsatz(first);
-        } else {
-          // Kein aktiver Einsatz im Backend → UI zurück auf Idle/Bereit.
-          // Wichtig nach einem Wipe oder wenn der einzige aktive Einsatz
-          // abgeschlossen wurde: ohne diesen Reset blieb die alte ID hängen
-          // und der Funktionär sah Geisterdaten.
-          setAktiverEinsatzId(null);
-          setAktiverEinsatz(null);
+        setAktiveEinsaetze(r.items);
+        // Auto-Select: wenn aktuell ausgewaehlter Einsatz nicht mehr in der Liste
+        // (z. B. abgeschlossen oder gewipt) → auf den ersten verbleibenden umschalten.
+        setAktiverEinsatzId((prev) => {
+          if (prev && r.items.some((e) => e._id === prev)) return prev;
+          return r.items[0]?._id ?? null;
+        });
+        if (r.items.length === 0) {
           setFahrzeugberichte([]);
         }
       } catch {
@@ -496,7 +495,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         const reloaded = await apiCall<EinsatzApiDoc>(
           `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
         );
-        setAktiverEinsatz(reloaded);
+        setAktiveEinsaetze((prev) => prev.map((e) => (e._id === reloaded._id ? reloaded : e)));
       } catch {
         // egal — der Save war erfolgreich, nächster Poll holt es
       }
@@ -548,7 +547,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         const reloaded = await apiCall<EinsatzApiDoc>(
           `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
         );
-        setAktiverEinsatz(reloaded);
+        setAktiveEinsaetze((prev) => prev.map((e) => (e._id === reloaded._id ? reloaded : e)));
       } catch {
         // Falls Reload nicht klappt — nächster Poll holt es. Nicht blockieren.
       }
@@ -564,7 +563,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           const reloaded = await apiCall<EinsatzApiDoc>(
             `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
           );
-          setAktiverEinsatz(reloaded);
+          setAktiveEinsaetze((prev) => prev.map((e) => (e._id === reloaded._id ? reloaded : e)));
         } catch {
           // egal
         }
