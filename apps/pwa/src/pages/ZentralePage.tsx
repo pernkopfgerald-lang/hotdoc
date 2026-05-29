@@ -691,7 +691,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     e?.einsatzart ?? e?.einsatzartFreitext ?? e?.alarmierungText ?? DEMO_ALARM.einsatzart;
   const alarmierungZeit = e?.alarmierungZeit ?? DEMO_ALARM.alarmierungZeit;
   const alarmierungAuthor = e?.alarmierungAuthor ?? DEMO_ALARM.alarmierungAuthor;
-  const einsatzTyp: "alarm" | "manuell" = e?.einsatzTyp === "manuell" ? "manuell" : "alarm";
+  const einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung" =
+    e?.einsatzTyp === "manuell" ||
+    e?.einsatzTyp === "lotsendienst" ||
+    e?.einsatzTyp === "uebung"
+      ? (e.einsatzTyp as "manuell" | "lotsendienst" | "uebung")
+      : "alarm";
+  /** Manuelle Anlagen (Lotsendienst, Übung, „Sonstige Tätigkeit") brauchen
+   *  nicht zwingend Fahrzeugberichte — oft rückt nur 1 Fahrzeug aus oder
+   *  gar keines. Beim Alarm dagegen ist die Erwartung, dass alle 4
+   *  Fahrzeuge entweder ausrücken oder als „nicht eingesetzt" markiert
+   *  werden (Phantom-Cleanup übernimmt die leeren nach 2 h). */
+  const istManuellerTyp = einsatzTyp !== "alarm";
 
   const tabs: EinsatzTabSummary[] = [
     {
@@ -1706,50 +1717,107 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               ) : null}
             </div>
           ) : null}
-          <button
-            type="button"
-            className="cta"
-            onClick={() => {
-              setAbschlussErr(null);
-              setAbschlussOk(null);
-              setAbschlussConfirmOpen(true);
-            }}
-            disabled={
-              schreibschutz ||
-              !aktiverEinsatzId ||
-              abschlussBusy ||
-              abgeschlossenCount < fahrzeugStatus.length
-            }
-            style={
-              schreibschutz ||
-              !aktiverEinsatzId ||
-              abschlussBusy ||
-              abgeschlossenCount < fahrzeugStatus.length
-                ? { opacity: 0.55, cursor: "not-allowed" }
-                : undefined
-            }
-          >
-            <CheckCircle2 size={22} />
-            {schreibschutz
-              ? "Einsatz bereits abgeschlossen"
-              : "Einsatz abschließen & archivieren"}
-            <ArrowRight size={22} />
-          </button>
-          <div className="cta-hint">
-            {schreibschutz ? (
+          {/*
+            Abschluss-Logik — drei Stufen:
+
+            1. Beteiligte Fahrzeuge: alles was NICHT "wartend" ist, d. h.
+               wo wirklich ein Bericht angelegt wurde (egal ob in_arbeit
+               oder abgeschlossen). Wartende zählen NICHT als blockierend
+               weil sie offensichtlich gar nicht ausgerückt sind.
+            2. Offene Berichte: beteiligte Fahrzeuge die noch "im_einsatz"
+               sind. Solange welche offen sind → Block.
+            3. Bei manueller Anlage (Lotsendienst/Übung/Sonstiges) ist
+               KEIN Fahrzeugbericht zwingend — der Einsatzleiter kann
+               jederzeit abschließen. Sinnvoll wenn z. B. Lotsendienst
+               komplett im Bereitschaftsdienst lief ohne Tablets.
+          */}
+          {(() => {
+            const beteiligte = fahrzeugStatus.filter((f) => f.status !== "wartend");
+            const offene = beteiligte.filter((f) => f.status === "im_einsatz");
+            const wartende = fahrzeugStatus.filter((f) => f.status === "wartend");
+            const blockiert = !istManuellerTyp && offene.length > 0;
+            const offeneNamen = offene
+              .map((f) => FAHRZEUGE[f.id].bezeichnung)
+              .join(" · ");
+            const wartendeNamen = wartende
+              .map((f) => FAHRZEUGE[f.id].bezeichnung)
+              .join(" · ");
+            return (
               <>
-                <strong>Bericht ist schreibgeschützt.</strong> Reaktivierung nur durch einen
-                Funktionär möglich.
+                <button
+                  type="button"
+                  className="cta"
+                  onClick={() => {
+                    setAbschlussErr(null);
+                    setAbschlussOk(null);
+                    setAbschlussConfirmOpen(true);
+                  }}
+                  disabled={
+                    schreibschutz || !aktiverEinsatzId || abschlussBusy || blockiert
+                  }
+                  style={
+                    schreibschutz || !aktiverEinsatzId || abschlussBusy || blockiert
+                      ? { opacity: 0.55, cursor: "not-allowed" }
+                      : undefined
+                  }
+                >
+                  <CheckCircle2 size={22} />
+                  {schreibschutz
+                    ? "Einsatz bereits abgeschlossen"
+                    : "Einsatz abschließen & archivieren"}
+                  <ArrowRight size={22} />
+                </button>
+                <div className="cta-hint">
+                  {schreibschutz ? (
+                    <>
+                      <strong>Bericht ist schreibgeschützt.</strong> Reaktivierung nur
+                      durch einen Funktionär möglich.
+                    </>
+                  ) : blockiert ? (
+                    <>
+                      <strong>{offeneNamen}</strong>{" "}
+                      {offene.length === 1 ? "ist noch im Einsatz" : "sind noch im Einsatz"}.
+                      Abschluss möglich sobald{" "}
+                      {offene.length === 1
+                        ? "dieser Bericht"
+                        : "diese Berichte"}{" "}
+                      vom Fahrzeug-Kdt. abgeschlossen{" "}
+                      {offene.length === 1 ? "wurde" : "wurden"}.
+                    </>
+                  ) : istManuellerTyp && beteiligte.length === 0 ? (
+                    <>
+                      {einsatzTyp === "lotsendienst"
+                        ? "Lotsendienst"
+                        : einsatzTyp === "uebung"
+                          ? "Übung"
+                          : "Manueller Einsatz"}{" "}
+                      ohne Fahrzeugberichte — Abschluss jederzeit möglich.
+                    </>
+                  ) : istManuellerTyp && wartende.length > 0 ? (
+                    <>
+                      <strong>{beteiligte.length}</strong> Fahrzeugbericht
+                      {beteiligte.length === 1 ? "" : "e"} eingegangen ·{" "}
+                      <span style={{ color: "var(--fg-3)" }}>
+                        {wartendeNamen} nicht beteiligt
+                      </span>{" "}
+                      — bereit zur Übergabe.
+                    </>
+                  ) : wartende.length > 0 ? (
+                    <>
+                      Alle eingegangenen Fahrzeugberichte abgeschlossen ·{" "}
+                      <span style={{ color: "var(--fg-3)" }}>
+                        {wartendeNamen} nicht ausgerückt (leere Berichte werden vom
+                        Cleanup-Worker nach 2 h entfernt)
+                      </span>
+                      .
+                    </>
+                  ) : (
+                    <>Alle Fahrzeugberichte vollständig — bereit zur Übergabe.</>
+                  )}
+                </div>
               </>
-            ) : abgeschlossenCount < fahrzeugStatus.length ? (
-              <>
-                <strong>{fahrzeugStatus.length - abgeschlossenCount}</strong> Fahrzeugberichte
-                fehlen noch — Abschluss erst nach Eingang aller Berichte möglich.
-              </>
-            ) : (
-              <>Alle Fahrzeugberichte vollständig — bereit zur Übergabe.</>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </main>
 
