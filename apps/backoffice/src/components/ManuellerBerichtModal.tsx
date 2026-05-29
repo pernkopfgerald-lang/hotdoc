@@ -27,8 +27,8 @@ const TYP_META: Record<
   { label: string; sub: string; icon: typeof Activity; color: string }
 > = {
   manuell: {
-    label: "Sonstige Tätigkeit",
-    sub: "FR-12 · Bericht ohne BlaulichtSMS-Alarm",
+    label: "Einsatz",
+    sub: "Manuell angelegter Einsatz ohne BlaulichtSMS-Alarm (z. B. Sturm)",
     icon: Activity,
     color: "var(--info)",
   },

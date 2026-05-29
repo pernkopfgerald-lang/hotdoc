@@ -13,7 +13,6 @@ import {
   Map as MapIcon,
   MapPin,
   Phone,
-  Plus,
   Save,
   Siren,
   Smartphone,
@@ -720,11 +719,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     e?.einsatzTyp === "uebung"
       ? (e.einsatzTyp as "manuell" | "lotsendienst" | "uebung")
       : "alarm";
-  /** Manuelle Anlagen (Lotsendienst, Übung, „Sonstige Tätigkeit") brauchen
+  /** Manuell angelegte Einsätze (auch Übung + Lotsendienst) brauchen
    *  nicht zwingend Fahrzeugberichte — oft rückt nur 1 Fahrzeug aus oder
-   *  gar keines. Beim Alarm dagegen ist die Erwartung, dass alle 4
-   *  Fahrzeuge entweder ausrücken oder als „nicht eingesetzt" markiert
-   *  werden (Phantom-Cleanup übernimmt die leeren nach 2 h). */
+   *  gar keines. Beim BlaulichtSMS-Alarm dagegen ist die Erwartung, dass
+   *  alle 4 Fahrzeuge entweder ausrücken oder als „nicht eingesetzt"
+   *  markiert werden (Phantom-Cleanup übernimmt die leeren nach 2 h). */
   const istManuellerTyp = einsatzTyp !== "alarm";
 
   const tabs: EinsatzTabSummary[] = aktiveEinsaetze.map((eDoc) => {
@@ -856,8 +855,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     <button
                       type="button"
                       className="cta"
-                      onClick={() => setNeuerEinsatzOpen("uebung")}
+                      onClick={() => setNeuerEinsatzOpen("manuell")}
                       style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center" }}
+                    >
+                      <Siren size={14} /> Einsatz anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("uebung")}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--ok) 80%, transparent)" }}
                     >
                       <GraduationCap size={14} /> Übung anlegen
                     </button>
@@ -867,15 +874,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       onClick={() => setNeuerEinsatzOpen("lotsendienst")}
                       style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)" }}
                     >
-                      <MapPin size={14} /> Lotsendienst
-                    </button>
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() => setNeuerEinsatzOpen("manuell")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--info) 80%, transparent)" }}
-                    >
-                      <Plus size={14} /> Sonstige Tätigkeit
+                      <MapPin size={14} /> Lotsendienst anlegen
                     </button>
                   </div>
                 </div>
