@@ -311,9 +311,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         if (first) {
           setAktiverEinsatzId(first._id);
           setAktiverEinsatz(first);
+        } else {
+          // Kein aktiver Einsatz im Backend → UI zurück auf Idle/Bereit.
+          // Wichtig nach einem Wipe oder wenn der einzige aktive Einsatz
+          // abgeschlossen wurde: ohne diesen Reset blieb die alte ID hängen
+          // und der Funktionär sah Geisterdaten.
+          setAktiverEinsatzId(null);
+          setAktiverEinsatz(null);
+          setFahrzeugberichte([]);
         }
       } catch {
-        // Backend nicht erreichbar — bleibt bei null, UI zeigt Demo-Fallback
+        // Backend nicht erreichbar — bleibt beim aktuellen Stand (kein
+        // ungewollter Reset bei kurzem Netz-Wackler).
       }
     };
     void load();
