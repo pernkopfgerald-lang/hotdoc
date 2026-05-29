@@ -5,7 +5,8 @@ export type ConfigKey =
   | "einsatzstichworte"
   | "geraete"
   | "stammdaten"
-  | "tablet-pins";
+  | "tablet-pins"
+  | "tablet-inventar";
 
 export interface ConfigEnvelope<T = Record<string, unknown>> {
   ok: boolean;
@@ -56,6 +57,24 @@ export interface TabletPinsData {
   /** PIN je Fahrzeug-Slug (kdo / tlf-a-4000 / lfa-b / mtf / zentrale). */
   pins: Record<string, string>;
   /** Audit: Wer hat zuletzt gespeichert. */
+  geaendertVon?: string;
+}
+
+/** Hardware-Inventar pro Tablet — vom Funktionär manuell gepflegt. */
+export interface TabletInventarItem {
+  modell: string;
+  imei: string;
+  simTelNr: string;
+  macWlan: string;
+  macBluetooth: string;
+  inventarNr: string;
+  /** ISO-Datum YYYY-MM-DD oder leer. */
+  anschaffungsDatum: string;
+  notiz: string;
+}
+
+export interface TabletInventarData {
+  byFahrzeug: Record<string, TabletInventarItem>;
   geaendertVon?: string;
 }
 
