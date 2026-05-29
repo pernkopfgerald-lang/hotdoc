@@ -27,7 +27,7 @@ import { APP_BUILD, APP_VERSION } from "../version";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
-import type { EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
+import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { FxToggle } from "../components/FxToggle";
 import { HandoffBanner } from "../components/HandoffBanner";
@@ -284,10 +284,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [abschlussBusy, setAbschlussBusy] = useState(false);
   const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
-  /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation.
-   *  Read-Seite wird in Task 8 (NeuerEinsatzTabletModal-Mount) genutzt. */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
+  /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
+  const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   /** Wenn der 403 vom Abschluss-Endpoint zurückkommt, ist meist der Token
    *  veraltet (alte Rolle "mannschaft" für zentrale). Wir zeigen dann einen
    *  direkten Re-Auth-Button im Fehler-Banner statt nur Text. */
@@ -2237,6 +2235,19 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </div>
       ) : null}
+
+      <NeuerEinsatzTabletModal
+        open={neuerEinsatzOpen !== null}
+        initialTyp={neuerEinsatzOpen ?? "manuell"}
+        onClose={() => setNeuerEinsatzOpen(null)}
+        onCreated={(einsatzId) => {
+          setNeuerEinsatzOpen(null);
+          // Auto-Switch auf den neu angelegten Einsatz — bis zum naechsten
+          // Poll-Tick haben wir ihn noch nicht in aktiveEinsaetze[], aber
+          // sobald er reinkommt, ist die Selection schon gesetzt.
+          setAktiverEinsatzId(einsatzId);
+        }}
+      />
     </div>
   );
 }
