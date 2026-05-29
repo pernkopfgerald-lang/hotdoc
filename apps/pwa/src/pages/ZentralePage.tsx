@@ -32,7 +32,6 @@ import { HandoffModal } from "../components/HandoffModal";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
-import { DEMO_ALARM } from "../data/demo-alarm";
 import { apiCall, getTabletToken } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { useGeolocation } from "../lib/geo";
@@ -690,16 +689,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     };
   });
 
-  // Live-Daten des aktiven Einsatzes (aus Backend) — fallen auf DEMO_ALARM
-  // zurück nur solange kein echter Einsatz geladen wurde. Sobald BlaulichtSMS
-  // einen echten Alarm sendet, werden diese Felder ausgetauscht.
+  // Live-Daten des aktiven Einsatzes (aus Backend). Wenn kein aktiver Einsatz
+  // existiert, bleiben die Felder leer — der Idle-Branch in der JSX rendert
+  // dann eine "Bereit"-Karte statt eines Phantom-Einsatzes (frueher: Fallback
+  // auf DEMO_ALARM, was nach einem Wipe wie ein echter Einsatz aussah).
   const e = aktiverEinsatz;
-  const einsatzId = e?._id?.replace(/^einsatz:/, "") ?? DEMO_ALARM.alarmId;
-  const einsatzort = e?.einsatzort ?? DEMO_ALARM.einsatzort;
+  const istIdle = !e;
+  const einsatzId = e?._id?.replace(/^einsatz:/, "") ?? "";
+  const einsatzort = e?.einsatzort ?? "";
   const einsatzart =
-    e?.einsatzart ?? e?.einsatzartFreitext ?? e?.alarmierungText ?? DEMO_ALARM.einsatzart;
-  const alarmierungZeit = e?.alarmierungZeit ?? DEMO_ALARM.alarmierungZeit;
-  const alarmierungAuthor = e?.alarmierungAuthor ?? DEMO_ALARM.alarmierungAuthor;
+    e?.einsatzart ?? e?.einsatzartFreitext ?? e?.alarmierungText ?? "";
+  const alarmierungZeit = e?.alarmierungZeit ?? "";
+  const alarmierungAuthor = e?.alarmierungAuthor ?? "";
   const einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung" =
     e?.einsatzTyp === "manuell" ||
     e?.einsatzTyp === "lotsendienst" ||
@@ -713,18 +714,23 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  werden (Phantom-Cleanup übernimmt die leeren nach 2 h). */
   const istManuellerTyp = einsatzTyp !== "alarm";
 
-  const tabs: EinsatzTabSummary[] = [
-    {
-      id: einsatzId,
-      einsatzart,
-      einsatzort,
-      status: "aktiv",
-      manuell: einsatzTyp === "manuell",
-    },
-  ];
+  const tabs: EinsatzTabSummary[] = istIdle
+    ? []
+    : [
+        {
+          id: einsatzId,
+          einsatzart,
+          einsatzort,
+          status: "aktiv",
+          manuell: einsatzTyp === "manuell",
+        },
+      ];
 
-  const datum = new Date(alarmierungZeit);
-  const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
+  // Datum nur wenn echter Einsatz vorhanden — sonst Invalid Date.
+  const datum = alarmierungZeit ? new Date(alarmierungZeit) : null;
+  const datumStr = datum
+    ? `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`
+    : "—";
 
   const aggregateMannschaft = fahrzeugStatus.reduce((sum, f) => sum + f.mannschaft, 0);
   const abgeschlossenCount = fahrzeugStatus.filter((f) => f.status === "abgeschlossen").length;
@@ -741,26 +747,22 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const oelSummeFahrzeug = fahrzeugStatus.reduce((sum, f) => sum + f.oelSaecke, 0);
   const oelSaeckeGesamt = Math.max(oelSummeFahrzeug, aktiverEinsatz?.oelbindemittel?.gesamtSaecke ?? 0);
 
-  // Globale Einsatzchronik — wird aus dem CouchDB-Einsatz-Doc gepollt,
-  // identischer Cross-Sync wie auf den Tablets. Anfangs Demo-Einträge
-  // damit die UI nicht leer ist; sobald echte Daten via Sync kommen,
-  // werden sie zusätzlich gemerged.
-  const [chronik, setChronik] = useState<ChronikEintrag[]>([
-    {
-      id: "z1-demo",
-      zeitstempel: new Date(Date.now() - 1000 * 60 * 14).toISOString(),
-      funkrufname: "BlaulichtSMS",
-      source: "blaulichtsms",
-      text: "Alarmierung · Brand KFZ · Eberstalzeller Straße 5",
-    },
-  ]);
+  // Globale Einsatzchronik — wird aus dem CouchDB-Einsatz-Doc gepollt
+  // (identischer Cross-Sync wie auf den Tablets). Start leer; sobald ein
+  // echter Einsatz aktiv ist, fuellen die Polls die Liste auf.
+  const [chronik, setChronik] = useState<ChronikEintrag[]>([]);
 
   useEffect(() => {
+    // Ohne aktiven Einsatz nichts pollen — keine Phantom-Anfragen mit
+    // toter `einsatz:`-ID. Chronik bei Wechsel/Wipe ebenfalls leeren.
+    if (!aktiverEinsatzId) {
+      setChronik([]);
+      return;
+    }
     let cancelled = false;
     const tick = async () => {
-      const id = aktiverEinsatzId ?? `einsatz:${einsatzId}`;
       const knownIds = new Set(chronik.map((c) => c.id));
-      const neue = await fetchChronikDiff(id, knownIds);
+      const neue = await fetchChronikDiff(aktiverEinsatzId, knownIds);
       if (cancelled || neue.length === 0) return;
       setChronik((prev) => {
         const own = new Set(prev.map((c) => c.id));
@@ -790,71 +792,111 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <HandoffBanner onReleased={onHandoffLogout} />
 
       <main className="page">
-        {/* Hauptbericht-Header */}
-        <section
-          className="alarm"
-          style={{
-            background:
-              "linear-gradient(135deg, #FFFFFF 0%, #F0F7FF 55%, #DBEAFE 100%)",
-            borderColor: "rgba(37,99,235,0.25)",
-          }}
-        >
-          <div className="alarm-top">
-            <div className="alarm-left">
-              <div className="alarm-icon" style={{ background: "var(--info)" }}>
-                <Activity size={30} color="#fff" strokeWidth={2} />
-              </div>
-              <div>
-                <div className="alarm-tags">
-                  <span className="alarm-tag" style={{ color: "var(--info)" }}>
-                    <span
-                      className="dot"
-                      style={{ background: "var(--info)" }}
-                    />
-                    Einsatzzentrale
-                  </span>
-                  <span className="alarm-tag muted">· Florian Eberstalzell · Hauptbericht</span>
+        {/* Hauptbericht-Header bzw. Idle-Karte wenn kein aktiver Einsatz. */}
+        {istIdle ? (
+          <section
+            className="alarm"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--glass-2), color-mix(in srgb, var(--ok) 8%, transparent))",
+              borderColor: "var(--ok-border)",
+            }}
+          >
+            <div className="alarm-top">
+              <div className="alarm-left">
+                <div
+                  className="alarm-icon"
+                  style={{ background: "var(--ok)", animation: "pulse-soft 2.4s ease-in-out infinite" }}
+                >
+                  <Activity size={30} color="#fff" strokeWidth={2} />
                 </div>
-                <div className="alarm-title">{einsatzart}</div>
-                <div className="alarm-addr">
-                  <MapPin size={16} />
-                  {einsatzort}
+                <div>
+                  <div className="alarm-tags">
+                    <span className="alarm-tag" style={{ color: "var(--ok)" }}>
+                      <span className="dot" style={{ background: "var(--ok)" }} />
+                      Bereit
+                    </span>
+                    <span className="alarm-tag muted">· Florian Eberstalzell · Einsatzzentrale</span>
+                  </div>
+                  <div className="alarm-title">Keine aktive Einsatzdokumentation</div>
+                  <div className="alarm-addr" style={{ color: "var(--fg-3)" }}>
+                    Sobald ein BlaulichtSMS-Alarm eingeht oder ein Tablet eine Tätigkeit anlegt,
+                    erscheint der Einsatz hier automatisch.
+                  </div>
+                </div>
+              </div>
+              <div className="alarm-no" style={{ color: "var(--fg-3)" }}>—</div>
+            </div>
+          </section>
+        ) : (
+          <section
+            className="alarm"
+            style={{
+              background:
+                "linear-gradient(135deg, #FFFFFF 0%, #F0F7FF 55%, #DBEAFE 100%)",
+              borderColor: "rgba(37,99,235,0.25)",
+            }}
+          >
+            <div className="alarm-top">
+              <div className="alarm-left">
+                <div className="alarm-icon" style={{ background: "var(--info)" }}>
+                  <Activity size={30} color="#fff" strokeWidth={2} />
+                </div>
+                <div>
+                  <div className="alarm-tags">
+                    <span className="alarm-tag" style={{ color: "var(--info)" }}>
+                      <span
+                        className="dot"
+                        style={{ background: "var(--info)" }}
+                      />
+                      Einsatzzentrale
+                    </span>
+                    <span className="alarm-tag muted">· Florian Eberstalzell · Hauptbericht</span>
+                  </div>
+                  <div className="alarm-title">{einsatzart}</div>
+                  <div className="alarm-addr">
+                    <MapPin size={16} />
+                    {einsatzort}
+                  </div>
+                </div>
+              </div>
+              <div className="alarm-no">#{einsatzId}</div>
+            </div>
+
+            <div className="alarm-meta">
+              <div className="cell">
+                <div className="lbl">Alarmiert</div>
+                <div className="val">{formatTime(alarmierungZeit)}</div>
+              </div>
+              <div className="cell">
+                <div className="lbl">Fahrzeuge aktiv</div>
+                <div className="val">
+                  {aktivCount}
+                  <span className="unit">/ {fahrzeugStatus.length}</span>
+                </div>
+              </div>
+              <div className="cell">
+                <div className="lbl">Mannschaft</div>
+                <div className="val">
+                  {aggregateMannschaft}
+                  <span className="unit">Pers.</span>
+                </div>
+              </div>
+              <div className="cell">
+                <div className="lbl">Berichte</div>
+                <div className="val">
+                  {abgeschlossenCount}
+                  <span className="unit">/ {fahrzeugStatus.length} fertig</span>
                 </div>
               </div>
             </div>
-            <div className="alarm-no">#{einsatzId}</div>
-          </div>
+          </section>
+        )}
 
-          <div className="alarm-meta">
-            <div className="cell">
-              <div className="lbl">Alarmiert</div>
-              <div className="val">{formatTime(alarmierungZeit)}</div>
-            </div>
-            <div className="cell">
-              <div className="lbl">Fahrzeuge aktiv</div>
-              <div className="val">
-                {aktivCount}
-                <span className="unit">/ {fahrzeugStatus.length}</span>
-              </div>
-            </div>
-            <div className="cell">
-              <div className="lbl">Mannschaft</div>
-              <div className="val">
-                {aggregateMannschaft}
-                <span className="unit">Pers.</span>
-              </div>
-            </div>
-            <div className="cell">
-              <div className="lbl">Berichte</div>
-              <div className="val">
-                {abgeschlossenCount}
-                <span className="unit">/ {fahrzeugStatus.length} fertig</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <SectionHead title="Einsatzdaten" />
+        {/* Editor-Bereich ist nur sichtbar bei aktivem Einsatz — Idle = Karte + Übergabe-Sektion ausgeblendet, Stammdaten machen ohne Einsatz keinen Sinn. */}
+        {!istIdle && (
+          <>
+            <SectionHead title="Einsatzdaten" />
         <section className="card">
           <div className="card-head">
             <div className="card-title">
@@ -1540,6 +1582,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
+          </>
+        )}
+
         <SectionHead title="Karte · Live-Positionen" />
         <section className="card">
           <div className="card-head">
@@ -1583,7 +1628,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </p>
         </section>
 
-        <SectionHead title="Zusammenfassung Mannschaft" />
+        {/* Aggregations + Chronik + Uebergabe nur sichtbar mit aktivem Einsatz. */}
+        {!istIdle && (
+          <>
+            <SectionHead title="Zusammenfassung Mannschaft" />
         <section className="card">
           <div className="card-head">
             <div className="card-title">
@@ -1828,6 +1876,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             );
           })()}
         </div>
+          </>
+        )}
       </main>
 
       <div className="appfoot">
