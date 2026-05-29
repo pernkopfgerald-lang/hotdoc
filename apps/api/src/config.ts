@@ -47,6 +47,13 @@ const EnvSchema = z
     WASSERKARTE_ACCESS_KEY: z.string().optional(),
     WASSERKARTE_BASE_URL: z.string().url().default("https://api.wasserkarte.info"),
 
+    // GraphHopper Routing (Free Plan, 500 Credits/Tag) — fuer Fahrzeug-Tablets
+    GRAPHHOPPER_API_KEY: z.string().optional(),
+    GRAPHHOPPER_BASE_URL: z
+      .string()
+      .url()
+      .default("https://graphhopper.com/api/1"),
+
     // WebPush (VAPID) — Phase 3
     VAPID_PUBLIC: z.string().optional(),
     VAPID_PRIVATE: z.string().optional(),

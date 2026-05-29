@@ -19,7 +19,7 @@ import {
   emptySlot,
   type MannschaftSlotData,
 } from "../components/MannschaftSlot";
-import { MapCard, type MapPosition } from "../components/MapCard";
+import { MapCard, type MapPosition, type RouteData } from "../components/MapCard";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { PersonButton } from "../components/PersonButton";
@@ -349,6 +349,67 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     }, 3000);
     return () => clearInterval(id);
   }, []);
+
+  // GraphHopper-Routing — Route von eigener Position zum Einsatzort holen.
+  // Throttle: erst neu holen wenn das Tablet sich > 100 m vom letzten Fetch
+  // wegbewegt hat. Backend cached identische Sektoren ohnehin (5 min TTL),
+  // 100 m matcht die Cache-Aufloesung perfekt. Bei neuem Einsatzort wird
+  // sofort neu geholt.
+  const [route, setRoute] = useState<RouteData | undefined>(undefined);
+  const lastFetchedSelfPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastFetchedEinsatzPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!active?.einsatzPos || !geo.fix) return;
+    const einsatzPos = active.einsatzPos;
+    const fromPos = { lat: geo.fix.lat, lng: geo.fix.lng };
+    // Hat sich was geaendert?
+    const last = lastFetchedSelfPosRef.current;
+    const lastE = lastFetchedEinsatzPosRef.current;
+    const movedFar =
+      !last ||
+      haversineKm(last, fromPos) * 1000 > 100;
+    const newEinsatz =
+      !lastE || lastE.lat !== einsatzPos.lat || lastE.lng !== einsatzPos.lng;
+    if (!movedFar && !newEinsatz) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await apiCall<{
+          ok: true;
+          path: Array<{ lat: number; lng: number }>;
+          distanceM: number;
+          timeMs: number;
+          instructions: Array<{
+            text: string;
+            distanceM: number;
+            timeMs: number;
+            sign: number;
+          }>;
+        }>(
+          `/api/routing/route?fromLat=${fromPos.lat}&fromLng=${fromPos.lng}&toLat=${einsatzPos.lat}&toLng=${einsatzPos.lng}`,
+        );
+        if (cancelled) return;
+        setRoute({
+          path: r.path,
+          distanceM: r.distanceM,
+          timeMs: r.timeMs,
+          instructions: r.instructions,
+        });
+        lastFetchedSelfPosRef.current = fromPos;
+        lastFetchedEinsatzPosRef.current = einsatzPos;
+      } catch {
+        // Routing tot oder Quota erschöpft → Map faellt auf Luftlinie zurueck.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    active?.einsatzPos?.lat,
+    active?.einsatzPos?.lng,
+    geo.fix?.lat,
+    geo.fix?.lng,
+  ]);
 
   // Live-Fleet-Polling: alle 3 s die Positionen aller Fahrzeuge holen.
   // Das eigene Fahrzeug erscheint in der Liste mit isSelf-Flag, damit die
@@ -1006,6 +1067,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               fleet={fleet}
               hydranten={[]}
               showLoeschwasser={false}
+              {...(route ? { route } : {})}
             />
 
             <section className="card">

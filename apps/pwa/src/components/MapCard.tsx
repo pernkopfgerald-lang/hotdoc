@@ -27,6 +27,18 @@ export interface Hydrant {
   lng: number;
 }
 
+export interface RouteData {
+  path: Array<{ lat: number; lng: number }>;
+  distanceM: number;
+  timeMs: number;
+  instructions: Array<{
+    text: string;
+    distanceM: number;
+    timeMs: number;
+    sign: number;
+  }>;
+}
+
 interface Props {
   selfPos: { lat: number; lng: number };
   einsatzPos: { lat: number; lng: number };
@@ -35,6 +47,10 @@ interface Props {
   hydranten: Hydrant[];
   /** Wenn false (Default), wird der Löschwasser-Toggle nicht gerendert */
   showLoeschwasser?: boolean;
+  /** Echte GraphHopper-Route von selfPos zu einsatzPos. Wenn vorhanden →
+   *  Polyline folgt der Route + Turn-by-Turn-Liste wird gerendert.
+   *  Wenn nicht (z. B. Routing noch nicht da), faellt auf Luftlinie zurueck. */
+  route?: RouteData;
 }
 
 const SELF_ZOOM = 17;
@@ -46,6 +62,7 @@ export function MapCard({
   fleet,
   hydranten,
   showLoeschwasser = false,
+  route,
 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -138,20 +155,41 @@ export function MapCard({
         markersRef.current.delete(id);
       }
     }
-    // Route updaten
+    // Route updaten — bei echter GraphHopper-Route die Polyline der Strasse
+    // folgen lassen + durchgehend statt gestrichelt. Sonst Luftlinie.
     if (routeRef.current) {
-      routeRef.current.setLatLngs([
-        [selfPos.lat, selfPos.lng],
-        [einsatzPos.lat, einsatzPos.lng],
-      ]);
+      if (route && route.path.length > 1) {
+        routeRef.current.setLatLngs(route.path.map((p) => [p.lat, p.lng]));
+        routeRef.current.setStyle({
+          color: "#2563eb",
+          weight: 5,
+          opacity: 0.85,
+          dashArray: undefined,
+        });
+      } else {
+        routeRef.current.setLatLngs([
+          [selfPos.lat, selfPos.lng],
+          [einsatzPos.lat, einsatzPos.lng],
+        ]);
+        routeRef.current.setStyle({
+          color: "#dc2626",
+          weight: 4,
+          opacity: 0.7,
+          dashArray: "10 8",
+        });
+      }
     }
     // Auto-Follow auf Self
     if (autoFollowRef.current) {
       map.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true, duration: 1.2 });
     }
-    // Distanz
-    setDistance(haversineKm(selfPos, einsatzPos));
-  }, [fleet, selfPos, einsatzPos]);
+    // Distanz: echte Strecken-Distanz wenn GraphHopper-Route vorhanden, sonst Luftlinie
+    if (route && route.distanceM > 0) {
+      setDistance(route.distanceM / 1000);
+    } else {
+      setDistance(haversineKm(selfPos, einsatzPos));
+    }
+  }, [fleet, selfPos, einsatzPos, route]);
 
   // — Hydranten-Layer aktualisieren —
   useEffect(() => {
@@ -169,7 +207,9 @@ export function MapCard({
 
   const navHref = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(einsatzAdresse)}&travelmode=driving`;
   const hydrantsNearby = hydranten.filter((h) => haversineKm({ lat: h.lat, lng: h.lng }, selfPos) * 1000 <= 250).length;
-  const etaMin = Math.max(1, Math.round((distance * 60) / 50));
+  const etaMin = route && route.timeMs > 0
+    ? Math.max(1, Math.round(route.timeMs / 60_000))
+    : Math.max(1, Math.round((distance * 60) / 50));
 
   function recenter() {
     autoFollowRef.current = true;
@@ -291,6 +331,76 @@ export function MapCard({
           />
         </div>
       </div>
+
+      {route && route.instructions.length > 0 ? (
+        <div
+          style={{
+            marginTop: 12,
+            maxHeight: 200,
+            overflowY: "auto",
+            borderRadius: 12,
+            border: "1px solid var(--border-strong)",
+            background: "var(--surface-2)",
+            padding: "6px 4px",
+          }}
+        >
+          <div
+            style={{
+              padding: "4px 10px 6px",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+              borderBottom: "1px solid var(--border)",
+              marginBottom: 4,
+            }}
+          >
+            Turn-by-Turn · GraphHopper
+          </div>
+          {route.instructions.map((ins, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                gap: 10,
+                padding: "8px 10px",
+                fontSize: 13,
+                lineHeight: 1.35,
+                color: "var(--fg)",
+                borderBottom: idx < route.instructions.length - 1 ? "1px solid var(--border)" : 0,
+              }}
+            >
+              <span
+                style={{
+                  flexShrink: 0,
+                  width: 22,
+                  textAlign: "center",
+                  fontSize: 14,
+                }}
+                aria-hidden
+              >
+                {signGlyph(ins.sign)}
+              </span>
+              <span style={{ flex: 1 }}>{ins.text}</span>
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--fg-3)",
+                }}
+              >
+                {ins.distanceM >= 1000
+                  ? `${(ins.distanceM / 1000).toFixed(1)} km`
+                  : `${Math.round(ins.distanceM)} m`}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-2.5 flex gap-2">
         <a
@@ -439,4 +549,25 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   const lat2 = toRad(b.lat);
   const x = Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
   return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+/** GraphHopper-Sign-Code → Pfeil-Glyph. Siehe docs.graphhopper.com. */
+function signGlyph(sign: number): string {
+  switch (sign) {
+    case -98: return "·";       // unknown
+    case -8:  return "↶";        // leave roundabout
+    case -7:  return "↰";        // keep left
+    case -3:  return "↰";        // sharp left
+    case -2:  return "←";        // left
+    case -1:  return "↖";        // slight left
+    case 0:   return "↑";        // straight
+    case 1:   return "↗";        // slight right
+    case 2:   return "→";        // right
+    case 3:   return "↱";        // sharp right
+    case 4:   return "🏁";        // finish
+    case 5:   return "•";        // via reached
+    case 6:   return "⟳";        // use roundabout
+    case 7:   return "↱";        // keep right
+    default:  return "·";
+  }
 }
