@@ -230,62 +230,72 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           `/api/einsaetze?status=aktiv&fuerFahrzeug=${encodeURIComponent(fahrzeugId)}`,
         );
         if (cancelled) return;
-        const target = list.items[0];
-        if (!target) return;
+        if (list.items.length === 0) return;
 
-        // Neuer Einsatz erkannt → in lokale Liste aufnehmen + auto-aktivieren.
-        // Vibration als haptisches Signal damit der Kdt sofort merkt dass
-        // ein Alarm reingekommen ist, auch wenn das Tablet auf der Ladestation
-        // liegt.
-        let isNewToUs = false;
+        // Phase 1: Neue Einsaetze erkennen + in lokale Liste aufnehmen.
+        // Beim ersten neuen Einsatz im Tick switcht das Tablet auto-magisch
+        // dorthin + vibriert. Folge-Einsaetze landen in der Liste, aber der
+        // Funktionaer bleibt auf dem aktuellen Tab — er soll waehlen.
+        let anyNewToUs = false;
+        let firstNewId: string | null = null;
         setEinsaetze((prev) => {
-          if (prev.some((e) => e.id === target._id)) return prev;
-          isNewToUs = true;
-          return [...prev, buildEinsatzFromApi(target)];
+          const knownIds = new Set(prev.map((e) => e.id));
+          const additions: EinsatzInstance[] = [];
+          for (const target of list.items) {
+            if (knownIds.has(target._id)) continue;
+            additions.push(buildEinsatzFromApi(target));
+            knownIds.add(target._id);
+            if (!firstNewId) firstNewId = target._id;
+          }
+          if (additions.length === 0) return prev;
+          anyNewToUs = true;
+          return [...prev, ...additions];
         });
-        if (isNewToUs) {
-          setActiveId(target._id);
+        if (anyNewToUs && firstNewId) {
+          setActiveId(firstNewId);
           try {
             navigator.vibrate?.([100, 60, 100, 60, 200]);
           } catch {
             // egal — Vibration ist Komfort, nicht Pflicht
           }
-          return;
         }
 
-        // Existierender Einsatz → Abschluss-Status mit Fahrzeugbericht
-        // synchronisieren (Florianstation oder anderes Geraet kann den
-        // Bericht serverseitig abgeschlossen haben).
-        const einsatzIdEnc = encodeURIComponent(target._id);
-        const fz = await apiCall<{
-          items?: Array<{
-            fahrzeugId?: string;
-            status?: "in_arbeit" | "abgeschlossen";
-            geaendertAm?: string;
-            km?: { gefahrenKm?: number };
-            fahrzeugKdtPersonId?: number;
-          }>;
-        }>(`/api/einsaetze/${einsatzIdEnc}/fahrzeugberichte`);
-        if (cancelled) return;
-        const mine = fz.items?.find((b) => b.fahrzeugId === fahrzeugId);
-        if (!mine || mine.status !== "abgeschlossen") return;
-        setEinsaetze((prev) =>
-          prev.map((e) =>
-            e.id === target._id && !e.abgeschlossen
-              ? {
-                  ...e,
-                  abgeschlossen: {
-                    ts: mine.geaendertAm ?? new Date().toISOString(),
-                    durch:
-                      mine.fahrzeugKdtPersonId !== undefined
-                        ? `Pers-${mine.fahrzeugKdtPersonId}`
-                        : "—",
-                    kmGefahren: mine.km?.gefahrenKm ?? 0,
-                  },
-                }
-              : e,
-          ),
-        );
+        // Phase 2: Abschluss-Status fuer ALLE bekannten Einsaetze pruefen.
+        // Die Florianstation oder ein anderes Tablet kann irgendeinen Bericht
+        // abgeschlossen haben — wir muessen jeden moeglicherweise betroffenen
+        // Eintrag synchronisieren, nicht nur items[0].
+        for (const target of list.items) {
+          const einsatzIdEnc = encodeURIComponent(target._id);
+          const fz = await apiCall<{
+            items?: Array<{
+              fahrzeugId?: string;
+              status?: "in_arbeit" | "abgeschlossen";
+              geaendertAm?: string;
+              km?: { gefahrenKm?: number };
+              fahrzeugKdtPersonId?: number;
+            }>;
+          }>(`/api/einsaetze/${einsatzIdEnc}/fahrzeugberichte`);
+          if (cancelled) return;
+          const mine = fz.items?.find((b) => b.fahrzeugId === fahrzeugId);
+          if (!mine || mine.status !== "abgeschlossen") continue;
+          setEinsaetze((prev) =>
+            prev.map((e) =>
+              e.id === target._id && !e.abgeschlossen
+                ? {
+                    ...e,
+                    abgeschlossen: {
+                      ts: mine.geaendertAm ?? new Date().toISOString(),
+                      durch:
+                        mine.fahrzeugKdtPersonId !== undefined
+                          ? `Pers-${mine.fahrzeugKdtPersonId}`
+                          : "—",
+                      kmGefahren: mine.km?.gefahrenKm ?? 0,
+                    },
+                  }
+                : e,
+            ),
+          );
+        }
       } catch {
         // Backend nicht erreichbar — localStorage-Stand bleibt massgeblich.
       }

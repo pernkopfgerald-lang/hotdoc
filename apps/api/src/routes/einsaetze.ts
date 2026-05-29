@@ -43,7 +43,9 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
   // damit es nur Einsaetze sieht die ihm explizit zugewiesen sind (oder
   // ueberhaupt keine Zuweisung tragen = Default offen). Florianstation
   // schickt keinen Filter und sieht alle aktiven Einsaetze.
-  const fuerFahrzeug = String(req.query.fuerFahrzeug ?? "");
+  const fuerFahrzeugRaw = req.query.fuerFahrzeug;
+  const fuerFahrzeug =
+    typeof fuerFahrzeugRaw === "string" ? fuerFahrzeugRaw : "";
   if (fuerFahrzeug) {
     docs = docs.filter((d) => {
       const z = (d as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge;
@@ -308,15 +310,18 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth(), (async (req, res) => {
   // Audit-Trail: wenn sich die Fahrzeug-Zuweisung geaendert hat → eigenes
   // Event schreiben. Sicherheits-relevant: aendert die Sichtbarkeit eines
   // Einsatzes auf den Fahrzeug-Tablets.
-  const vorher = JSON.stringify(
-    Array.isArray((current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge)
-      ? (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge
-      : [],
+  // sortiert vergleichen — Reihenfolge im Array sollte den Audit-Trail
+  // nicht ausloesen (logisch eine Menge, nicht eine Liste).
+  const arrAsString = (raw: unknown): string => {
+    const arr = Array.isArray(raw) ? [...(raw as string[])] : [];
+    arr.sort();
+    return JSON.stringify(arr);
+  };
+  const vorher = arrAsString(
+    (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge,
   );
-  const nachher = JSON.stringify(
-    Array.isArray((merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge)
-      ? (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge
-      : [],
+  const nachher = arrAsString(
+    (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge,
   );
   if (vorher !== nachher) {
     const session = req.session;
