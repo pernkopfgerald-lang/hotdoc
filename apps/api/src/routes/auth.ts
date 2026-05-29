@@ -12,6 +12,7 @@
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { Router, type RequestHandler } from "express";
+import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 import {
   LoginRequestSchema,
@@ -656,4 +657,233 @@ authRouter.get("/api/auth/handoff/:code/status", (async (req, res) => {
     }
     throw err;
   }
+}) as RequestHandler);
+
+// ─────────────────────────────────────────────────────────────────────
+// QR-Sticker-Auth — persistente fahrzeug-spezifische Login-Anker
+// ─────────────────────────────────────────────────────────────────────
+//
+// Konzept:
+//   Funktionär druckt im Backoffice einen QR-Code pro Fahrzeug und klebt
+//   ihn ans Tablet oder ins Auto-Cockpit. Der QR enthält die URL
+//     https://hotdoc-eberstalzell.fly.dev/qr/<token>
+//   mit einem signierten JWT als <token>.
+//   Wer den QR scannt → öffnet die URL → PWA macht GET /api/auth/qr/<token>
+//   → bekommt einen normalen Tablet-Session-Token + ist sofort drin.
+//
+// Multi-Device-Parallel:
+//   Mehrere Geräte können denselben QR scannen — jeder Scan = neue Tablet-
+//   Session mit eigener deviceId. Kein Single-Device-Logout (anders als
+//   QR-Handoff, der eine Sitzung übergibt).
+//
+// Rotation:
+//   Bei Tablet-Verlust / Verdacht auf QR-Fotokopie rotiert der Funktionär
+//   im Backoffice → die generation im config:qr-anchors-Doc geht +1, der
+//   alte QR ist tot, neuer muss gedruckt werden.
+
+const QR_ANCHOR_CONFIG_ID = "config:qr-anchors";
+const QR_KIND = "qr-anchor";
+
+interface QrAnchorPayload {
+  kind: typeof QR_KIND;
+  fahrzeugId: string;
+  generation: number;
+  iat: number;
+}
+
+interface QrAnchorState {
+  byFahrzeug: Record<string, { generation: number; geaendertAm: string; geaendertVon?: string }>;
+}
+
+async function loadQrAnchorState(): Promise<QrAnchorState> {
+  try {
+    const doc = (await db.get(QR_ANCHOR_CONFIG_ID)) as { byFahrzeug?: QrAnchorState["byFahrzeug"] };
+    return { byFahrzeug: doc.byFahrzeug ?? {} };
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      return { byFahrzeug: {} };
+    }
+    throw err;
+  }
+}
+
+async function getCurrentGeneration(fahrzeugId: string): Promise<number> {
+  const state = await loadQrAnchorState();
+  return state.byFahrzeug[fahrzeugId]?.generation ?? 1;
+}
+
+const QR_SECRET_BYTES = new TextEncoder().encode(env.JWT_SECRET);
+
+async function signQrAnchor(fahrzeugId: string, generation: number): Promise<string> {
+  // KEIN exp — QR ist persistent. Invalidierung läuft über generation-Bump.
+  return await new SignJWT({
+    kind: QR_KIND,
+    fahrzeugId,
+    generation,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .sign(QR_SECRET_BYTES);
+}
+
+async function verifyQrAnchor(token: string): Promise<QrAnchorPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, QR_SECRET_BYTES);
+    if (payload.kind !== QR_KIND) return null;
+    if (typeof payload.fahrzeugId !== "string") return null;
+    if (typeof payload.generation !== "number") return null;
+    if (typeof payload.iat !== "number") return null;
+    return payload as unknown as QrAnchorPayload;
+  } catch {
+    return null;
+  }
+}
+
+// — GET /api/auth/qr-anchor/:fahrzeugId —
+// Liefert den aktuell gültigen QR-Token-String für den Backoffice-QR-Modal.
+// Nur funktionaer+ — der String darf nicht für jeden lesbar sein.
+authRouter.get("/api/auth/qr-anchor/:fahrzeugId", requireAuth("funktionaer"), (async (req, res) => {
+  const fahrzeugId = String(req.params.fahrzeugId ?? "");
+  if (!/^[a-z0-9-]{1,32}$/.test(fahrzeugId)) {
+    res.status(400).json({ error: "invalid_fahrzeugId" });
+    return;
+  }
+  const generation = await getCurrentGeneration(fahrzeugId);
+  const token = await signQrAnchor(fahrzeugId, generation);
+  res.json({ ok: true, token, fahrzeugId, generation });
+}) as RequestHandler);
+
+// — POST /api/auth/qr-anchor/:fahrzeugId/rotate —
+// Erhöht die Generation im config:qr-anchors-Doc → alle bisherigen QR-Codes
+// für dieses Fahrzeug werden ungültig. Funktionär muss neuen QR drucken.
+authRouter.post(
+  "/api/auth/qr-anchor/:fahrzeugId/rotate",
+  requireAuth("funktionaer"),
+  (async (req, res) => {
+    const fahrzeugId = String(req.params.fahrzeugId ?? "");
+    if (!/^[a-z0-9-]{1,32}$/.test(fahrzeugId)) {
+      res.status(400).json({ error: "invalid_fahrzeugId" });
+      return;
+    }
+    const session = req.session!;
+    let doc: {
+      _id: string;
+      _rev?: string;
+      type: "config";
+      key: "qr-anchors";
+      byFahrzeug: QrAnchorState["byFahrzeug"];
+    };
+    try {
+      doc = (await db.get(QR_ANCHOR_CONFIG_ID)) as typeof doc;
+      if (!doc.byFahrzeug) doc.byFahrzeug = {};
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) {
+        doc = { _id: QR_ANCHOR_CONFIG_ID, type: "config", key: "qr-anchors", byFahrzeug: {} };
+      } else {
+        throw err;
+      }
+    }
+    const old = doc.byFahrzeug[fahrzeugId]?.generation ?? 1;
+    doc.byFahrzeug[fahrzeugId] = {
+      generation: old + 1,
+      geaendertAm: new Date().toISOString(),
+      geaendertVon: session.username,
+    };
+    const result = await db.insert(doc);
+    await writeAuditEvent({
+      type: "config-changed",
+      actorUsername: session.username,
+      actorRolle: session.rolle,
+      fahrzeugId,
+      details: { what: "qr-anchor-rotate", newGeneration: old + 1 },
+      ipAddress: req.ip,
+    });
+    const newToken = await signQrAnchor(fahrzeugId, old + 1);
+    logger.info(
+      { fahrzeugId, generation: old + 1, by: session.username, rev: result.rev },
+      "QR-Anker rotiert",
+    );
+    res.json({ ok: true, token: newToken, fahrzeugId, generation: old + 1 });
+  }) as RequestHandler,
+);
+
+// — GET /api/auth/qr/:token — Public-Endpoint
+// Wird von der PWA gerufen wenn jemand den QR scannt und /qr/<token> öffnet.
+// Liefert einen normalen Tablet-Session-Token zurück. Rate-Limited als
+// Defence-in-Depth — JWT-Signatur ist primärer Schutz.
+authRouter.get("/api/auth/qr/:token", loginRateLimit, (async (req, res) => {
+  const token = String(req.params.token ?? "");
+  if (!token || token.length > 800) {
+    res.status(400).json({ error: "invalid_token_format" });
+    return;
+  }
+  const payload = await verifyQrAnchor(token);
+  if (!payload) {
+    recordFailedLogin(req);
+    await writeAuditEvent({
+      type: "login-failed",
+      actorUsername: "qr:unknown",
+      details: { reason: "invalid_qr_signature" },
+      ipAddress: req.ip,
+    });
+    res.status(401).json({ error: "invalid_qr_token" });
+    return;
+  }
+  const currentGen = await getCurrentGeneration(payload.fahrzeugId);
+  if (payload.generation < currentGen) {
+    recordFailedLogin(req);
+    await writeAuditEvent({
+      type: "login-failed",
+      actorUsername: `qr:${payload.fahrzeugId}`,
+      details: {
+        reason: "qr_generation_revoked",
+        presented: payload.generation,
+        current: currentGen,
+      },
+      fahrzeugId: payload.fahrzeugId,
+      ipAddress: req.ip,
+    });
+    res.status(401).json({
+      error: "qr_revoked",
+      message:
+        "Dieser QR-Code wurde vom Funktionär ungültig gemacht. Bitte neuen QR-Sticker holen.",
+    });
+    return;
+  }
+  recordSuccessfulLogin(req);
+  const deviceId = randomUUID();
+  const rolle = payload.fahrzeugId === "zentrale" ? "einsatzleiter" : "mannschaft";
+  const { token: sessionToken, expiresAt } = await signSession({
+    sub: `tablet:${payload.fahrzeugId}:${deviceId}`,
+    username: `tablet:${payload.fahrzeugId}`,
+    rolle,
+    fahrzeugId: payload.fahrzeugId,
+  });
+  await writeAuditEvent({
+    type: "login-success",
+    actorUsername: `qr:${payload.fahrzeugId}`,
+    actorRolle: rolle,
+    fahrzeugId: payload.fahrzeugId,
+    userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200),
+    details: { via: "qr-anchor", generation: payload.generation, deviceId },
+    ipAddress: req.ip,
+  });
+  logger.info(
+    {
+      fahrzeugId: payload.fahrzeugId,
+      generation: payload.generation,
+      rolle,
+      deviceId,
+      ua: String(req.headers["user-agent"] ?? "").slice(0, 60),
+    },
+    "QR-Anker-Login erfolgreich (Multi-Device)",
+  );
+  const response: AuthResponse = {
+    ok: true,
+    rolle,
+    token: sessionToken,
+    expiresAt,
+    fahrzeugId: payload.fahrzeugId,
+  };
+  res.json(response);
 }) as RequestHandler);

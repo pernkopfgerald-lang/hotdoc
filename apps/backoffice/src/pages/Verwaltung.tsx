@@ -1,4 +1,4 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, KeyRound, Eye, EyeOff, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, QrCode } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
 import {
@@ -16,6 +16,7 @@ import { listEinsaetze, type EinsatzListItem, type EinsatzTyp } from "../api/ein
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
+import { QrAnchorModal } from "../components/QrAnchorModal";
 import { Florianstation } from "./Florianstation";
 import type { AuthResponse } from "@hotdoc/shared";
 
@@ -2718,6 +2719,8 @@ function TabletInventarPanel({ currentUser }: { currentUser: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  /** Aktuell geöffneter QR-Sticker-Modal (Fahrzeug-Id) oder null. */
+  const [qrOpenFor, setQrOpenFor] = useState<{ id: string; label: string; funkruf: string } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -2871,6 +2874,26 @@ function TabletInventarPanel({ currentUser }: { currentUser: string }) {
                     {funkruf}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setQrOpenFor({ id, label, funkruf })}
+                  title="QR-Sticker anzeigen / drucken / rotieren"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 12px",
+                    background: "var(--info-tint)",
+                    color: "var(--info)",
+                    border: "1px solid var(--blue-border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <QrCode size={14} /> QR-Sticker
+                </button>
               </div>
 
               <div
@@ -2991,6 +3014,17 @@ function TabletInventarPanel({ currentUser }: { currentUser: string }) {
           </span>
         ) : null}
       </div>
+
+      {/* QR-Sticker-Modal — Multi-Device-Parallel-Login pro Fahrzeug */}
+      {qrOpenFor ? (
+        <QrAnchorModal
+          open
+          fahrzeugId={qrOpenFor.id}
+          fahrzeugLabel={qrOpenFor.label}
+          funkrufname={qrOpenFor.funkruf}
+          onClose={() => setQrOpenFor(null)}
+        />
+      ) : null}
     </section>
   );
 }

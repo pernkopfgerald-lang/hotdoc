@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
+import { QrClaim } from "./components/QrClaim";
 import { db, getFahrzeugConfig } from "./db/pouch";
 import { seedIfEmpty } from "./db/seed";
 import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
@@ -13,6 +14,7 @@ type State =
   | { kind: "loading" }
   | { kind: "setup" }
   | { kind: "handoff-claim"; code: string }
+  | { kind: "qr-claim"; token: string }
   | { kind: "ready"; fahrzeugId: FahrzeugId };
 
 /**
@@ -22,6 +24,17 @@ type State =
 function readHandoffCodeFromUrl(): string | null {
   const m = /^\/handoff\/([A-Z0-9]{8})\/?$/i.exec(window.location.pathname);
   return m?.[1] ? m[1].toUpperCase() : null;
+}
+
+/**
+ * Liest den QR-Anker-Token aus der URL `/qr/<token>` falls vorhanden.
+ * Der Token ist ein JWT, daher kommt er base64-ähnlich mit Punkten
+ * vor — wir akzeptieren ein großzügiges Charset und prüfen ihn dann
+ * serverseitig.
+ */
+function readQrTokenFromUrl(): string | null {
+  const m = /^\/qr\/([A-Za-z0-9_.-]{20,800})\/?$/.exec(window.location.pathname);
+  return m?.[1] ?? null;
 }
 
 export function App() {
@@ -40,6 +53,15 @@ export function App() {
     const handoffCode = readHandoffCodeFromUrl();
     if (handoffCode) {
       setState({ kind: "handoff-claim", code: handoffCode });
+      return;
+    }
+    // QR-Sticker-Auto-Login: URL `/qr/<token>` triggert sofortigen Login
+    // als das Fahrzeug, das im signierten Token steht. Multi-Device-fähig —
+    // mehrere Tablets/Handys können denselben QR scannen ohne dass die
+    // anderen abgemeldet werden.
+    const qrToken = readQrTokenFromUrl();
+    if (qrToken) {
+      setState({ kind: "qr-claim", token: qrToken });
       return;
     }
     // Auto-Release-Check: Hat eine Handoff-Sitzung ihre 24h überschritten?
@@ -227,6 +249,30 @@ export function App() {
         }}
         onCancel={() => {
           // Cancel: Setup-Screen für Neueinrichtung
+          try {
+            window.history.replaceState({}, "", "/");
+          } catch {
+            // egal
+          }
+          setState({ kind: "setup" });
+        }}
+      />
+    );
+  }
+
+  if (state.kind === "qr-claim") {
+    return (
+      <QrClaim
+        token={state.token}
+        onComplete={(fahrzeugId) => {
+          try {
+            window.history.replaceState({}, "", "/");
+          } catch {
+            // egal
+          }
+          setState({ kind: "ready", fahrzeugId });
+        }}
+        onCancel={() => {
           try {
             window.history.replaceState({}, "", "/");
           } catch {
