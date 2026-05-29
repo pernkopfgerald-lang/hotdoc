@@ -5,7 +5,6 @@ export type ConfigKey =
   | "einsatzstichworte"
   | "geraete"
   | "stammdaten"
-  | "tablet-pins"
   | "tablet-inventar";
 
 export interface ConfigEnvelope<T = Record<string, unknown>> {
@@ -51,13 +50,6 @@ export interface StammdatenData {
    * Erlaubte Werte: 1 / 4 / 12 / 24 / 48. 0 = nie. Default 24.
    */
   handoffAutoReleaseHours?: number;
-}
-
-export interface TabletPinsData {
-  /** PIN je Fahrzeug-Slug (kdo / tlf-a-4000 / lfa-b / mtf / zentrale). */
-  pins: Record<string, string>;
-  /** Audit: Wer hat zuletzt gespeichert. */
-  geaendertVon?: string;
 }
 
 /** Hardware-Inventar pro Tablet — vom Funktionär manuell gepflegt. */
