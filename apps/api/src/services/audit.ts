@@ -28,6 +28,7 @@ export type AuditEventType =
   | "login-failed"
   | "einsatz-abschluss"
   | "einsatz-reaktivierung"
+  | "einsatz-zuweisung-geaendert"
   | "config-changed";
 
 export interface AuditEvent {
