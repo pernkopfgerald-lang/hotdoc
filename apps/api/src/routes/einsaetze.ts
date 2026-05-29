@@ -39,6 +39,19 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
     docs = docs.filter((d) => (d as { status?: string }).status === status);
   }
 
+  // Fahrzeug-Filter: jedes Fahrzeug-Tablet schickt seine eigene Id mit,
+  // damit es nur Einsaetze sieht die ihm explizit zugewiesen sind (oder
+  // ueberhaupt keine Zuweisung tragen = Default offen). Florianstation
+  // schickt keinen Filter und sieht alle aktiven Einsaetze.
+  const fuerFahrzeug = String(req.query.fuerFahrzeug ?? "");
+  if (fuerFahrzeug) {
+    docs = docs.filter((d) => {
+      const z = (d as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge;
+      if (!Array.isArray(z) || z.length === 0) return true;
+      return z.includes(fuerFahrzeug);
+    });
+  }
+
   docs.sort(
     (a, b) =>
       new Date((b as { alarmierungZeit: string }).alarmierungZeit).getTime() -
