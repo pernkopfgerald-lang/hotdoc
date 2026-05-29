@@ -327,6 +327,29 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // (Frueher: kuenstliche Random-Walk-Animation fuer Demo-Fleet-Eintraege.
   // Entfernt — Live-Positions-Sharing kommt mit Phase 4 ueber SSE.)
 
+  // Live-Sync zum Backend: nach jeder Aenderung am Bericht (Mannschaft,
+  // Geraete, Aufträge, ÖL) wird mit 2,5 s Debounce ein status="in_arbeit"-
+  // Fahrzeugbericht ins Backend geschoben. Damit sieht die Florianstation
+  // den Personal-Stand live, nicht erst beim Abschluss. Pausiert wenn
+  // Bericht schon abgeschlossen oder kein Active-Einsatz.
+  useEffect(() => {
+    if (!active || active.abgeschlossen) return;
+    const handle = setTimeout(() => {
+      void syncBerichtLive(active);
+    }, 2500);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    active?.id,
+    active?.abgeschlossen,
+    active?.fahrer,
+    active?.kdt,
+    active?.mannschaft,
+    active?.gearSelected,
+    active?.oelSaecke,
+    active?.auftraege,
+  ]);
+
   // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
   // Pausiert wenn Bericht abgeschlossen (kein Schreibschutz-Bypass nötig).
   useEffect(() => {
@@ -654,6 +677,62 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     // Upload im Hintergrund anstoßen — UI ist schon abgeschlossen, der
     // User sieht die Sync-Statusbadge in der Abschluss-View.
     void uploadFahrzeugbericht(active, km);
+  }
+
+  /**
+   * Live-Sync: schreibt den aktuellen Zwischenstand (Mannschaft, Geraete,
+   * Aufträge, ÖL) als status="in_arbeit"-Fahrzeugbericht ins Backend.
+   * Dadurch sieht die Florianstation den Personal-Stand live (alle ~15 s
+   * per Poll), ohne dass der Kdt manuell „Senden" druecken muss.
+   * Silent — kein UI-Feedback; Fehler nur in der Konsole. Der Abschluss-
+   * Upload hat eigene UI-Statusbadge.
+   */
+  async function syncBerichtLive(einsatz: EinsatzInstance): Promise<void> {
+    try {
+      const body = {
+        zeit: { von: einsatz.alarm.alarmierungZeit },
+        km: { gefahrenKm: computeKm() },
+        gpsTrack: [],
+        ...(einsatz.fahrer?.syBosId
+          ? { fahrerPersonId: einsatz.fahrer.syBosId }
+          : {}),
+        ...(einsatz.kdt?.syBosId
+          ? { fahrzeugKdtPersonId: einsatz.kdt.syBosId }
+          : {}),
+        mannschaft: einsatz.mannschaft
+          .map((m, idx) =>
+            m.person
+              ? {
+                  slot: idx + 1,
+                  personId: m.person.syBosId,
+                  atemschutzAktiv: !!m.atemschutzAktiv,
+                  ...(m.atemschutzAktiv &&
+                  typeof m.atemschutzDauerMin === "number"
+                    ? { atemschutzDauerMin: m.atemschutzDauerMin }
+                    : {}),
+                }
+              : null,
+          )
+          .filter((x): x is NonNullable<typeof x> => x !== null),
+        geraete: Array.from(einsatz.gearSelected).map((id) => ({
+          materialId: id,
+        })),
+        oelbindemittelSaecke: Math.max(
+          0,
+          Math.min(99, Math.floor(einsatz.oelSaecke)),
+        ),
+        taetigkeitsbericht: einsatz.auftraege
+          .map((a) => `· ${a.text}`)
+          .join("\n"),
+        status: "in_arbeit" as const,
+      };
+      await apiCall(
+        `/api/einsaetze/${encodeURIComponent(einsatz.id)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
+        { method: "PUT", body },
+      );
+    } catch (err) {
+      console.warn("[live-sync] Fahrzeugbericht konnte nicht synchronisiert werden:", err);
+    }
   }
 
   const tabs: EinsatzTabSummary[] = einsaetze.map((e) => ({
