@@ -227,7 +227,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     const runPoll = async () => {
       try {
         const list = await apiCall<{ items: ApiEinsatzListItem[] }>(
-          "/api/einsaetze?status=aktiv",
+          `/api/einsaetze?status=aktiv&fuerFahrzeug=${encodeURIComponent(fahrzeugId)}`,
         );
         if (cancelled) return;
         const target = list.items[0];
