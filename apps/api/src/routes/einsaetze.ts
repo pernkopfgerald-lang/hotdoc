@@ -116,6 +116,11 @@ const ManuellAnlageBodySchema = z.object({
     .optional(),
   verrechenbar: z.boolean().optional(),
   rechnungsadresse: z.string().optional(),
+  /** Disposition: welche Fahrzeuge bearbeiten den Einsatz?
+   *  Leer/undefined → alle Fahrzeuge sehen ihn (Default). */
+  zugewieseneFahrzeuge: z
+    .array(z.enum(["kdo", "tlf-a-4000", "lfa-b", "mtf"]))
+    .optional(),
 });
 
 einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (async (req, res) => {
@@ -156,6 +161,9 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (as
     ...(d.uebungThema ? { uebungThema: d.uebungThema } : {}),
     ...(d.uebungsleiter ? { uebungsleiter: d.uebungsleiter } : {}),
     ...(d.uebungsTyp ? { uebungsTyp: d.uebungsTyp } : {}),
+    ...(d.zugewieseneFahrzeuge && d.zugewieseneFahrzeuge.length > 0
+      ? { zugewieseneFahrzeuge: d.zugewieseneFahrzeuge }
+      : {}),
     zeitmarken: {},
     beteiligteStellen: [],
     sonstigeAnwesendeFF: { aktive: [] },
