@@ -1,5 +1,5 @@
 import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, Truck, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { IdleView } from "../components/IdleView";
@@ -104,9 +104,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // CouchDB ist (BlaulichtSMS-Alarm ODER manuelle Anlage via Modal).
   const [einsaetze, setEinsaetze] = useState<EinsatzInstance[]>([]);
   const [activeId, setActiveId] = useState<string>("");
-  // Fleet ist leer — Live-Positions-Sharing via SSE folgt mit Phase 4.
-  // Bis dahin zeigt die Map nur das eigene Tablet (selfPos via Geolocation).
-  const fleet: MapPosition[] = [];
+  // Live-Fleet aus /api/positions — wird unten alle 3 s gepollt. Eigener Eintrag
+  // wird per Ping hochgeladen, Florianstation und alle Tablets teilen die Sicht.
+  const [fleet, setFleet] = useState<MapPosition[]>([]);
 
   const active = einsaetze.find((e) => e.id === activeId) ?? null;
 
@@ -324,8 +324,86 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     };
   }, [fahrzeugId]);
 
-  // (Frueher: kuenstliche Random-Walk-Animation fuer Demo-Fleet-Eintraege.
-  // Entfernt — Live-Positions-Sharing kommt mit Phase 4 ueber SSE.)
+  // Live-Position-Push: alle 3 s die aktuelle GPS-Position an /api/positions
+  // schicken. Der Backend-State haelt nur den letzten Ping (kein Track-Persist),
+  // Florianstation pollt /api/positions ihrerseits alle 3 s. Wenn GPS noch
+  // nicht da ist (geo.fix === null) wird nichts geschickt.
+  const geoFixRef = useRef(geo.fix);
+  useEffect(() => {
+    geoFixRef.current = geo.fix;
+  }, [geo.fix]);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const fix = geoFixRef.current;
+      if (!fix) return;
+      const body: Record<string, number> = {
+        lat: fix.lat,
+        lng: fix.lng,
+        accuracyM: fix.accuracyM,
+      };
+      if (fix.speedKmh !== null) body.speed = fix.speedKmh / 3.6;
+      if (fix.headingDeg !== null) body.heading = fix.headingDeg;
+      void apiCall("/api/positions", { method: "POST", body }).catch(() => {
+        // Netz weg / Backend down — die naechste Iteration probiert es nochmal.
+      });
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Live-Fleet-Polling: alle 3 s die Positionen aller Fahrzeuge holen.
+  // Das eigene Fahrzeug erscheint in der Liste mit isSelf-Flag, damit die
+  // Map es hervorheben kann. Florian Eberstalzell wird im Backend nicht
+  // gefuehrt (sendet keine Pings) → wir fuegen ihn fix am FF-Haus dazu.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await apiCall<{
+          items: Array<{
+            fahrzeugId: string;
+            lat: number;
+            lng: number;
+            ts: string;
+          }>;
+        }>("/api/positions");
+        if (cancelled) return;
+        const mapped: MapPosition[] = r.items
+          .filter((p) => p.fahrzeugId in FAHRZEUGE)
+          .map((p) => {
+            const meta = FAHRZEUGE[p.fahrzeugId as FahrzeugId];
+            return {
+              fahrzeugId: p.fahrzeugId as FahrzeugId,
+              funkrufname: meta.funkrufname,
+              abk: shortCode(p.fahrzeugId as FahrzeugId),
+              lat: p.lat,
+              lng: p.lng,
+              lastSeenAt: p.ts,
+              isSelf: p.fahrzeugId === fahrzeugId,
+            };
+          });
+        // Florian Eberstalzell fix am FF-Haus dazu, wenn nicht ohnehin in der Liste.
+        if (!mapped.some((m) => m.fahrzeugId === "zentrale")) {
+          mapped.push({
+            fahrzeugId: "zentrale",
+            funkrufname: "Florian Eberstalzell",
+            abk: "FLORIAN",
+            lat: HOME_POS.lat,
+            lng: HOME_POS.lng,
+            isZentrale: true,
+          });
+        }
+        setFleet(mapped);
+      } catch {
+        // egal — nächster Tick erneut
+      }
+    };
+    void tick();
+    const t = setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [fahrzeugId]);
 
   // Live-Sync zum Backend: nach jeder Aenderung am Bericht (Mannschaft,
   // Geraete, Aufträge, ÖL) wird mit 2,5 s Debounce ein status="in_arbeit"-

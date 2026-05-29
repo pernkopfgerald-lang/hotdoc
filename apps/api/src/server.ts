@@ -16,6 +16,7 @@ import { einsaetzeRouter } from "./routes/einsaetze.js";
 import { geocodeRouter } from "./routes/geocode.js";
 import { healthRouter } from "./routes/health.js";
 import { pdfRouter } from "./routes/pdf.js";
+import { positionsRouter } from "./routes/positions.js";
 import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
 import { startAudioRetentionCron } from "./workers/audio-retention.js";
 import { startAuditRetentionCron } from "./workers/audit-retention.js";
@@ -90,6 +91,7 @@ async function main(): Promise<void> {
   app.use(pdfRouter);
   app.use(audioRouter);
   app.use(geocodeRouter);
+  app.use(positionsRouter);
   app.use(devRouter);
 
   // — DB-Bootstrap —

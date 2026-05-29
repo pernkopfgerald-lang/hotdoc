@@ -152,54 +152,29 @@ const EMPTY_EDITOR: EditorState = {
 };
 
 /**
- * Mock-Fleet-Generator für FlorianMap.
- *
- * Bis Phase 4 (SSE /api/positions/stream) kommt keine echte GPS-Position
- * vom Backend. Wir platzieren die Fahrzeuge dezent um Einsatzort bzw.
- * Feuerwehrhaus, damit die Karte nicht leer ist und der Einsatzleiter
- * eine Vorstellung der Lage bekommt.
- *
- * Florian Eberstalzell ist fix am Feuerwehrhaus (isZentrale=true →
- * niemals stale). TANK ist demonstrativ 14 min stale damit das
- * Offline-Symbol auf der Karte zu sehen ist.
+ * Echte Fleet-Liste für die FlorianMap aus den Live-Pings (alle 3 s vom
+ * Tablet via POST /api/positions). Der Status (wartend / im_einsatz /
+ * abgeschlossen) kommt aus den Fahrzeugberichten (siehe fahrzeugStatus-
+ * Aggregation oben). Fahrzeuge ohne Ping erscheinen nicht auf der Karte.
+ * Florian Eberstalzell wird fix am Feuerwehrhaus dazugesetzt.
  */
 function buildFleetForFlorianMap(
+  positions: Array<{ fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string }>,
   fahrzeugStatus: Array<{
     id: FahrzeugId;
     status: "wartend" | "im_einsatz" | "abgeschlossen";
   }>,
-  einsatzKoord: { lat: number; lng: number } | null,
 ): FahrzeugPos[] {
-  const E = einsatzKoord ?? HOME_POS;
-  const now = new Date().toISOString();
-  const stale = new Date(Date.now() - 14 * 60 * 1000).toISOString();
-
-  // Offsets pro Fahrzeug — knapp um den Einsatzort wenn vorhanden, sonst
-  // um das Feuerwehrhaus. Status kommt aus der echten Aggregation.
-  const offsets: Record<FahrzeugId, { lat: number; lng: number; staleAt?: string }> = {
-    kdo: { lat: E.lat - 0.0009, lng: E.lng + 0.0007 },
-    "tlf-a-4000": { lat: E.lat + 0.0006, lng: E.lng - 0.0006, staleAt: stale },
-    "lfa-b": { lat: HOME_POS.lat + 0.0003, lng: HOME_POS.lng + 0.0001 },
-    mtf: { lat: HOME_POS.lat, lng: HOME_POS.lng - 0.0003 },
-    zentrale: { lat: HOME_POS.lat, lng: HOME_POS.lng },
-  };
-
-  const fleet: FahrzeugPos[] = [];
-  for (const fz of fahrzeugStatus) {
-    const off = offsets[fz.id];
-    if (!off) continue;
-    const abk = shortCode(fz.id);
-    const funkrufname = FAHRZEUGE[fz.id].funkrufname;
-    fleet.push({
-      fahrzeugId: fz.id,
-      funkrufname,
-      abk,
-      lat: off.lat,
-      lng: off.lng,
-      status: fz.status,
-      lastSeenAt: off.staleAt ?? now,
-    });
-  }
+  const statusById = new Map(fahrzeugStatus.map((f) => [f.id, f.status]));
+  const fleet: FahrzeugPos[] = positions.map((p) => ({
+    fahrzeugId: p.fahrzeugId,
+    funkrufname: FAHRZEUGE[p.fahrzeugId].funkrufname,
+    abk: shortCode(p.fahrzeugId),
+    lat: p.lat,
+    lng: p.lng,
+    status: statusById.get(p.fahrzeugId) ?? "wartend",
+    lastSeenAt: p.ts,
+  }));
   // Florian Eberstalzell — immer am FF-Haus, niemals stale.
   fleet.push({
     fahrzeugId: "zentrale",
@@ -263,6 +238,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const aktiverEinsatz: EinsatzApiDoc | null =
     aktiveEinsaetze.find((e) => e._id === aktiverEinsatzId) ?? null;
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
+  /** Live-Pings der Fahrzeuge aus /api/positions (alle 3 s). Zentrale fehlt
+   *  hier absichtlich — die ist am Feuerwehrhaus, nicht im Einsatz. */
+  const [positions, setPositions] = useState<
+    Array<{ fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string }>
+  >([]);
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const personenMap = useMemo(() => {
     const m = new Map<number, string>();
@@ -363,6 +343,39 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       clearInterval(t);
     };
   }, [aktiverEinsatzId]);
+
+  // Live-Positions-Polling. Tablet-Pings landen in einem In-Memory-State
+  // im Backend (services/positions-state). Wir pollen alle 3 s — Fahrzeuge
+  // ohne Ping fallen serverseitig nach 5 min aus der Liste raus.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await apiCall<{
+          items: Array<{
+            fahrzeugId: string;
+            lat: number;
+            lng: number;
+            ts: string;
+          }>;
+        }>("/api/positions");
+        if (cancelled) return;
+        const filtered = r.items
+          .filter((p): p is { fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string } =>
+            ["kdo", "tlf-a-4000", "lfa-b", "mtf"].includes(p.fahrzeugId),
+          );
+        setPositions(filtered);
+      } catch {
+        // Netz weg / 401 → wir behalten den letzten State, nächster Tick versucht erneut
+      }
+    };
+    void tick();
+    const t = setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
 
   // Personalliste einmalig laden — wird benötigt um (a) aus den
   // `fahrzeugKdtPersonId`-IDs Klar-Namen für die Status-Liste zu machen
@@ -1716,10 +1729,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   },
                 }
               : {})}
-            fahrzeuge={buildFleetForFlorianMap(
-              fahrzeugStatus,
-              aktiverEinsatz?.koordinaten ?? null,
-            )}
+            fahrzeuge={buildFleetForFlorianMap(positions, fahrzeugStatus)}
             zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
           />
           <p
