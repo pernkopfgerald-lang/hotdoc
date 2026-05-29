@@ -123,9 +123,18 @@ const ManuellAnlageBodySchema = z.object({
   zugewieseneFahrzeuge: z
     .array(z.enum(["kdo", "tlf-a-4000", "lfa-b", "mtf"]))
     .optional(),
+  /** Client-generierte UUID fuer Idempotenz. Wenn das Tablet den POST wegen
+   *  Netz-Wackler retryt, wird derselbe Einsatz nicht doppelt angelegt — der
+   *  Server findet die existierende Doc-ID und gibt sie zurueck. Optional fuer
+   *  Backwards-Compat; wenn nicht gesetzt, generiert der Server eine UUID
+   *  (kein Idempotenz-Schutz). */
+  idempotencyKey: z.string().uuid().optional(),
 });
 
-einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (async (req, res) => {
+// Mannschaft+ darf anlegen — Fahrzeug-Tablets brauchen das fuer
+// eigenstaendige Uebungen, Lotsendienste und Sturm-Eins. Einsatzleiter ist
+// nicht mehr Pflicht.
+einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async (req, res) => {
   const parsed = ManuellAnlageBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -141,8 +150,21 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("einsatzleiter"), (as
       : d.einsatzTyp === "uebung"
         ? "einsatz:uebung-"
         : "einsatz:manuell-";
+  // Idempotenz: wenn der Client einen idempotencyKey schickt, nutzen wir
+  // ihn als UUID-Teil der Doc-ID. Retry mit gleichem Key → CouchDB findet
+  // die Doc, wir geben sie zurueck statt eine zweite anzulegen.
+  const idemPart = d.idempotencyKey ?? randomUUID();
+  const docId = `${idPrefix}${idemPart}`;
+  try {
+    const existing = (await db.get(docId)) as { _id: string; _rev: string };
+    logger.info({ docId, idempotencyKey: d.idempotencyKey }, "Manuell-Anlage: idempotent (existierender Einsatz zurueckgegeben)");
+    res.json({ ok: true, id: existing._id, rev: existing._rev, idempotent: true });
+    return;
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+  }
   const doc = {
-    _id: `${idPrefix}${randomUUID()}`,
+    _id: docId,
     type: "einsatz" as const,
     einsatzTyp: d.einsatzTyp,
     manuellAngelegt: {

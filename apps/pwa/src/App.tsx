@@ -3,6 +3,7 @@ import { HandoffClaim } from "./components/HandoffClaim";
 import { QrClaim } from "./components/QrClaim";
 import { db, getFahrzeugConfig } from "./db/pouch";
 import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
+import { flushOutbox } from "./lib/einsatz-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { BerichtPage } from "./pages/BerichtPage";
 import { Setup } from "./pages/Setup";
@@ -41,6 +42,25 @@ export function App() {
 
   useEffect(() => {
     void boot();
+  }, []);
+
+  // Background-Worker fuer die Einsatz-Outbox: alle 30 s versuchen wir
+  // wartende Einsatz-Anlagen ins Backend zu schieben. Zusaetzlich triggert
+  // ein Wechsel auf "online" einen Sofort-Flush.
+  useEffect(() => {
+    const tick = (): void => {
+      void flushOutbox().catch((err) => {
+        console.warn("[outbox] flush failed", err);
+      });
+    };
+    tick();
+    const t = setInterval(tick, 30_000);
+    const onOnline = (): void => tick();
+    window.addEventListener("online", onOnline);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("online", onOnline);
+    };
   }, []);
 
   async function boot() {

@@ -1,7 +1,8 @@
 import { EINSATZARTEN } from "@hotdoc/shared";
 import { Flame, GraduationCap, MapPin, Plus, Users, Wrench, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { apiCall } from "../lib/api";
+import { apiCall, ApiError } from "../lib/api";
+import { enqueueEinsatz } from "../lib/einsatz-outbox";
 import { AddressAutocomplete, type GeocodeMatch } from "./AddressAutocomplete";
 import { PersonPickerModal, type PickPerson } from "./PersonPickerModal";
 
@@ -22,6 +23,8 @@ interface ManuellAnlageBody {
   uebungThema?: string;
   uebungsleiter?: string;
   uebungsTyp?: string;
+  /** UUID — Idempotenz-Schutz fuer Retry bei Netz-Wackler / Offline-Outbox. */
+  idempotencyKey: string;
 }
 
 interface Props {
@@ -227,33 +230,33 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     }
     setBusy(true);
     setErr(null);
+    // Idempotency-Key — derselbe Key, falls Retry oder Outbox-Replay.
+    const idempotencyKey = crypto.randomUUID();
+    const body: ManuellAnlageBody = {
+      einsatzTyp: typ,
+      einsatzort: einsatzort.trim(),
+      ...(einsatzart ? { einsatzart } : {}),
+      ...(einsatzartFreitext.trim()
+        ? { einsatzartFreitext: einsatzartFreitext.trim() }
+        : {}),
+      ...(koord ? { koordinaten: koord } : {}),
+      ...(grund.trim() ? { grund: grund.trim() } : {}),
+      idempotencyKey,
+    };
+    if (typ === "lotsendienst") {
+      body.lotsendienstAuftraggeber = auftraggeber.trim();
+      if (route.trim()) body.lotsendienstRoute = route.trim();
+      body.verrechenbar = verrechenbar;
+      if (rechnungsadresse.trim()) body.rechnungsadresse = rechnungsadresse.trim();
+    }
+    if (typ === "uebung") {
+      body.uebungThema = uebungThema.trim();
+      if (uebungsleiterPerson) {
+        body.uebungsleiter = `${uebungsleiterPerson.nachname} ${uebungsleiterPerson.vorname}`.trim();
+      }
+      if (uebungsTyp) body.uebungsTyp = uebungsTyp;
+    }
     try {
-      const body: ManuellAnlageBody = {
-        einsatzTyp: typ,
-        einsatzort: einsatzort.trim(),
-        ...(einsatzart ? { einsatzart } : {}),
-        ...(einsatzartFreitext.trim()
-          ? { einsatzartFreitext: einsatzartFreitext.trim() }
-          : {}),
-        ...(koord ? { koordinaten: koord } : {}),
-        ...(grund.trim() ? { grund: grund.trim() } : {}),
-      };
-      if (typ === "lotsendienst") {
-        body.lotsendienstAuftraggeber = auftraggeber.trim();
-        if (route.trim()) body.lotsendienstRoute = route.trim();
-        body.verrechenbar = verrechenbar;
-        if (rechnungsadresse.trim()) body.rechnungsadresse = rechnungsadresse.trim();
-      }
-      if (typ === "uebung") {
-        body.uebungThema = uebungThema.trim();
-        if (uebungsleiterPerson) {
-          // Voller Name als String — das Schema-Feld bleibt uebungsleiter: string
-          // damit auch externe (Nicht-FF-)Übungsleiter aus historischen Daten
-          // weiterhin angezeigt werden.
-          body.uebungsleiter = `${uebungsleiterPerson.nachname} ${uebungsleiterPerson.vorname}`.trim();
-        }
-        if (uebungsTyp) body.uebungsTyp = uebungsTyp;
-      }
       const result = await apiCall<{ ok: true; id: string }>(
         "/api/einsaetze/manuell",
         { method: "POST", body },
@@ -261,13 +264,23 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       resetAll();
       onCreated(result.id, typ);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("403") || msg.includes("insufficient_role")) {
-        setErr(
-          "Anlage nur durch Einsatzleiter (Florianstation) möglich. Bitte dort anlegen, danach erscheint der Einsatz hier automatisch.",
-        );
-      } else {
-        setErr(`Anlage fehlgeschlagen: ${msg}`);
+      // Schema-Fehler / 4xx → kein Outbox-Eintrag, Bug zeigen
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+        setErr(`Anlage fehlgeschlagen: HTTP ${e.status} ${e.message}`);
+        setBusy(false);
+        return;
+      }
+      // Netz-Fehler / 5xx → in die Outbox, nicht stoeren
+      try {
+        await enqueueEinsatz(idempotencyKey, body as unknown as Record<string, unknown>);
+        resetAll();
+        // Wir signalisieren Erfolg mit Hinweis dass der Sync laeuft. Auto-Open
+        // kommt sobald der Outbox-Worker im Hintergrund den Einsatz beim
+        // Backend angelegt hat (max 30 s + naechster Bericht-Poll).
+        onCreated(`outbox:einsatz:${idempotencyKey}`, typ);
+      } catch (outboxErr) {
+        const msg = outboxErr instanceof Error ? outboxErr.message : String(outboxErr);
+        setErr(`Anlage UND lokale Speicherung fehlgeschlagen: ${msg}`);
       }
     } finally {
       setBusy(false);
