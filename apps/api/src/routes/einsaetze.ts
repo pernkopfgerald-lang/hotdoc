@@ -305,6 +305,33 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth(), (async (req, res) => {
     return;
   }
   const result = await db.insert(merged);
+  // Audit-Trail: wenn sich die Fahrzeug-Zuweisung geaendert hat → eigenes
+  // Event schreiben. Sicherheits-relevant: aendert die Sichtbarkeit eines
+  // Einsatzes auf den Fahrzeug-Tablets.
+  const vorher = JSON.stringify(
+    Array.isArray((current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge)
+      ? (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge
+      : [],
+  );
+  const nachher = JSON.stringify(
+    Array.isArray((merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge)
+      ? (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge
+      : [],
+  );
+  if (vorher !== nachher) {
+    const session = req.session;
+    await writeAuditEvent({
+      type: "einsatz-zuweisung-geaendert",
+      ...(session?.username ? { actorUsername: session.username } : {}),
+      ...(session?.rolle ? { actorRolle: session.rolle } : {}),
+      einsatzId: id,
+      details: {
+        vorher: (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge ?? [],
+        nachher: (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge ?? [],
+      },
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+    });
+  }
   res.json({ ok: true, id, rev: result.rev });
 }) as RequestHandler);
 
