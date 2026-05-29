@@ -8,10 +8,12 @@ import {
   Clock,
   Download,
   FileText,
+  GraduationCap,
   Lock,
   Map as MapIcon,
   MapPin,
   Phone,
+  Plus,
   Save,
   Siren,
   Smartphone,
@@ -835,6 +837,39 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   <div className="alarm-addr" style={{ color: "var(--fg-3)" }}>
                     Sobald ein BlaulichtSMS-Alarm eingeht oder ein Tablet eine Tätigkeit anlegt,
                     erscheint der Einsatz hier automatisch.
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("uebung")}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center" }}
+                    >
+                      <GraduationCap size={14} /> Übung anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("lotsendienst")}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)" }}
+                    >
+                      <MapPin size={14} /> Lotsendienst
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("manuell")}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--info) 80%, transparent)" }}
+                    >
+                      <Plus size={14} /> Sonstige Tätigkeit
+                    </button>
                   </div>
                 </div>
               </div>
