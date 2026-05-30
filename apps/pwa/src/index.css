@@ -226,6 +226,14 @@ html {
   margin-top: -44px !important;
 }
 
+/* Pulse-Ring fuer das in der Florian-Karte ausgewaehlte Fahrzeug. Definiert
+   hier (nicht in design.css), damit Leaflet die Animation im DivIcon-HTML
+   findet. */
+@keyframes fln-pulse-ring {
+  0% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
 [data-theme="dark"] .leaflet-tile {
   filter: brightness(0.65) saturate(0.85) hue-rotate(-3deg) contrast(1.05);
 }

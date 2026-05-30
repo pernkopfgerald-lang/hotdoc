@@ -23,7 +23,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
       }}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-l border"
+        className="w-full max-w-xl overflow-hidden rounded-l border"
         style={{
           borderColor: "var(--border-strong)",
           background: "var(--card-gradient)",

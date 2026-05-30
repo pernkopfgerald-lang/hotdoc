@@ -39,9 +39,75 @@ function readQrTokenFromUrl(): string | null {
 
 export function App() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  // Re-Boot-Generation: erhoeht sich wenn der Watchdog erkennt dass das
+  // Tablet lange weg war. Dadurch laeuft boot() erneut und holt frische Daten.
+  const [bootGen, setBootGen] = useState(0);
 
   useEffect(() => {
     void boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootGen]);
+
+  // Inaktivitaets-Watchdog — Symptom war: Tablet haengt nach Stunden im Standby
+  // mit weissem Screen oder einem alten UI-Stand. Ursache: Browser parkt JS-
+  // Engine im Hintergrund (Memory-Pressure auf Android), Service-Worker-State
+  // friert ein, setIntervals laufen nicht mehr, Token kann expired sein.
+  //
+  // Strategie:
+  //   * visibilitychange beobachten + Zeitstempel des Hidden-Beginns merken
+  //   * Beim Wieder-Visible: wenn > 5 min weg → Re-Boot (Token-Check + Data)
+  //   * Wenn > 60 min weg → Full-Reload (Service-Worker-Bundle aktualisieren)
+  //   * Bei BFCache-Restore (pageshow event.persisted=true) ebenfalls re-boot
+  //   * Bei Online-Wechsel: re-boot, weil offline-Period oft die Auth verliert
+  useEffect(() => {
+    let hiddenSince: number | null = null;
+    const VIS_REBOOT_MIN = 5;
+    const VIS_RELOAD_MIN = 60;
+
+    const handleResume = (reason: string, elapsedMin: number): void => {
+      console.info(
+        `[watchdog] resume reason=${reason} elapsedMin=${elapsedMin.toFixed(1)}`,
+      );
+      if (elapsedMin > VIS_RELOAD_MIN) {
+        try {
+          window.location.reload();
+        } catch {
+          setBootGen((g) => g + 1);
+        }
+      } else if (elapsedMin > VIS_REBOOT_MIN) {
+        setBootGen((g) => g + 1);
+      }
+    };
+
+    const onVisChange = (): void => {
+      if (document.visibilityState === "hidden") {
+        hiddenSince = Date.now();
+        return;
+      }
+      if (document.visibilityState === "visible" && hiddenSince) {
+        const elapsedMin = (Date.now() - hiddenSince) / 60_000;
+        hiddenSince = null;
+        handleResume("visibilitychange", elapsedMin);
+      }
+    };
+
+    // Safari/iOS schiesst pageshow event.persisted=true wenn die Seite aus
+    // dem BFCache wiederbelebt wird — dort ist die JS-Welt eingefroren
+    // gewesen, Tokens muessen revalidiert werden.
+    const onPageShow = (e: PageTransitionEvent): void => {
+      if (e.persisted) handleResume("bfcache", VIS_REBOOT_MIN + 1);
+    };
+
+    const onOnline = (): void => handleResume("online", VIS_REBOOT_MIN + 1);
+
+    document.addEventListener("visibilitychange", onVisChange);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisChange);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("online", onOnline);
+    };
   }, []);
 
   // Background-Worker fuer die Einsatz-Outbox: alle 30 s versuchen wir

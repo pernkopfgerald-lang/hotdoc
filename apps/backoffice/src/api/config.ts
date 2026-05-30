@@ -5,7 +5,13 @@ export type ConfigKey =
   | "einsatzstichworte"
   | "geraete"
   | "stammdaten"
-  | "tablet-inventar";
+  | "tablet-inventar"
+  | "beteiligte-stellen"
+  | "sonstige-ff";
+
+export interface StringListData {
+  items: string[];
+}
 
 export interface ConfigEnvelope<T = Record<string, unknown>> {
   ok: boolean;

@@ -35,7 +35,7 @@ export function AbschlussModal({ open, funkrufname, checks, summary, onConfirm, 
       }}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-l border"
+        className="w-full max-w-2xl overflow-hidden rounded-l border"
         style={{
           borderColor: canConfirm ? "var(--red-border)" : "var(--amber-border)",
           background: "var(--card-gradient)",

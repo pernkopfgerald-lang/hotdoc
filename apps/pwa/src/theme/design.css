@@ -416,6 +416,27 @@ select.input option { color: var(--fg); font-weight: 500; }
   background: linear-gradient(90deg, var(--glass-divider) 0%, transparent 100%);
 }
 
+/* Klappbarer Section-Head — button-Variante. Sibling-Hide blendet die
+   direkt darunter folgende Karte aus solange die Sektion zugeklappt ist.
+   Greift nur fuer .section-collapsible damit klassische divs unangetastet
+   bleiben (z. B. Section-Heads die ohnehin als Anker dienen). */
+button.section-head.section-collapsible {
+  transition: background var(--dur-fast) var(--ease-smooth);
+  border-radius: var(--radius-xs);
+}
+button.section-head.section-collapsible:hover {
+  background: var(--glass-3);
+}
+button.section-head.section-collapsible:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+button.section-head.section-collapsible[data-collapsed="true"] + .card,
+button.section-head.section-collapsible[data-collapsed="true"] + .cta-wrap,
+button.section-head.section-collapsible[data-collapsed="true"] + section {
+  display: none;
+}
+
 /* ─── Vehicle selector ────────────────────────────────────── */
 .vehicle-row {
   display: grid;
@@ -1025,6 +1046,8 @@ select.input option { color: var(--fg); font-weight: 500; }
   background: var(--red);
   animation: breathe 2.4s ease-in-out infinite;
 }
+[data-theme="dark"] .appname .dot { animation-name: breathe-dark; }
+[data-theme="dark"] .status-pill.danger .dot { animation-name: breathe-dark; }
 .appsub {
   font-size: 10.5px;
   color: var(--fg-2);
@@ -1446,10 +1469,14 @@ select.input option { color: var(--fg); font-weight: 500; }
 /* Alarm-Streifen (oben rot) bleibt — ist gradient ohne blur */
 /* Alarm-Pulse-Ring bleibt — wichtige visuelle Markierung */
 
-/* Diktat-Recording-Animation reduziert (kein Multi-Stage-Box-Shadow) */
-[data-fx="lite"] @keyframes dictate-pulse {
+/* Diktat-Recording-Animation reduziert — @keyframes muss top-level liegen,
+   Lite-Mode-Anwendung via animation-name-Override im Selektor unten. */
+@keyframes dictate-pulse-lite {
   0%, 100% { box-shadow: 0 0 0 0 var(--red-glow); }
   50%      { box-shadow: 0 0 0 8px transparent; }
+}
+[data-fx="lite"] .dictate.recording .dictate-btn {
+  animation-name: dictate-pulse-lite;
 }
 
 /* Breathe-Animation auf Brand-Dot reduziert */

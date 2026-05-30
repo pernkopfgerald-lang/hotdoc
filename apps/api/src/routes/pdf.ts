@@ -13,7 +13,11 @@ import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { renderLotsendienstHtml, type LotsendienstDaten } from "../services/pdf/lotsendienst.js";
 import { renderPdf } from "../services/pdf/generator.js";
-import { renderHauptberichtHtml, renderSpickzettelHtml } from "../services/pdf/template.js";
+import {
+  renderHauptberichtHtml,
+  renderSpickzettelHtml,
+  type BerichtDaten,
+} from "../services/pdf/template.js";
 import { renderUebungHtml, type UebungDaten, type UebungsTyp } from "../services/pdf/uebung.js";
 
 export const pdfRouter: Router = Router();
@@ -75,25 +79,8 @@ pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), (async (req, res) => {
     } else if (einsatzTyp === "uebung") {
       html = await buildUebungHtml(id, doc);
     } else {
-      // alarm + manuell → Papier-Original
-      const reaktivierungen = (
-        (doc.reaktivierungen as Array<{ am: string; grund: string }> | undefined) ?? []
-      ).map((r) => ({ am: r.am, grund: r.grund }));
-      html = renderHauptberichtHtml({
-        einsatzId: id,
-        einsatzart: doc.einsatzart as string | undefined,
-        einsatzartFreitext: doc.einsatzartFreitext as string | undefined,
-        einsatzort: String(doc.einsatzort ?? "—"),
-        alarmierungZeit: String(doc.alarmierungZeit ?? ""),
-        alarmierungAuthor: doc.alarmierungAuthor as string | undefined,
-        einsatzTyp: einsatzTyp === "manuell" ? "manuell" : "alarm",
-        status: String(doc.status ?? ""),
-        einsatzende: doc.einsatzende as string | undefined,
-        meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
-        oelbindemittelSaecke:
-          (doc.oelbindemittel as { gesamtSaecke?: number } | undefined)?.gesamtSaecke ?? 0,
-        reaktivierungen,
-      });
+      // alarm + manuell → Papier-Original mit Anhängen
+      html = await buildHauptberichtHtml(id, doc);
     }
 
     const pdf = await renderPdf(html);
@@ -201,6 +188,190 @@ async function buildLotsendienstHtml(
       : {}),
   };
   return renderLotsendienstHtml(data);
+}
+
+/**
+ * Baut den vollstaendigen Hauptbericht-HTML inklusive Anhang-Seiten
+ * (Chronik + Fahrzeugberichte). Alle Einzelfelder werden aus dem Einsatz-Doc
+ * gezogen, Mannschafts-Aggregate aus den Fahrzeugberichten berechnet.
+ */
+async function buildHauptberichtHtml(
+  id: string,
+  doc: Record<string, unknown>,
+): Promise<string> {
+  const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
+  const reaktivierungen = (
+    (doc.reaktivierungen as Array<{ am: string; grund: string }> | undefined) ?? []
+  ).map((r) => ({ am: r.am, grund: r.grund }));
+
+  const fzgBerichte = await loadFahrzeugberichte(id);
+
+  // Mannschafts-Aggregat berechnen
+  let eingesetzt = 0;
+  let asTrupps = 0; // Paare von Atemschutz-Personen / 2
+  let asPersonen = 0;
+  for (const fz of fzgBerichte) {
+    const m = (fz.mannschaft as Array<{ atemschutzAktiv?: boolean }> | undefined) ?? [];
+    eingesetzt += m.length;
+    if (fz.fahrerPersonId) eingesetzt++;
+    if (fz.fahrzeugKdtPersonId) eingesetzt++;
+    for (const slot of m) if (slot.atemschutzAktiv) asPersonen++;
+  }
+  asTrupps = Math.floor(asPersonen / 2);
+  const bereitschaft = (
+    (doc.mannschaft as { bereitschaft?: number } | undefined)?.bereitschaft ?? 0
+  );
+  const sonstigeMan = (
+    (doc.mannschaft as { sonstige?: number } | undefined)?.sonstige ?? 0
+  );
+
+  // Eingesetzte Fahrzeuge aus den Berichten
+  const eingesetzteFahrzeuge = fzgBerichte.map((fz) => {
+    const fid = (fz.fahrzeugId as string) ?? "?";
+    return {
+      abk: FAHRZEUG_ABK[fid] ?? fid.toUpperCase(),
+      funkrufname: FAHRZEUG_FUNKRUF[fid] ?? fid,
+      kmGefahren: (fz.km as { gefahrenKm?: number } | undefined)?.gefahrenKm ?? 0,
+    };
+  });
+
+  // Chronik aus dem Einsatz-Doc
+  const chronik = (
+    (doc.chronik as Array<{
+      zeitstempel?: string;
+      funkrufname?: string;
+      text?: string;
+      source?: string;
+    }> | undefined) ?? []
+  ).map((c) => ({
+    zeitstempel: c.zeitstempel ?? "",
+    funkrufname: c.funkrufname ?? "—",
+    text: c.text ?? "",
+    source: c.source ?? "—",
+  }));
+
+  // Fahrzeug-Anhang-Daten mit Personen-Namen aufgeloest
+  const fahrzeugberichteOut: NonNullable<BerichtDaten["fahrzeugberichte"]> = [];
+  for (const fz of fzgBerichte) {
+    const fid = (fz.fahrzeugId as string) ?? "?";
+    const m = (fz.mannschaft as Array<{
+      personId: number;
+      atemschutzAktiv?: boolean;
+      atemschutzDauerMin?: number;
+    }> | undefined) ?? [];
+    const mannschaftResolved: NonNullable<BerichtDaten["fahrzeugberichte"]>[number]["mannschaft"] = [];
+    for (const slot of m) {
+      const p = await loadPerson(slot.personId);
+      const name = p
+        ? `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${slot.personId}`
+        : `Pers-${slot.personId}`;
+      mannschaftResolved.push({
+        name,
+        atemschutzAktiv: !!slot.atemschutzAktiv,
+        ...(typeof slot.atemschutzDauerMin === "number"
+          ? { atemschutzDauerMin: slot.atemschutzDauerMin }
+          : {}),
+      });
+    }
+    const fahrerId = fz.fahrerPersonId as number | undefined;
+    const kdtId = fz.fahrzeugKdtPersonId as number | undefined;
+    const fahrerName = fahrerId ? await loadPerson(fahrerId) : null;
+    const kdtName = kdtId ? await loadPerson(kdtId) : null;
+    fahrzeugberichteOut.push({
+      fahrzeugId: fid,
+      funkrufname: FAHRZEUG_FUNKRUF[fid] ?? fid,
+      abk: FAHRZEUG_ABK[fid] ?? fid.toUpperCase(),
+      status: (fz.status as "in_arbeit" | "abgeschlossen") ?? "in_arbeit",
+      kmGefahren: (fz.km as { gefahrenKm?: number } | undefined)?.gefahrenKm ?? 0,
+      ...(fahrerName
+        ? { fahrer: `${fahrerName.nachname ?? ""} ${fahrerName.vorname ?? ""}`.trim() }
+        : {}),
+      ...(kdtName
+        ? { fahrzeugKdt: `${kdtName.nachname ?? ""} ${kdtName.vorname ?? ""}`.trim() }
+        : {}),
+      mannschaft: mannschaftResolved,
+      geraete: ((fz.geraete as Array<{ materialId: string }> | undefined) ?? []).map(
+        (g) => g.materialId,
+      ),
+      oelSaecke: (fz.oelbindemittelSaecke as number | undefined) ?? 0,
+      taetigkeitsbericht: String(fz.taetigkeitsbericht ?? ""),
+    });
+  }
+
+  // Abschluss-Hinweis: war beim Einsatz-Abschluss schon nicht alles fertig?
+  const abschlussHinweis =
+    typeof doc.abschlussOverrideHinweis === "string" && doc.abschlussOverrideHinweis
+      ? String(doc.abschlussOverrideHinweis)
+      : undefined;
+
+  const zeitmarkenDoc = doc.zeitmarken as
+    | {
+        lageUnterKontrolle?: { zeit?: string };
+        brandAus?: { zeit?: string };
+        alst2?: { zeit?: string; anforderer?: string };
+        alst3?: { zeit?: string; anforderer?: string };
+      }
+    | undefined;
+
+  const data: BerichtDaten = {
+    einsatzId: id,
+    einsatzart: doc.einsatzart as string | undefined,
+    einsatzartFreitext: doc.einsatzartFreitext as string | undefined,
+    einsatzort: String(doc.einsatzort ?? "—"),
+    alarmierungZeit: String(doc.alarmierungZeit ?? ""),
+    alarmierungAuthor: doc.alarmierungAuthor as string | undefined,
+    einsatzTyp: einsatzTyp === "manuell" ? "manuell" : "alarm",
+    status: String(doc.status ?? ""),
+    einsatzende: doc.einsatzende as string | undefined,
+    meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
+    oelbindemittelSaecke:
+      (doc.oelbindemittel as { gesamtSaecke?: number } | undefined)?.gesamtSaecke ?? 0,
+    reaktivierungen,
+    pflichtbereich: (doc.pflichtbereich as boolean | null | undefined) ?? null,
+    einsatzzoneEzell: (doc.einsatzzoneEzell as boolean | null | undefined) ?? null,
+    ueberOertlicheHilfe: (doc.ueberOertlicheHilfe as boolean | null | undefined) ?? null,
+    einsatzauftragVia: (doc.einsatzauftragVia as BerichtDaten["einsatzauftragVia"]) ?? null,
+    anrufer: doc.anrufer as string | undefined,
+    anruferTel: doc.anruferTel as string | undefined,
+    zeitmarken: {
+      ...(zeitmarkenDoc?.lageUnterKontrolle?.zeit
+        ? { lageUnterKontrolle: zeitmarkenDoc.lageUnterKontrolle.zeit }
+        : {}),
+      ...(zeitmarkenDoc?.brandAus?.zeit
+        ? { brandAus: zeitmarkenDoc.brandAus.zeit }
+        : {}),
+      ...(zeitmarkenDoc?.alst2
+        ? { alst2: zeitmarkenDoc.alst2 }
+        : {}),
+      ...(zeitmarkenDoc?.alst3
+        ? { alst3: zeitmarkenDoc.alst3 }
+        : {}),
+    },
+    beteiligteStellen: Array.isArray(doc.beteiligteStellen)
+      ? (doc.beteiligteStellen as string[])
+      : [],
+    sonstigeAnwesendeFF: Array.isArray(
+      (doc.sonstigeAnwesendeFF as { aktive?: string[] } | undefined)?.aktive,
+    )
+      ? ((doc.sonstigeAnwesendeFF as { aktive: string[] }).aktive)
+      : [],
+    sonstigeFreitext:
+      (doc.sonstigeAnwesendeFF as { sonstigeFreitext?: string } | undefined)?.sonstigeFreitext,
+    verrechenbar:
+      (doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar,
+    mannschaft: {
+      eingesetzt,
+      bereitschaft,
+      sonstige: sonstigeMan,
+      atemschutzTrupps: asTrupps,
+    },
+    eingesetzteFahrzeuge,
+    chronik,
+    fahrzeugberichte: fahrzeugberichteOut,
+    ...(abschlussHinweis ? { abschlussOverrideHinweis: abschlussHinweis } : {}),
+  };
+
+  return renderHauptberichtHtml(data);
 }
 
 async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promise<string> {

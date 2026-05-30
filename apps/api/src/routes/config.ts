@@ -31,6 +31,8 @@ const KEYS = [
   "stammdaten",
   "tablet-pins",
   "tablet-inventar",
+  "beteiligte-stellen",
+  "sonstige-ff",
 ] as const;
 type ConfigKey = (typeof KEYS)[number];
 
@@ -210,6 +212,37 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
         notiz: "",
       },
     },
+  },
+  // Liste der ueblicherweise mit-anwesenden Stellen. Funktionaer kann sie
+  // im Backoffice pflegen — neue Eintraege werden auf der Florianstation
+  // im Editor sofort als Chips zur Verfuegung gestellt.
+  "beteiligte-stellen": {
+    items: [
+      "Polizei",
+      "Rotes Kreuz",
+      "Notarzt",
+      "Bundesheer",
+      "ÖAMTC",
+      "ARBÖ",
+      "Bürgermeister",
+      "Gemeindearbeiter",
+      "Strom-/Gasversorger",
+      "Wasserversorger",
+    ],
+  },
+  // Liste der ueblicherweise mit-anwesenden Feuerwehren (Nachbarwehren). Die
+  // Liste wird vom Funktionaer im Backoffice gepflegt.
+  "sonstige-ff": {
+    items: [
+      "FF Steinerkirchen",
+      "FF Krenglbach",
+      "FF Sipbachzell",
+      "FF Bad Wimsbach",
+      "FF Schleißheim",
+      "FF Stadl-Paura",
+      "FF Lambach",
+      "FF Pichl bei Wels",
+    ],
   },
 };
 

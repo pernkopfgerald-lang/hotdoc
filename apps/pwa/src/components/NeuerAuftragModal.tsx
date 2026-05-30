@@ -41,7 +41,7 @@ export function NeuerAuftragModal({ open, inheritedCount, onConfirm, onCancel }:
       }}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-[18px]"
+        className="w-full max-w-xl overflow-hidden rounded-[18px]"
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border-strong)",

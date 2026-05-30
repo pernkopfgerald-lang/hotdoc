@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BETEILIGTE_STELLEN, EINSATZARTEN, SONSTIGE_FF } from "../constants/einsatzarten.js";
+import { EINSATZARTEN } from "../constants/einsatzarten.js";
 
 /**
  * Einsatz — zentral angelegt aus BlaulichtSMS-Alarm, ergänzt durch Hauptbericht-Felder.
@@ -147,10 +147,14 @@ export const EinsatzSchema = z.object({
     })
     .default({}),
 
-  beteiligteStellen: z.array(z.enum(BETEILIGTE_STELLEN)).default([]),
+  // String statt z.enum: die Listen werden im Backoffice (config:beteiligte-
+  // stellen, config:sonstige-ff) gepflegt und koennen frei erweitert werden.
+  // Die Constants in shared/constants/einsatzarten dienen nur noch als
+  // Default-Boot-Werte.
+  beteiligteStellen: z.array(z.string()).default([]),
   sonstigeAnwesendeFF: z
     .object({
-      aktive: z.array(z.enum(SONSTIGE_FF)).default([]),
+      aktive: z.array(z.string()).default([]),
       sonstigeFreitext: z.string().optional(),
     })
     .default({}),

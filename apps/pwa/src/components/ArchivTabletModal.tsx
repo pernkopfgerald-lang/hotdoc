@@ -14,6 +14,7 @@ import { apiCall, getTabletToken } from "../lib/api";
 
 interface ArchivItem {
   _id: string;
+  einsatzId?: string;
   einsatzart?: string;
   einsatzartFreitext?: string;
   einsatzort?: string;
@@ -21,11 +22,20 @@ interface ArchivItem {
   einsatzende?: string;
   einsatzTyp?: "alarm" | "manuell" | "lotsendienst" | "uebung";
   status?: string;
+  /** Fahrzeug-Bericht-spezifische Felder (nur im Fahrzeug-Modus gefuellt). */
+  kmGefahrenKm?: number;
+  mannschaftAnzahl?: number;
 }
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Wenn gesetzt, zeigt das Modal nur Fahrzeugberichte dieses Fahrzeugs
+   *  (eigene Berichte). Ohne diese Prop zeigt es Einsatz-Hauptberichte
+   *  fuer die Florianstation. */
+  fahrzeugId?: string;
+  /** Anzeige-Name fuer den Header (z. B. Funkrufname). */
+  fahrzeugName?: string;
 }
 
 const TYP_LABEL: Record<NonNullable<ArchivItem["einsatzTyp"]>, { label: string; icon: typeof Flame; color: string }> = {
@@ -45,7 +55,7 @@ const TYP_LABEL: Record<NonNullable<ArchivItem["einsatzTyp"]>, { label: string; 
  * Bewusst minimal — die Tablets sind nicht für Recherche-Sessions
  * gedacht. Wer länger im Archiv arbeitet, soll das Backoffice nutzen.
  */
-export function ArchivTabletModal({ open, onClose }: Props) {
+export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: Props) {
   const [items, setItems] = useState<ArchivItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -59,9 +69,12 @@ export function ArchivTabletModal({ open, onClose }: Props) {
     setErr(null);
     (async () => {
       try {
-        const r = await apiCall<{ items: ArchivItem[] }>(
-          "/api/einsaetze?status=abgeschlossen",
-        );
+        // Fahrzeug-Modus: eigene Fahrzeugberichte (mit Einsatz-Stammdaten
+        // bereits gemerged). Florian-Modus: globale Einsatz-Hauptberichte.
+        const url = fahrzeugId
+          ? `/api/fahrzeugberichte/meine?fahrzeugId=${encodeURIComponent(fahrzeugId)}&status=abgeschlossen`
+          : "/api/einsaetze?status=abgeschlossen";
+        const r = await apiCall<{ items: ArchivItem[] }>(url);
         if (cancelled) return;
         // Sort DESC nach Alarmierungszeit, max 50 Einträge auf dem Tablet
         const sorted = [...r.items].sort((a, b) => {
@@ -80,7 +93,7 @@ export function ArchivTabletModal({ open, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, fahrzeugId]);
 
   const filtered = useMemo(() => {
     const norm = query.trim().toLowerCase();
@@ -102,7 +115,11 @@ export function ArchivTabletModal({ open, onClose }: Props) {
     setDownloadBusy(item._id);
     try {
       const token = getTabletToken();
-      const res = await fetch(`/api/einsaetze/${encodeURIComponent(item._id)}/pdf`, {
+      // Im Fahrzeug-Modus hat item._id Form "fzgber:..." — wir muessen den
+      // Einsatz-Hauptberich-PDF holen, also einsatzId verwenden. Im Florian-
+      // Modus ist item._id bereits die Einsatz-Doc-ID.
+      const pdfId = item.einsatzId ?? item._id;
+      const res = await fetch(`/api/einsaetze/${encodeURIComponent(pdfId)}/pdf`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -143,8 +160,8 @@ export function ArchivTabletModal({ open, onClose }: Props) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(640px, 100%)",
-          maxHeight: "calc(100vh - 32px)",
+          width: "min(880px, calc(100% - 24px))",
+          maxHeight: "calc(100dvh - 32px)",
           display: "flex",
           flexDirection: "column",
           background: "var(--glass-1)",
@@ -185,7 +202,7 @@ export function ArchivTabletModal({ open, onClose }: Props) {
                 letterSpacing: "var(--tracking-tight)",
               }}
             >
-              Archiv
+              {fahrzeugId ? `Archiv · ${fahrzeugName ?? fahrzeugId}` : "Archiv"}
             </h2>
             <div
               style={{
@@ -198,7 +215,9 @@ export function ArchivTabletModal({ open, onClose }: Props) {
                 marginTop: 2,
               }}
             >
-              Letzte abgeschlossene Berichte · max 50
+              {fahrzeugId
+                ? "Eigene Fahrzeugberichte · max 50"
+                : "Letzte abgeschlossene Berichte · max 50"}
             </div>
           </div>
           <button
@@ -346,6 +365,20 @@ export function ArchivTabletModal({ open, onClose }: Props) {
                     >
                       <Calendar size={10} /> {formatDate(i.alarmierungZeit)} ·{" "}
                       <span style={{ color: typ.color }}>{typ.label}</span>
+                      {fahrzeugId && i.kmGefahrenKm !== undefined ? (
+                        <>
+                          {" · "}
+                          <span>
+                            {i.kmGefahrenKm.toFixed(1).replace(".", ",")} km
+                          </span>
+                        </>
+                      ) : null}
+                      {fahrzeugId && i.mannschaftAnzahl !== undefined ? (
+                        <>
+                          {" · "}
+                          <span>{i.mannschaftAnzahl} Pers.</span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <button

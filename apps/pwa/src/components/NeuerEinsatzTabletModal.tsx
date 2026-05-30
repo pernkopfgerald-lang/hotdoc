@@ -321,8 +321,11 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(560px, 100%)",
-          maxHeight: "calc(100vh - 32px)",
+          // Breiter (720 statt 560), damit die Hochkant-Android-Tastatur
+          // dem Formular nicht den Atem nimmt. 100dvh statt 100vh, damit
+          // bei eingeblendeter Tastatur trotzdem scrollbar bleibt.
+          width: "min(720px, calc(100% - 24px))",
+          maxHeight: "calc(100dvh - 32px)",
           overflow: "auto",
           background: "var(--glass-1)",
           backdropFilter: "var(--blur-1)",
@@ -331,7 +334,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--glass-border-strong)",
           boxShadow: `var(--glass-shadow-1), ${TYP_META[typ].glow}`,
-          padding: 26,
+          padding: 24,
           display: "flex",
           flexDirection: "column",
           gap: 16,

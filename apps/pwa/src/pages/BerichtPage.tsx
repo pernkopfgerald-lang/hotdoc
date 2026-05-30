@@ -110,6 +110,19 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
 
   const active = einsaetze.find((e) => e.id === activeId) ?? null;
 
+  // Folge-Auftrag-Vererbung: wenn der Funktionaer auf "Neuer Einsatz" klickt
+  // waehrend ein nicht-abgeschlossener Einsatz aktiv ist, parken wir das
+  // Personal in diesem Ref. Sobald der neue Einsatz im naechsten Poll
+  // auftaucht, wird sein leerer Mannschafts-Block aus diesem Ref vorbefuellt.
+  // Hintergrund: Lotsendienst nach Brandeinsatz, Folge-Ubung etc. — dieselbe
+  // Besatzung, derselbe Wagen, der Kdt soll nicht alles neu tippen.
+  interface InheritedPersonal {
+    fahrer: PickPerson | null;
+    kdt: PickPerson | null;
+    mannschaft: MannschaftSlotData[];
+  }
+  const inheritPersonalRef = useRef<InheritedPersonal | null>(null);
+
   const geo = useGeolocation();
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
 
@@ -236,6 +249,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         // Beim ersten neuen Einsatz im Tick switcht das Tablet auto-magisch
         // dorthin + vibriert. Folge-Einsaetze landen in der Liste, aber der
         // Funktionaer bleibt auf dem aktuellen Tab — er soll waehlen.
+        // ZUSAETZLICH: bestehende Einsaetze werden re-synchronisiert bzgl.
+        // Stamm-Felder die die Florianstation aendern kann (einsatzart,
+        // stichwort, einsatzort, Koordinaten) → der Fahrzeug-Bericht zeigt
+        // immer die aktuelle Klassifikation, nicht die vom Anlage-Zeitpunkt.
         let anyNewToUs = false;
         let firstNewId: string | null = null;
         setEinsaetze((prev) => {
@@ -243,13 +260,61 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           const additions: EinsatzInstance[] = [];
           for (const target of list.items) {
             if (knownIds.has(target._id)) continue;
-            additions.push(buildEinsatzFromApi(target));
+            const fresh = buildEinsatzFromApi(target);
+            // Folge-Auftrag-Vererbung: das erste neu erkannte Einsatz-Doc
+            // bekommt das gepuffert Personal — alle weiteren bleiben leer.
+            // Wir markieren die ID auch im hydratedRef, damit der spaetere
+            // Hydrate-Sweep nichts vom Backend drueberzieht (Backend hat noch
+            // keinen Fahrzeugbericht fuer den neuen Einsatz).
+            const inherit = inheritPersonalRef.current;
+            if (inherit && !firstNewId) {
+              fresh.fahrer = inherit.fahrer;
+              fresh.kdt = inherit.kdt;
+              fresh.mannschaft = inherit.mannschaft.map((m, i) => ({
+                ...m,
+                slot: i + 1,
+              }));
+              inheritPersonalRef.current = null;
+              hydratedIdsRef.current.add(target._id);
+            }
+            additions.push(fresh);
             knownIds.add(target._id);
             if (!firstNewId) firstNewId = target._id;
           }
-          if (additions.length === 0) return prev;
+          // Stamm-Felder fuer alle bestehenden Eintraege nachziehen.
+          // KEIN Overwrite von alarmierungZeit/alarmId — die kommen vom Alarm.
+          const synced = prev.map((e) => {
+            const api = list.items.find((it) => it._id === e.id);
+            if (!api) return e;
+            const fresh = {
+              einsatzart:
+                api.einsatzart ?? api.einsatzartFreitext ?? e.alarm.einsatzart,
+              einsatzort: api.einsatzort ?? e.alarm.einsatzort,
+              stichwort: api.stichwort,
+            };
+            const ortChanged = fresh.einsatzort !== e.alarm.einsatzort;
+            const artChanged = fresh.einsatzart !== e.alarm.einsatzart;
+            const stwChanged = (fresh.stichwort ?? null) !== (e.alarm.stichwort ?? null);
+            if (!ortChanged && !artChanged && !stwChanged) return e;
+            const nextAlarm: AlarmDaten = {
+              ...e.alarm,
+              einsatzart: fresh.einsatzart,
+              einsatzort: fresh.einsatzort,
+            };
+            if (fresh.stichwort) {
+              nextAlarm.stichwort = fresh.stichwort as NonNullable<AlarmDaten["stichwort"]>;
+            } else if ("stichwort" in nextAlarm) {
+              delete nextAlarm.stichwort;
+            }
+            const nextEinsatzPos = api.koordinaten ?? e.einsatzPos;
+            return { ...e, alarm: nextAlarm, einsatzPos: nextEinsatzPos };
+          });
+          if (additions.length === 0) {
+            // Nur Sync — nicht "neuer Einsatz"
+            return synced;
+          }
           anyNewToUs = true;
-          return [...prev, ...additions];
+          return [...synced, ...additions];
         });
         if (anyNewToUs && firstNewId) {
           setActiveId(firstNewId);
@@ -310,19 +375,117 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fahrzeugId]);
 
-  // Legacy-Mount-Effekt: bleibt für Rückwärtskompatibilität als no-op-Block.
-  // Die Logik wurde in den runPoll-Loop oben verschoben damit Auto-Open
-  // periodisch greift, nicht nur beim Mount.
+  // Hydrate-On-Boot: nach einem Tablet-Reload mitten in einem laufenden
+  // Einsatz sind Mannschaft/Aufträge/Geräte lokal leer. Wir holen den letzten
+  // status="in_arbeit"-Fahrzeugbericht aus dem Backend und füllen die Felder
+  // damit auf. Greift nur wenn der Einsatz noch KEINE lokalen Eingaben hat —
+  // sobald der User auch nur einen Slot tippt, blockiert das die Hydrierung
+  // (sonst würde der laufende Live-Sync gegen den User kämpfen).
+  const hydratedIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    if (personen.length === 0 || einsaetze.length === 0) return;
     let cancelled = false;
-    (async () => {
-      // intentional no-op — siehe runPoll oben
-      if (cancelled) return;
+    void (async () => {
+      for (const e of einsaetze) {
+        if (cancelled) return;
+        if (hydratedIdsRef.current.has(e.id)) continue;
+        const hasLocalData =
+          !!e.fahrer ||
+          !!e.kdt ||
+          e.mannschaft.some((m) => m.person) ||
+          e.gearSelected.size > 0 ||
+          e.oelSaecke > 0 ||
+          e.auftraege.length > 0;
+        if (hasLocalData || e.abgeschlossen) {
+          hydratedIdsRef.current.add(e.id);
+          continue;
+        }
+        try {
+          interface FzgberSnapshot {
+            fahrzeugId?: string;
+            status?: "in_arbeit" | "abgeschlossen";
+            fahrerPersonId?: number;
+            fahrzeugKdtPersonId?: number;
+            mannschaft?: Array<{
+              slot: number;
+              personId: number;
+              atemschutzAktiv?: boolean;
+              atemschutzDauerMin?: number;
+            }>;
+            geraete?: Array<{ materialId: string }>;
+            oelbindemittelSaecke?: number;
+            taetigkeitsbericht?: string;
+          }
+          const r = await apiCall<{ items?: FzgberSnapshot[] }>(
+            `/api/einsaetze/${encodeURIComponent(e.id)}/fahrzeugberichte`,
+          );
+          if (cancelled) return;
+          const mine = r.items?.find((b) => b.fahrzeugId === fahrzeugId);
+          if (!mine || mine.status === "abgeschlossen") {
+            hydratedIdsRef.current.add(e.id);
+            continue;
+          }
+          const personById = (id?: number): PickPerson | null => {
+            if (typeof id !== "number") return null;
+            return personen.find((p) => p.syBosId === id) ?? null;
+          };
+          setEinsaetze((prev) =>
+            prev.map((x) => {
+              if (x.id !== e.id) return x;
+              // Mannschaft rekonstruieren — Slot-Index 1-basiert im Backend
+              const m = [...x.mannschaft];
+              for (const slot of mine.mannschaft ?? []) {
+                const i = slot.slot - 1;
+                if (i < 0 || i >= m.length) continue;
+                const p = personById(slot.personId);
+                if (!p) continue;
+                const restored: MannschaftSlotData = {
+                  ...m[i]!,
+                  person: p,
+                  atemschutzAktiv: !!slot.atemschutzAktiv,
+                };
+                if (
+                  slot.atemschutzAktiv &&
+                  typeof slot.atemschutzDauerMin === "number"
+                ) {
+                  restored.atemschutzDauerMin = slot.atemschutzDauerMin;
+                }
+                m[i] = restored;
+              }
+              // Aufträge aus taetigkeitsbericht-Zeilen ("· Text") rekonstruieren.
+              const restoredAufts: Auftrag[] = (mine.taetigkeitsbericht ?? "")
+                .split("\n")
+                .map((line) => line.replace(/^·\s*/, "").trim())
+                .filter(Boolean)
+                .map((text, idx) => ({
+                  id: `restored-${idx}-${Date.now()}`,
+                  text,
+                  zeitstempel: x.alarm.alarmierungZeit,
+                }));
+              return {
+                ...x,
+                fahrer: personById(mine.fahrerPersonId) ?? x.fahrer,
+                kdt: personById(mine.fahrzeugKdtPersonId) ?? x.kdt,
+                mannschaft: m,
+                gearSelected: new Set(
+                  (mine.geraete ?? []).map((g) => g.materialId),
+                ),
+                oelSaecke: mine.oelbindemittelSaecke ?? 0,
+                auftraege: restoredAufts,
+              };
+            }),
+          );
+          hydratedIdsRef.current.add(e.id);
+        } catch {
+          // Backend tot — nächster Pass versucht es erneut sobald einsaetze
+          // sich ändert (z. B. weil ein neuer Einsatz dazukommt).
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [fahrzeugId]);
+  }, [einsaetze, personen, fahrzeugId]);
 
   // Live-Position-Push: alle 3 s die aktuelle GPS-Position an /api/positions
   // schicken. Der Backend-State haelt nur den letzten Ping (kein Track-Persist),
@@ -1242,22 +1405,48 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         onClose={() => setNeuerEinsatzOpen(null)}
         onCreated={(einsatzId, typ) => {
           setNeuerEinsatzOpen(null);
-          // Wir zeigen einen kurzen Hinweis-Toast: der neue Einsatz erscheint
-          // beim nächsten Backend-Poll (alle 30 s) auto-magisch als aktiver
-          // Einsatz, die Auto-Open-Logik schaltet dann automatisch um.
+          // Folge-Auftrag-Personal puffern: wenn der aktuelle Einsatz noch
+          // laeuft und Personal eingetragen hat, uebernehmen wir es in den
+          // neuen Einsatz sobald der vom Backend zurueckkommt. Diese Logik
+          // greift NUR fuer manuell/uebung/lotsendienst — BlaulichtSMS-Alarme
+          // bekommen ihre eigene Besatzung weil die typisch frisch alarmiert
+          // werden. Wenn das Tablet im Idle ist (active=null), ist ohnehin
+          // nichts zu vererben.
+          if (
+            active &&
+            !active.abgeschlossen &&
+            (typ === "manuell" || typ === "uebung" || typ === "lotsendienst") &&
+            (active.fahrer || active.kdt || active.mannschaft.some((m) => m.person))
+          ) {
+            inheritPersonalRef.current = {
+              fahrer: active.fahrer,
+              kdt: active.kdt,
+              // Deep-Copy damit der alte Bericht nicht mitvergreift wenn der
+              // neue Bericht Werte aendert.
+              mannschaft: active.mannschaft.map((m) => ({
+                ...m,
+                person: m.person ?? null,
+              })),
+            };
+          }
           // Vibration als haptisches Feedback bei erfolgreichem Anlegen.
           try {
             navigator.vibrate?.([60, 40, 60]);
           } catch {
             // egal
           }
-          // Loggen damit man im Tablet-DevTools sieht was passiert ist
-          console.info("[neuer-einsatz] angelegt:", { einsatzId, typ });
+          console.info("[neuer-einsatz] angelegt:", { einsatzId, typ, inherit: !!inheritPersonalRef.current });
         }}
       />
 
-      {/* ─── Archiv (read-only) ─── */}
-      <ArchivTabletModal open={archivOpen} onClose={() => setArchivOpen(false)} />
+      {/* ─── Archiv (read-only) — Fahrzeug-Modus: zeigt eigene Fahrzeug-
+           Berichte mit KM + Personenzahl statt aller Hauptberichte. ─── */}
+      <ArchivTabletModal
+        open={archivOpen}
+        onClose={() => setArchivOpen(false)}
+        fahrzeugId={fahrzeugId}
+        fahrzeugName={fahrzeug.funkrufname}
+      />
     </div>
   );
 }

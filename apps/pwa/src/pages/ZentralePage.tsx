@@ -39,12 +39,10 @@ import { apiCall, getTabletToken } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { useGeolocation } from "../lib/geo";
 import {
-  BETEILIGTE_STELLEN,
+  BETEILIGTE_STELLEN as DEFAULT_BETEILIGTE_STELLEN,
   FAHRZEUGE,
-  SONSTIGE_FF,
-  type BeteiligteStelle,
+  SONSTIGE_FF as DEFAULT_SONSTIGE_FF,
   type FahrzeugId,
-  type SonstigeFF,
 } from "@hotdoc/shared";
 
 const HOME_POS = { lat: 48.0884, lng: 13.9586 };
@@ -87,8 +85,8 @@ interface EinsatzApiDoc {
   anrufer?: string;
   anruferTel?: string;
   meldungEinsatzleitung?: string;
-  beteiligteStellen?: BeteiligteStelle[];
-  sonstigeAnwesendeFF?: { aktive?: SonstigeFF[]; sonstigeFreitext?: string };
+  beteiligteStellen?: string[];
+  sonstigeAnwesendeFF?: { aktive?: string[]; sonstigeFreitext?: string };
   zeitmarken?: {
     lageUnterKontrolle?: string;
     brandAus?: string;
@@ -116,8 +114,9 @@ interface EditorState {
   anruferTel: string;
   lageUnterKontrolleHHMM: string;          // "HH:MM" — wird beim Save in ISO konvertiert
   brandAusHHMM: string;
-  beteiligteStellen: BeteiligteStelle[];
-  sonstigeAnwesendeFF: SonstigeFF[];
+  // String-Listen (vorher Enum-Typen) — die Auswahl im Backoffice gewachsen.
+  beteiligteStellen: string[];
+  sonstigeAnwesendeFF: string[];
   sonstigeFreitext: string;
   meldungEinsatzleitung: string;
   verrechenbar: boolean;
@@ -245,6 +244,44 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     Array<{ fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string }>
   >([]);
   const [personen, setPersonen] = useState<PickPerson[]>([]);
+  // Dynamische Listen aus /api/config/beteiligte-stellen + sonstige-ff.
+  // Fallback auf Shared-Defaults wenn das Backend noch nichts hat. Die Listen
+  // werden im Backoffice gepflegt — der Funktionaer kann Stellen hinzufuegen
+  // ohne ein PWA-Deploy zu brauchen.
+  const [beteiligteStellenAll, setBeteiligteStellenAll] = useState<string[]>(
+    () => [...DEFAULT_BETEILIGTE_STELLEN],
+  );
+  const [sonstigeFfAll, setSonstigeFfAll] = useState<string[]>(
+    () => [...DEFAULT_SONSTIGE_FF],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r1 = await apiCall<{ data?: { items?: string[] } }>(
+          "/api/config/beteiligte-stellen",
+        );
+        if (!cancelled && Array.isArray(r1.data?.items)) {
+          setBeteiligteStellenAll(r1.data!.items.map(String));
+        }
+      } catch {
+        // Default-Liste bleibt aktiv.
+      }
+      try {
+        const r2 = await apiCall<{ data?: { items?: string[] } }>(
+          "/api/config/sonstige-ff",
+        );
+        if (!cancelled && Array.isArray(r2.data?.items)) {
+          setSonstigeFfAll(r2.data!.items.map(String));
+        }
+      } catch {
+        // Default-Liste bleibt aktiv.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const personenMap = useMemo(() => {
     const m = new Map<number, string>();
     for (const p of personen) {
@@ -1193,7 +1230,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Beteiligte Stellen & Sonstige FF" />
+        <SectionHead
+          title="Beteiligte Stellen & Sonstige FF"
+          collapsible
+          defaultClosed
+          storageKey="beteiligte-stellen"
+        />
         <section className="card">
           <div className="card-head">
             <div className="card-title">
@@ -1219,7 +1261,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               Beteiligte Stellen
             </div>
             <div className="chips">
-              {BETEILIGTE_STELLEN.map((s) => {
+              {beteiligteStellenAll.map((s) => {
                 const on = editor.beteiligteStellen.includes(s);
                 return (
                   <label
@@ -1260,7 +1302,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               Sonstige anwesende Feuerwehren
             </div>
             <div className="chips">
-              {SONSTIGE_FF.map((s) => {
+              {sonstigeFfAll.map((s) => {
                 const on = editor.sonstigeAnwesendeFF.includes(s);
                 return (
                   <label
@@ -1298,7 +1340,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Ölbindemittel" />
+        <SectionHead
+          title="Ölbindemittel"
+          collapsible
+          defaultClosed
+          storageKey="oelbindemittel"
+        />
         <section className="card">
           <div className="card-head">
             <div className="card-title">Verbrauch · Aggregation</div>
@@ -1391,7 +1438,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         )}
 
-        <SectionHead title="Sachbearbeiter & Reserve" />
+        <SectionHead
+          title="Sachbearbeiter & Reserve"
+          collapsible
+          defaultClosed
+          storageKey="reserve-bearbeiter"
+        />
         <section className="card">
           <div className="card-head">
             <div className="card-title">
@@ -1724,7 +1776,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           />
         </section>
 
-        <SectionHead title="Übergabe an Bearbeiter" />
+        <SectionHead
+          title="Übergabe an Bearbeiter"
+          collapsible
+          defaultClosed
+          storageKey="uebergabe-bearbeiter"
+        />
         <div className="cta-wrap">
           {downloadErr ? (
             <div
@@ -2249,12 +2306,96 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   );
 }
 
-function SectionHead({ title }: { title: string }) {
+/**
+ * Section-Head, optional kollabierbar.
+ *
+ * - Ohne `collapsible` Prop: klassischer DIV (Bestand).
+ * - Mit `collapsible`: Button-Variante. Klick toggelt offen/zu. State wird
+ *   per `storageKey` in localStorage gehalten — User-Wahl ueberlebt Reload.
+ *   Versteckt das direkt darauffolgende Sibling (.card oder .cta-wrap) via
+ *   CSS-Regel `[data-collapsed="true"] + .card { display: none }`.
+ * - `defaultClosed`: Vorbelegung bevor der User je interagiert hat. Wir
+ *   nutzen das fuer selten-genutzte Sektionen (Beteiligte Stellen, Reserve,
+ *   Oelbindemittel, Uebergabe) damit der Editor schlanker startet.
+ */
+function SectionHead({
+  title,
+  collapsible,
+  defaultClosed,
+  storageKey,
+}: {
+  title: string;
+  collapsible?: boolean;
+  defaultClosed?: boolean;
+  storageKey?: string;
+}) {
+  const [closed, setClosed] = useState<boolean>(() => {
+    if (!collapsible) return false;
+    if (!storageKey) return defaultClosed ?? false;
+    try {
+      const v = localStorage.getItem(`hotdoc.section.${storageKey}`);
+      return v === null ? (defaultClosed ?? false) : v === "1";
+    } catch {
+      return defaultClosed ?? false;
+    }
+  });
+
+  if (!collapsible) {
+    return (
+      <div className="section-head">
+        <span className="h">{title}</span>
+        <span className="line" />
+      </div>
+    );
+  }
+
+  const toggle = (): void => {
+    const next = !closed;
+    setClosed(next);
+    if (storageKey) {
+      try {
+        localStorage.setItem(`hotdoc.section.${storageKey}`, next ? "1" : "0");
+      } catch {
+        // egal — Quota / Private-Mode
+      }
+    }
+  };
+
   return (
-    <div className="section-head">
+    <button
+      type="button"
+      className="section-head section-collapsible"
+      data-collapsed={closed ? "true" : "false"}
+      onClick={toggle}
+      aria-expanded={!closed}
+      style={{
+        appearance: "none",
+        border: 0,
+        background: "transparent",
+        width: "100%",
+        cursor: "pointer",
+        textAlign: "left",
+        minHeight: 0,
+        color: "inherit",
+        font: "inherit",
+      }}
+    >
       <span className="h">{title}</span>
+      <span
+        aria-hidden
+        style={{
+          color: "var(--fg-3)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          marginLeft: 4,
+        }}
+      >
+        {closed ? "+" : "−"}
+      </span>
       <span className="line" />
-    </div>
+    </button>
   );
 }
 

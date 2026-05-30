@@ -24,7 +24,7 @@
 
 import { getBrandLogoDataUrl } from "./brand.js";
 
-interface BerichtDaten {
+export interface BerichtDaten {
   einsatzId: string;
   einsatzart?: string;
   einsatzartFreitext?: string;
@@ -37,6 +37,55 @@ interface BerichtDaten {
   meldungEinsatzleitung?: string;
   oelbindemittelSaecke?: number;
   reaktivierungen?: Array<{ am: string; grund: string }>;
+  // Florianstation-Felder (frueher hartkodiert leer)
+  pflichtbereich?: boolean | null;
+  einsatzzoneEzell?: boolean | null;
+  ueberOertlicheHilfe?: boolean | null;
+  einsatzauftragVia?: "WAS" | "Funk" | "Telefon" | "Bote" | "Behoerde" | null;
+  anrufer?: string;
+  anruferTel?: string;
+  zeitmarken?: {
+    lageUnterKontrolle?: string;
+    brandAus?: string;
+    alst2?: { zeit?: string; anforderer?: string };
+    alst3?: { zeit?: string; anforderer?: string };
+  };
+  beteiligteStellen?: string[];
+  sonstigeAnwesendeFF?: string[];
+  sonstigeFreitext?: string;
+  verrechenbar?: boolean;
+  /** Aggregation: Personen-Anzahl, AS-Trupps etc. */
+  mannschaft?: {
+    eingesetzt: number;
+    bereitschaft: number;
+    sonstige: number;
+    atemschutzTrupps: number;
+  };
+  /** Welche Fahrzeuge sind im Einsatz (aus Fahrzeugberichten). */
+  eingesetzteFahrzeuge?: Array<{ abk: string; funkrufname: string; kmGefahren: number }>;
+  /** Komplette Einsatz-Chronik fuer Anhang-Seite. */
+  chronik?: Array<{
+    zeitstempel: string;
+    funkrufname: string;
+    text: string;
+    source: string;
+  }>;
+  /** Fahrzeug-Berichte fuer Anhang-Seiten. */
+  fahrzeugberichte?: Array<{
+    fahrzeugId: string;
+    funkrufname: string;
+    abk: string;
+    status: "in_arbeit" | "abgeschlossen";
+    kmGefahren: number;
+    fahrer?: string;
+    fahrzeugKdt?: string;
+    mannschaft: Array<{ name: string; atemschutzAktiv: boolean; atemschutzDauerMin?: number }>;
+    geraete: string[];
+    oelSaecke: number;
+    taetigkeitsbericht: string;
+  }>;
+  /** Wenn beim Abschluss noch Fahrzeugberichte offen waren — Hinweis-Banner. */
+  abschlussOverrideHinweis?: string;
 }
 
 const EINSATZARTEN_MATRIX: ReadonlyArray<readonly string[]> = [
@@ -48,16 +97,36 @@ const EINSATZARTEN_MATRIX: ReadonlyArray<readonly string[]> = [
   ["Straßenreinigung", "Lotsendienst", "Kanalspülen", "Brandsicherheitsdienst"],
   ["VU Eingekl. Per.", "VU Aufräumarbeiten", "Höhenrettungseins.", "Bienen / Wespen"],
 ];
-const FAHRZEUGE_REIHE = ["KDO", "TLF-A 4000", "LFA-B", "PKW-Anhänger", "MTF", "HR-Anhänger", "Stapler"] as const;
-const ALARMQUELLEN = ["WAS", "Funk", "Telefon", "Bote", "Behörde"] as const;
-const BETEILIGTE_STELLEN = ["Polizei", "RK", "BFKDT", "AFKDT", "Gem.", "BH", "GAS", "Ener. AG", "RAG", "Arzt", "Bestatt.", "STM"] as const;
-const SONSTIGE_FF = ["OEL", "Kran", "TMB", "SRF", "ASF", "DLK", "GSF", "HEU"] as const;
+const ALARMQUELLEN = ["WAS", "Funk", "Telefon", "Bote", "Behoerde"] as const;
 
 export function renderHauptberichtHtml(d: BerichtDaten): string {
   const isManuell = d.einsatzTyp === "manuell";
   const datum = formatDate(d.alarmierungZeit);
   const datumZeit = `${datum} · ${formatTime(d.alarmierungZeit)}`;
   const ende = d.einsatzende ? `${formatDate(d.einsatzende)} · ${formatTime(d.einsatzende)}` : "";
+
+  // Brand-konsistente Farbe fuer ausgefuellte Werte (dunkelblau) — matcht
+  // die Tablet-UX wo eingegebene Felder ebenfalls dunkelblau dargestellt
+  // werden. Trennt User-Daten visuell vom Papier-Raster.
+  const FILLED = "#1e3a8a";
+
+  // Hilfsfunktion: Wert dunkelblau rendern wenn vorhanden, sonst Leerzeile
+  const v = (val: string | undefined | null, fallback = "—"): string =>
+    val && val.trim()
+      ? `<span style="color:${FILLED};font-weight:600">${escape(val)}</span>`
+      : fallback;
+  const vTime = (val: string | undefined): string =>
+    val ? `<span style="color:${FILLED};font-weight:600">${escape(formatTime(val))}</span>` : "__ : __";
+  const triBox = (val: boolean | null | undefined, label: string): string => {
+    if (val === true) return `${boxFilled(true)} <strong style="color:${FILLED}">${label}</strong>`;
+    if (val === false) return `${boxFilled(false)} ${label}`;
+    return `${box(false)} ${label}`;
+  };
+
+  const eingesetzeFzgSet = new Set(
+    (d.eingesetzteFahrzeuge ?? []).map((f) => f.abk.toUpperCase()),
+  );
+  const FAHRZEUGE_REIHE = ["KDO", "TANK", "LFA-B", "PKW-Anhänger", "MTF", "HR-Anhänger", "Stapler"] as const;
 
   return /* html */ `<!doctype html>
 <html lang="de">
@@ -75,7 +144,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       font-size: 9pt;
       line-height: 1.25;
     }
-    .page { max-width: 186mm; }
+    .page { max-width: 186mm; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
     /* ─── Header ─── */
     .hd {
       display: flex;
@@ -88,32 +158,28 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     .hd-logo { height: 16mm; width: auto; display: block; }
     .hd-r { text-align: right; }
     .hd-title { font-size: 24pt; font-weight: 700; line-height: 1; letter-spacing: -0.01em; }
+    .hd-sub-title { font-size: 18pt; font-weight: 700; line-height: 1; color: ${FILLED}; }
 
-    /* ─── Tabellen-Layout (wie Papier) ─── */
     table.bx { width: 100%; border-collapse: collapse; border: 1pt solid #000; margin-top: 1mm; }
     table.bx td { border: 0.5pt solid #000; vertical-align: top; padding: 2pt 4pt; }
     table.bx .lbl { background: #f0f0f0; font-size: 7.5pt; font-weight: 600; padding: 1.5pt 4pt; }
     table.bx .val { font-size: 9pt; padding: 2pt 4pt 3pt; }
-    table.bx .val.big { font-size: 10pt; font-weight: 600; }
-    table.bx .small { font-size: 7.5pt; }
+    table.bx .val.big { font-size: 10pt; font-weight: 600; color: ${FILLED}; }
     .cb { display: inline-block; }
     .cb-row td { padding: 2pt 4pt; font-size: 8.5pt; }
     .cb-row .cb { margin-right: 3pt; }
-    .check-on { font-weight: 700; }
-
+    .check-on { font-weight: 700; color: ${FILLED}; }
     .matrix td { padding: 1.5pt 4pt; font-size: 8.5pt; }
     .matrix td.col { width: 25%; }
-
-    /* großes Freitext-Feld */
     .freitext {
       min-height: 50mm;
       border: 0.5pt solid #000;
       padding: 4pt;
       font-size: 9pt;
       white-space: pre-wrap;
+      color: ${FILLED};
+      font-weight: 500;
     }
-
-    /* Audit-Trail */
     .audit {
       margin-top: 2mm;
       padding: 4pt;
@@ -122,8 +188,16 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       background: #fef3c7;
       font-size: 8pt;
     }
-
-    /* Footer */
+    .override-warn {
+      margin: 2mm 0;
+      padding: 6pt 8pt;
+      border: 1pt solid #b91c1c;
+      border-left-width: 3pt;
+      background: #fee2e2;
+      font-size: 9pt;
+      color: #7f1d1d;
+      font-weight: 600;
+    }
     .ft {
       margin-top: 3mm;
       padding-top: 2pt;
@@ -133,16 +207,28 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       color: #333;
     }
     .ft strong { font-weight: 700; }
+    /* Anhang */
+    .att-h { font-size: 14pt; font-weight: 700; margin: 0 0 4mm; color: ${FILLED}; }
+    .att-sub { font-size: 9pt; color: #555; margin-bottom: 4mm; }
+    .chronik-tbl, .fzg-tbl { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+    .chronik-tbl td { border-bottom: 0.5pt solid #ddd; padding: 3pt 4pt; vertical-align: top; }
+    .chronik-tbl .ts { width: 22mm; font-family: "Courier New", monospace; color: #555; }
+    .chronik-tbl .src { width: 28mm; color: ${FILLED}; font-weight: 600; }
+    .fzg-detail { margin-bottom: 6mm; padding: 4pt; border: 0.5pt solid #888; }
+    .fzg-detail h3 { font-size: 11pt; margin: 0 0 2mm; color: ${FILLED}; }
+    .fzg-detail .row { display: flex; gap: 6mm; font-size: 8.5pt; margin-bottom: 1.5mm; }
+    .fzg-detail .row b { color: #555; font-weight: 600; margin-right: 4pt; }
+    .fzg-detail ul { margin: 1mm 0 2mm; padding-left: 14pt; font-size: 8.5pt; }
+    .fzg-detail li { color: ${FILLED}; }
   </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- ═══ Header ═══════════════════════════════════════════════ -->
+  ${d.abschlussOverrideHinweis ? `<div class="override-warn">⚠️ ABSCHLUSS-HINWEIS: ${escape(d.abschlussOverrideHinweis)}</div>` : ""}
+
   <div class="hd">
-    <div class="hd-l">
-      ${renderBrandLogo()}
-    </div>
+    <div class="hd-l">${renderBrandLogo()}</div>
     <div class="hd-r">
       <div class="hd-title">Einsatzbericht</div>
       <div style="font-family:'Courier New',monospace;font-size:9pt;font-weight:600;margin-top:2pt;">
@@ -151,7 +237,6 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </div>
   </div>
 
-  <!-- ═══ Einsatzort + Datum/Uhrzeit ═══════════════════════════ -->
   <table class="bx">
     <tr>
       <td class="lbl" style="width:64%">Einsatzort</td>
@@ -163,51 +248,61 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </tr>
   </table>
 
-  <!-- ═══ Pflichtbereich · Einsatzzone · Alarmiert ════════════ -->
   <table class="bx cb-row">
     <tr>
-      <td style="width:25%">Pflichtbereich <span class="cb">${box(true)} JA</span> <span class="cb">${box(false)} NEIN</span></td>
-      <td style="width:25%">Einsatzzone Eberstalzell <span class="cb">${box(true)} JA</span> <span class="cb">${box(false)} NEIN</span></td>
+      <td style="width:25%">Pflichtbereich
+        <span class="cb">${triBox(d.pflichtbereich === true || null, "JA")}</span>
+        <span class="cb">${triBox(d.pflichtbereich === false || null, "NEIN")}</span>
+      </td>
+      <td style="width:25%">Einsatzzone Eberstalzell
+        <span class="cb">${triBox(d.einsatzzoneEzell === true || null, "JA")}</span>
+        <span class="cb">${triBox(d.einsatzzoneEzell === false || null, "NEIN")}</span>
+      </td>
       <td>Alarmiert durch
-        <span class="cb">${box(d.alarmierungAuthor === "BWST")} BWST</span>
-        <span class="cb">${box(d.alarmierungAuthor === "LWZ")} LWZ</span>
-        <span class="cb">${box(!d.alarmierungAuthor || (d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ"))} ${escape(d.alarmierungAuthor ?? "Sonstige")}</span>
+        <span class="cb">${boxFilled(d.alarmierungAuthor === "BWST")} BWST</span>
+        <span class="cb">${boxFilled(d.alarmierungAuthor === "LWZ")} LWZ</span>
+        ${d.alarmierungAuthor && d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ" ? `<span class="cb">${boxFilled(true)} <strong style="color:${FILLED}">${escape(d.alarmierungAuthor)}</strong></span>` : ""}
       </td>
     </tr>
     <tr>
       <td colspan="3">Einsatzauftrag eingelangt über
-        ${ALARMQUELLEN.map((q) => `<span class="cb" style="margin-right:8pt">${box(false)} ${q}</span>`).join("")}
+        ${ALARMQUELLEN.map(
+          (q) =>
+            `<span class="cb" style="margin-right:8pt">${boxFilled((d.einsatzauftragVia ?? "") === q)} ${q}</span>`,
+        ).join("")}
+        ${d.anrufer ? `· <span style="margin-left:6pt">Anrufer: ${v(d.anrufer)}</span>` : ""}
+        ${d.anruferTel ? `· Tel: ${v(d.anruferTel)}` : ""}
       </td>
     </tr>
   </table>
 
-  <!-- ═══ Fahrzeug-Reihe ══════════════════════════════════════ -->
   <table class="bx cb-row">
     <tr><td class="lbl" colspan="7">Eingesetzte Fahrzeuge</td></tr>
     <tr>
       ${FAHRZEUGE_REIHE.map(
-        (f) => `<td style="text-align:center"><span class="cb">${box(false)}</span> ${f}</td>`,
+        (f) => {
+          const sel = eingesetzeFzgSet.has(f.toUpperCase());
+          return `<td style="text-align:center;${sel ? `color:${FILLED};font-weight:700;` : ""}">${boxFilled(sel)} ${f}</td>`;
+        },
       ).join("")}
     </tr>
   </table>
 
-  <!-- ═══ Einsatzart-Matrix ══════════════════════════════════ -->
   <table class="bx matrix">
     <tr><td class="lbl" colspan="4">Einsatzart</td></tr>
     ${EINSATZARTEN_MATRIX.map(
       (row) => `<tr>${row
         .map((art) => {
           const selected = d.einsatzart === art;
-          return `<td class="col"><span class="cb">${box(selected)}</span><span class="${selected ? "check-on" : ""}">${art}</span></td>`;
+          return `<td class="col"><span class="cb">${boxFilled(selected)}</span> <span class="${selected ? "check-on" : ""}">${art}</span></td>`;
         })
         .join("")}</tr>`,
     ).join("")}
     <tr>
-      <td colspan="4">Andere Einsätze: <strong>${escape(d.einsatzartFreitext ?? "")}</strong> · Warn-/Alarmsystem #: ___________</td>
+      <td colspan="4">Andere Einsätze: ${v(d.einsatzartFreitext)}</td>
     </tr>
   </table>
 
-  <!-- ═══ Zeitstempel + Beteiligte Stellen ═══════════════════ -->
   <table class="bx" style="margin-top:1mm">
     <tr>
       <td class="lbl" style="width:32%">Lage unter Kontrolle</td>
@@ -215,26 +310,28 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td class="lbl">Beteiligte Stellen</td>
     </tr>
     <tr>
-      <td class="val">__ : __</td>
-      <td class="val">__ : __</td>
+      <td class="val">${vTime(d.zeitmarken?.lageUnterKontrolle)}</td>
+      <td class="val">${vTime(d.zeitmarken?.brandAus)}</td>
       <td class="val" rowspan="3">
-        ${BETEILIGTE_STELLEN.map(
-          (s, i) =>
-            `<span class="cb" style="display:inline-block;width:32%;margin-bottom:1pt">${box(false)} ${s}</span>${(i + 1) % 3 === 0 ? "<br>" : ""}`,
-        ).join("")}
+        ${
+          d.beteiligteStellen && d.beteiligteStellen.length > 0
+            ? d.beteiligteStellen
+                .map((s) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(s)}</span><br>`)
+                .join("")
+            : `<span style="color:#888">keine angegeben</span>`
+        }
       </td>
     </tr>
     <tr>
       <td class="lbl">Alarmstufe 2 · Uhrzeit · Anforderer</td>
-      <td class="val">__ : __ · ___________</td>
+      <td class="val">${vTime(d.zeitmarken?.alst2?.zeit)} · ${v(d.zeitmarken?.alst2?.anforderer)}</td>
     </tr>
     <tr>
       <td class="lbl">Alarmstufe 3 · Uhrzeit · Anforderer</td>
-      <td class="val">__ : __ · ___________</td>
+      <td class="val">${vTime(d.zeitmarken?.alst3?.zeit)} · ${v(d.zeitmarken?.alst3?.anforderer)}</td>
     </tr>
   </table>
 
-  <!-- ═══ Sonstige FF · Mannschaft · Verrechenbar · Öl ═══════ -->
   <table class="bx">
     <tr>
       <td class="lbl" colspan="2">Sonstige anwesende Feuerwehren</td>
@@ -243,35 +340,37 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </tr>
     <tr>
       <td class="val" colspan="2" style="vertical-align:top">
-        ${SONSTIGE_FF.map(
-          (f, i) =>
-            `<span class="cb" style="display:inline-block;width:23%;margin-bottom:1pt">${box(false)} ${f}</span>${(i + 1) % 4 === 0 ? "<br>" : ""}`,
-        ).join("")}
+        ${
+          d.sonstigeAnwesendeFF && d.sonstigeAnwesendeFF.length > 0
+            ? d.sonstigeAnwesendeFF
+                .map((f) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(f)}</span><br>`)
+                .join("")
+            : `<span style="color:#888">keine</span>`
+        }
+        ${d.sonstigeFreitext ? `<div style="margin-top:2pt;color:${FILLED}">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
       </td>
       <td class="val" style="vertical-align:top">
-        Eingesetzt: ____ Personen<br>
-        Bereitschaft: ____<br>
-        Sonstige: ____<br>
-        <strong style="font-size:8pt">Aggregation aus Fahrzeugberichten</strong>
+        Eingesetzt: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
+        Bereitschaft: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.bereitschaft ?? 0}</span><br>
+        Sonstige: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.sonstige ?? 0}</span><br>
+        AS-Trupps: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTrupps ?? 0}</span>
       </td>
       <td class="val" style="vertical-align:top">
-        <span class="cb">${box(false)} JA</span> · <span class="cb">${box(false)} NEIN</span><br>
-        Ölbindemittel ${
-          d.oelbindemittelSaecke
-            ? `<strong>${box(true)} ${d.oelbindemittelSaecke} Sack — VERRECHENBAR</strong>`
-            : `${box(false)} _____ Sack`
+        Verrechenbar: <span class="cb">${boxFilled(d.verrechenbar === true)} JA</span> · <span class="cb">${boxFilled(d.verrechenbar === false)} NEIN</span><br>
+        Ölbindemittel: ${
+          d.oelbindemittelSaecke && d.oelbindemittelSaecke > 0
+            ? `<strong style="color:${FILLED}">${boxFilled(true)} ${d.oelbindemittelSaecke} Sack</strong>`
+            : `${boxFilled(false)} 0 Sack`
         }
       </td>
     </tr>
   </table>
 
-  <!-- ═══ Meldung von der Einsatzleitung ═════════════════════ -->
   <table class="bx">
     <tr><td class="lbl">Meldung von der Einsatzleitung</td></tr>
     <tr><td><div class="freitext">${escape(d.meldungEinsatzleitung ?? "")}</div></td></tr>
   </table>
 
-  <!-- ═══ Reaktivierungs-Audit (FR-14) ═══════════════════════ -->
   ${
     d.reaktivierungen && d.reaktivierungen.length > 0
       ? `<div class="audit">
@@ -283,7 +382,6 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       : ""
   }
 
-  <!-- ═══ Einsatzleiter / Bearbeiter / Unterschriften ════════ -->
   <table class="bx" style="margin-top:1mm">
     <tr>
       <td class="lbl" style="width:50%">Einsatzleiter</td>
@@ -291,7 +389,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </tr>
     <tr>
       <td class="val" style="height:10mm;border-top:0.5pt dashed #888"></td>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende}</td>
+      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : ""}</td>
     </tr>
     <tr>
       <td class="lbl">Bearbeiter</td>
@@ -304,13 +402,99 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   </table>
 
   <div class="ft">
-    <strong>Fahrzeugberichte anhängen nicht vergessen</strong> · Reserve-Mannschaft auf der Rückseite anführen
-    &nbsp;·&nbsp; HotDoc · generiert ${formatDateTime(new Date().toISOString())}
+    HotDoc · generiert ${formatDateTime(new Date().toISOString())}
+    ${d.fahrzeugberichte && d.fahrzeugberichte.length > 0 ? `· ${d.fahrzeugberichte.length} Fahrzeugbericht(e) anbei` : ""}
+    ${d.chronik && d.chronik.length > 0 ? `· Chronik (${d.chronik.length}) anbei` : ""}
   </div>
-
 </div>
+
+${renderChronikSeite(d)}
+${renderFahrzeugberichtSeiten(d)}
+
 </body>
 </html>`;
+}
+
+/** Eigene Seite mit der vollstaendigen Einsatzchronik. */
+function renderChronikSeite(d: BerichtDaten): string {
+  if (!d.chronik || d.chronik.length === 0) return "";
+  return /* html */ `
+<div class="page">
+  <div class="hd">
+    <div class="hd-l">${renderBrandLogo()}</div>
+    <div class="hd-r">
+      <div class="hd-sub-title">Einsatzchronik</div>
+      <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;margin-top:2pt;color:#555">
+        ${escape(d.einsatzId)} · ${d.chronik.length} Einträge
+      </div>
+    </div>
+  </div>
+  <table class="chronik-tbl">
+    <thead>
+      <tr style="background:#f0f0f0">
+        <td class="ts" style="font-weight:700">Zeit</td>
+        <td class="src" style="font-weight:700;color:#000">Quelle</td>
+        <td style="font-weight:700">Eintrag</td>
+      </tr>
+    </thead>
+    <tbody>
+      ${d.chronik
+        .slice()
+        .sort((a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime())
+        .map(
+          (c) => `<tr>
+            <td class="ts">${formatTime(c.zeitstempel)}</td>
+            <td class="src">${escape(c.funkrufname)}</td>
+            <td>${escape(c.text)}</td>
+          </tr>`,
+        )
+        .join("")}
+    </tbody>
+  </table>
+</div>`;
+}
+
+/** Eigene Seiten pro Fahrzeugbericht mit Mannschaft / Geräten / Taetigkeiten. */
+function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
+  if (!d.fahrzeugberichte || d.fahrzeugberichte.length === 0) return "";
+  return d.fahrzeugberichte
+    .map(
+      (f) => /* html */ `
+<div class="page">
+  <div class="hd">
+    <div class="hd-l">${renderBrandLogo()}</div>
+    <div class="hd-r">
+      <div class="hd-sub-title">Fahrzeugbericht · ${escape(f.abk)}</div>
+      <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;margin-top:2pt;color:#555">
+        ${escape(f.funkrufname)} · ${f.status === "abgeschlossen" ? "ABGESCHLOSSEN" : "in Arbeit"}
+      </div>
+    </div>
+  </div>
+
+  <div class="fzg-detail">
+    <div class="row"><b>KM gefahren</b><span style="color:#1e3a8a;font-weight:700">${f.kmGefahren.toFixed(1).replace(".", ",")} km</span></div>
+    ${f.fahrzeugKdt ? `<div class="row"><b>Fahrzeug-Kdt</b><span style="color:#1e3a8a;font-weight:600">${escape(f.fahrzeugKdt)}</span></div>` : ""}
+    ${f.fahrer ? `<div class="row"><b>Fahrer</b><span style="color:#1e3a8a;font-weight:600">${escape(f.fahrer)}</span></div>` : ""}
+    <div class="row"><b>Mannschaft</b><span>${f.mannschaft.length} Personen</span></div>
+    ${f.mannschaft.length > 0 ? `<ul>${f.mannschaft
+      .map(
+        (m) =>
+          `<li>${escape(m.name)}${m.atemschutzAktiv ? ` <strong style="color:#b91c1c">(Atemschutz${m.atemschutzDauerMin ? ` · ${m.atemschutzDauerMin} min` : ""})</strong>` : ""}</li>`,
+      )
+      .join("")}</ul>` : ""}
+    ${f.geraete.length > 0 ? `<div class="row"><b>Geräte</b><span style="color:#1e3a8a">${f.geraete.map(escape).join(" · ")}</span></div>` : ""}
+    ${f.oelSaecke > 0 ? `<div class="row"><b>Ölbindemittel</b><span style="color:#1e3a8a;font-weight:700">${f.oelSaecke} Sack</span></div>` : ""}
+    ${f.taetigkeitsbericht ? `<div style="margin-top:3mm"><b style="color:#555;font-size:8.5pt">Tätigkeiten:</b><div class="freitext" style="min-height:30mm;margin-top:1mm">${escape(f.taetigkeitsbericht)}</div></div>` : ""}
+  </div>
+</div>`,
+    )
+    .join("");
+}
+
+function boxFilled(checked: boolean): string {
+  return checked
+    ? `<span style="color:#1e3a8a">☒</span>`
+    : `<span>☐</span>`;
 }
 
 export function renderSpickzettelHtml(d: BerichtDaten): string {

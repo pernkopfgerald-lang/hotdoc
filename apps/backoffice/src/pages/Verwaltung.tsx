@@ -5,9 +5,11 @@ import {
   getConfig,
   putConfig,
   type AuftragstypenData,
+  type ConfigKey,
   type EinsatzstichworteData,
   type GeraeteData,
   type StammdatenData,
+  type StringListData,
   type TabletInventarData,
   type TabletInventarItem,
 } from "../api/config";
@@ -192,6 +194,8 @@ type Tab =
   | "personal"
   | "geraete"
   | "auftragstypen"
+  | "beteiligte-stellen"
+  | "sonstige-ff"
   | "stammdaten"
   | "tablet-inventar";
 
@@ -279,6 +283,12 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "auftragstypen"} onClick={() => setTab("auftragstypen")} icon={<Truck size={16} />}>
           Auftrag-Typen
         </TabButton>
+        <TabButton active={tab === "beteiligte-stellen"} onClick={() => setTab("beteiligte-stellen")} icon={<Siren size={16} />}>
+          Beteiligte Stellen
+        </TabButton>
+        <TabButton active={tab === "sonstige-ff"} onClick={() => setTab("sonstige-ff")} icon={<Flame size={16} />}>
+          Sonstige FF
+        </TabButton>
         <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")} icon={<Settings size={16} />}>
           Stammdaten
         </TabButton>
@@ -308,6 +318,24 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "personal" && <PersonalPanel />}
         {tab === "geraete" && <GeraetePanel />}
         {tab === "auftragstypen" && <AuftragstypenPanel />}
+        {tab === "beteiligte-stellen" && (
+          <StringListPanel
+            configKey="beteiligte-stellen"
+            title="Beteiligte Stellen (global)"
+            icon={<Siren size={20} />}
+            description="Diese Liste erscheint im Florianstation-Editor als anhakbare Chips, wenn der Einsatzleiter dokumentiert, wer noch auf der Einsatzstelle anwesend war (Polizei, Rotes Kreuz, Notarzt, …). Änderungen wirken sich sofort auf den Florianstation-Editor aus."
+            placeholder="Neue Stelle …"
+          />
+        )}
+        {tab === "sonstige-ff" && (
+          <StringListPanel
+            configKey="sonstige-ff"
+            title="Sonstige Feuerwehren (global)"
+            icon={<Flame size={20} />}
+            description="Liste der ueblichen Nachbar-Feuerwehren. Im Florianstation-Editor als Schnellauswahl-Chips verfügbar (Sturm, BMA-Übergreifend, Personenrettung-Mitarbeit …)."
+            placeholder="Neue FF …"
+          />
+        )}
         {tab === "stammdaten" && <StammdatenPanel />}
         {tab === "tablet-inventar" && <TabletInventarPanel currentUser={auth.benutzer?.username ?? "—"} />}
       </main>
@@ -685,6 +713,129 @@ function AuftragstypenPanel() {
             ))}
           </div>
           <AddItemForm onAdd={add} placeholder="Neuer Auftrag-Typ …" />
+        </>
+      ) : (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Generisches Listen-CRUD-Panel fuer einfache String-Listen (config-Key
+ * mit Format `{ items: string[] }`). Wird fuer "beteiligte-stellen" und
+ * "sonstige-ff" eingesetzt — die Inhalts-Sets erscheinen im Florianstation-
+ * Editor als Schnellauswahl-Chips. Aenderungen wirken sich beim naechsten
+ * PWA-Start auf den Editor aus.
+ */
+function StringListPanel({
+  configKey,
+  title,
+  icon,
+  description,
+  placeholder,
+}: {
+  configKey: Extract<ConfigKey, "beteiligte-stellen" | "sonstige-ff">;
+  title: string;
+  icon: React.ReactNode;
+  description: string;
+  placeholder: string;
+}) {
+  const [data, setData] = useState<StringListData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await getConfig<StringListData>(configKey);
+        // Defensive: data kann fehlen wenn das Doc noch leer ist
+        setData({ items: Array.isArray(r.data?.items) ? r.data.items : [] });
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, [configKey]);
+
+  async function save(): Promise<void> {
+    if (!data) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await putConfig(configKey, data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function add(text: string): void {
+    if (!data || !text.trim()) return;
+    const t = text.trim();
+    if (data.items.includes(t)) return;
+    setData({ ...data, items: [...data.items, t] });
+  }
+  function remove(text: string): void {
+    if (!data) return;
+    setData({ ...data, items: data.items.filter((x) => x !== text) });
+  }
+  function rename(oldText: string, newText: string): void {
+    if (!data) return;
+    setData({
+      ...data,
+      items: data.items.map((x) => (x === oldText ? newText : x)),
+    });
+  }
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          {icon}
+          {title}
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? <span className="badge ok">gespeichert</span> : null}
+          <span className="card-meta">
+            <span className="num">{data?.items.length ?? 0}</span> Einträge
+          </span>
+          <button
+            type="button"
+            className="cta"
+            onClick={save}
+            disabled={busy || !data}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "Speichern"}
+          </button>
+        </div>
+      </div>
+      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
+        {description}
+      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {data ? (
+        <>
+          <div className="chips" style={{ marginBottom: 12 }}>
+            {data.items.map((t) => (
+              <EditableChip
+                key={t}
+                text={t}
+                onUpdate={(next) => rename(t, next)}
+                onRemove={() => remove(t)}
+                validate={(next) =>
+                  next !== t && data.items.includes(next)
+                    ? `"${next}" existiert bereits`
+                    : null
+                }
+              />
+            ))}
+          </div>
+          <AddItemForm onAdd={add} placeholder={placeholder} />
         </>
       ) : (
         <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>

@@ -70,7 +70,7 @@ export function PersonPickerModal({
         onClick={onClose}
         className="absolute inset-0 bg-black/55 backdrop-blur-sm"
       />
-      <div className="relative flex max-h-[88vh] w-full max-w-xl flex-col rounded-t-2xl border border-border bg-surface-1 shadow-2xl md:rounded-2xl">
+      <div className="relative flex max-h-[92dvh] w-full max-w-3xl flex-col rounded-t-2xl border border-border bg-surface-1 shadow-2xl md:rounded-2xl">
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
             <h3 id="picker-title" className="text-base font-semibold text-text-1">

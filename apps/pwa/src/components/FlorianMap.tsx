@@ -42,6 +42,10 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const einsatzMarkerRef = useRef<L.Marker | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  // Marker-Klick markiert das Fahrzeug visuell (Pulse) und oeffnet ein
+  // Detail-Panel am rechten Rand der Karte. Klick auf leeren Bereich oder
+  // selbes Marker erneut schliesst es.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!elRef.current || mapRef.current) return;
@@ -93,7 +97,8 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
     for (const f of fahrzeuge) {
       seen.add(f.fahrzeugId);
       const staleMin = staleMinutes(f, tickNow);
-      const ic = fahrzeugIcon(f, staleMin);
+      const isSelected = selectedId === f.fahrzeugId;
+      const ic = fahrzeugIcon(f, staleMin, isSelected);
       const pos: LatLngExpression = [f.lat, f.lng];
       const existing = markersRef.current.get(f.fahrzeugId);
       if (existing) {
@@ -101,6 +106,10 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
         existing.setIcon(ic);
       } else {
         const m = L.marker(pos, { icon: ic, title: f.funkrufname }).addTo(map);
+        m.on("click", () => {
+          setSelectedId((prev) => (prev === f.fahrzeugId ? null : f.fahrzeugId));
+          map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.5 });
+        });
         markersRef.current.set(f.fahrzeugId, m);
       }
     }
@@ -110,7 +119,22 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
         markersRef.current.delete(id);
       }
     }
-  }, [fahrzeuge, tickNow]);
+  }, [fahrzeuge, tickNow, selectedId]);
+
+  // Klick auf leere Karte → Auswahl schliessen
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const onMapClick = (): void => setSelectedId(null);
+    map.on("click", onMapClick);
+    return () => {
+      map.off("click", onMapClick);
+    };
+  }, []);
+
+  const selectedFzg = selectedId
+    ? fahrzeuge.find((f) => f.fahrzeugId === selectedId) ?? null
+    : null;
 
   useEffect(() => {
     const map = mapRef.current;
@@ -214,10 +238,116 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
           </div>
         ) : null}
 
+        {/* Detail-Panel: klappt von rechts ein wenn ein Fahrzeug-Marker
+            angeklickt wurde. Zeigt Funkrufname + Status + letzte Position. */}
+        {selectedFzg ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 410,
+              minWidth: 220,
+              maxWidth: 280,
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: "color-mix(in srgb, var(--surface) 94%, transparent)",
+              border: "1px solid var(--border-strong)",
+              backdropFilter: "blur(10px) saturate(150%)",
+              WebkitBackdropFilter: "blur(10px) saturate(150%)",
+              boxShadow: "0 12px 28px -8px rgba(15,23,42,0.32)",
+              animation: "glass-reveal 180ms var(--ease-decel) both",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <strong style={{ fontSize: 14 }}>{selectedFzg.funkrufname}</strong>
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                aria-label="Schließen"
+                style={{
+                  appearance: "none",
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                  color: "var(--fg-3)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  minHeight: 0,
+                  padding: "2px 6px",
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--fg-3)",
+                fontFamily: "var(--font-mono)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              <span>
+                Status:{" "}
+                <strong style={{ color: "var(--fg-2)" }}>
+                  {selectedFzg.isZentrale
+                    ? "Zentrale"
+                    : selectedFzg.status === "im_einsatz"
+                      ? "Im Einsatz"
+                      : selectedFzg.status === "abgeschlossen"
+                        ? "Abgeschlossen"
+                        : "Wartend"}
+                </strong>
+              </span>
+              <span>
+                Position:{" "}
+                <strong style={{ color: "var(--fg-2)" }}>
+                  {selectedFzg.lat.toFixed(5)}, {selectedFzg.lng.toFixed(5)}
+                </strong>
+              </span>
+              {selectedFzg.lastSeenAt ? (
+                <span>
+                  Last seen:{" "}
+                  <strong style={{ color: "var(--fg-2)" }}>
+                    {formatRelative(selectedFzg.lastSeenAt, tickNow)}
+                  </strong>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <Legend />
       </div>
     </div>
   );
+}
+
+function formatRelative(iso: string, now: number): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const min = Math.max(0, Math.floor((now - t) / 60_000));
+  if (min === 0) return "gerade eben";
+  if (min < 60) return `vor ${min} min`;
+  const h = Math.floor(min / 60);
+  return `vor ${h} h`;
 }
 
 function Legend() {
@@ -282,7 +412,11 @@ function staleMinutes(f: FahrzeugPos, now: number): number | null {
   return Math.max(0, Math.floor((now - t) / 60_000));
 }
 
-function fahrzeugIcon(f: FahrzeugPos, staleMin: number | null): L.DivIcon {
+function fahrzeugIcon(
+  f: FahrzeugPos,
+  staleMin: number | null,
+  isSelected = false,
+): L.DivIcon {
   const isStale = staleMin !== null && staleMin > STALE_AFTER_MIN;
   const noPos = staleMin === null && !f.isZentrale;
   const color =
@@ -293,34 +427,25 @@ function fahrzeugIcon(f: FahrzeugPos, staleMin: number | null): L.DivIcon {
         : "#94A3B8";
   const bg = color + "33";
   const opacity = isStale || noPos ? 0.45 : 1;
+  // Pulse-Ring fuer ausgewaehltes Fahrzeug — visualisiert was geklickt wurde
+  // und welches Detail-Panel zur Karte gehoert.
+  const selectedRing = isSelected
+    ? `<div style="position:absolute;left:-4px;top:-4px;width:calc(100% + 8px);height:calc(100% + 8px);border-radius:99px;border:2px solid ${color};animation:fln-pulse-ring 1.4s ease-out infinite;pointer-events:none;"></div>`
+    : "";
   const offlineLabel = isStale
     ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);">offline seit ${staleMin} min</div>`
     : noPos
       ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;">keine Position</div>`
       : "";
+  const selectedShadow = isSelected ? `box-shadow:0 0 0 3px ${color}55, 0 2px 8px rgba(15,23,42,0.22);` : "box-shadow:0 2px 8px rgba(15,23,42,0.18);";
   return L.divIcon({
     className: "fln-fzg",
     html: `
       <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;opacity:${opacity};transition:opacity 200ms ease;">
-        <div style="
-          display:flex;
-          align-items:center;
-          gap:5px;
-          padding:4px 10px 4px 6px;
-          border-radius:99px;
-          background:${bg};
-          border:1.5px solid ${color};
-          color:${color};
-          font-family:'JetBrains Mono', monospace;
-          font-size:10px;
-          font-weight:700;
-          letter-spacing:0.08em;
-          text-transform:uppercase;
-          white-space:nowrap;
-          box-shadow:0 2px 8px rgba(15,23,42,0.18);
-        ">
-          <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
-          ${f.abk}
+        <div style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px 4px 6px;border-radius:99px;background:${bg};border:1.5px solid ${color};color:${color};font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;${selectedShadow}">
+          ${selectedRing}
+          <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
+          <span>${f.abk}</span>
         </div>
         ${offlineLabel}
       </div>`,

@@ -227,6 +227,29 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("einsatzleiter"
     res.status(409).json({ error: "already_closed" });
     return;
   }
+  // Abschluss-Override-Hinweis: wenn noch nicht alle Fahrzeugberichte
+  // abgeschlossen sind aber der Einsatzleiter trotzdem abschliesst (z. B.
+  // Kdt hat das Tablet noch nicht zurueckgegeben, Funktionaer braucht den
+  // Bericht aber jetzt fuer syBOS), wandert ein Warn-Hinweis ins Doc. Das
+  // PDF rendert ihn als rote Banner-Zeile damit der Bearbeiter sieht dass
+  // ein oder mehrere Fahrzeugberichte ggf. nicht final waren.
+  const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
+  const fzgList = await db.list({
+    startkey: fzgPrefix,
+    endkey: `${fzgPrefix}￰`,
+    include_docs: true,
+  });
+  const fzgDocs = fzgList.rows
+    .map((r) => r.doc)
+    .filter((d): d is NonNullable<typeof d> => !!d);
+  const offeneFzgber = fzgDocs.filter(
+    (f) => (f as { status?: string }).status === "in_arbeit",
+  );
+  const abschlussOverrideHinweis = offeneFzgber.length
+    ? `Beim Abschluss waren ${offeneFzgber.length} Fahrzeugbericht(e) noch nicht abgeschlossen (${offeneFzgber
+        .map((f) => (f as { fahrzeugId?: string }).fahrzeugId ?? "?")
+        .join(", ")}). Datenstand entspricht dem Zwischenstand zum Abschluss-Zeitpunkt.`
+    : undefined;
   const updated = {
     ...doc,
     status: "abgeschlossen",
@@ -234,6 +257,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("einsatzleiter"
     einsatzende: new Date().toISOString(),
     bearbeiterPersonId: doc.bearbeiterPersonId,
     geaendertAm: new Date().toISOString(),
+    ...(abschlussOverrideHinweis ? { abschlussOverrideHinweis } : {}),
   };
   const result = await db.insert(updated);
   logger.info({ id, by: session.username }, "Einsatz abgeschlossen");
@@ -520,5 +544,99 @@ einsaetzeRouter.get(
       .map((r) => r.doc)
       .filter((d): d is NonNullable<typeof d> => d !== undefined);
     res.json({ ok: true, items: docs });
+  }) as RequestHandler,
+);
+
+// ─── GET /api/fahrzeugberichte/meine ───────────────────────────
+// Liefert alle Fahrzeugberichte eines bestimmten Fahrzeugs zusammen mit
+// den Einsatz-Stammdaten (Stichwort/Adresse/Datum) als zusammengefasste
+// Items fuer das Tablet-Archiv. Default-Filter: status=abgeschlossen, damit
+// nur fertig gearbeitete Berichte erscheinen. Sortierung nach Alarmzeit DESC.
+einsaetzeRouter.get(
+  "/api/fahrzeugberichte/meine",
+  requireAuth(),
+  (async (req, res) => {
+    const fahrzeugId =
+      typeof req.query.fahrzeugId === "string" ? req.query.fahrzeugId : "";
+    if (!fahrzeugId) {
+      res.status(400).json({ error: "fahrzeugId_required" });
+      return;
+    }
+    const statusFilter =
+      typeof req.query.status === "string" ? req.query.status : "abgeschlossen";
+    const list = await db.list({
+      startkey: "fzgber:",
+      endkey: "fzgber:￰",
+      include_docs: true,
+    });
+    const fzgbers = list.rows
+      .map((r) => r.doc)
+      .filter((d): d is NonNullable<typeof d> => d !== undefined)
+      .filter((d) => {
+        const doc = d as { type?: string; fahrzeugId?: string; status?: string };
+        if (doc.type !== "fahrzeugbericht") return false;
+        if (doc.fahrzeugId !== fahrzeugId) return false;
+        if (statusFilter !== "alle" && doc.status !== statusFilter) return false;
+        return true;
+      });
+    const items: Array<{
+      _id: string;
+      einsatzId: string;
+      einsatzart: string;
+      einsatzartFreitext?: string;
+      einsatzort?: string;
+      alarmierungZeit?: string;
+      einsatzTyp?: string;
+      kmGefahrenKm: number;
+      mannschaftAnzahl: number;
+      status: string;
+      geaendertAm?: string;
+    }> = [];
+    for (const d of fzgbers) {
+      const doc = d as {
+        _id: string;
+        einsatzId?: string;
+        status?: string;
+        geaendertAm?: string;
+        km?: { gefahrenKm?: number };
+        mannschaft?: unknown[];
+      };
+      if (!doc.einsatzId) continue;
+      try {
+        const einsatz = (await db.get(doc.einsatzId)) as {
+          einsatzart?: string;
+          einsatzartFreitext?: string;
+          einsatzort?: string;
+          alarmierungZeit?: string;
+          einsatzTyp?: string;
+        };
+        items.push({
+          _id: doc._id,
+          einsatzId: doc.einsatzId,
+          einsatzart:
+            einsatz.einsatzart ?? einsatz.einsatzartFreitext ?? "Einsatz",
+          ...(einsatz.einsatzartFreitext
+            ? { einsatzartFreitext: einsatz.einsatzartFreitext }
+            : {}),
+          ...(einsatz.einsatzort ? { einsatzort: einsatz.einsatzort } : {}),
+          ...(einsatz.alarmierungZeit
+            ? { alarmierungZeit: einsatz.alarmierungZeit }
+            : {}),
+          ...(einsatz.einsatzTyp ? { einsatzTyp: einsatz.einsatzTyp } : {}),
+          kmGefahrenKm: doc.km?.gefahrenKm ?? 0,
+          mannschaftAnzahl: Array.isArray(doc.mannschaft) ? doc.mannschaft.length : 0,
+          status: doc.status ?? "unbekannt",
+          ...(doc.geaendertAm ? { geaendertAm: doc.geaendertAm } : {}),
+        });
+      } catch {
+        // Einsatz-Doc weg → Fahrzeugbericht orphan, ignorieren
+      }
+    }
+    items.sort((a, b) => {
+      const ta = new Date(a.alarmierungZeit ?? 0).getTime();
+      const tb = new Date(b.alarmierungZeit ?? 0).getTime();
+      return tb - ta;
+    });
+    res.json({ ok: true, items });
   }) as RequestHandler,
 );
