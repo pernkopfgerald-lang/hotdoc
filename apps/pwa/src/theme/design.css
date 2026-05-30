@@ -166,6 +166,22 @@
   transition: all var(--dur-fast) var(--ease-smooth);
 }
 .input-row.filled { background: var(--glass-2); border-color: var(--glass-border); }
+
+/* Eingabewerte dunkelblau einfaerben — vom User getippte/gewaehlte Werte
+   sollen sich klar von Labels (schwarz) abheben, damit der Funktionaer
+   auf einen Blick sieht was er selber eingetragen hat. Greift bei
+   user-input (Placeholder-Pruefung), expliziter .filled-Klasse und
+   Select-Boxen mit selektiertem Wert. */
+.input:not(:placeholder-shown),
+.input.filled,
+.input-row.filled input,
+.input-row.filled,
+textarea.input:not(:placeholder-shown) {
+  color: #1e3a8a;
+  font-weight: 600;
+}
+select.input { color: #1e3a8a; font-weight: 600; }
+select.input option { color: var(--fg); font-weight: 500; }
 .input-row:focus-within {
   border-color: var(--info);
   box-shadow:

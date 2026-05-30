@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  Archive,
   ArrowRight,
   Calendar,
   CheckCircle2,
@@ -13,7 +14,6 @@ import {
   Map as MapIcon,
   MapPin,
   Phone,
-  Save,
   Siren,
   Smartphone,
   Truck,
@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
+import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
@@ -261,6 +262,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  // Auto-Save: nach 1,5 s ohne weitere Tipparbeit speichern. Manueller
+  // "Speichern"-Button wurde entfernt — der User soll sich nichts merken muessen.
+  useEffect(() => {
+    const ist_schreibgeschuetzt = aktiverEinsatz?.schreibschutz === true;
+    if (!editorDirty || !aktiverEinsatzId || ist_schreibgeschuetzt) return;
+    const handle = setTimeout(() => {
+      void saveEditor();
+    }, 1500);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, editorDirty, aktiverEinsatzId, aktiverEinsatz?.schreibschutz]);
   // Abschluss-Workflow: separater State-Slot, damit der Confirm-Dialog
   // unabhängig vom normalen Save funktioniert und der Einsatzleiter eine
   // explizite Bestätigung sehen muss bevor der Schreibschutz aktiviert wird.
@@ -270,6 +282,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
   /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
+  const [archivOpenFlorian, setArchivOpenFlorian] = useState(false);
   /** Wenn der 403 vom Abschluss-Endpoint zurückkommt, ist meist der Token
    *  veraltet (alte Rolle "mannschaft" für zentrale). Wir zeigen dann einen
    *  direkten Re-Auth-Button im Fehler-Banner statt nur Text. */
@@ -422,19 +435,32 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   useEffect(() => {
     if (!aktiverEinsatz) return;
     if (editorDirty) return;
+    // Auto-Fill bei Einsatzort in Eberstalzell: Pflichtbereich = Ja,
+    // Einsatzzone FF Eberstalzell = Ja, ueberoertliche Hilfe = Nein.
+    // Greift nur wenn der Server noch keinen Wert hatte (null/undefined)
+    // — der Einsatzleiter kann das jederzeit ueberstimmen.
+    const ortLower = (aktiverEinsatz.einsatzort ?? "").toLowerCase();
+    const inEberstalzell =
+      ortLower.includes("eberstalzell") || ortLower.includes("4653");
     setEditor({
       pflichtbereich:
         typeof aktiverEinsatz.pflichtbereich === "boolean"
           ? aktiverEinsatz.pflichtbereich
-          : null,
+          : inEberstalzell
+            ? true
+            : null,
       einsatzzoneEzell:
         typeof aktiverEinsatz.einsatzzoneEzell === "boolean"
           ? aktiverEinsatz.einsatzzoneEzell
-          : null,
+          : inEberstalzell
+            ? true
+            : null,
       ueberOertlicheHilfe:
         typeof aktiverEinsatz.ueberOertlicheHilfe === "boolean"
           ? aktiverEinsatz.ueberOertlicheHilfe
-          : null,
+          : inEberstalzell
+            ? false
+            : null,
       alarmiertDurch: aktiverEinsatz.alarmiertDurch ?? null,
       einsatzauftragVia: aktiverEinsatz.einsatzauftragVia ?? null,
       anrufer: aktiverEinsatz.anrufer ?? "",
@@ -645,30 +671,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     }
   }
 
-  async function openSpickzettel(einsatzId: string): Promise<void> {
-    setDownloadBusy("spick");
-    setDownloadErr(null);
-    try {
-      const token = getTabletToken();
-      const res = await fetch(`/api/einsaetze/${encodeURIComponent(einsatzId)}/spickzettel`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const html = await res.text();
-      const win = window.open("", "_blank", "noopener,noreferrer");
-      if (!win) {
-        alert("Pop-up-Blocker — bitte für diese Seite erlauben.");
-        return;
-      }
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-    } catch (err) {
-      setDownloadErr(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDownloadBusy(null);
-    }
-  }
+  // (Frueher openSpickzettel — syBOS-Spickzettel-Button und Funktion entfernt.)
 
   /**
    * Fahrzeug-Status pro Wagen — abgeleitet aus den echten Fahrzeugbericht-
@@ -765,13 +768,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // AS-Trupps: Atemschutz-Personen in 2er-Trupps. Eine ungerade Anzahl wird
   // aufgerundet (sicherheitskritisch — fünfter AS heißt: ein dritter Trupp
   // ist in Vorbereitung, auch wenn der Partner noch fehlt).
-  const asPersonenGesamt = fahrzeugStatus.reduce((sum, f) => sum + f.asAktiv, 0);
-  const asTruppsGesamt = Math.ceil(asPersonenGesamt / 2);
-  // Öl-Säcke gesamt: aus Fahrzeugberichten ODER manueller Override im
-  // Einsatz-Doc (Florian-Editor). Wir nehmen den größeren Wert — damit
-  // der Editor die Aggregation überschreiben kann, ohne sie zu unterbieten.
-  const oelSummeFahrzeug = fahrzeugStatus.reduce((sum, f) => sum + f.oelSaecke, 0);
-  const oelSaeckeGesamt = Math.max(oelSummeFahrzeug, aktiverEinsatz?.oelbindemittel?.gesamtSaecke ?? 0);
+  // (Frueher asTruppsGesamt + oelSaeckeGesamt fuer die Zusammenfassung-Sektion —
+  // entfernt; die Werte werden ohnehin im Top-Header der Einsatz-Karte gezeigt.)
 
   // Globale Einsatzchronik — wird aus dem CouchDB-Einsatz-Doc gepollt
   // (identischer Cross-Sync wie auf den Tablets). Start leer; sobald ein
@@ -888,6 +886,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)" }}
                     >
                       <MapPin size={14} /> Lotsendienst anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setArchivOpenFlorian(true)}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "var(--surface-2)", color: "var(--fg)", border: "1px solid var(--border-strong)" }}
+                    >
+                      <Archive size={14} /> Archiv durchsuchen
                     </button>
                   </div>
                 </div>
@@ -1346,104 +1352,44 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           />
         </section>
 
-        <section
-          style={{
-            position: "sticky",
-            bottom: 12,
-            zIndex: 30,
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            padding: "12px 16px",
-            margin: "8px 16px 0",
-            borderRadius: 14,
-            background: editorDirty
-              ? "color-mix(in srgb, var(--warn-tint) 65%, var(--surface))"
-              : "var(--surface)",
-            border: `1px solid ${editorDirty ? "var(--amber-border)" : "var(--border)"}`,
-            boxShadow: "0 6px 20px rgba(15,23,42,0.08)",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {saveErr ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  color: "var(--red)",
-                  fontSize: 13,
-                }}
-              >
-                <AlertTriangle size={14} /> {saveErr}
-              </div>
-            ) : saveOk ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  color: "var(--ok)",
-                  fontSize: 13,
-                }}
-              >
-                <CheckCircle2 size={14} /> {saveOk}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  color: "var(--fg-3)",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  fontWeight: 600,
-                }}
-              >
-                {schreibschutz
-                  ? "Bericht abgeschlossen · Reaktivierung erforderlich"
-                  : editorDirty
-                    ? "Ungespeicherte Änderungen am Hauptbericht"
-                    : "Hauptbericht synchron mit Backend"}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => void saveEditor()}
-            disabled={!editorDirty || saveBusy || !aktiverEinsatzId || schreibschutz}
+        {/* Auto-Save-Toast: nur sichtbar wenn was los ist (speichert/gespeichert/Fehler). */}
+        {(saveBusy || saveOk || saveErr) && (
+          <div
             style={{
-              display: "inline-flex",
+              position: "fixed",
+              top: 80,
+              right: 20,
+              zIndex: 1500,
+              padding: "8px 14px",
+              borderRadius: 10,
+              background: saveErr
+                ? "var(--red-tint)"
+                : saveBusy
+                  ? "var(--info-tint)"
+                  : "var(--ok-tint)",
+              color: saveErr ? "var(--red)" : saveBusy ? "var(--info)" : "var(--ok)",
+              border: `1px solid ${saveErr ? "var(--red-border)" : saveBusy ? "var(--blue-border)" : "var(--ok-border)"}`,
+              fontSize: 12,
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+              display: "flex",
               alignItems: "center",
               gap: 8,
-              padding: "9px 16px",
-              borderRadius: 10,
-              border: 0,
-              background:
-                !editorDirty || saveBusy || !aktiverEinsatzId || schreibschutz
-                  ? "var(--surface-2)"
-                  : "linear-gradient(180deg, var(--info) 0%, color-mix(in srgb, var(--info) 70%, #000) 100%)",
-              color:
-                !editorDirty || saveBusy || !aktiverEinsatzId || schreibschutz
-                  ? "var(--fg-3)"
-                  : "#fff",
-              fontWeight: 700,
-              fontSize: 13,
-              letterSpacing: "0.04em",
-              cursor:
-                !editorDirty || saveBusy || !aktiverEinsatzId || schreibschutz
-                  ? "not-allowed"
-                  : "pointer",
-              boxShadow:
-                !editorDirty || saveBusy || !aktiverEinsatzId || schreibschutz
-                  ? "none"
-                  : "0 4px 12px rgba(37,99,235,0.32)",
             }}
           >
-            <Save size={15} />
-            {saveBusy ? "Speichere …" : "Hauptbericht speichern"}
-          </button>
-        </section>
+            {saveErr ? (
+              <>
+                <AlertTriangle size={13} /> {saveErr}
+              </>
+            ) : saveBusy ? (
+              "Speichere …"
+            ) : (
+              <>
+                <CheckCircle2 size={13} /> Gespeichert
+              </>
+            )}
+          </div>
+        )}
 
         <SectionHead title="Sachbearbeiter & Reserve" />
         <section className="card">
@@ -1751,28 +1697,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         {/* Aggregations + Chronik + Uebergabe nur sichtbar mit aktivem Einsatz. */}
         {!istIdle && (
           <>
-            <SectionHead title="Zusammenfassung Mannschaft" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Users size={20} />
-              Gesamtaufstellung
-            </div>
-            <span className="card-meta">
-              <span className="num">{aggregateMannschaft}</span> Personen im Einsatz
-            </span>
-          </div>
-          <div className="grid-3" style={{ gap: 12 }}>
-            <Stat label="Aktive Mannschaft" value={String(aggregateMannschaft)} unit="Pers." />
-            <Stat
-              label="Atemschutz aktiv"
-              value={String(asTruppsGesamt)}
-              unit={asTruppsGesamt === 1 ? "Trupp" : "Trupps"}
-              tone="as"
-            />
-            <Stat label="Öl Säcke" value={String(oelSaeckeGesamt)} unit="Sack" tone="warn" />
-          </div>
-        </section>
+            {/* "Zusammenfassung Mannschaft"-Section entfernt — die Werte stehen
+                schon im Top-Header der Einsatz-Karte (Mannschaft, Berichte). */}
 
         <SectionHead title="Globale Einsatzchronik" />
         <section className="card">
@@ -1822,14 +1748,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             >
               <Download size={16} />
               {downloadBusy === "pdf" ? "Lade …" : "PDF-Bericht"}
-            </button>
-            <button
-              type="button"
-              onClick={() => aktiverEinsatzId && void openSpickzettel(aktiverEinsatzId)}
-              disabled={!aktiverEinsatzId || downloadBusy !== null}
-            >
-              <FileText size={16} />
-              {downloadBusy === "spick" ? "Lade …" : "syBOS-Spickzettel"}
             </button>
           </div>
           {abschlussOk ? (
@@ -2322,6 +2240,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           setAktiverEinsatzId(einsatzId);
         }}
       />
+
+      <ArchivTabletModal
+        open={archivOpenFlorian}
+        onClose={() => setArchivOpenFlorian(false)}
+      />
     </div>
   );
 }
@@ -2435,59 +2358,8 @@ function TriToggle({
   );
 }
 
-function Stat({
-  label,
-  value,
-  unit,
-  tone,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  tone?: "as" | "warn";
-}) {
-  const bg = tone === "as" ? "var(--as-tint)" : tone === "warn" ? "var(--warn-tint)" : "var(--surface-2)";
-  const fg = tone === "as" ? "var(--as)" : tone === "warn" ? "var(--warn)" : "var(--fg-3)";
-  const valFg = tone === "as" ? "var(--as)" : tone === "warn" ? "var(--warn)" : "var(--fg)";
-  return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 12,
-        background: bg,
-        border: "1px solid var(--border)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.1em",
-          color: fg,
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 22,
-          fontWeight: 800,
-          color: valFg,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value}
-        {unit ? (
-          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-2)", marginLeft: 4 }}>
-            {unit}
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
+// (Frueher Stat-Helper-Komponente — fuer die entfernte Zusammenfassung-Sektion;
+//  raus, da nirgends mehr verwendet.)
 
 /**
  * Florianstation-Chronik-Input.

@@ -216,10 +216,9 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
   }
 
   async function submit() {
-    if (einsatzort.trim().length < 3) {
-      setErr("Einsatzort/Ortsangabe mit mind. 3 Zeichen erforderlich.");
-      return;
-    }
+    // Adresse darf jetzt leer sein — Freilandstraße ohne Adresse ist real.
+    // Wir lassen GPS-Koordinaten als alternativen Ortsbeleg gelten und
+    // setzen "GPS …" als Einsatzort-String wenn die Adresse fehlt.
     if (typ === "uebung" && !uebungThema.trim()) {
       setErr("Bei einer Übung ist das Thema Pflicht.");
       return;
@@ -228,13 +227,23 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       setErr("Bei einem Lotsendienst ist der Auftraggeber Pflicht.");
       return;
     }
+    if (!einsatzort.trim() && !koord) {
+      setErr("Weder Adresse noch GPS-Position angegeben — bitte mindestens eines.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     // Idempotency-Key — derselbe Key, falls Retry oder Outbox-Replay.
     const idempotencyKey = crypto.randomUUID();
+    // Fallback-Einsatzort wenn nur GPS gesetzt ist — Backend braucht min 3 Zeichen.
+    const ortString = einsatzort.trim()
+      ? einsatzort.trim()
+      : koord
+        ? `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`
+        : "Unbekannt";
     const body: ManuellAnlageBody = {
       einsatzTyp: typ,
-      einsatzort: einsatzort.trim(),
+      einsatzort: ortString,
       ...(einsatzart ? { einsatzart } : {}),
       ...(einsatzartFreitext.trim()
         ? { einsatzartFreitext: einsatzartFreitext.trim() }
@@ -485,21 +494,61 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           <label className="caption">
             {typ === "uebung" ? "Übungsort" : typ === "lotsendienst" ? "Treffpunkt / Strecken-Anfang" : "Einsatzort / Ortsangabe"}
           </label>
-          <AddressAutocomplete
-            value={einsatzort}
-            onChange={(text) => {
-              setEinsatzort(text);
-              // User tippt manuell weiter → Koordinaten-Bezug zur Geocoder-
-              // Auswahl verwerfen, sonst stimmen Anzeige und Koords nicht überein.
-              if (koord !== null) setKoord(null);
-            }}
-            onPick={(m: GeocodeMatch) => {
-              setEinsatzort(m.label);
-              setKoord({ lat: m.lat, lng: m.lng });
-            }}
-            autoFocus
-            placeholder="z. B. Solarstraße 5, 4653 Eberstalzell"
-          />
+          <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+            <div style={{ flex: 1 }}>
+              <AddressAutocomplete
+                value={einsatzort}
+                onChange={(text) => {
+                  setEinsatzort(text);
+                  if (koord !== null) setKoord(null);
+                }}
+                onPick={(m: GeocodeMatch) => {
+                  setEinsatzort(m.label);
+                  setKoord({ lat: m.lat, lng: m.lng });
+                }}
+                autoFocus
+                placeholder="z. B. Solarstraße 5, 4653 Eberstalzell — oder leer lassen für GPS"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!navigator.geolocation) {
+                  setErr("Browser unterstützt keine Geolocation.");
+                  return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    setKoord({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                    if (!einsatzort.trim()) {
+                      setEinsatzort(`GPS ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
+                    }
+                  },
+                  (gpsErr) => {
+                    setErr(`GPS nicht verfügbar: ${gpsErr.message}`);
+                  },
+                  { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 },
+                );
+              }}
+              title="Aktuelle GPS-Position als Adresse übernehmen"
+              style={{
+                padding: "0 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                background: "var(--info-tint)",
+                color: "var(--info)",
+                border: "1px solid var(--blue-border)",
+                borderRadius: 10,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <MapPin size={14} /> GPS
+            </button>
+          </div>
           {koord ? (
             <div
               style={{
