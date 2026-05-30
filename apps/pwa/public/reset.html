@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>HotDoc — Force Reset</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0B1220;
+      color: #f2f5fa;
+      padding: 24px;
+    }
+    .card {
+      max-width: 520px;
+      padding: 28px 28px 24px;
+      border-radius: 18px;
+      background: rgba(20, 26, 38, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.6);
+    }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .sub {
+      font-family: ui-monospace, "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #8693a8;
+      margin-bottom: 18px;
+    }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    .step.done { background: rgba(52, 211, 153, 0.14); color: #34d399; }
+    .step.fail { background: rgba(255, 84, 104, 0.14); color: #ff5468; }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #6e7a8e; flex-shrink: 0;
+    }
+    .step.done .dot { background: #34d399; }
+    .step.fail .dot { background: #ff5468; }
+    .step.busy .dot { background: #60a5fa; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: 0;
+      background: linear-gradient(135deg, #c8102e, #a30b25);
+      color: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .hint {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #acb6c8;
+      line-height: 1.55;
+    }
+    code {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>HotDoc — Force Reset</h1>
+    <div class="sub">Service Worker · Caches · IndexedDB-Token bleibt</div>
+
+    <div id="step-sw" class="step busy"><span class="dot"></span>Service Worker entfernen …</div>
+    <div id="step-cache" class="step"><span class="dot"></span>App-Caches leeren …</div>
+    <div id="step-reload" class="step"><span class="dot"></span>App neu laden …</div>
+
+    <button id="manual" style="display:none">App jetzt öffnen</button>
+
+    <p class="hint">
+      Dieser Reset entfernt nur Caches und den Service-Worker. Dein Tablet-Login
+      bleibt erhalten (Token + Fahrzeug-Konfig liegen in IndexedDB / localStorage
+      und werden nicht angefasst).
+    </p>
+  </div>
+
+  <script>
+    const setState = (id, state, label) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = "step " + state;
+      el.lastChild.textContent = " " + label;
+    };
+
+    (async () => {
+      // 1. Service Worker abmelden
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) await r.unregister();
+          setState("step-sw", "done", `${regs.length} Service-Worker entfernt`);
+        } else {
+          setState("step-sw", "done", "kein SW-Support im Browser");
+        }
+      } catch (e) {
+        setState("step-sw", "fail", "SW-Fehler: " + e.message);
+      }
+
+      // 2. CacheStorage komplett leeren (App-Shell, OSM-Tiles, GFonts, etc.)
+      setState("step-cache", "busy", "App-Caches leeren …");
+      try {
+        if ("caches" in window) {
+          const names = await caches.keys();
+          for (const n of names) await caches.delete(n);
+          setState("step-cache", "done", `${names.length} Caches geleert`);
+        } else {
+          setState("step-cache", "done", "keine CacheStorage");
+        }
+      } catch (e) {
+        setState("step-cache", "fail", "Cache-Fehler: " + e.message);
+      }
+
+      // 3. Reload mit Cache-Bypass (timestamp-Query verhindert Disk-Cache)
+      setState("step-reload", "busy", "Lade frisch …");
+      const target = "/?reset=" + Date.now();
+      const btn = document.getElementById("manual");
+      btn.style.display = "block";
+      btn.onclick = () => (window.location.href = target);
+      setTimeout(() => {
+        window.location.replace(target);
+      }, 1200);
+    })();
+  </script>
+</body>
+</html>
