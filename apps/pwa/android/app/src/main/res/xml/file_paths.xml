@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Capacitor-Default: externes Speicher fuer Foto-Uploads etc. -->
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!-- ApkInstaller-Plugin: ${applicationId}.fileprovider muss
+         cacheDir/update.apk lesen koennen, damit der ACTION_VIEW-Intent
+         an PackageInstaller weitergegeben werden kann. -->
+    <cache-path name="apk_update_cache" path="." />
 </paths>

@@ -1,22 +1,25 @@
 import { ChevronDown, ChevronUp, Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { checkForUpdate, triggerUpdateDownload } from "../lib/app-update";
+import { checkForUpdate } from "../lib/app-update";
 import { getTabletToken } from "../lib/api";
+import { installApkUpdate, isApkInstallerAvailable } from "../lib/apk-installer";
 
 const DISMISS_KEY = "hotdoc.update.dismissed";
 
 /**
  * Dezenter Update-Banner.
  *
- * - Pollt alle 6h /api/devices/app-version
+ * - Pollt alle 6 h /api/devices/app-version
  * - Zeigt eine schmale rote Pille oben rechts wenn eine neuere Version
  *   verfuegbar ist
- * - User kann "Update jetzt" klicken (oeffnet APK-URL im Browser →
- *   PackageInstaller) oder X klicken (versteckt die Pille bis die
- *   naechste neuere Version published wird).
+ * - Auf Android-Native nutzt der "Update jetzt"-Button das neue
+ *   ApkInstaller-Plugin: lädt APK in den App-Cache, triggert direkt den
+ *   Android-PackageInstaller — 1 Klick statt Browser-Umweg
+ * - Im Browser-PWA fällt es auf window.open(apkUrl) zurück
  *
- * Im Browser-PWA tut der Banner nichts — getInstalledVersion liefert
- * dort "web" und checkForUpdate signalisiert no-update.
+ * Wenn der User noch keine "Apps aus unbekannten Quellen erlauben"-
+ * Permission hat, oeffnet das Plugin die System-Settings-UI. Wir zeigen
+ * dann einen Hinweis und der User klickt erneut auf "Update".
  */
 export function UpdateBanner() {
   const [info, setInfo] = useState<{
@@ -27,15 +30,17 @@ export function UpdateBanner() {
     notes: string;
   } | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [status, setStatus] = useState<
+    "idle" | "running" | "permission" | "error"
+  >("idle");
+  const [statusMessage, setStatusMessage] = useState<string>("");
 
   useEffect(() => {
     const check = async (): Promise<void> => {
       const token = getTabletToken();
       if (!token) return;
       const res = await checkForUpdate("", token);
-      // Wenn die User-Wahl "verschoben" denselben latest-Version-String
-      // betrifft → versteckt halten. Bei einer neueren Version wird das
-      // Dismiss zurueckgesetzt damit der Banner wieder erscheint.
       let dismissed: string | null = null;
       try {
         dismissed = localStorage.getItem(DISMISS_KEY);
@@ -58,6 +63,41 @@ export function UpdateBanner() {
 
   if (!info || !info.available) return null;
 
+  const runUpdate = async (): Promise<void> => {
+    if (!info?.apkUrl) return;
+    setStatus("running");
+    setProgress(0);
+    setStatusMessage("");
+    const result = await installApkUpdate({
+      url: info.apkUrl,
+      onProgress: (e) => setProgress(e.percent),
+    });
+    if (result.status === "installer-launched") {
+      setStatusMessage("Android Installer offen — bitte 'Aktualisieren' bestätigen.");
+      setStatus("idle");
+    } else if (result.status === "permission-required") {
+      setStatus("permission");
+      setStatusMessage(
+        result.message ??
+          "Bitte 'Apps aus dieser Quelle erlauben' aktivieren und erneut tippen.",
+      );
+    } else if (result.status === "web-fallback") {
+      // Browser hat das übernommen — keine weitere UI nötig.
+      setStatus("idle");
+    } else {
+      setStatus("error");
+      setStatusMessage(result.message ?? "Update fehlgeschlagen.");
+    }
+    setProgress(null);
+  };
+
+  const buttonLabel = (() => {
+    if (status === "running" && progress !== null) return `${progress}%`;
+    if (status === "permission") return "Erlaubnis öffnen";
+    if (status === "error") return "Nochmal";
+    return isApkInstallerAvailable() ? "Update" : "Öffnen";
+  })();
+
   return (
     <div
       role="status"
@@ -66,7 +106,7 @@ export function UpdateBanner() {
         top: 12,
         right: 12,
         zIndex: 1400,
-        maxWidth: 360,
+        maxWidth: 380,
         padding: expanded ? "12px 14px" : "10px 12px 10px 14px",
         borderRadius: 12,
         background:
@@ -99,31 +139,60 @@ export function UpdateBanner() {
             aktuell {info.current}
           </div>
         </div>
-      <button
-        type="button"
-        onClick={() => void triggerUpdateDownload(info.apkUrl)}
-        style={{
-          background: "rgba(255,255,255,0.18)",
-          color: "#fff",
-          border: 0,
-          borderRadius: 8,
-          padding: "6px 10px",
-          fontWeight: 700,
-          fontSize: 12,
-          cursor: "pointer",
-          minHeight: 0,
-        }}
-      >
-        Update
-      </button>
-      {info.notes ? (
         <button
           type="button"
-          aria-label={expanded ? "Release-Notes ausblenden" : "Release-Notes anzeigen"}
-          onClick={() => setExpanded((x) => !x)}
+          onClick={() => void runUpdate()}
+          disabled={status === "running"}
+          style={{
+            background: status === "permission" ? "#fbbf24" : "rgba(255,255,255,0.18)",
+            color: status === "permission" ? "#111" : "#fff",
+            border: 0,
+            borderRadius: 8,
+            padding: "6px 10px",
+            fontWeight: 700,
+            fontSize: 12,
+            cursor: status === "running" ? "wait" : "pointer",
+            minHeight: 0,
+            minWidth: 64,
+            opacity: status === "running" ? 0.7 : 1,
+          }}
+        >
+          {buttonLabel}
+        </button>
+        {info.notes ? (
+          <button
+            type="button"
+            aria-label={
+              expanded ? "Release-Notes ausblenden" : "Release-Notes anzeigen"
+            }
+            onClick={() => setExpanded((x) => !x)}
+            style={{
+              background: "transparent",
+              color: "rgba(255,255,255,0.85)",
+              border: 0,
+              borderRadius: 6,
+              padding: 4,
+              cursor: "pointer",
+              minHeight: 0,
+            }}
+          >
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          aria-label="Verstecken"
+          onClick={() => {
+            try {
+              localStorage.setItem(DISMISS_KEY, info.latest);
+            } catch {
+              // egal
+            }
+            setInfo(null);
+          }}
           style={{
             background: "transparent",
-            color: "rgba(255,255,255,0.85)",
+            color: "rgba(255,255,255,0.7)",
             border: 0,
             borderRadius: 6,
             padding: 4,
@@ -131,33 +200,47 @@ export function UpdateBanner() {
             minHeight: 0,
           }}
         >
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          <X size={14} />
         </button>
-      ) : null}
-      <button
-        type="button"
-        aria-label="Verstecken"
-        onClick={() => {
-          try {
-            localStorage.setItem(DISMISS_KEY, info.latest);
-          } catch {
-            // egal
-          }
-          setInfo(null);
-        }}
-        style={{
-          background: "transparent",
-          color: "rgba(255,255,255,0.7)",
-          border: 0,
-          borderRadius: 6,
-          padding: 4,
-          cursor: "pointer",
-          minHeight: 0,
-        }}
-      >
-        <X size={14} />
-      </button>
       </div>
+
+      {/* Progress-Bar während Download */}
+      {progress !== null && (
+        <div
+          style={{
+            height: 3,
+            background: "rgba(255,255,255,0.18)",
+            borderRadius: 999,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${progress}%`,
+              height: "100%",
+              background: "#fff",
+              transition: "width 180ms linear",
+            }}
+          />
+        </div>
+      )}
+
+      {/* Status-Meldung bei Permission/Error */}
+      {statusMessage && (
+        <div
+          style={{
+            fontSize: 11.5,
+            fontWeight: 500,
+            background: "rgba(0,0,0,0.18)",
+            padding: "6px 8px",
+            borderRadius: 6,
+            lineHeight: 1.4,
+          }}
+        >
+          {statusMessage}
+        </div>
+      )}
+
       {expanded && info.notes ? (
         <div
           style={{

@@ -60,4 +60,20 @@
          deklariert damit das Update kein Re-Install braucht). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- In-App-APK-Update: damit die App neue Versionen via ApkInstaller-
+         Plugin installieren kann ohne den Browser-Umweg. User muss
+         einmalig "Aus dieser Quelle installieren erlauben" in den
+         System-Settings aktivieren (Plugin oeffnet die UI dafuer). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Android 11+ Package-Visibility-Filter — damit Intent-Auflösung
+         für den PackageInstaller-Intent funktioniert. Ohne queries sieht
+         die App ab Android 11 keine andere App (privacy hardening). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
 </manifest>
