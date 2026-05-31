@@ -49,11 +49,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: JDK 17 installieren (Microsoft OpenJDK, kompatibel mit AGP 8 + Capacitor 8)
+      - name: JDK 21 installieren (Capacitor 8 plugins benoetigen jvmToolchain(21))
         uses: actions/setup-java@v4
         with:
-          distribution: microsoft
-          java-version: 17
+          distribution: temurin
+          java-version: 21
 
       - name: Android SDK installieren
         uses: android-actions/setup-android@v3
