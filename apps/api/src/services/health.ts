@@ -19,7 +19,7 @@ export type HealthState = "ok" | "warn" | "off" | "error";
 
 export interface HealthItem {
   /** Maschinen-Key — UI mappt das auf Icons/Titel. */
-  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch";
+  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch" | "fcm";
   /** Anzeigename. */
   name: string;
   /** Untertitel (z. B. "Alarm-Polling alle 15 s"). */
@@ -41,8 +41,52 @@ export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt:
     await checkBlaulichtSms(),
     await checkSyBos(),
     await checkCouch(),
+    await checkFcm(),
   ];
   return { items, checkedAt };
+}
+
+/** FCM-Konfig + Anzahl registrierte Tablets. */
+async function checkFcm(): Promise<HealthItem> {
+  const sub = "Android-APK · Background-Push";
+  const configured = !!env.FCM_SERVER_KEY;
+  let registered = 0;
+  try {
+    const list = await db.list({
+      startkey: "device:",
+      endkey: "device:￰",
+      limit: 1000,
+    });
+    registered = list.rows.filter((r) =>
+      String(r.id ?? "").startsWith("device:"),
+    ).length;
+  } catch {
+    // egal — Couch-Health-Block oben deckt das
+  }
+  if (!configured) {
+    return {
+      key: "fcm" as HealthItem["key"],
+      name: "FCM Push",
+      sub,
+      state: "off",
+      detail: registered
+        ? `${registered} Tablet(s) registriert, aber FCM_SERVER_KEY nicht gesetzt — Alarm-Pushes werden nur geloggt, nicht versendet.`
+        : "FCM_SERVER_KEY nicht gesetzt, keine Tablets registriert. Doku: apps/pwa/android/FCM-SETUP.md",
+      metrics: { registered, configured: 0 },
+    };
+  }
+  return {
+    key: "fcm" as HealthItem["key"],
+    name: "FCM Push",
+    sub,
+    state: registered === 0 ? "warn" : "ok",
+    detail: `${registered} Tablet(s) registriert · FCM_SERVER_KEY gesetzt${
+      registered === 0
+        ? " — aber noch keine App hat sich registriert (APK installieren + Login)"
+        : ""
+    }`,
+    metrics: { registered, configured: 1 },
+  };
 }
 
 async function checkBlaulichtSms(): Promise<HealthItem> {

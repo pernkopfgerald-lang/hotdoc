@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
 import { QrClaim } from "./components/QrClaim";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { db, getFahrzeugConfig } from "./db/pouch";
 import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
+import { registerDevice } from "./lib/device-register";
 import { flushOutbox } from "./lib/einsatz-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { BerichtPage } from "./pages/BerichtPage";
@@ -227,6 +229,12 @@ export function App() {
         return;
       }
       setState({ kind: "ready", fahrzeugId: doc.fahrzeugId });
+      // Auto-Register: sobald die Boot-Sequenz "ready" erreicht hat, melden
+      // wir das Tablet beim Backend an. Idempotent — bei jedem Boot werden
+      // appVersion, letztesUpdateAm und ggf. neuer FCM-Token aktualisiert.
+      void registerDevice().catch((err) => {
+        console.warn("[boot] device-register failed", err);
+      });
     } else {
       setState({ kind: "setup" });
     }
@@ -373,23 +381,29 @@ export function App() {
   // Zentrale → Hauptbericht-Ansicht
   if (state.fahrzeugId === "zentrale") {
     return (
-      <ZentralePage
-        key="zentrale"
-        onSwitchFahrzeug={switchFahrzeug}
-        onResetSetup={resetSetup}
-        onHandoffLogout={tabletSelfLogout}
-      />
+      <>
+        <ZentralePage
+          key="zentrale"
+          onSwitchFahrzeug={switchFahrzeug}
+          onResetSetup={resetSetup}
+          onHandoffLogout={tabletSelfLogout}
+        />
+        <UpdateBanner />
+      </>
     );
   }
 
   // KDO/TLF/LFA-B/MTF → einheitliche Fahrzeugbericht-Page
   return (
-    <BerichtPage
-      key={state.fahrzeugId}
-      fahrzeugId={state.fahrzeugId}
-      onSwitchFahrzeug={switchFahrzeug}
-      onResetSetup={resetSetup}
-      onHandoffLogout={tabletSelfLogout}
-    />
+    <>
+      <BerichtPage
+        key={state.fahrzeugId}
+        fahrzeugId={state.fahrzeugId}
+        onSwitchFahrzeug={switchFahrzeug}
+        onResetSetup={resetSetup}
+        onHandoffLogout={tabletSelfLogout}
+      />
+      <UpdateBanner />
+    </>
   );
 }

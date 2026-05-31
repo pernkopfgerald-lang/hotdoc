@@ -33,6 +33,7 @@ const KEYS = [
   "tablet-inventar",
   "beteiligte-stellen",
   "sonstige-ff",
+  "app-version",
 ] as const;
 type ConfigKey = (typeof KEYS)[number];
 
@@ -243,6 +244,14 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
       "FF Lambach",
       "FF Pichl bei Wels",
     ],
+  },
+  // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
+  // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
+  "app-version": {
+    currentVersion: "0.1.0",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.0-debug.apk",
+    releaseNotes: "Erste Capacitor-APK — Webview mit allen UX-Fixes.",
+    minSupported: "0.1.0",
   },
 };
 

@@ -1,4 +1,12 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, QrCode } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, QrCode, Download, Trash2 } from "lucide-react";
+import {
+  listDevices,
+  deleteDevice,
+  getAppVersionConfig,
+  setAppVersionConfig,
+  type DeviceListItem,
+  type AppVersionConfig,
+} from "../api/devices";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall, clearToken } from "../api/client";
 import {
@@ -197,7 +205,9 @@ type Tab =
   | "beteiligte-stellen"
   | "sonstige-ff"
   | "stammdaten"
-  | "tablet-inventar";
+  | "tablet-inventar"
+  | "devices"
+  | "app-version";
 
 export function Verwaltung({ auth, onLogout }: Props) {
   const [tab, setTab] = useState<Tab>("berichte");
@@ -295,6 +305,12 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "tablet-inventar"} onClick={() => setTab("tablet-inventar")} icon={<Smartphone size={16} />}>
           Tablet-Inventar
         </TabButton>
+        <TabButton active={tab === "devices"} onClick={() => setTab("devices")} icon={<Smartphone size={16} />}>
+          Registrierte Geräte
+        </TabButton>
+        <TabButton active={tab === "app-version"} onClick={() => setTab("app-version")} icon={<Download size={16} />}>
+          App-Version
+        </TabButton>
       </nav>
 
       <main
@@ -338,6 +354,8 @@ export function Verwaltung({ auth, onLogout }: Props) {
         )}
         {tab === "stammdaten" && <StammdatenPanel />}
         {tab === "tablet-inventar" && <TabletInventarPanel currentUser={auth.benutzer?.username ?? "—"} />}
+        {tab === "devices" && <DevicesPanel />}
+        {tab === "app-version" && <AppVersionPanel />}
       </main>
     </div>
   );
@@ -2966,6 +2984,341 @@ function InvField({
           color: "var(--fg)",
           background: "var(--surface)",
           outline: "none",
+        }}
+      />
+    </label>
+  );
+}
+
+// ─── DevicesPanel ───────────────────────────────────────────────────────
+// Liste der via /api/devices/register registrierten Tablets. Zeigt
+// Funkrufname (aus fahrzeugId-Lookup), Modell, OS-Version, installierte
+// App-Version, FCM-Token-Preview, letztes Update + Erstell-Datum.
+// Delete-Button entfernt den Eintrag — Tablet kann sich beim naechsten
+// Start neu registrieren.
+
+const FAHRZEUG_LABELS: Record<string, string> = {
+  kdo: "KDO",
+  "tlf-a-4000": "TANK",
+  "lfa-b": "LFA-B",
+  mtf: "MTF",
+  zentrale: "FLORIAN",
+};
+
+function DevicesPanel() {
+  const [items, setItems] = useState<DeviceListItem[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await listDevices();
+        // Sort by fahrzeugId then letztesUpdateAm DESC
+        r.sort((a, b) => {
+          if (a.fahrzeugId !== b.fahrzeugId) return a.fahrzeugId.localeCompare(b.fahrzeugId);
+          return new Date(b.letztesUpdateAm).getTime() - new Date(a.letztesUpdateAm).getTime();
+        });
+        setItems(r);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, [refreshTick]);
+
+  async function handleDelete(d: DeviceListItem): Promise<void> {
+    if (!confirm(`Eintrag wirklich loeschen?\n${d.model} (${d.fahrzeugId})`)) return;
+    try {
+      await deleteDevice(d._id);
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      alert("Loeschen fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <Smartphone size={20} />
+          Registrierte Tablets / Geräte
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span className="card-meta">
+            <span className="num">{items?.length ?? 0}</span> Geräte
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setRefreshTick((t) => t + 1)}
+            aria-label="Aktualisieren"
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
+      </div>
+      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
+        Sobald ein Tablet die HotDoc-Android-App startet und sich einloggt, registriert es sich
+        automatisch. Web-Tablets (PWA) erscheinen ohne FCM-Token. Lösche einen Eintrag wenn ein
+        Tablet ausgemustert / verloren / gestohlen ist — die App fragt beim nächsten Start neu
+        nach Berechtigungen.
+      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {!items ? (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      ) : items.length === 0 ? (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>Noch kein Tablet registriert.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.map((d) => {
+            const fzgLabel = FAHRZEUG_LABELS[d.fahrzeugId] ?? d.fahrzeugId.toUpperCase();
+            const hasFcm = !d.fcmTokenPreview.startsWith("no-fcm");
+            return (
+              <div
+                key={d._id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "100px 1fr auto",
+                  gap: 14,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "var(--glass-3)",
+                  border: "1px solid var(--glass-border)",
+                  alignItems: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: "var(--fg-2)",
+                  }}
+                >
+                  {fzgLabel}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>
+                    {d.manufacturer} {d.model}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--fg-3)",
+                      fontFamily: "var(--font-mono)",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {d.platform} {d.osVersion} · App {d.appVersion} · {hasFcm ? (
+                      <span style={{ color: "var(--ok)" }}>FCM ok</span>
+                    ) : (
+                      <span style={{ color: "var(--warn)" }}>FCM fehlt</span>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--fg-3)",
+                      fontFamily: "var(--font-mono)",
+                    }}
+                  >
+                    Last seen: {formatTimestamp(d.letztesUpdateAm)}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  onClick={() => void handleDelete(d)}
+                  aria-label="Eintrag löschen"
+                  title="Eintrag löschen"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── AppVersionPanel ────────────────────────────────────────────────────
+// Pflegt die config:app-version. Der Funktionaer setzt die aktuelle
+// empfohlene Version + URL — Tablets ziehen das beim 6h-Update-Check.
+
+function AppVersionPanel() {
+  const [data, setData] = useState<AppVersionConfig | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await getAppVersionConfig();
+        setData(r);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, []);
+
+  async function save(): Promise<void> {
+    if (!data) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await setAppVersionConfig(data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <Download size={20} />
+          App-Version-Management
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {saved ? <span className="badge ok">gespeichert</span> : null}
+          <button
+            type="button"
+            className="cta"
+            onClick={save}
+            disabled={busy || !data}
+            style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+          >
+            {busy ? "Speichert …" : "Speichern"}
+          </button>
+        </div>
+      </div>
+      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
+        Aktuell empfohlene HotDoc-Android-App-Version. Die installierte App vergleicht das alle
+        6 Stunden und zeigt dem Funkrufnamen einen dezenten Update-Banner mit Klick zum
+        Download. Beim Release einer neuen Version: APK auf hotdoc-apk.fly.dev hochladen,
+        hier die Version + URL aktualisieren, Speichern.
+      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {!data ? (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          <AppVersionField
+            label="Aktuelle Version (semver)"
+            value={data.currentVersion}
+            onChange={(v) => setData({ ...data, currentVersion: v })}
+            placeholder="0.1.0"
+          />
+          <AppVersionField
+            label="APK-Download-URL"
+            value={data.apkUrl}
+            onChange={(v) => setData({ ...data, apkUrl: v })}
+            placeholder="https://hotdoc-apk.fly.dev/hotdoc-v0.1.0-debug.apk"
+          />
+          <AppVersionField
+            label="Mindestens unterstützte Version"
+            value={data.minSupported}
+            onChange={(v) => setData({ ...data, minSupported: v })}
+            placeholder="0.1.0"
+          />
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10.5,
+                fontWeight: 700,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: "var(--fg-3)",
+              }}
+            >
+              Release-Notes
+            </span>
+            <textarea
+              value={data.releaseNotes}
+              onChange={(e) => setData({ ...data, releaseNotes: e.target.value })}
+              rows={5}
+              placeholder="Bugfixes, Performance, neue Features …"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--glass-border)",
+                background: "var(--surface)",
+                outline: "none",
+                fontFamily: "inherit",
+                fontSize: 13,
+                lineHeight: 1.5,
+                resize: "vertical",
+              }}
+            />
+          </label>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("de-AT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function AppVersionField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "var(--fg-3)",
+        }}
+      >
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          padding: "10px 12px",
+          borderRadius: 8,
+          border: "1px solid var(--glass-border)",
+          background: "var(--surface)",
+          outline: "none",
+          fontFamily: "inherit",
+          fontSize: 13,
         }}
       />
     </label>
