@@ -71,3 +71,9 @@ apps/pwa/android/local.properties
 *.keystore
 keystore.properties
 google-services.json
+# FCM-Service-Account-Keys NIEMALS committen — Inhalt gehoert nur als
+# fly secret FCM_SERVICE_ACCOUNT_JSON in den hotdoc-api-Container.
+# Match jedes Naming-Schema das Google fuer Service-Accounts ausspuckt.
+*-fcm-key*.json
+*-firebase-adminsdk*.json
+hotdoc-fcm-key*.json
