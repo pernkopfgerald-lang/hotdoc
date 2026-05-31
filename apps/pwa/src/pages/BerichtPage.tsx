@@ -69,6 +69,11 @@ interface EinsatzInstance {
   auftraege: Auftrag[];
   chronik: ChronikEintrag[];
   abgeschlossen: { ts: string; durch: string; kmGefahren: number } | null;
+  /** User-eingegebene "Uhrzeit bis" als "HH:MM". Leer = noch nicht gesetzt.
+   *  Beim Abschluss wird die aktuelle Zeit NUR verwendet wenn dieser Wert
+   *  leer ist — wenn der Kdt schon manuell eingetragen hat, ueberschreibt
+   *  der Abschluss seine Eingabe nicht. */
+  uhrzeitBisHHMM: string;
 }
 
 interface Props {
@@ -234,6 +239,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         auftraege: [],
         chronik: [],
         abgeschlossen: persisted,
+        uhrzeitBisHHMM: "",
       };
     };
 
@@ -415,6 +421,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             geraete?: Array<{ materialId: string }>;
             oelbindemittelSaecke?: number;
             taetigkeitsbericht?: string;
+            zeit?: { bis?: string };
           }
           const r = await apiCall<{ items?: FzgberSnapshot[] }>(
             `/api/einsaetze/${encodeURIComponent(e.id)}/fahrzeugberichte`,
@@ -462,6 +469,20 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   text,
                   zeitstempel: x.alarm.alarmierungZeit,
                 }));
+              // Uhrzeit bis aus ISO zurueckparsen falls gesetzt.
+              let uhrzeitBis = x.uhrzeitBisHHMM;
+              if (mine.zeit?.bis) {
+                try {
+                  const d = new Date(mine.zeit.bis);
+                  if (!Number.isNaN(d.getTime())) {
+                    uhrzeitBis = `${String(d.getHours()).padStart(2, "0")}:${String(
+                      d.getMinutes(),
+                    ).padStart(2, "0")}`;
+                  }
+                } catch {
+                  // ignorieren — Default bleibt leer
+                }
+              }
               return {
                 ...x,
                 fahrer: personById(mine.fahrerPersonId) ?? x.fahrer,
@@ -472,6 +493,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 ),
                 oelSaecke: mine.oelbindemittelSaecke ?? 0,
                 auftraege: restoredAufts,
+                uhrzeitBisHHMM: uhrzeitBis,
               };
             }),
           );
@@ -923,11 +945,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       }
       const einsatzId = target._id;
       const now = new Date().toISOString();
+      // Wenn der Kdt die "Uhrzeit bis" schon manuell gesetzt hat,
+      // respektieren wir das — der Abschluss soll seine Eingabe nicht
+      // ueberschreiben. Andernfalls Zeitpunkt des Abschluss-Klicks.
+      const bisISO = einsatz.uhrzeitBisHHMM
+        ? hhmmToISOAt(einsatz.alarm.alarmierungZeit, einsatz.uhrzeitBisHHMM)
+        : now;
 
       const body = {
         zeit: {
           von: einsatz.alarm.alarmierungZeit,
-          bis: now,
+          bis: bisISO,
         },
         km: { gefahrenKm: kmGefahren },
         gpsTrack: [],
@@ -992,7 +1020,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   async function syncBerichtLive(einsatz: EinsatzInstance): Promise<void> {
     try {
       const body = {
-        zeit: { von: einsatz.alarm.alarmierungZeit },
+        zeit: {
+          von: einsatz.alarm.alarmierungZeit,
+          ...(einsatz.uhrzeitBisHHMM
+            ? {
+                bis: hhmmToISOAt(
+                  einsatz.alarm.alarmierungZeit,
+                  einsatz.uhrzeitBisHHMM,
+                ),
+              }
+            : {}),
+        },
         km: { gefahrenKm: computeKm() },
         gpsTrack: [],
         ...(einsatz.fahrer?.syBosId
@@ -1127,9 +1165,40 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 </div>
                 <div className="field">
                   <label className="caption">Uhrzeit bis</label>
-                  <div className="input-row">
-                    <input value="– – : – –" readOnly className="num" style={{ color: "var(--fg-3)" }} />
-                    <div className="chev"><span style={{ fontSize: 12 }}>▾</span></div>
+                  <div className={`input-row${active.uhrzeitBisHHMM ? " filled" : ""}`}>
+                    <input
+                      type="time"
+                      value={active.uhrzeitBisHHMM}
+                      onChange={(e) =>
+                        patchActive((x) => ({ ...x, uhrzeitBisHHMM: e.target.value }))
+                      }
+                      disabled={!!active.abgeschlossen}
+                      className="num"
+                      style={{
+                        color: active.uhrzeitBisHHMM
+                          ? "var(--fg)"
+                          : "var(--fg-3)",
+                      }}
+                    />
+                    {active.uhrzeitBisHHMM ? (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Uhrzeit löschen"
+                        title="Uhrzeit löschen"
+                        disabled={!!active.abgeschlossen}
+                        onClick={() =>
+                          patchActive((x) => ({ ...x, uhrzeitBisHHMM: "" }))
+                        }
+                        style={{ width: 30, height: 30, minHeight: 30 }}
+                      >
+                        <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                      </button>
+                    ) : (
+                      <div className="chev">
+                        <span style={{ fontSize: 12 }}>▾</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1178,8 +1247,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 </span>
               </div>
               <div className="grid-2">
-                <PersonButton label="Fahrer" person={active.fahrer} onOpen={() => setPickerOpen({ kind: "fahrer" })} />
-                <PersonButton label="Fahrzeug-Kdt." person={active.kdt} onOpen={() => setPickerOpen({ kind: "kdt" })} />
+                <PersonButton
+                  label="Fahrer"
+                  person={active.fahrer}
+                  onOpen={() => setPickerOpen({ kind: "fahrer" })}
+                  onClear={() => patchActive((e) => ({ ...e, fahrer: null }))}
+                />
+                <PersonButton
+                  label="Fahrzeug-Kdt."
+                  person={active.kdt}
+                  onOpen={() => setPickerOpen({ kind: "kdt" })}
+                  onClear={() => patchActive((e) => ({ ...e, kdt: null }))}
+                />
               </div>
             </section>
 
@@ -1202,6 +1281,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                     onPickPerson={() => setPickerOpen({ kind: "crew", slot: m.slot })}
                     onToggleAs={() => toggleMannschaftAs(i)}
                     onChangeAs={(v) => setMannschaftAsDauer(i, v)}
+                    onClearPerson={() =>
+                      patchActive((e) => ({
+                        ...e,
+                        mannschaft: e.mannschaft.map((slot, idx) =>
+                          idx === i
+                            ? { ...slot, person: null, atemschutzAktiv: false }
+                            : slot,
+                        ),
+                      }))
+                    }
                   />
                 ))}
               </div>
@@ -1449,6 +1538,33 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       />
     </div>
   );
+}
+
+/**
+ * Kombiniert das Datum der Alarmierung mit einer User-eingegebenen
+ * "HH:MM"-Uhrzeit zu einem ISO-Timestamp. Wenn die Uhrzeit kleiner als
+ * die Alarmierungs-Uhrzeit ist (z. B. Einsatz ueber Mitternacht), wird
+ * der Tag um 24h vorgeschoben. Bei kaputtem Input wird der Alarmierungs-
+ * Zeitpunkt selbst zurueckgegeben — defensiv damit kein Crash.
+ */
+function hhmmToISOAt(alarmierungISO: string, hhmm: string): string {
+  try {
+    const base = new Date(alarmierungISO);
+    if (Number.isNaN(base.getTime())) return alarmierungISO;
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+    if (!m) return alarmierungISO;
+    const h = Math.min(23, Math.max(0, Number(m[1])));
+    const min = Math.min(59, Math.max(0, Number(m[2])));
+    const out = new Date(base);
+    out.setHours(h, min, 0, 0);
+    if (out.getTime() < base.getTime()) {
+      // Einsatz ueber Mitternacht — naechster Tag
+      out.setDate(out.getDate() + 1);
+    }
+    return out.toISOString();
+  } catch {
+    return alarmierungISO;
+  }
 }
 
 function SectionHead({ title }: { title: string }) {

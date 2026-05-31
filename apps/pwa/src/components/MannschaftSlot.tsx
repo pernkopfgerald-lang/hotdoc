@@ -1,5 +1,5 @@
 import { AS_DEFAULT, AS_MAX, AS_MIN, AS_STEP, clampAsDauer } from "@hotdoc/shared";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import type { PickPerson } from "./PersonPickerModal";
 import { avatarColor, initials } from "./PersonButton";
 
@@ -15,6 +15,8 @@ interface Props {
   onPickPerson: () => void;
   onToggleAs: () => void;
   onChangeAs: (newValue: number) => void;
+  /** Slot leeren (Person raus, AS aus). */
+  onClearPerson: () => void;
 }
 
 /**
@@ -22,7 +24,7 @@ interface Props {
  * `.crew-name`, `.crew-meta` (Rank-Badge + AS-Timer + Icon-Buttons).
  * Leere Plätze: `.crew-row.empty` (dashed border, "Person hinzufügen").
  */
-export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs }: Props) {
+export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onClearPerson }: Props) {
   const filled = !!data.person;
 
   if (!filled) {
@@ -97,14 +99,31 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs }: P
             AS
           </button>
         )}
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label={data.atemschutzAktiv ? "AS beenden" : "Person entfernen"}
-          onClick={data.atemschutzAktiv ? onToggleAs : onPickPerson}
-        >
-          {data.atemschutzAktiv ? <Minus size={14} strokeWidth={2.5} /> : <Plus size={14} strokeWidth={2.5} />}
-        </button>
+        {/* Mit aktivem AS: Minus = AS beenden. Sonst: roter X = Slot leeren
+            (Person raus). Versehentlich gewaehlt war frueher ein Wechsel-
+            Button mit Plus-Icon — das war irrefuehrend und der Slot liess
+            sich nicht mehr leeren wenn die Person gar nicht mitgefahren ist. */}
+        {data.atemschutzAktiv ? (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="AS beenden"
+            onClick={onToggleAs}
+            title="Atemschutz beenden"
+          >
+            <Minus size={14} strokeWidth={2.5} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="icon-btn danger"
+            aria-label="Person aus Slot entfernen"
+            title="Person aus Slot entfernen"
+            onClick={onClearPerson}
+          >
+            <X size={14} strokeWidth={2.5} />
+          </button>
+        )}
       </div>
     </div>
   );
