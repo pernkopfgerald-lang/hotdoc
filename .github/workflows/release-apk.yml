@@ -100,6 +100,9 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
+      - name: gradlew executable machen (Windows-Checkout hat kein +x)
+        run: chmod +x apps/pwa/android/gradlew
+
       - name: assembleRelease ausführen
         working-directory: apps/pwa/android
         run: ./gradlew assembleRelease --no-daemon
