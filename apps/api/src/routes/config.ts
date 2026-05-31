@@ -248,10 +248,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
   // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
   "app-version": {
-    currentVersion: "0.1.4",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.4-debug.apk",
+    currentVersion: "0.1.5",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.5-debug.apk",
     releaseNotes:
-      "v0.1.4 — Schnellere Disposition + Roter Pop-Up Neuer Einsatz\n\n• Polling-Intervall von 30 s auf 5 s reduziert — Disposition von der Florianstation ist binnen weniger Sekunden am Fahrzeug-Tablet sichtbar (vorher bis zu 30 s Lag).\n• Rotes Pop-Up 'Neuer Einsatz' mit Backdrop-Blur, wenn waehrend eines laufenden Einsatzes ein weiterer Alarm reinkommt — der Fahrzeugkdt entscheidet bewusst, der bisherige Einsatz bleibt als Tab erhalten.\n• Bug-Fix Stale-Closure: der Pop-Up-Trigger sah vorher nur den initialen leeren Einsatz-Stand — jetzt zuverlaessig aktuell.",
+      "v0.1.5 — FCM Push aktiv (HTTP v1)\n\n• Firebase Cloud Messaging in der APK aktiv — google-services.json eingebunden, firebase-messaging-Dependency gezogen, Tablets registrieren sich auto beim Start.\n• Backend auf FCM HTTP v1 API umgestellt (OAuth2 + Service-Account). Legacy-API war seit Juni 2024 von Google abgeschaltet — Neuumstellung war zwingend.\n• Schnittstellen-Health zeigt FCM v1-Status (statt Legacy-Server-Key).",
     minSupported: "0.1.0",
   },
 };

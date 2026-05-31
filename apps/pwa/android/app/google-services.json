@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "315949458556",
+    "project_id": "hotdoc-ff-eberstalzell",
+    "storage_bucket": "hotdoc-ff-eberstalzell.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:315949458556:android:4eb856513f01deac7e15f9",
+        "android_client_info": {
+          "package_name": "at.ffeberstalzell.hotdoc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2t5tmj11uRVy_l0IyUwSsYwtBmtpioJA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

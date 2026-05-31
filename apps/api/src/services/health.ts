@@ -48,8 +48,9 @@ export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt:
 
 /** FCM-Konfig + Anzahl registrierte Tablets. */
 async function checkFcm(): Promise<HealthItem> {
-  const sub = "Android-APK · Background-Push";
-  const configured = !!env.FCM_SERVER_KEY;
+  const sub = "Android-APK · Background-Push · HTTP v1";
+  const configured = !!env.FCM_SERVICE_ACCOUNT_JSON;
+  const legacyOnly = !!env.FCM_SERVER_KEY && !configured;
   let registered = 0;
   try {
     const list = await db.list({
@@ -69,9 +70,11 @@ async function checkFcm(): Promise<HealthItem> {
       name: "FCM Push",
       sub,
       state: "off",
-      detail: registered
-        ? `${registered} Tablet(s) registriert, aber FCM_SERVER_KEY nicht gesetzt — Alarm-Pushes werden nur geloggt, nicht versendet.`
-        : "FCM_SERVER_KEY nicht gesetzt, keine Tablets registriert. Doku: apps/pwa/android/FCM-SETUP.md",
+      detail: legacyOnly
+        ? "Nur FCM_SERVER_KEY (Legacy) gesetzt — diese API ist seit 20.06.2024 von Google abgeschaltet. Bitte Service-Account-JSON als FCM_SERVICE_ACCOUNT_JSON setzen (Doku: apps/pwa/android/FCM-SETUP.md)."
+        : registered
+        ? `${registered} Tablet(s) registriert, aber FCM_SERVICE_ACCOUNT_JSON nicht gesetzt — Alarm-Pushes werden nur geloggt, nicht versendet.`
+        : "FCM_SERVICE_ACCOUNT_JSON nicht gesetzt, keine Tablets registriert. Doku: apps/pwa/android/FCM-SETUP.md",
       metrics: { registered, configured: 0 },
     };
   }
@@ -80,7 +83,7 @@ async function checkFcm(): Promise<HealthItem> {
     name: "FCM Push",
     sub,
     state: registered === 0 ? "warn" : "ok",
-    detail: `${registered} Tablet(s) registriert · FCM_SERVER_KEY gesetzt${
+    detail: `${registered} Tablet(s) registriert · FCM_SERVICE_ACCOUNT_JSON gesetzt (HTTP v1)${
       registered === 0
         ? " — aber noch keine App hat sich registriert (APK installieren + Login)"
         : ""

@@ -20,8 +20,8 @@ android {
         // versionCode IMMER inkrementieren bei neuem Release — Android
         // erkennt das Update sonst nicht. versionName ist die anzeigte
         // Version (semver), versionCode ist die fortlaufende Integer-ID.
-        versionCode 5
-        versionName "0.1.4"
+        versionCode 6
+        versionName "0.1.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -66,6 +66,15 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // Firebase Cloud Messaging via BoM — Versionen werden zentral verwaltet,
+    // wir spezifizieren nur den Artifact-Namen. firebase-messaging zieht
+    // automatisch alle Transitives (firebase-iid, firebase-installations etc.)
+    // mit. Das @capacitor/push-notifications-Plugin benoetigt das zur
+    // Laufzeit, sonst gibt es PushNotifications.register() einen Fehler
+    // "Default FirebaseApp is not initialized".
+    implementation platform("com.google.firebase:firebase-bom:34.14.0")
+    implementation "com.google.firebase:firebase-messaging"
 }
 
 apply from: 'capacitor.build.gradle'

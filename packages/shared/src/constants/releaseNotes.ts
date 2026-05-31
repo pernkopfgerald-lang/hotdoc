@@ -21,6 +21,17 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.5",
+    date: "2026-05-31",
+    title: "FCM Push aktiv (HTTP v1)",
+    bullets: [
+      "Firebase Cloud Messaging in der APK aktiv — google-services.json eingebunden, firebase-messaging-Dependency gezogen, Tablets registrieren sich auto beim Start",
+      "Backend auf FCM HTTP v1 API umgestellt (OAuth2 + Service-Account). Legacy-API war seit Juni 2024 von Google abgeschaltet — Neuumstellung war zwingend",
+      "Schnittstellen-Health zeigt FCM v1-Status (statt Legacy-Server-Key)",
+      "Trouble-Shooting-Doku in apps/pwa/android/FCM-SETUP.md aktualisiert",
+    ],
+  },
+  {
     version: "0.1.4",
     date: "2026-05-31",
     title: "Schnellerer Disposition + Roter Pop-Up Neuer Einsatz",

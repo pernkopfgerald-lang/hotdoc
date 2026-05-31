@@ -60,9 +60,21 @@ const EnvSchema = z
     VAPID_SUBJECT: z.string().email().default("admin@ff-eberstalzell.at"),
 
     // FCM (Firebase Cloud Messaging) — Phase 2 fuer die Android-APK.
-    // Legacy-Server-Key aus der Firebase-Console (Cloud-Messaging-Tab,
-    // "Server key"). Optional — ohne Key liefert der FCM-Service nur
-    // Mock-Logs, die App laeuft trotzdem (nur ohne Background-Push).
+    // ACHTUNG: die alte Legacy-API (https://fcm.googleapis.com/fcm/send)
+    // ist seit 20. Juni 2024 von Google abgeschaltet. Wir nutzen jetzt
+    // die HTTP v1 API mit OAuth2 (Service-Account).
+    //
+    // Setup:
+    //  1. Firebase Console > Settings > Service Accounts
+    //  2. "Generate New Private Key" -> JSON-Download
+    //  3. JSON-Inhalt als FCM_SERVICE_ACCOUNT_JSON setzen (als String).
+    //     fly: flyctl secrets set FCM_SERVICE_ACCOUNT_JSON="$(cat key.json)"
+    //  4. project_id steht in der JSON drin, wird zur Laufzeit gelesen.
+    //
+    // Optional — ohne JSON liefert der FCM-Service nur Mock-Logs, die App
+    // laeuft trotzdem (nur ohne Background-Push).
+    FCM_SERVICE_ACCOUNT_JSON: z.string().optional(),
+    /** @deprecated Legacy-API seit 2024-06-20 EOL. Wird ignoriert. */
     FCM_SERVER_KEY: z.string().optional(),
 
     // OpenAI Whisper Fallback — Phase 5

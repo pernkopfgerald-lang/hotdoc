@@ -4,102 +4,102 @@ Damit die HotDoc-App im Hintergrund / geschlossen-Zustand BlaulichtSMS-
 Alarme empfangen kann, brauchen wir Google Firebase Cloud Messaging.
 Einmaliges Setup, dauert ~10 Minuten.
 
-## 1. Firebase-Projekt anlegen
+> **Wichtig**: Wir nutzen die **HTTP v1 API** (mit OAuth2 + Service-Account).
+> Die alte Legacy-API (`/fcm/send` mit Server-Key) ist seit 20. Juni 2024
+> von Google **abgeschaltet** und wird nicht mehr unterstützt.
 
-1. Gehe auf https://console.firebase.google.com/
-2. Mit Google-Account einloggen
-3. **„Projekt hinzufügen"** klicken
-4. Projekt-Name: `HotDoc FF Eberstalzell`
-5. **Google Analytics**: deaktivieren (brauchen wir nicht)
-6. **„Projekt erstellen"** → kurze Wartezeit
+## Projekt-Status (HotDoc FF Eberstalzell)
 
-## 2. Android-App registrieren
+Aktuell konfiguriert:
 
-1. Im neuen Projekt: **Übersicht-Icon „+ App hinzufügen"** → **Android-Icon**
-2. **Android-Paketname:** `at.ffeberstalzell.hotdoc`
-3. **App-Nickname:** `HotDoc` (optional)
-4. **Debug-Signing-Zertifikat:** leer lassen für jetzt (wird nur für
-   Phone-Auth gebraucht, nicht für FCM)
-5. **„App registrieren"**
+- **Firebase-Projekt**: `hotdoc-ff-eberstalzell`
+- **Project-Number**: `315949458556`
+- **App-Package**: `at.ffeberstalzell.hotdoc`
+- **App-ID**: `1:315949458556:android:4eb856513f01deac7e15f9`
+- **google-services.json**: `apps/pwa/android/app/google-services.json` (committed)
 
-## 3. google-services.json runterladen
+## Schritt 1 — Service-Account-Key erstellen
 
-Schritt 2 des Firebase-Wizards bietet die Datei zum Download an.
+1. Firebase Console → ⚙️ **Einstellungen** → **Projekteinstellungen**
+2. Tab **Dienstkonten** (engl.: Service Accounts)
+3. Button **„Neuen privaten Schlüssel generieren"**
+4. JSON-Datei runterladen (sieht aus wie `hotdoc-ff-eberstalzell-firebase-adminsdk-xxxxx.json`)
 
-1. **`google-services.json`** runterladen (~3 KB)
-2. Kopiere sie nach **`apps/pwa/android/app/google-services.json`**
-   ⚠️ Die Datei ist in `.gitignore` — **niemals committen**.
+⚠️ Die JSON enthält den **Private Key**. Niemals committen, niemals in
+Chat-Logs, niemals per E-Mail teilen. Nur als fly secret setzen.
 
-## 4. Cloud Messaging API aktivieren + Server-Key holen
+## Schritt 2 — Als fly secret setzen
 
-Cloud Messaging hat zwei Authentifizierungs-Varianten:
-
-**Legacy (was wir nutzen):**
-- Firebase Console → **Projekt-Einstellungen (Zahnrad oben)** → **Cloud Messaging-Tab**
-- Falls „Cloud Messaging API (Legacy)" auf **disabled** steht: aktivieren
-  (geht über einen Link der dich zu console.cloud.google.com weiterleitet)
-- **„Server key"** kopieren → das ist der `FCM_SERVER_KEY`
-
-**Modern (Migration in einer späteren Phase):**
-- Service-Account-JSON mit `cloud-messaging`-Rolle. Komplexer, brauchen wir
-  nicht solange Legacy noch funktioniert (Google hat das Sunsetting auf
-  unbekannt verschoben, war 2024 angekündigt).
-
-## 5. Server-Key in fly.io setzen
+PowerShell (Windows):
 
 ```powershell
-$env:FLY_API_TOKEN = "..."  # Dein fly-Token
-flyctl secrets set FCM_SERVER_KEY="DER_KEY_AUS_SCHRITT_4" --config fly.api.toml
+$json = Get-Content "$env:USERPROFILE\Downloads\hotdoc-ff-eberstalzell-firebase-adminsdk-xxxxx.json" -Raw
+flyctl secrets set FCM_SERVICE_ACCOUNT_JSON="$json" -a hotdoc-api
 ```
 
-Das löst automatisch einen API-Restart aus.
+Bash / Linux / macOS:
 
-## 6. APK neu bauen (jetzt mit Firebase)
-
-```powershell
-cd "C:\Users\HP Z2 G4\Claude\2026-05 Sybos Konnektor\apps\pwa\android"
-./gradlew clean assembleDebug   # oder assembleRelease
+```bash
+flyctl secrets set FCM_SERVICE_ACCOUNT_JSON="$(cat ~/Downloads/hotdoc-ff-eberstalzell-firebase-adminsdk-xxxxx.json)" -a hotdoc-api
 ```
 
-Das `google-services.json` wird vom Gradle-Plugin automatisch
-verarbeitet. Wenn die Datei da ist, sagt der Build-Output:
-`google-services.json found, google-services plugin applied`.
+fly.io macht einen Auto-Redeploy. Nach ~30 s ist der Schnittstellen-
+Status im Backoffice → **„Über"-Tab** wieder grün:
 
-Wenn nicht (z. B. weil noch nicht da):
-`google-services.json not found, google-services plugin not applied`.
+> FCM Push · OK — N Tablet(s) registriert · FCM_SERVICE_ACCOUNT_JSON gesetzt (HTTP v1)
 
-## 7. Test: Echter Push
+## Schritt 3 — Tablets registrieren sich automatisch
 
-1. Installiere die neue APK auf einem Tablet
-2. Logge dich ein (QR-Anker)
-3. Schaue im Backoffice → Backend-Log:
-   ```
-   Device registriert  { docId: "device:fcm-kdo-...", model: "...", appVersion: "0.1.0" }
-   ```
-4. Trigger einen Test-Alarm (oder warte auf den nächsten echten)
-5. Backend-Log:
-   ```
-   FCM-Push abgeschlossen  { ok: 1, fail: 0, total: 1 }
-   ```
-6. Auf dem Tablet erscheint eine Notification → klicken öffnet die App
-   mit dem Alarm vorgefüllt
+Beim ersten App-Start nach Setup ruft der Capacitor-PushNotifications-
+Plugin `register()` auf, holt sich einen FCM-Registration-Token, und
+schickt ihn an `POST /api/devices/register`. Backend speichert das
+als `device:<uuid>` mit `fcmToken` + `fahrzeugId`.
 
-## Troubleshooting
+Im Backoffice → **„Registrierte Geräte"** sieht man dann alle Tablets
+mit FCM-Status.
 
-- **Build crash mit `Plugin com.google.gms.google-services not found`**:
-  Die `apps/pwa/android/build.gradle` muss das Plugin als Dependency
-  haben. Capacitor sollte das automatisch hinzufügen — falls nicht,
-  ergänzen:
-  ```gradle
-  classpath 'com.google.gms:google-services:4.4.2'
-  ```
+## Schritt 4 — Test-Push
 
-- **Push kommt nicht an**:
-  - `FCM_SERVER_KEY` im fly.io secret? `flyctl secrets list --config fly.api.toml`
-  - Tablet registriert? Backoffice → Geräte-Tab (Phase 3) oder
-    `couchdb-admin` → device:* Docs
-  - FCM-Token noch gültig? Bei App-Reinstall ändert er sich → die App
-    ruft `/api/devices/register` neu auf, das ist OK
-  - Phone in „Don't disturb / Bitte nicht stören"? FCM data-messages
-    sind high-priority und sollten durchkommen, aber bei aktiver Sperre
-    bleibt nur die Notification still im Tray
+Im Backoffice → „Über" → Schnittstellen-Karte FCM zeigt einen
+**„Test-Push senden"**-Button. Wählt das Fahrzeug, dann fliegt eine
+Test-Notification mit Titel „HotDoc Test" raus. Auf jedem registrierten
+Tablet erscheint die Notification — auch im Hintergrund / Standby.
+
+## Trouble-Shooting
+
+| Symptom | Ursache | Lösung |
+|---|---|---|
+| Status weiterhin „OFF" nach Secret-Set | Secret hat keinen Zeilenumbruch verloren | `flyctl secrets list -a hotdoc-api` checken, Wert ist da; redeploy mit `flyctl apps restart hotdoc-api` |
+| Push kommt nicht an, aber Backend sagt versendet=N | Notification-Permission im Tablet aus | Android-Settings → Apps → HotDoc → Benachrichtigungen aktivieren |
+| `OAuth2-Token-Exchange fehlgeschlagen: 401` im API-Log | Service-Account inzwischen deaktiviert oder Project-ID mismatch | Neuen Service-Account erstellen, secret tauschen |
+| `UNREGISTERED` im API-Log | Tablet hat App deinstalliert | Device-Doc wird auto-stale gesetzt; bei Neuinstallation wieder OK |
+| Push kommt 2x | Tablet ist auf 2 Geräten gleichzeitig eingeloggt | normales Verhalten, beide werden gepusht |
+
+## Architektur-Details
+
+```
+BlaulichtSMS-Poller     →  pushAlarm(fahrzeugIds, payload)
+                            ↓
+                         services/fcm.ts
+                            ↓
+                         OAuth2-JWT (RS256) signed mit
+                         service_account.private_key
+                            ↓
+                         POST oauth2.googleapis.com/token
+                            ↓  access_token (1h gültig, gecached ~50 min)
+                            ↓
+                         POST fcm.googleapis.com/v1/projects/
+                              hotdoc-ff-eberstalzell/messages:send
+                            ↓
+                         Tablet wird aufgeweckt, Capacitor-Plugin
+                         feuert PushNotificationActionPerformed
+                            ↓
+                         App öffnet sich auf der BerichtPage des
+                         betroffenen Fahrzeugs
+```
+
+Code-Pointer:
+- Backend: `apps/api/src/services/fcm.ts`
+- Token-Cache: in-process, 50-Minuten-TTL
+- Device-Register: `apps/pwa/src/lib/device-register.ts`
+- Capacitor-Plugin: `@capacitor/push-notifications`
