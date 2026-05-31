@@ -21,6 +21,17 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.6",
+    date: "2026-05-31",
+    title: "Auto-Update via Release-Builds",
+    bullets: [
+      "Erste signierte Release-APK mit dauerhaftem Keystore — ab jetzt kein Deinstallieren mehr bei Updates nötig",
+      "UpdateBanner pollt alle 6 h und bietet 1-Klick-Update direkt aus der App: APK wird lokal gedownloadet (mit Progress-Bar), Android-System-Dialog 'Aktualisieren?' erscheint, fertig",
+      "Custom ApkInstaller-Capacitor-Plugin (Java) — ersetzt den Browser-Umweg",
+      "Beim ersten Install (von v0.1.5-debug auf v0.1.6-release) noch einmalig manuell deinstallieren wegen Signing-Key-Wechsel. Ab v0.1.7+ läuft alles via Banner",
+    ],
+  },
+  {
     version: "0.1.5",
     date: "2026-05-31",
     title: "FCM Push aktiv (HTTP v1)",

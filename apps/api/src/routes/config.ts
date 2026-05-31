@@ -248,10 +248,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
   // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
   "app-version": {
-    currentVersion: "0.1.5",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.5-debug.apk",
+    currentVersion: "0.1.6",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.6-release.apk",
     releaseNotes:
-      "v0.1.5 — FCM Push aktiv (HTTP v1)\n\n• Firebase Cloud Messaging in der APK aktiv — google-services.json eingebunden, firebase-messaging-Dependency gezogen, Tablets registrieren sich auto beim Start.\n• Backend auf FCM HTTP v1 API umgestellt (OAuth2 + Service-Account). Legacy-API war seit Juni 2024 von Google abgeschaltet — Neuumstellung war zwingend.\n• Schnittstellen-Health zeigt FCM v1-Status (statt Legacy-Server-Key).",
+      "v0.1.6 — Auto-Update via Release-Builds\n\n• Erste signierte Release-APK — ab jetzt kein Deinstallieren mehr bei Updates noetig.\n• UpdateBanner: 1-Klick-Update direkt aus der App mit Progress-Bar. Android-Dialog 'Aktualisieren?' erscheint, fertig.\n• Custom ApkInstaller-Capacitor-Plugin ersetzt den Browser-Umweg.\n• Beim ersten Install (v0.1.5-debug -> v0.1.6-release) noch einmalig manuell deinstallieren wegen Signing-Key-Wechsel.",
     minSupported: "0.1.0",
   },
 };
