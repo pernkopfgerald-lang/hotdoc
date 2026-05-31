@@ -1745,6 +1745,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         <div
           className="modal-backdrop"
           style={{
+            // WICHTIG: position+inset hier inline — die CSS-Klasse
+            // modal-backdrop ist nirgendwo definiert. Ohne das rendert
+            // das div als normales Block-Element ganz unten in der Seite
+            // statt als Fullscreen-Overlay — User-Bug-Report:
+            // "kein Popup erscheint mit Hinweis 'Neuer Auftrag'".
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
             backdropFilter: "blur(6px)",
             WebkitBackdropFilter: "blur(6px)",
             background: "rgba(0,0,0,0.45)",
