@@ -43,10 +43,10 @@ jobs:
         with:
           version: 9
 
-      - name: Node 20 installieren
+      - name: Node 22 installieren (Capacitor 8 CLI braucht >= 22)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: JDK 17 installieren (Microsoft OpenJDK, kompatibel mit AGP 8 + Capacitor 8)
