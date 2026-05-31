@@ -1,0 +1,156 @@
+name: Release-APK Build und Deploy
+
+# Wenn ein Tag wie v0.1.6 gepushed wird ODER manuell aus dem Actions-Tab
+# gestartet -> baut die signed Release-APK auf einem Ubuntu-Runner
+# (kein Tailscale, kein Windows-NIO-Bug) und published sie nach
+# hotdoc-apk.fly.dev.
+#
+# Trigger-Modi:
+#   git tag v0.1.6 && git push --tags        ->  automatisch
+#   Actions-Tab -> "Run workflow"            ->  manuell mit Version-Input
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (z.B. 0.1.6) - ohne v-Prefix'
+        required: true
+        type: string
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Version-String ermitteln
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "v=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            # Aus Tag v0.1.6 -> 0.1.6
+            echo "v=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: pnpm installieren
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Node 20 installieren
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: JDK 17 installieren (Microsoft OpenJDK, kompatibel mit AGP 8 + Capacitor 8)
+        uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: 17
+
+      - name: Android SDK installieren
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
+
+      - name: Dependencies installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Shared package bauen
+        run: pnpm --filter "@hotdoc/shared" build
+
+      - name: PWA bauen
+        run: pnpm --filter "@hotdoc/pwa" build
+
+      - name: Capacitor sync
+        working-directory: apps/pwa
+        run: pnpm cap sync android
+
+      - name: google-services.json decodieren
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > apps/pwa/android/app/google-services.json
+          echo "google-services.json: $(wc -c < apps/pwa/android/app/google-services.json) bytes"
+
+      - name: Keystore decodieren
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > hotdoc.keystore
+          echo "keystore: $(wc -c < hotdoc.keystore) bytes"
+
+      - name: keystore.properties schreiben
+        env:
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cat > apps/pwa/android/keystore.properties <<EOF
+          storeFile=../../../hotdoc.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: assembleRelease ausführen
+        working-directory: apps/pwa/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: APK in deploy/apk/apks kopieren + Naming nach Convention
+        run: |
+          mkdir -p deploy/apk/apks
+          APK_NAME="hotdoc-v${{ steps.version.outputs.v }}-release.apk"
+          cp apps/pwa/android/app/build/outputs/apk/release/app-release.apk "deploy/apk/apks/$APK_NAME"
+          ls -lh "deploy/apk/apks/$APK_NAME"
+          # Alte debug-APKs entfernen damit deploy/apk-Container nicht
+          # mit veralteten Builds aufgeblaeht ist
+          find deploy/apk/apks -name '*-debug.apk' -delete || true
+
+      - name: apk-info.json updaten
+        run: |
+          V=${{ steps.version.outputs.v }}
+          NOTES=$(printf 'v%s - Release-Build via GitHub Actions\\n\\nAuto-gebaut, signiert mit dauerhaftem Keystore. Update via UpdateBanner direkt aus der App.' "$V")
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+          node -e "
+            const fs = require('fs');
+            const path = 'deploy/apk/apk-info.json';
+            const data = JSON.parse(fs.readFileSync(path, 'utf-8'));
+            data.currentVersion = '$V';
+            data.apkUrl = '/hotdoc-v$V-release.apk';
+            data.publishedAt = '$DATE';
+            fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+            console.log('apk-info.json updated:', data.currentVersion, data.apkUrl);
+          "
+
+      - name: APK-Artifact hochladen (auch ohne fly-Deploy zugaenglich)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotdoc-v${{ steps.version.outputs.v }}-release
+          path: deploy/apk/apks/hotdoc-v${{ steps.version.outputs.v }}-release.apk
+          retention-days: 90
+
+      - name: flyctl installieren
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy nach hotdoc-apk.fly.dev
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --config fly.apk.toml --remote-only --strategy immediate
+
+      - name: Build-Zusammenfassung im Summary
+        run: |
+          {
+            echo "## HotDoc v${{ steps.version.outputs.v }} Release"
+            echo ""
+            echo "**APK**: https://hotdoc-apk.fly.dev/hotdoc-v${{ steps.version.outputs.v }}-release.apk"
+            echo ""
+            echo "Alle Tablets bekommen das Update innerhalb der naechsten 6 h via UpdateBanner."
+          } >> "$GITHUB_STEP_SUMMARY"

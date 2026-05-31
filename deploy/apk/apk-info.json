@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.6",
-  "apkUrl": "/hotdoc-v0.1.6-release.apk",
-  "releaseNotes": "v0.1.6 — Auto-Update via Release-Builds\n\n• Erste signierte Release-APK — ab jetzt kein Deinstallieren mehr bei Updates nötig.\n• UpdateBanner pollt alle 6 h und bietet 1-Klick-Update direkt aus der App mit Progress-Bar.\n• Custom ApkInstaller-Capacitor-Plugin ersetzt den Browser-Umweg.\n• Beim ersten Install (von v0.1.5-debug auf v0.1.6-release) noch einmalig manuell deinstallieren wegen Signing-Key-Wechsel. Ab v0.1.7+ läuft alles via Banner.",
-  "publishedAt": "2026-05-31T20:00:00+02:00",
+  "currentVersion": "0.1.5",
+  "apkUrl": "/hotdoc-v0.1.5-debug.apk",
+  "releaseNotes": "v0.1.5 — FCM Push aktiv (HTTP v1)\n\n• Firebase Cloud Messaging in der APK aktiv — google-services.json eingebunden, firebase-messaging-Dependency gezogen, Tablets registrieren sich auto beim Start.\n• Backend auf FCM HTTP v1 API umgestellt (OAuth2 + Service-Account). Legacy-API war seit Juni 2024 von Google abgeschaltet — Neuumstellung war zwingend.\n• Schnittstellen-Health zeigt FCM v1-Status (statt Legacy-Server-Key).\n• Trouble-Shooting-Doku in apps/pwa/android/FCM-SETUP.md aktualisiert.",
+  "publishedAt": "2026-05-31T19:00:00+02:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",
