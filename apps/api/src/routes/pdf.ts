@@ -19,6 +19,11 @@ import {
   type BerichtDaten,
 } from "../services/pdf/template.js";
 import { renderUebungHtml, type UebungDaten, type UebungsTyp } from "../services/pdf/uebung.js";
+import {
+  renderFahrzeugberichtHtml,
+  fahrzeugAbk,
+  type FahrzeugberichtDaten,
+} from "../services/pdf/fahrzeugbericht.js";
 
 export const pdfRouter: Router = Router();
 
@@ -459,6 +464,143 @@ async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promis
   };
   return renderUebungHtml(data);
 }
+
+// ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────
+// Eigenstaendiges Fahrzeugbericht-PDF im Original-Papier-Layout der FF
+// Eberstalzell (Vorderseite Stammdaten+Mannschaft+Geraete, Rueckseite
+// Taetigkeitsbericht+Einsatzchronik). Der Funktionaer kann das pro
+// Fahrzeug einzeln rausziehen — z. B. als Anhang zum Hauptbericht oder
+// als interne Archiv-Datei.
+pdfRouter.get(
+  "/api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf",
+  requireAuth(),
+  (async (req, res) => {
+    const einsatzId = decodeURIComponent(String(req.params.id));
+    const fahrzeugId = decodeURIComponent(String(req.params.fzgId));
+    try {
+      const einsatz = (await db.get(einsatzId)) as Record<string, unknown>;
+      const fzgberId = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:${fahrzeugId}`;
+      let fzgber: Record<string, unknown> | null = null;
+      try {
+        fzgber = (await db.get(fzgberId)) as Record<string, unknown>;
+      } catch (err) {
+        if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+      }
+      if (!fzgber) {
+        res.status(404).json({ error: "fahrzeugbericht_not_found" });
+        return;
+      }
+
+      // Mannschaft + Fahrer/Kdt mit Personen-Lookup ausstatten
+      const mannschaftRaw = (fzgber.mannschaft as Array<{
+        slot?: number;
+        personId: number;
+        atemschutzAktiv?: boolean;
+        atemschutzDauerMin?: number;
+      }> | undefined) ?? [];
+      const mannschaftResolved: FahrzeugberichtDaten["mannschaft"] = [];
+      for (const slot of mannschaftRaw) {
+        const p = await loadPerson(slot.personId);
+        const name = p
+          ? `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${slot.personId}`
+          : `Pers-${slot.personId}`;
+        const entry: FahrzeugberichtDaten["mannschaft"][number] = {
+          name,
+          atemschutzAktiv: !!slot.atemschutzAktiv,
+        };
+        if (p?.dienstgrad) entry.rang = p.dienstgrad;
+        if (
+          slot.atemschutzAktiv &&
+          typeof slot.atemschutzDauerMin === "number"
+        ) {
+          entry.atemschutzDauerMin = slot.atemschutzDauerMin;
+        }
+        mannschaftResolved.push(entry);
+      }
+
+      const fahrerId = fzgber.fahrerPersonId as number | undefined;
+      const kdtId = fzgber.fahrzeugKdtPersonId as number | undefined;
+      const fahrerPerson = fahrerId ? await loadPerson(fahrerId) : null;
+      const kdtPerson = kdtId ? await loadPerson(kdtId) : null;
+
+      // Geraete-Labels aus config:geraete aufloesen
+      const geraeteRaw = (fzgber.geraete as Array<{ materialId: string }> | undefined) ?? [];
+      const geraeteLabels: string[] = [];
+      try {
+        const geraeteCfg = (await db.get("config:geraete")) as {
+          data?: { byFahrzeug?: Record<string, Array<{ id: string; bezeichnung: string }>> };
+        };
+        const list = geraeteCfg.data?.byFahrzeug?.[fahrzeugId] ?? [];
+        const map = new Map(list.map((g) => [g.id, g.bezeichnung]));
+        for (const g of geraeteRaw) {
+          geraeteLabels.push(map.get(g.materialId) ?? g.materialId);
+        }
+      } catch {
+        // Fallback: nur materialId anzeigen
+        for (const g of geraeteRaw) geraeteLabels.push(g.materialId);
+      }
+
+      const chronikRaw = (einsatz.chronik as Array<{
+        zeitstempel?: string;
+        funkrufname?: string;
+        text?: string;
+        source?: string;
+      }> | undefined) ?? [];
+
+      const data: FahrzeugberichtDaten = {
+        einsatzId,
+        fahrzeugId,
+        abk: fahrzeugAbk(fahrzeugId),
+        funkrufname: FAHRZEUG_FUNKRUF[fahrzeugId] ?? fahrzeugId,
+        einsatzort: String(einsatz.einsatzort ?? "—"),
+        alarmierungZeit: String(einsatz.alarmierungZeit ?? ""),
+        ...(((fzgber.zeit as { bis?: string } | undefined)?.bis)
+          ? { zeitBis: (fzgber.zeit as { bis: string }).bis }
+          : {}),
+        kmGefahren: (fzgber.km as { gefahrenKm?: number } | undefined)?.gefahrenKm ?? 0,
+        ...(fahrerPerson
+          ? {
+              fahrer: `${fahrerPerson.nachname ?? ""} ${fahrerPerson.vorname ?? ""}`.trim(),
+            }
+          : {}),
+        ...(kdtPerson
+          ? {
+              fahrzeugKdt: `${kdtPerson.nachname ?? ""} ${kdtPerson.vorname ?? ""}`.trim(),
+            }
+          : {}),
+        mannschaft: mannschaftResolved,
+        geraete: geraeteLabels,
+        oelSaecke: (fzgber.oelbindemittelSaecke as number | undefined) ?? 0,
+        taetigkeitsbericht: String(fzgber.taetigkeitsbericht ?? ""),
+        chronik: chronikRaw.map((c) => ({
+          zeitstempel: c.zeitstempel ?? "",
+          funkrufname: c.funkrufname ?? "—",
+          text: c.text ?? "",
+          source: c.source ?? "—",
+        })),
+        status:
+          ((fzgber.status as "in_arbeit" | "abgeschlossen" | undefined) ??
+            "in_arbeit"),
+      };
+
+      const html = renderFahrzeugberichtHtml(data);
+      const pdf = await renderPdf(html);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="fzgber-${data.abk}-${einsatzId.replace(/[^a-z0-9-]/gi, "_")}.pdf"`,
+      );
+      res.send(pdf);
+    } catch (err) {
+      logger.error({ err, einsatzId, fahrzeugId }, "Fahrzeugbericht-PDF fehlgeschlagen");
+      if ((err as { statusCode?: number }).statusCode === 404) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      res.status(500).json({ error: "pdf_failed", message: String(err) });
+    }
+  }) as RequestHandler,
+);
 
 pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), (async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));

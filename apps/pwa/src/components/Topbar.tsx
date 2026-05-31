@@ -8,9 +8,12 @@ interface Props {
   funkrufname?: string;
   einsatzNr?: string;
   geo?: GeoState;
+  /** Optional. Wenn nicht gesetzt: aus funkrufname abgeleitet
+   *  (enthaelt "Florian" → "Einsatzzentrale", sonst "Fahrzeugbericht"). */
+  mode?: "fahrzeug" | "zentrale";
 }
 
-export function Topbar({ funkrufname, einsatzNr, geo }: Props) {
+export function Topbar({ funkrufname, einsatzNr, geo, mode }: Props) {
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
 
@@ -39,7 +42,11 @@ export function Topbar({ funkrufname, einsatzNr, geo }: Props) {
           HotDoc
         </div>
         <div className="appsub">
-          Fahrzeugbericht
+          {(mode ?? (funkrufname && /florian/i.test(funkrufname)
+            ? "zentrale"
+            : "fahrzeug")) === "zentrale"
+            ? "Einsatzzentrale"
+            : "Fahrzeugbericht"}
           {einsatzNr ? ` · Einsatz ${einsatzNr}` : ""}
           {funkrufname ? ` · ${funkrufname}` : ""}
         </div>
