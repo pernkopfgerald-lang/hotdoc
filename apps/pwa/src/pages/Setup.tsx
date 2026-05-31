@@ -20,7 +20,11 @@ function shouldShowApkHint(): boolean {
   }
 }
 
-const APK_DOWNLOAD_URL = "https://hotdoc-apk.fly.dev/hotdoc-v0.1.0-debug.apk";
+// Statt versionierter Direkt-URL (die nach jedem Release veraltet)
+// linken wir auf die Landing-Seite — die liest /apk-info.json zur Laufzeit
+// und bietet immer die aktuelle APK an. Damit broken Tablets, die diese
+// PWA-Seite gecached haben, nicht beim naechsten Release.
+const APK_DOWNLOAD_URL = "https://hotdoc-apk.fly.dev/";
 
 interface Props {
   onSetupDone: (fahrzeugId: FahrzeugId) => void;

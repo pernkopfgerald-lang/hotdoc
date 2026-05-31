@@ -3228,7 +3228,7 @@ function AppVersionPanel() {
             label="APK-Download-URL"
             value={data.apkUrl}
             onChange={(v) => setData({ ...data, apkUrl: v })}
-            placeholder="https://hotdoc-apk.fly.dev/hotdoc-v0.1.0-debug.apk"
+            placeholder="https://hotdoc-apk.fly.dev/hotdoc-v0.1.5-debug.apk"
           />
           <AppVersionField
             label="Mindestens unterstützte Version"
