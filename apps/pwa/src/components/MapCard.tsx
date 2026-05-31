@@ -1,6 +1,15 @@
-import L, { type LatLngExpression } from "leaflet";
+import L, { type LatLngBoundsExpression, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ExternalLink, Crosshair, Droplets, Maximize2, Minimize2, Navigation } from "lucide-react";
+import {
+  Crosshair,
+  Droplets,
+  ExternalLink,
+  Maximize,
+  Maximize2,
+  Minimize2,
+  Navigation,
+  ScanSearch,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export interface MapPosition {
@@ -216,6 +225,41 @@ export function MapCard({
     mapRef.current?.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true });
   }
 
+  /**
+   * "Detail" — zoomt 200 m um die eigene Fahrzeug-Position. Default-Sicht.
+   * Bei Capacitor-Geo-Modus ist SELF_ZOOM=17 schon ~250 m Sichtfeld. Zoom 18
+   * wäre ~125 m, also zwischen den beiden für ~200 m: 17.
+   * Macht im Endeffekt das gleiche wie Recenter, deshalb hier Alias.
+   */
+  function zoomDetail() {
+    autoFollowRef.current = true;
+    mapRef.current?.flyTo([selfPos.lat, selfPos.lng], SELF_ZOOM, {
+      duration: 0.6,
+    });
+  }
+
+  /**
+   * "Gesamt" — fitBounds([selfPos, einsatzPos, route.path]). Zeigt
+   * Anfahrt komplett im Frame. Wenn die GraphHopper-Route da ist, nimmt
+   * die alle Wegpunkte, sonst nur Start+Ziel.
+   */
+  function zoomGesamt() {
+    const map = mapRef.current;
+    if (!map) return;
+    autoFollowRef.current = false;
+    const points: LatLngExpression[] = [
+      [selfPos.lat, selfPos.lng],
+      [einsatzPos.lat, einsatzPos.lng],
+    ];
+    if (route && route.path.length > 1) {
+      for (const p of route.path) points.push([p.lat, p.lng]);
+    }
+    const bounds: LatLngBoundsExpression = L.latLngBounds(
+      points.map((p) => p as L.LatLngTuple),
+    );
+    map.flyToBounds(bounds, { padding: [40, 40], duration: 0.6, maxZoom: 17 });
+  }
+
   // Leaflet braucht ein invalidateSize() nach Größenänderung der Karte
   useEffect(() => {
     const map = mapRef.current;
@@ -281,6 +325,24 @@ export function MapCard({
             />
             Position-Sharing
           </span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={zoomDetail}
+            aria-label="Detail · ~200 m um eigene Position"
+            title="Detail · ~200 m um eigene Position"
+          >
+            <ScanSearch size={14} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={zoomGesamt}
+            aria-label="Gesamt · gesamte Anfahrt im Frame"
+            title="Gesamt · gesamte Anfahrt im Frame"
+          >
+            <Maximize size={14} />
+          </button>
           <button
             type="button"
             className="icon-btn"

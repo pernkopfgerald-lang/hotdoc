@@ -1,7 +1,16 @@
-import L, { type LatLngExpression } from "leaflet";
+import L, { type LatLngBoundsExpression, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Crosshair, Maximize2, Minimize2 } from "lucide-react";
+import {
+  Crosshair,
+  ExternalLink,
+  Maximize,
+  Maximize2,
+  Minimize2,
+  ScanSearch,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { FLORIAN_POSITION } from "@hotdoc/shared";
 
 export interface FahrzeugPos {
   fahrzeugId: string;
@@ -17,35 +26,85 @@ export interface FahrzeugPos {
   lastSeenAt?: string;
 }
 
+/**
+ * Optionale Mannschafts-Daten je Fahrzeug — wenn vom Parent gegeben,
+ * zeigt das Detail-Panel beim Klick auf ein Fahrzeug Fahrer + Kdt +
+ * Besatzung an. Quelle: Fahrzeugberichte aus dem laufenden Einsatz.
+ */
+export interface FahrzeugMannschaft {
+  fahrzeugId: string;
+  fahrer?: string;
+  kdt?: string;
+  mannschaft: string[];
+}
+
 const STALE_AFTER_MIN = 10;
+const HOME = FLORIAN_POSITION;
 
 interface Props {
   einsatzort?: { lat: number; lng: number; label?: string };
   fahrzeuge: FahrzeugPos[];
   /** Standardzoom auf Einsatzort. */
   zoom?: number;
+  /**
+   * Wenn von außen gesteuert (z. B. durch Klick auf Status-Card):
+   *  - Marker pulsiert
+   *  - Detail-Panel öffnet sich
+   *  - Karte fliegt auf die Position
+   * Wenn nicht gegeben: interne State (Marker-Klick toggelt selbst).
+   */
+  selectedFahrzeugId?: string | null;
+  onSelectFahrzeug?: (id: string | null) => void;
+  /** Mannschaft-Daten je Fahrzeug (optional, blendet Block im Detail ein). */
+  mannschaftByFahrzeug?: Record<string, FahrzeugMannschaft>;
+  /** Pop-Out-Button anzeigen (im 2-Bildschirm-Setup nützlich). */
+  enablePopOut?: boolean;
+  /** Default-Höhe in px (320 alt, 500 neu). */
+  defaultHeight?: number;
+  /**
+   * Render-Modus für Pop-Out-Fenster: kein Wrapper-Border,
+   * voll-fenstergroße Map. Wird von FlorianMapPopout gesetzt.
+   */
+  variant?: "inline" | "popout";
 }
-
-const HOME = { lat: 48.0884, lng: 13.9586 };
 
 /**
  * Florianstation-Karte (PWA-Variante, identisch zur Backoffice-Karte) —
  * read-only Übersicht aller aktuell ausgerückten Fahrzeuge mit Einsatzort.
  *
- * Keine eigene Position (Zentrale steht im FF-Haus), kein Routen-Button,
- * kein Hydranten-Toggle — der Einsatzleiter braucht die Übersicht, nicht
- * Navigation. Vollbild-Toggle für Lageeinweisung an der Wand.
+ * Drei Zoom-Modi:
+ *  - "Gesamt": fitBounds([Einsatzort, alle Fahrzeuge]) — Überblick
+ *  - "Lagebild": center+zoom 18 auf Einsatzort (~200 m Sichtfeld)
+ *  - Vollbild: fixed inset 0 für Lageeinweisung am Bildschirm
+ *
+ * Plus Pop-Out: window.open('/florian-map') für Zweit-Bildschirm.
+ * In Capacitor (APK) ist der Pop-Out-Button deaktiviert (kein Multi-Window).
  */
-export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
+export function FlorianMap({
+  einsatzort,
+  fahrzeuge,
+  zoom = 14,
+  selectedFahrzeugId: controlledSelectedId,
+  onSelectFahrzeug,
+  mannschaftByFahrzeug,
+  enablePopOut = false,
+  defaultHeight = 500,
+  variant = "inline",
+}: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const einsatzMarkerRef = useRef<L.Marker | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  // Marker-Klick markiert das Fahrzeug visuell (Pulse) und oeffnet ein
-  // Detail-Panel am rechten Rand der Karte. Klick auf leeren Bereich oder
-  // selbes Marker erneut schliesst es.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  // Controlled-via-Parent ODER intern — beide Pfade funktionieren.
+  const selectedId = controlledSelectedId ?? internalSelectedId;
+  const setSelectedId = (next: string | null): void => {
+    if (onSelectFahrzeug) onSelectFahrzeug(next);
+    else setInternalSelectedId(next);
+  };
+
+  const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
     if (!elRef.current || mapRef.current) return;
@@ -107,8 +166,9 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
       } else {
         const m = L.marker(pos, { icon: ic, title: f.funkrufname }).addTo(map);
         m.on("click", () => {
-          setSelectedId((prev) => (prev === f.fahrzeugId ? null : f.fahrzeugId));
-          map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.5 });
+          const next = selectedId === f.fahrzeugId ? null : f.fahrzeugId;
+          setSelectedId(next);
+          if (next) map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.5 });
         });
         markersRef.current.set(f.fahrzeugId, m);
       }
@@ -119,7 +179,17 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
         markersRef.current.delete(id);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fahrzeuge, tickNow, selectedId]);
+
+  // Wenn selectedId von außen geändert wird → automatisch hinfliegen.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedId) return;
+    const f = fahrzeuge.find((x) => x.fahrzeugId === selectedId);
+    if (!f) return;
+    map.flyTo([f.lat, f.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
+  }, [selectedId, fahrzeuge]);
 
   // Klick auf leere Karte → Auswahl schliessen
   useEffect(() => {
@@ -130,10 +200,14 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
     return () => {
       map.off("click", onMapClick);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedFzg = selectedId
     ? fahrzeuge.find((f) => f.fahrzeugId === selectedId) ?? null
+    : null;
+  const selectedMannschaft = selectedId
+    ? mannschaftByFahrzeug?.[selectedId] ?? null
     : null;
 
   useEffect(() => {
@@ -157,19 +231,73 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
     map.setView([center.lat, center.lng], zoom, { animate: true });
   }
 
-  const wrapperStyle = fullscreen
-    ? ({
-        position: "fixed" as const,
-        inset: 0,
-        zIndex: 2100,
-        margin: 0,
-        background: "var(--bg)",
-        padding: 12,
-        display: "flex",
-        flexDirection: "column" as const,
-        gap: 10,
-      })
-    : { position: "relative" as const };
+  /**
+   * "Gesamt": fitBounds([Einsatzort, alle Fahrzeuge]) — gibt einen
+   * Überblick wo alles ist + die Flugstrecken automatisch im Frame.
+   */
+  function zoomGesamt() {
+    const map = mapRef.current;
+    if (!map) return;
+    const points: LatLngExpression[] = [];
+    if (einsatzort) points.push([einsatzort.lat, einsatzort.lng]);
+    for (const f of fahrzeuge) points.push([f.lat, f.lng]);
+    if (points.length === 0) {
+      map.setView([HOME.lat, HOME.lng], 12, { animate: true });
+      return;
+    }
+    if (points.length === 1) {
+      map.flyTo(points[0] as L.LatLngTuple, 15, { duration: 0.6 });
+      return;
+    }
+    const bounds: LatLngBoundsExpression = L.latLngBounds(
+      points.map((p) => p as L.LatLngTuple),
+    );
+    map.flyToBounds(bounds, { padding: [40, 40], duration: 0.6, maxZoom: 17 });
+  }
+
+  /**
+   * "Lagebild": center+zoom 18 auf den Einsatzort (≈ 200 m Radius
+   * Sichtfeld bei 256-px-Tiles). Wenn kein Einsatzort: auf FF-Haus.
+   */
+  function zoomLagebild() {
+    const map = mapRef.current;
+    if (!map) return;
+    const c = einsatzort ?? HOME;
+    map.flyTo([c.lat, c.lng], 18, { duration: 0.6 });
+  }
+
+  function openPopOut() {
+    // Eigenstaendige Route — laedt FlorianMap im variant="popout"-Modus
+    // mit eigenem Polling. Größe 1400x900 passt auf einen Zweit-Bildschirm.
+    const url = new URL("/florian-map", window.location.origin);
+    window.open(
+      url.toString(),
+      "hotdoc-florian-map",
+      "width=1400,height=900,resizable=yes,scrollbars=no",
+    );
+  }
+
+  const wrapperStyle =
+    variant === "popout"
+      ? ({
+          position: "relative" as const,
+          height: "100vh",
+          display: "flex",
+          flexDirection: "column" as const,
+        })
+      : fullscreen
+        ? ({
+            position: "fixed" as const,
+            inset: 0,
+            zIndex: 2100,
+            margin: 0,
+            background: "var(--bg)",
+            padding: 12,
+            display: "flex",
+            flexDirection: "column" as const,
+            gap: 10,
+          })
+        : { position: "relative" as const };
 
   return (
     <div style={wrapperStyle}>
@@ -184,9 +312,11 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
         >
           <strong style={{ fontSize: 15 }}>Karte · Live-Positionen</strong>
           <div style={{ display: "flex", gap: 6 }}>
-            <button type="button" className="icon-btn" onClick={recenter} aria-label="Zentrieren">
-              <Crosshair size={14} />
-            </button>
+            <ZoomButtons
+              onGesamt={zoomGesamt}
+              onLagebild={zoomLagebild}
+              onRecenter={recenter}
+            />
             <button type="button" className="icon-btn" onClick={() => setFullscreen(false)} aria-label="Vollbild beenden">
               <Minimize2 size={14} />
             </button>
@@ -197,11 +327,19 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
       <div
         style={{
           position: "relative",
-          flex: fullscreen ? 1 : undefined,
-          height: fullscreen ? "auto" : 320,
-          borderRadius: 14,
+          flex: fullscreen || variant === "popout" ? 1 : undefined,
+          height:
+            variant === "popout"
+              ? "auto"
+              : fullscreen
+                ? "auto"
+                : defaultHeight,
+          borderRadius: variant === "popout" ? 0 : 14,
           overflow: "hidden",
-          border: "1px solid var(--border-strong)",
+          border:
+            variant === "popout"
+              ? "none"
+              : "1px solid var(--border-strong)",
         }}
       >
         <div ref={elRef} style={{ width: "100%", height: "100%", background: "var(--surface-2)" }} />
@@ -215,31 +353,42 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
               zIndex: 401,
               display: "flex",
               gap: 6,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              maxWidth: "calc(100% - 16px)",
             }}
           >
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={recenter}
-              aria-label="Auf Einsatzort zentrieren"
-              title="Auf Einsatzort zentrieren"
-            >
-              <Crosshair size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setFullscreen(true)}
-              aria-label="Vollbild"
-              title="Vollbild"
-            >
-              <Maximize2 size={14} />
-            </button>
+            <ZoomButtons
+              onGesamt={zoomGesamt}
+              onLagebild={zoomLagebild}
+              onRecenter={recenter}
+            />
+            {enablePopOut && !isNative && variant === "inline" ? (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={openPopOut}
+                aria-label="In neuem Fenster öffnen (2-Bildschirm-Setup)"
+                title="In neuem Fenster öffnen (2-Bildschirm-Setup)"
+              >
+                <ExternalLink size={14} />
+              </button>
+            ) : null}
+            {variant === "inline" ? (
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setFullscreen(true)}
+                aria-label="Vollbild"
+                title="Vollbild"
+              >
+                <Maximize2 size={14} />
+              </button>
+            ) : null}
           </div>
         ) : null}
 
-        {/* Detail-Panel: klappt von rechts ein wenn ein Fahrzeug-Marker
-            angeklickt wurde. Zeigt Funkrufname + Status + letzte Position. */}
+        {/* Detail-Panel: erweitert um Fahrer/Kdt/Mannschaft wenn vorhanden. */}
         {selectedFzg ? (
           <div
             style={{
@@ -247,8 +396,8 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
               top: 8,
               right: 8,
               zIndex: 410,
-              minWidth: 220,
-              maxWidth: 280,
+              minWidth: 250,
+              maxWidth: 320,
               padding: "12px 14px",
               borderRadius: 14,
               background: "color-mix(in srgb, var(--surface) 94%, transparent)",
@@ -260,6 +409,7 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
               display: "flex",
               flexDirection: "column",
               gap: 8,
+              marginTop: 44,
             }}
           >
             <div
@@ -331,12 +481,129 @@ export function FlorianMap({ einsatzort, fahrzeuge, zoom = 14 }: Props) {
                 </span>
               ) : null}
             </div>
+            {selectedMannschaft &&
+            (selectedMannschaft.fahrer ||
+              selectedMannschaft.kdt ||
+              selectedMannschaft.mannschaft.length > 0) ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  paddingTop: 8,
+                  borderTop: "1px solid var(--border)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 5,
+                  fontSize: 12,
+                }}
+              >
+                {selectedMannschaft.fahrer ? (
+                  <div>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10,
+                        color: "var(--fg-3)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      Fahrer:
+                    </span>{" "}
+                    <strong>{selectedMannschaft.fahrer}</strong>
+                  </div>
+                ) : null}
+                {selectedMannschaft.kdt ? (
+                  <div>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10,
+                        color: "var(--fg-3)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      Kdt:
+                    </span>{" "}
+                    <strong>{selectedMannschaft.kdt}</strong>
+                  </div>
+                ) : null}
+                {selectedMannschaft.mannschaft.length > 0 ? (
+                  <div>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10,
+                        color: "var(--fg-3)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      Mannschaft:
+                    </span>
+                    <ul style={{ margin: "4px 0 0 0", paddingLeft: 14 }}>
+                      {selectedMannschaft.mannschaft.map((name, i) => (
+                        <li key={i} style={{ fontWeight: 500 }}>
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         <Legend />
       </div>
     </div>
+  );
+}
+
+/**
+ * Drei-Tasten-Gruppe für die Zoom-Modi: Lagebild (Detail), Gesamt
+ * (alles im Frame), Recenter (zurück auf Standard).
+ */
+function ZoomButtons({
+  onGesamt,
+  onLagebild,
+  onRecenter,
+}: {
+  onGesamt: () => void;
+  onLagebild: () => void;
+  onRecenter: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className="icon-btn"
+        onClick={onLagebild}
+        aria-label="Lagebild (Detailansicht ~200 m um Einsatzort)"
+        title="Lagebild · ~200 m um Einsatzort"
+      >
+        <ScanSearch size={14} />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        onClick={onGesamt}
+        aria-label="Gesamtansicht (alle Fahrzeuge + Einsatzort)"
+        title="Gesamt · alle Fahrzeuge + Einsatzort"
+      >
+        <Maximize size={14} />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        onClick={onRecenter}
+        aria-label="Auf Einsatzort zentrieren"
+        title="Zentrieren"
+      >
+        <Crosshair size={14} />
+      </button>
+    </>
   );
 }
 

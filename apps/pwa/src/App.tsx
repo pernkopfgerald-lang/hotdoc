@@ -8,6 +8,7 @@ import { registerDevice } from "./lib/device-register";
 import { flushOutbox } from "./lib/einsatz-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { BerichtPage } from "./pages/BerichtPage";
+import { FlorianMapPopout } from "./pages/FlorianMapPopout";
 import { Setup } from "./pages/Setup";
 import { ZentralePage } from "./pages/ZentralePage";
 import type { FahrzeugId } from "@hotdoc/shared";
@@ -40,6 +41,13 @@ function readQrTokenFromUrl(): string | null {
 }
 
 export function App() {
+  // Pop-Out-Route: wird via window.open('/florian-map') aus ZentralePage
+  // geoeffnet. Eigene Toplevel-Page ohne State-Machine, eigenes Polling.
+  // Bypassed Setup/Handoff/QR-Routing — wenn kein Token vorhanden, zeigt
+  // FlorianMapPopout eine eigene Fehlermeldung.
+  if (window.location.pathname === "/florian-map") {
+    return <FlorianMapPopout />;
+  }
   const [state, setState] = useState<State>({ kind: "loading" });
   // Re-Boot-Generation: erhoeht sich wenn der Watchdog erkennt dass das
   // Tablet lange weg war. Dadurch laeuft boot() erneut und holt frische Daten.

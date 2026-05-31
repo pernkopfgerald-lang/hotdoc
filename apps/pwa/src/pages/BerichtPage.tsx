@@ -34,15 +34,16 @@ import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
 import { loadReportStates, saveReportState } from "../lib/report-state";
 import { describeFailure, transcribeAudio } from "../lib/transcribe";
-import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
+import { FAHRZEUGE, FLORIAN_POSITION, type FahrzeugId } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
 
 const ROAD_FACTOR = 1.3;
 
-/** Feuerwehrhaus FF Eberstalzell, Solarstrasse 1 — Bezugspunkt fuer KM-
+/** Re-Export aus @hotdoc/shared/constants/florian — siehe dort.
+ * Feuerwehrhaus FF Eberstalzell, Solarstrasse 1 — Bezugspunkt fuer KM-
  *  Berechnung und Map-Fallback wenn das Tablet noch keine GPS-Position hat. */
-const HOME_POS = { lat: 48.0884, lng: 13.9586 };
+const HOME_POS = FLORIAN_POSITION;
 
 const DEFAULT_AUFTRAG_TYPEN: readonly string[] = [
   "Brandbekämpfung außen",

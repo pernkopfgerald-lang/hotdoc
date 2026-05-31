@@ -42,11 +42,12 @@ import { useGeolocation } from "../lib/geo";
 import {
   BETEILIGTE_STELLEN as DEFAULT_BETEILIGTE_STELLEN,
   FAHRZEUGE,
+  FLORIAN_POSITION,
   SONSTIGE_FF as DEFAULT_SONSTIGE_FF,
   type FahrzeugId,
 } from "@hotdoc/shared";
 
-const HOME_POS = { lat: 48.0884, lng: 13.9586 };
+const HOME_POS = FLORIAN_POSITION;
 
 interface FahrzeugberichtApiDoc {
   _id: string;
@@ -239,6 +240,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const aktiverEinsatz: EinsatzApiDoc | null =
     aktiveEinsaetze.find((e) => e._id === aktiverEinsatzId) ?? null;
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
+  /**
+   * Wenn der Funktionaer auf eine Status-Card klickt, markiert das den
+   * Fahrzeug-Marker auf der FlorianMap mit dem Pulse-Ring + oeffnet das
+   * Detail-Panel + klappt unter der Status-Card die Mannschafts-Details auf.
+   * Null = nichts ausgewaehlt (Default).
+   */
+  const [selectedFahrzeugId, setSelectedFahrzeugId] = useState<FahrzeugId | null>(null);
   /** Live-Pings der Fahrzeuge aus /api/positions (alle 3 s). Zentrale fehlt
    *  hier absichtlich — die ist am Feuerwehrhaus, nicht im Einsatz. */
   const [positions, setPositions] = useState<
@@ -727,13 +735,22 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     id: FahrzeugId;
     status: "wartend" | "im_einsatz" | "abgeschlossen";
     mannschaft: number;
+    fahrer?: string;
     kdt?: string;
+    mannschaftNamen: string[];
     asAktiv: number;
     oelSaecke: number;
   }[] = FAHRZEUG_ORDER.map((id) => {
     const bericht = fahrzeugberichte.find((b) => b.fahrzeugId === id);
     if (!bericht) {
-      return { id, status: "wartend" as const, mannschaft: 0, asAktiv: 0, oelSaecke: 0 };
+      return {
+        id,
+        status: "wartend" as const,
+        mannschaft: 0,
+        asAktiv: 0,
+        oelSaecke: 0,
+        mannschaftNamen: [],
+      };
     }
     const mannschaftSlots = (bericht.mannschaft ?? []).filter(
       (m) => typeof m.personId === "number" && m.personId > 0,
@@ -745,13 +762,26 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     const asAktiv = mannschaftSlots.filter((m) => m.atemschutzAktiv === true).length;
     const kdtId = bericht.fahrzeugKdtPersonId;
     const kdtName = kdtId ? (personenMap.get(kdtId) ?? `Pers-ID ${kdtId}`) : undefined;
+    const fahrerId = bericht.fahrerPersonId;
+    const fahrerName = fahrerId
+      ? (personenMap.get(fahrerId) ?? `Pers-ID ${fahrerId}`)
+      : undefined;
+    const mannschaftNamen = mannschaftSlots
+      .map((m) =>
+        m.personId !== undefined
+          ? (personenMap.get(m.personId) ?? `Pers-ID ${m.personId}`)
+          : undefined,
+      )
+      .filter((s): s is string => !!s);
     const status: "im_einsatz" | "abgeschlossen" =
       bericht.status === "abgeschlossen" ? "abgeschlossen" : "im_einsatz";
     return {
       id,
       status,
       mannschaft: headcount,
+      ...(fahrerName ? { fahrer: fahrerName } : {}),
       ...(kdtName ? { kdt: kdtName } : {}),
+      mannschaftNamen,
       asAktiv,
       oelSaecke: bericht.oelbindemittelSaecke ?? 0,
     };
@@ -1673,33 +1703,185 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     ? { cls: "warn", label: "Im Einsatz", Icon: Activity }
                     : { cls: "neutral", label: "Wartend", Icon: Lock };
               const Icon = badge.Icon;
+              const isSelected = selectedFahrzeugId === f.id;
+              const isClickable = f.status !== "wartend";
+              const toggleSelect = (): void => {
+                if (!isClickable) return;
+                const next = isSelected ? null : f.id;
+                setSelectedFahrzeugId(next);
+                // Wenn ausgewaehlt: kurz zur Karte runterscrollen damit der
+                // pulsierende Marker im Sichtfeld ist (smoothes UX).
+                if (next) {
+                  setTimeout(() => {
+                    const mapEl = document.querySelector(
+                      "[data-florian-map-anchor]",
+                    );
+                    mapEl?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }, 80);
+                }
+              };
               return (
-                <div key={f.id} className="crew-row filled">
-                  <div className="crew-num" style={{ width: 64, fontFamily: "var(--font-mono)" }}>
-                    {shortCode(f.id)}
-                  </div>
-                  <div className="crew-name" style={{ flex: "0 1 auto" }}>
-                    {fz.funkrufname}
-                  </div>
+                <div
+                  key={f.id}
+                  style={{ display: "flex", flexDirection: "column", gap: 0 }}
+                >
                   <div
+                    className="crew-row filled"
+                    onClick={toggleSelect}
+                    role={isClickable ? "button" : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
+                    onKeyDown={
+                      isClickable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              toggleSelect();
+                            }
+                          }
+                        : undefined
+                    }
                     style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      color: "var(--fg-3)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      fontWeight: 600,
-                      marginLeft: 12,
+                      cursor: isClickable ? "pointer" : "default",
+                      borderRadius: isSelected ? "10px 10px 0 0" : undefined,
+                      transition: "background 160ms ease",
+                      ...(isSelected
+                        ? {
+                            background:
+                              "color-mix(in srgb, var(--warn) 14%, transparent)",
+                            outline: "1px solid var(--warn)",
+                          }
+                        : {}),
                     }}
+                    aria-pressed={isClickable ? isSelected : undefined}
                   >
-                    {f.kdt ?? "—"} · {f.mannschaft} Pers.
+                    <div
+                      className="crew-num"
+                      style={{ width: 64, fontFamily: "var(--font-mono)" }}
+                    >
+                      {shortCode(f.id)}
+                    </div>
+                    <div className="crew-name" style={{ flex: "0 1 auto" }}>
+                      {fz.funkrufname}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        color: "var(--fg-3)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        fontWeight: 600,
+                        marginLeft: 12,
+                      }}
+                    >
+                      {f.kdt ?? "—"} · {f.mannschaft} Pers.
+                    </div>
+                    <div className="crew-meta" style={{ marginLeft: "auto" }}>
+                      <span className={`badge ${badge.cls}`} style={{ gap: 4 }}>
+                        <Icon size={11} />
+                        {badge.label}
+                      </span>
+                    </div>
                   </div>
-                  <div className="crew-meta" style={{ marginLeft: "auto" }}>
-                    <span className={`badge ${badge.cls}`} style={{ gap: 4 }}>
-                      <Icon size={11} />
-                      {badge.label}
-                    </span>
-                  </div>
+                  {isSelected ? (
+                    <div
+                      style={{
+                        padding: "10px 16px 12px 80px",
+                        background:
+                          "color-mix(in srgb, var(--warn) 8%, transparent)",
+                        border: "1px solid var(--warn)",
+                        borderTop: "none",
+                        borderRadius: "0 0 10px 10px",
+                        display: "grid",
+                        gridTemplateColumns:
+                          "minmax(110px, max-content) 1fr",
+                        rowGap: 4,
+                        columnGap: 12,
+                        fontSize: 12.5,
+                        animation:
+                          "glass-reveal 180ms var(--ease-decel) both",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 10,
+                          color: "var(--fg-3)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          alignSelf: "center",
+                        }}
+                      >
+                        Fahrer
+                      </span>
+                      <strong>{f.fahrer ?? "—"}</strong>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 10,
+                          color: "var(--fg-3)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          alignSelf: "center",
+                        }}
+                      >
+                        Fahrzeug-Kdt.
+                      </span>
+                      <strong>{f.kdt ?? "—"}</strong>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 10,
+                          color: "var(--fg-3)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Mannschaft
+                      </span>
+                      <div>
+                        {f.mannschaftNamen.length > 0 ? (
+                          <ul
+                            style={{
+                              margin: 0,
+                              paddingLeft: 16,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {f.mannschaftNamen.map((name, i) => (
+                              <li key={i}>{name}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span style={{ color: "var(--fg-3)" }}>
+                            (noch keine Mannschaft erfasst)
+                          </span>
+                        )}
+                      </div>
+                      {f.asAktiv > 0 ? (
+                        <>
+                          <span
+                            style={{
+                              fontFamily: "var(--font-mono)",
+                              fontSize: 10,
+                              color: "var(--warn)",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                              alignSelf: "center",
+                            }}
+                          >
+                            Atemschutz
+                          </span>
+                          <strong style={{ color: "var(--warn)" }}>
+                            {f.asAktiv} Pers. aktiv
+                          </strong>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -1710,7 +1892,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         )}
 
         <SectionHead title="Karte · Live-Positionen" />
-        <section className="card">
+        <section className="card" data-florian-map-anchor>
           <div className="card-head">
             <div className="card-title">
               <MapIcon size={20} />
@@ -1732,6 +1914,23 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               : {})}
             fahrzeuge={buildFleetForFlorianMap(positions, fahrzeugStatus)}
             zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
+            selectedFahrzeugId={selectedFahrzeugId}
+            onSelectFahrzeug={(id) =>
+              setSelectedFahrzeugId(id as FahrzeugId | null)
+            }
+            mannschaftByFahrzeug={Object.fromEntries(
+              fahrzeugStatus.map((f) => [
+                f.id,
+                {
+                  fahrzeugId: f.id,
+                  ...(f.fahrer ? { fahrer: f.fahrer } : {}),
+                  ...(f.kdt ? { kdt: f.kdt } : {}),
+                  mannschaft: f.mannschaftNamen,
+                },
+              ]),
+            )}
+            enablePopOut
+            defaultHeight={500}
           />
           <p
             style={{
