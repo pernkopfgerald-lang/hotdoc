@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// Release-Signing-Konfig: liest Schluessel-Pfad und Passwoerter aus
+// keystore.properties (gitignored). Liegt die Datei nicht, wird kein
+// signingConfig gesetzt — Release-Build scheitert mit klarer Fehlermeldung,
+// Debug-Build laeuft trotzdem.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "at.ffeberstalzell.hotdoc"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +17,11 @@ android {
         applicationId "at.ffeberstalzell.hotdoc"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // versionCode IMMER inkrementieren bei neuem Release — Android
+        // erkennt das Update sonst nicht. versionName ist die anzeigte
+        // Version (semver), versionCode ist die fortlaufende Integer-ID.
         versionCode 1
-        versionName "1.0"
+        versionName "0.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +29,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            release {
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+                storeFile rootProject.file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
