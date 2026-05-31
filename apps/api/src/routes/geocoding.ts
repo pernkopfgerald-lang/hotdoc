@@ -30,11 +30,20 @@ import { logger } from "../lib/logger.js";
 
 export const geocodingRouter: Router = Router();
 
+/**
+ * Grobe Bounding-Box des Gemeindegebiets Eberstalzell. Anchored um die
+ * verifizierte FF-Position (Solarstrasse 1: 48.0396, 13.9927), mit ca.
+ * 5 km Puffer in alle Richtungen damit Einsaetze am Gemeinderand auch
+ * als "im Pflichtbereich" erkannt werden.
+ *
+ * Frueher war die Bbox bei 48.06-48.11 — das war 4-5 km zu weit
+ * noerdlich (zentriert auf Steinerkirchen/Fischlham statt Eberstalzell).
+ */
 const EBERSTALZELL_BBOX = {
-  latMin: 48.06,
-  latMax: 48.11,
-  lngMin: 13.91,
-  lngMax: 14.01,
+  latMin: 48.0,
+  latMax: 48.08,
+  lngMin: 13.93,
+  lngMax: 14.04,
 };
 
 export function isInEberstalzell(lat: number, lng: number): boolean {
