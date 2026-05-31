@@ -248,10 +248,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
   // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
   "app-version": {
-    currentVersion: "0.1.3",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.3-debug.apk",
+    currentVersion: "0.1.4",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.4-debug.apk",
     releaseNotes:
-      "v0.1.3 — Solo-Tablet + KM-Automatik + About-Seite\n\n• Solo-Tablet-Workflow: Im Abschluss-Modal die Option 'Einsatzbericht ebenfalls jetzt abschliessen' — kein Florianstation-Schritt noetig wenn nur ein Fahrzeug am Einsatz war.\n• KM-Automatik: Strecke FF-Haus ↔ Einsatzort × 2, primaer ueber GraphHopper-Route, sonst Luftlinie × 1,3. Fahrzeugkdt kann ueberschreiben — manueller Wert gewinnt immer.\n• WAS-Box-Probealarm-Filter: samstaegliche Probealarme werden nicht mehr als Einsatz angelegt.\n• About-Seite in PWA + Backoffice mit Entwickler-Kontakt und Release-Notes-Historie.",
+      "v0.1.4 — Schnellere Disposition + Roter Pop-Up Neuer Einsatz\n\n• Polling-Intervall von 30 s auf 5 s reduziert — Disposition von der Florianstation ist binnen weniger Sekunden am Fahrzeug-Tablet sichtbar (vorher bis zu 30 s Lag).\n• Rotes Pop-Up 'Neuer Einsatz' mit Backdrop-Blur, wenn waehrend eines laufenden Einsatzes ein weiterer Alarm reinkommt — der Fahrzeugkdt entscheidet bewusst, der bisherige Einsatz bleibt als Tab erhalten.\n• Bug-Fix Stale-Closure: der Pop-Up-Trigger sah vorher nur den initialen leeren Einsatz-Stand — jetzt zuverlaessig aktuell.",
     minSupported: "0.1.0",
   },
 };

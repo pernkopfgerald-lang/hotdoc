@@ -108,6 +108,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   /** Read-only Archiv-Modal. */
   const [archivOpen, setArchivOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  /**
+   * Pop-Up bei neuem Einsatz waehrend bereits ein Einsatz mit User-Eingaben
+   * laeuft. Der Fahrzeugkdt soll bewusst entscheiden, nicht aus Versehen
+   * mitten in der Eingabe in einen neuen Einsatz wechseln. Rotes Modal mit
+   * Backdrop-Blur — klickbar ist nur "Oeffnen" oder "Spaeter" (waehrend
+   * "Spaeter" bleibt der Eintrag in der Tab-Leiste sichtbar).
+   */
+  const [newEinsatzPopup, setNewEinsatzPopup] = useState<{
+    id: string;
+    einsatzart: string;
+    einsatzort: string;
+  } | null>(null);
 
   // einsaetze[] startet leer — kein Phantom-Einsatz, keine Vorbelegung.
   // Backend-Poll fuegt einen Eintrag hinzu sobald ein echter Einsatz im
@@ -132,6 +144,19 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     mannschaft: MannschaftSlotData[];
   }
   const inheritPersonalRef = useRef<InheritedPersonal | null>(null);
+
+  // Refs fuer den Live-Zugriff in setInterval-Closures. Das useEffect mit
+  // [fahrzeugId] bindet runPoll genau einmal — `einsaetze` und `activeId`
+  // wuerden im Closure einfrieren und immer den Initial-Snapshot sehen
+  // (Bug: Pop-Up triggert nie, weil cur immer null ist). Refs umgehen das.
+  const einsaetzeRef = useRef(einsaetze);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => {
+    einsaetzeRef.current = einsaetze;
+  }, [einsaetze]);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
 
   const geo = useGeolocation();
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
@@ -329,11 +354,41 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           return [...synced, ...additions];
         });
         if (anyNewToUs && firstNewId) {
-          setActiveId(firstNewId);
           try {
             navigator.vibrate?.([100, 60, 100, 60, 200]);
           } catch {
             // egal — Vibration ist Komfort, nicht Pflicht
+          }
+          // Verhaltens-Logik: wenn das Tablet GAR KEINEN aktiven Einsatz hatte
+          // (Idle oder bestehender abgeschlossen), direkt umschalten — der
+          // Funktionaer wartet ja darauf. Wenn aber schon ein laufender
+          // Einsatz mit echten User-Eingaben offen ist (Mannschaft eingetragen,
+          // Geraete gewaehlt, Auftraege geschrieben), zeigen wir stattdessen
+          // ein rotes Pop-Up — er soll bewusst entscheiden, nicht aus Versehen
+          // mitten in der Eingabe rausgerissen werden.
+          const cur = einsaetzeRef.current.find((e) => e.id === activeIdRef.current);
+          const hasActiveWork =
+            cur &&
+            !cur.abgeschlossen &&
+            (cur.fahrer ||
+              cur.kdt ||
+              cur.mannschaft.some((m) => m.person) ||
+              cur.gearSelected.size > 0 ||
+              cur.oelSaecke > 0 ||
+              cur.auftraege.length > 0);
+          if (hasActiveWork) {
+            // Pop-Up triggern — Werte aus der frisch erkannten Einsatz-Doc.
+            const target = list.items.find((it) => it._id === firstNewId);
+            if (target) {
+              setNewEinsatzPopup({
+                id: firstNewId,
+                einsatzart:
+                  target.einsatzart ?? target.einsatzartFreitext ?? "Neuer Einsatz",
+                einsatzort: target.einsatzort ?? "",
+              });
+            }
+          } else {
+            setActiveId(firstNewId);
           }
         }
 
@@ -379,7 +434,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     };
 
     void runPoll();
-    const t = setInterval(() => void runPoll(), 30_000);
+    // Polling alle 5 s. Vorher waren es 30 s — das war der Hauptgrund warum
+    // die Disposition von der Florianstation bis zum Empfang am Fahrzeug-
+    // Tablet bis zu 30 s gebraucht hat. Fuenf Sekunden ist die richtige
+    // Wahl: schnell genug damit der Funktionaer auf der Florianstation den
+    // Wechsel quasi-live sieht, langsam genug damit keine Backend-Last
+    // entsteht (5 Tablets × 12 Polls/min = 60 Calls/min auf einen
+    // CouchDB-_all_docs-Endpoint mit prefix-Limit — vernachlaessigbar).
+    const t = setInterval(() => void runPoll(), 5_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -1672,6 +1734,122 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       />
 
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+
+      {/* ─── Pop-Up: Neuer Einsatz waehrend laufender Bearbeitung.
+           Backdrop-Blur sperrt den Hintergrund visuell. Der Fahrzeugkdt
+           muss entweder "Oeffnen" klicken (wechselt activeId, der bisherige
+           bleibt in der Tab-Leiste sichtbar) oder "Spaeter" (Pop-Up
+           geht weg, neuer Einsatz bleibt als Tab in der Leiste). ─── */}
+      {newEinsatzPopup && (
+        <div
+          className="modal-backdrop"
+          style={{
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-einsatz-popup-title"
+        >
+          <div
+            style={{
+              background: "var(--bg, #fff)",
+              color: "var(--text, #111)",
+              borderRadius: 16,
+              padding: "24px 28px",
+              width: "min(520px, calc(100% - 32px))",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+              border: "3px solid #dc2626",
+              animation: "pulse-red 1.4s ease-in-out infinite",
+            }}
+          >
+            <style>{`
+              @keyframes pulse-red {
+                0%, 100% { box-shadow: 0 24px 60px rgba(0,0,0,0.35), 0 0 0 0 rgba(220,38,38,0.6); }
+                50%      { box-shadow: 0 24px 60px rgba(0,0,0,0.35), 0 0 0 12px rgba(220,38,38,0); }
+              }
+            `}</style>
+            <div
+              style={{
+                display: "inline-block",
+                padding: "4px 14px",
+                borderRadius: 999,
+                background: "#dc2626",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 13,
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                marginBottom: 12,
+              }}
+            >
+              ⚠ Neuer Einsatz
+            </div>
+            <h2
+              id="new-einsatz-popup-title"
+              style={{ margin: "0 0 8px 0", fontSize: 22, lineHeight: 1.25 }}
+            >
+              {newEinsatzPopup.einsatzart || "Einsatz"}
+            </h2>
+            {newEinsatzPopup.einsatzort && (
+              <div
+                style={{
+                  fontSize: 16,
+                  color: "var(--text-muted, #555)",
+                  marginBottom: 18,
+                }}
+              >
+                📍 {newEinsatzPopup.einsatzort}
+              </div>
+            )}
+            <div
+              style={{
+                fontSize: 14,
+                color: "var(--text-muted, #666)",
+                marginBottom: 20,
+                lineHeight: 1.5,
+              }}
+            >
+              Ein neuer Einsatz wurde dem Fahrzeug zugewiesen. Der aktuelle
+              Bericht bleibt erhalten und ist über die Tab-Leiste oben
+              erreichbar.
+            </div>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setNewEinsatzPopup(null)}
+                style={{ minWidth: 110 }}
+              >
+                Später
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setActiveId(newEinsatzPopup.id);
+                  setNewEinsatzPopup(null);
+                }}
+                style={{
+                  minWidth: 140,
+                  background: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "#fff",
+                  fontWeight: 700,
+                }}
+                autoFocus
+              >
+                Einsatz öffnen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

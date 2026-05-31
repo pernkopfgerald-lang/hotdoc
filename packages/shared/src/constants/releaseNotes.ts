@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.4",
+    date: "2026-05-31",
+    title: "Schnellerer Disposition + Roter Pop-Up Neuer Einsatz",
+    bullets: [
+      "Polling-Intervall von 30 s auf 5 s reduziert — Disposition von der Florianstation ist binnen weniger Sekunden am Fahrzeug-Tablet sichtbar (vorher bis zu 30 s Lag)",
+      "Rotes Pop-Up 'Neuer Einsatz' mit Backdrop-Blur, wenn während eines laufenden Einsatzes ein weiterer Alarm reinkommt — der Fahrzeugkdt entscheidet bewusst, der bisherige Einsatz bleibt als Tab erhalten",
+      "Bug-Fix Stale-Closure: der Pop-Up-Trigger sah vorher nur den initialen leeren Einsatz-Stand — jetzt zuverlässig aktuell",
+    ],
+  },
+  {
     version: "0.1.3",
     date: "2026-05-31",
     title: "Solo-Tablet + KM-Automatik + About-Seite",
