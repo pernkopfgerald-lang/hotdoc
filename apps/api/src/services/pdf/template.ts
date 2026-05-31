@@ -119,7 +119,9 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   const vTime = (val: string | undefined): string =>
     val ? `<span style="color:${FILLED};font-weight:600">${escape(formatTime(val))}</span>` : "__ : __";
   const triBox = (val: boolean | null | undefined, label: string): string => {
-    if (val === true) return `${boxFilled(true)} <strong style="color:${FILLED}">${label}</strong>`;
+    // Markierung jetzt nur ueber die Box selbst — User-Wunsch dass der
+    // Text DAHINTER nicht eingefaerbt wird sondern die Box angekreuzt.
+    if (val === true) return `${boxFilled(true)} ${label}`;
     if (val === false) return `${boxFilled(false)} ${label}`;
     return `${box(false)} ${label}`;
   };
@@ -262,7 +264,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td>Alarmiert durch
         <span class="cb">${boxFilled(d.alarmierungAuthor === "BWST")} BWST</span>
         <span class="cb">${boxFilled(d.alarmierungAuthor === "LWZ")} LWZ</span>
-        ${d.alarmierungAuthor && d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ" ? `<span class="cb">${boxFilled(true)} <strong style="color:${FILLED}">${escape(d.alarmierungAuthor)}</strong></span>` : ""}
+        ${d.alarmierungAuthor && d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ" ? `<span class="cb">${boxFilled(true)} ${escape(d.alarmierungAuthor)}</span>` : ""}
       </td>
     </tr>
     <tr>
@@ -283,7 +285,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       ${FAHRZEUGE_REIHE.map(
         (f) => {
           const sel = eingesetzeFzgSet.has(f.toUpperCase());
-          return `<td style="text-align:center;${sel ? `color:${FILLED};font-weight:700;` : ""}">${boxFilled(sel)} ${f}</td>`;
+          // Markierung jetzt nur ueber die Box — Text bleibt schwarz
+          return `<td style="text-align:center">${boxFilled(sel)} ${f}</td>`;
         },
       ).join("")}
     </tr>
@@ -295,7 +298,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       (row) => `<tr>${row
         .map((art) => {
           const selected = d.einsatzart === art;
-          return `<td class="col"><span class="cb">${boxFilled(selected)}</span> <span class="${selected ? "check-on" : ""}">${art}</span></td>`;
+          // Markierung nur ueber die Box — Text bleibt schwarz
+          return `<td class="col">${boxFilled(selected)} ${art}</td>`;
         })
         .join("")}</tr>`,
     ).join("")}
@@ -317,7 +321,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${
           d.beteiligteStellen && d.beteiligteStellen.length > 0
             ? d.beteiligteStellen
-                .map((s) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(s)}</span><br>`)
+                .map((s) => `${boxFilled(true)} ${escape(s)}<br>`)
                 .join("")
             : `<span style="color:#888">keine angegeben</span>`
         }
@@ -344,11 +348,11 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${
           d.sonstigeAnwesendeFF && d.sonstigeAnwesendeFF.length > 0
             ? d.sonstigeAnwesendeFF
-                .map((f) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(f)}</span><br>`)
+                .map((f) => `${boxFilled(true)} ${escape(f)}<br>`)
                 .join("")
             : `<span style="color:#888">keine</span>`
         }
-        ${d.sonstigeFreitext ? `<div style="margin-top:2pt;color:${FILLED}">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
+        ${d.sonstigeFreitext ? `<div style="margin-top:2pt">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
       </td>
       <td class="val" style="vertical-align:top">
         Eingesetzt: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
@@ -512,10 +516,21 @@ function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
     .join("");
 }
 
+/**
+ * Echte HTML-Checkbox die in PDF-Output zuverlaessig dargestellt wird.
+ * Frueher Unicode ☒/☐ — Chromium-PDF-Renderer faellt bei manchen
+ * Fonts auf das Default-Glyph (immer leere Box) zurueck, was nach
+ * User-Beschwerde im Screenshot sichtbar wurde.
+ *
+ * Layout: 10x10 px Quadrat mit 1pt-Border. Bei checked=true ist
+ * der Hintergrund FILLED (#1e3a8a) und ein weisses X drueber, sehr
+ * gut sichtbar im Druck.
+ */
 function boxFilled(checked: boolean): string {
-  return checked
-    ? `<span style="color:#1e3a8a">☒</span>`
-    : `<span>☐</span>`;
+  if (checked) {
+    return `<span style="display:inline-block;width:10px;height:10px;border:1pt solid #1e3a8a;background:#1e3a8a;color:#fff;text-align:center;font-size:9pt;line-height:9pt;font-weight:700;vertical-align:middle;margin-right:2pt">✕</span>`;
+  }
+  return `<span style="display:inline-block;width:10px;height:10px;border:1pt solid #000;vertical-align:middle;margin-right:2pt"></span>`;
 }
 
 export function renderSpickzettelHtml(d: BerichtDaten): string {
