@@ -60,3 +60,14 @@ syBOS_API_CMS_wiki.zip
 # Personenbezogene Stammdaten (DSGVO) — niemals committen
 Personal-Liste*.xlsx
 Personal-Liste*.csv
+
+# Capacitor — Android-Build-Artefakte
+apps/pwa/android/.gradle/
+apps/pwa/android/app/build/
+apps/pwa/android/build/
+apps/pwa/android/local.properties
+# Signing-Keys NIEMALS committen
+*.jks
+*.keystore
+keystore.properties
+google-services.json
