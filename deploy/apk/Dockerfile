@@ -1,11 +1,10 @@
 FROM caddy:2.8-alpine
 
-# Caddy konfiguriert: APKs liegen in /srv, /healthz reply, statisches
-# Listing fuer Browser-Access (Funktionaer kann dann auch Versionen
-# vergleichen ohne Backoffice-UI).
-COPY Caddyfile /etc/caddy/Caddyfile
+# Build-Context ist Repo-Root (fly deploy ohne -context-Flag), daher
+# Dockerfile-Pfade relativ vom Repo-Root.
+COPY deploy/apk/Caddyfile /etc/caddy/Caddyfile
 
 # APK-Bundles werden direkt in das Image gebaut. Updates = Deploy.
-COPY apks/ /srv/
+COPY deploy/apk/apks/ /srv/
 
 EXPOSE 8080
