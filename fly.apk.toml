@@ -1,0 +1,42 @@
+# ───────────────────────────────────────────────────────────────
+# HotDoc · APK-Distribution
+# Statischer Caddy-Server der signierte Android-APKs ausliefert.
+# Auth ueber Backend-Proxy (/api/devices/app-version liefert URL +
+# kurzlebigen Token).
+# Deploy:
+#   flyctl deploy -c fly.apk.toml --dockerfile deploy/apk/Dockerfile
+# ───────────────────────────────────────────────────────────────
+
+app             = "hotdoc-apk"
+primary_region  = "fra"
+
+[build]
+  dockerfile = "deploy/apk/Dockerfile"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https   = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 20
+
+  [[http_service.checks]]
+    grace_period = "5s"
+    interval = "60s"
+    method = "get"
+    timeout = "3s"
+    path = "/healthz"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "256mb"

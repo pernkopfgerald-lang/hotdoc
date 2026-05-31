@@ -1,0 +1,38 @@
+{
+  admin off
+  auto_https off
+}
+
+:8080 {
+  root * /srv
+  encode gzip
+
+  # Healthz-Endpoint fuer fly's HTTP-Check.
+  handle /healthz {
+    respond "ok" 200
+  }
+
+  # APK-Auslieferung: stabile Cache-Header damit Tablets sie nicht
+  # bei jedem Update-Check neu laden. Versionsnummer ist im Filename
+  # eindeutig, daher safe.
+  handle /*.apk {
+    header Cache-Control "public, max-age=86400, immutable"
+    header Content-Type "application/vnd.android.package-archive"
+    file_server browse {
+      hide /healthz
+    }
+  }
+
+  # Index/Browse — Funktionaer kann auf der URL nachschauen welche APKs
+  # da sind. Kein Auth — der APK-Filename ist nicht geheim (das Backend
+  # entscheidet welche Version aktuell-empfohlen ist).
+  handle / {
+    file_server browse
+  }
+
+  # Logs auf stdout
+  log {
+    output stdout
+    format console
+  }
+}

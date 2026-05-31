@@ -59,6 +59,12 @@ const EnvSchema = z
     VAPID_PRIVATE: z.string().optional(),
     VAPID_SUBJECT: z.string().email().default("admin@ff-eberstalzell.at"),
 
+    // FCM (Firebase Cloud Messaging) — Phase 2 fuer die Android-APK.
+    // Legacy-Server-Key aus der Firebase-Console (Cloud-Messaging-Tab,
+    // "Server key"). Optional — ohne Key liefert der FCM-Service nur
+    // Mock-Logs, die App laeuft trotzdem (nur ohne Background-Push).
+    FCM_SERVER_KEY: z.string().optional(),
+
     // OpenAI Whisper Fallback — Phase 5
     OPENAI_API_KEY: z.string().optional(),
 

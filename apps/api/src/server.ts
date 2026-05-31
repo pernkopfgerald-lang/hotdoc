@@ -11,6 +11,7 @@ import { adminRouter } from "./routes/admin.js";
 import { audioRouter } from "./routes/audio.js";
 import { authRouter } from "./routes/auth.js";
 import { configRouter } from "./routes/config.js";
+import { devicesRouter } from "./routes/devices.js";
 import { devRouter } from "./routes/dev.js";
 import { einsaetzeRouter } from "./routes/einsaetze.js";
 import { geocodeRouter } from "./routes/geocode.js";
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
   app.use(geocodeRouter);
   app.use(positionsRouter);
   app.use(routingRouter);
+  app.use(devicesRouter);
   app.use(devRouter);
 
   // — DB-Bootstrap —

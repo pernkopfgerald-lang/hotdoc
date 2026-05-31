@@ -14,6 +14,7 @@ import { env } from "../config.js";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
 import { listAlarms, type BlaulichtAlarmData } from "../services/blaulichtsms/client.js";
+import { pushAlarm } from "../services/fcm.js";
 import { recordBlaulichtSmsPoll } from "../services/state.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -93,6 +94,25 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
   };
   await db.insert(doc);
   logger.info({ alarmId: a.alarmId, einsatzort: doc.einsatzort }, "Neuer Einsatz aus Alarm angelegt");
+  // FCM-Push parallel ausfuehren — error darf den Alarm-Pfad nicht blockieren.
+  // BlaulichtSMS-Alarme gehen an ALLE Tablets (leere fahrzeugIds-Liste), weil
+  // die Disposition erst nachtraeglich vom Einsatzleiter in der Florianstation
+  // gemacht wird.
+  void pushAlarm([], {
+    notification: {
+      title: a.alarmText || "ALARM",
+      body: doc.einsatzort,
+    },
+    data: {
+      type: "alarm",
+      einsatzId: doc._id,
+      alarmId: a.alarmId,
+      einsatzort: doc.einsatzort,
+      alarmierungZeit: doc.alarmierungZeit,
+    },
+  }).catch((err) => {
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "FCM-Push beim Alarm fehlgeschlagen");
+  });
   return true;
 }
 
