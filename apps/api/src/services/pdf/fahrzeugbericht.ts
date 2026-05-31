@@ -1,35 +1,37 @@
 /**
  * Fahrzeugbericht-PDF im Stil der Papier-Vorlage der FF Eberstalzell.
  *
- * Layout (Vorderseite):
- *   Header: "FF Eberstalzell" + "Fahrzeugbericht"-Titel
- *   Block 1: Einsatzort · Datum · Uhrzeit von · Uhrzeit bis
- *   Block 2: Fahrzeug (Auswahl-Reihe, aktives angekreuzt) · Kilometer
- *   Block 3: Fahrer · Fahrzeug-Kdt. · Mannschaft 1-7 mit AS-Markierung
- *   Block 4: Geräte, Mittel (mit Hinweis-Beispielen Pumpe, Generator …)
- *   Footer: "Näherer Tätigkeitsbericht auf Rückseite"
+ * Layout 1:1 nach dem Originalvordruck:
+ *   Header: "FF Eberstalzell" (unterstrichen, links) +
+ *           "Fahrzeugbericht" (groß, rechts) auf horizontaler Linie
+ *   Tabelle 1: Einsatzort · Datum · Uhrzeit von · Uhrzeit bis
+ *   Tabelle 2: Fahrzeug (nur Klartext-Zeile, KEINE Checkbox-Reihe!) ·
+ *              Kilometer
+ *   Tabelle 3: Fahrer · Fahrzeug-Kdt. · Mannschaft 1-7 mit
+ *              "Mannschaft"-Label rowspan über die 7 Slots, AS rechts
+ *              als fetter Text NUR wenn aktiv (sonst leer)
+ *   Block 4:   Geräte, Mittel mit Hinweis-Beispielen im Label-Sub-Text
+ *   Footer:    Schwarzer Balken "Näherer Tätigkeitsbericht auf Rückseite"
  *
- * Layout (Rückseite, Seite 2):
+ * Seite 2 (Rückseite):
  *   Header: Fahrzeug-Funkrufname + Einsatzort + Datum
  *   Tätigkeitsbericht (Freitext, mehrzeilig)
- *   Einsatzchronik-Tabelle (gefiltert oder gesamt — sortiert nach Zeit)
+ *   Einsatzchronik-Tabelle (sortiert nach Zeit)
  *
- * Ausgefuellte Werte werden in dunkelblau (#1e3a8a) gerendert um sie
- * visuell vom Papier-Raster zu trennen — wie schon im Haupt-Template.
+ * Wichtig: Werte werden SCHWARZ gerendert (nicht dunkelblau wie im
+ * Hauptbericht) — der Fahrzeugbericht soll wie ein ausgefüllter
+ * Papier-Vordruck aussehen, nicht wie eine elektronische Auswertung.
  */
 
 import { getBrandLogoDataUrl } from "./brand.js";
 
-const FILLED = "#1e3a8a";
-
 const FAHRZEUG_LABELS: Record<string, string> = {
   kdo: "KDO",
-  "tlf-a-4000": "TANK",
-  "lfa-b": "LFB-A2",
+  "tlf-a-4000": "TLF-A 4000",
+  "lfa-b": "LFA-B",
   mtf: "MTF",
-  zentrale: "FLORIAN",
+  zentrale: "Florian Eberstalzell",
 };
-const FAHRZEUGE_AUSWAHL = ["KDO", "TANK", "LFB-A2", "MTF", "HR-Anhänger"] as const;
 
 export interface FahrzeugberichtDaten {
   einsatzId: string;
@@ -70,7 +72,7 @@ export function renderFahrzeugberichtHtml(d: FahrzeugberichtDaten): string {
   const bisStr = d.zeitBis ? formatTime(d.zeitBis) : "";
   const kmStr = d.kmGefahren > 0 ? `${d.kmGefahren.toFixed(1).replace(".", ",")} km` : "";
 
-  // Mannschafts-Liste auf 7 Slots auffuellen
+  // Mannschafts-Liste auf 7 Slots auffuellen.
   const mannschaftPadded: Array<{
     name: string;
     rang?: string;
@@ -81,253 +83,242 @@ export function renderFahrzeugberichtHtml(d: FahrzeugberichtDaten): string {
     mannschaftPadded.push(d.mannschaft[i] ?? null);
   }
 
+  // Fahrzeug-Zeile: "LFA-B "Pumpe Eberstalzell"" — Abkuerzung + Funkrufname
+  // in typografischen Doppel-Anfuehrungszeichen wie im Papier-Vordruck.
+  const fahrzeugStr = `${d.abk}${d.funkrufname ? ` “${d.funkrufname}”` : ""}`;
+
+  // Geraete-Liste: Komma-getrennt, plus separate Zeile fuer Ölbindemittel
+  // wenn Saecke > 0.
+  const geraeteList = d.geraete.length > 0 ? d.geraete.join(", ") : "";
+
   return /* html */ `<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
   <title>Fahrzeugbericht ${escape(d.abk)} · ${escape(d.einsatzId)}</title>
   <style>
-    @page { size: A4 portrait; margin: 14mm 14mm 16mm; }
+    @page { size: A4 portrait; margin: 16mm 16mm 18mm; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0;
       background: #fff;
       color: #000;
       font-family: Arial, "Helvetica Neue", sans-serif;
-      font-size: 10pt;
+      font-size: 11pt;
       line-height: 1.35;
     }
-    .page {
-      max-width: 182mm;
-      page-break-after: always;
-    }
+    .page { page-break-after: always; }
     .page:last-child { page-break-after: auto; }
 
+    /* ─── Header ─────────────────────────────────────────── */
     .hd {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: space-between;
       gap: 16px;
-      padding-bottom: 4mm;
-      border-bottom: 1.2pt solid #000;
-      margin-bottom: 5mm;
+      padding-bottom: 6mm;
+      border-bottom: 1pt solid #000;
+      margin-bottom: 8mm;
     }
     .hd-l {
-      display: flex;
-      align-items: center;
-      gap: 10px;
       font-weight: 700;
-      font-size: 16pt;
-      letter-spacing: -0.02em;
+      font-size: 18pt;
+      text-decoration: underline;
+      text-underline-offset: 3pt;
+      letter-spacing: -0.01em;
     }
-    .hd-l img { height: 14mm; width: auto; }
     .hd-r {
       font-weight: 700;
       font-size: 22pt;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.01em;
     }
 
+    /* ─── Allgemeine Tabellen-Optik (alle vier Bloecke) ──── */
     table.bx {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 4mm;
+      margin-bottom: 5mm;
     }
     table.bx td {
-      border: 0.6pt solid #000;
-      padding: 3pt 6pt;
+      border: 0.8pt solid #000;
+      padding: 5pt 8pt;
       vertical-align: middle;
     }
     table.bx td.lbl {
-      width: 32mm;
+      width: 38mm;
       font-weight: 700;
-      background: #fff;
-      font-size: 10.5pt;
+      font-size: 12pt;
     }
     table.bx td.val {
-      font-size: 11pt;
-      color: ${FILLED};
+      font-size: 12pt;
       font-weight: 600;
-      min-height: 7mm;
     }
-    table.bx td.val.empty { color: #000; font-weight: 400; }
 
-    .cb {
-      display: inline-block;
-      width: 4.5mm; height: 4.5mm;
+    /* ─── Mannschafts-Block (Tabelle 3) ──────────────────── */
+    table.crew {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 5mm;
+    }
+    table.crew td {
       border: 0.8pt solid #000;
-      margin-right: 2pt;
-      vertical-align: -1.5pt;
-      text-align: center;
-      line-height: 4mm;
-      font-size: 9pt;
+      padding: 5pt 8pt;
+      vertical-align: middle;
     }
-    .cb.on { background: ${FILLED}; color: #fff; font-weight: 700; }
-
-    .fzg-row td { padding: 4pt 6pt; font-size: 10.5pt; font-weight: 600; }
-    .fzg-row .chk { display: inline-flex; align-items: center; margin-right: 6pt; }
-
-    /* Mannschaft */
-    table.crew { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
-    table.crew td { border: 0.6pt solid #000; padding: 3pt 6pt; vertical-align: middle; }
-    table.crew td.lbl { width: 32mm; font-weight: 700; font-size: 10.5pt; }
-    table.crew td.lbl.merged { vertical-align: top; padding-top: 4pt; }
-    table.crew td.no { width: 8mm; font-weight: 700; text-align: center; font-size: 11pt; }
+    table.crew td.lbl {
+      width: 38mm;
+      font-weight: 700;
+      font-size: 12pt;
+    }
+    table.crew td.lbl.merged {
+      vertical-align: middle;
+      text-align: left;
+    }
+    table.crew td.no {
+      width: 8mm;
+      font-weight: 700;
+      text-align: left;
+      font-size: 12pt;
+      padding-left: 10pt;
+    }
     table.crew td.name {
-      font-size: 11pt;
-      color: ${FILLED};
-      font-weight: 600;
-      min-height: 6mm;
+      font-size: 12pt;
+      font-weight: 500;
     }
-    table.crew td.name.empty { color: #000; font-weight: 400; min-height: 6mm; }
     table.crew td.as {
-      width: 18mm;
-      text-align: center;
+      width: 20mm;
+      text-align: right;
       font-weight: 700;
-      font-size: 11pt;
-    }
-    table.crew td.as .yes {
-      display: inline-block;
-      padding: 1pt 5pt;
-      border-radius: 3pt;
-      background: ${FILLED};
-      color: #fff;
-      font-size: 9pt;
-      letter-spacing: 0.04em;
+      font-size: 12pt;
+      padding-right: 10pt;
     }
 
-    /* Geraete */
-    .geraete {
-      display: grid;
-      grid-template-columns: 32mm 1fr;
-      border: 0.6pt solid #000;
+    /* ─── Geraete-Block ──────────────────────────────────── */
+    table.geraete {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 5mm;
     }
-    .geraete .lbl {
-      padding: 4pt 6pt;
+    table.geraete td {
+      border: 0.8pt solid #000;
+      padding: 5pt 8pt;
+      vertical-align: top;
+    }
+    table.geraete td.lbl {
+      width: 38mm;
       font-weight: 700;
-      font-size: 10.5pt;
-      border-right: 0.6pt solid #000;
+      font-size: 12pt;
     }
-    .geraete .lbl small {
+    table.geraete td.lbl small {
       display: block;
       font-weight: 400;
       font-size: 8.5pt;
-      color: #555;
-      margin-top: 3pt;
-      line-height: 1.4;
+      color: #000;
+      margin-top: 4pt;
+      line-height: 1.45;
     }
-    .geraete .val {
-      padding: 4pt 6pt;
-      font-size: 10.5pt;
-      color: ${FILLED};
+    table.geraete td.val {
+      font-size: 12pt;
       font-weight: 500;
-      min-height: 26mm;
+      min-height: 28mm;
+      height: 28mm;
+      white-space: pre-line;
     }
-    .geraete .val.empty { color: #000; font-weight: 400; }
 
+    /* ─── Footer-Banner ──────────────────────────────────── */
     .ft {
-      margin-top: 4mm;
-      padding: 3pt 8pt;
+      margin-top: 6mm;
+      padding: 4pt 10pt;
       background: #000;
       color: #fff;
       font-weight: 700;
-      font-size: 10pt;
+      font-size: 11pt;
       text-align: right;
       letter-spacing: 0.01em;
     }
 
-    /* Seite 2 — Rueckseite */
+    /* ─── Seite 2 — Ruekseite ────────────────────────────── */
     .p2-head {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 4mm;
-      padding-bottom: 3mm;
-      border-bottom: 0.8pt solid #000;
-      margin-bottom: 5mm;
-      font-size: 10pt;
+      gap: 6mm;
+      padding-bottom: 4mm;
+      border-bottom: 1pt solid #000;
+      margin-bottom: 6mm;
+      font-size: 11pt;
     }
     .p2-head .lbl {
-      font-family: "Courier New", monospace;
-      font-size: 8.5pt;
+      font-size: 9pt;
       font-weight: 700;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       color: #555;
       margin-bottom: 2pt;
     }
     .p2-head .v {
-      font-size: 11pt;
-      font-weight: 600;
-      color: ${FILLED};
-    }
-
-    h2.section {
       font-size: 12pt;
       font-weight: 700;
+    }
+    h2.section {
+      font-size: 13pt;
+      font-weight: 700;
       margin: 0 0 3mm;
-      padding-bottom: 2pt;
+      padding-bottom: 3pt;
       border-bottom: 1pt solid #000;
-      letter-spacing: -0.01em;
     }
     .freitext {
-      min-height: 70mm;
-      padding: 5pt 7pt;
-      border: 0.6pt solid #000;
+      min-height: 80mm;
+      padding: 6pt 8pt;
+      border: 0.8pt solid #000;
       white-space: pre-wrap;
-      color: ${FILLED};
-      font-size: 10.5pt;
+      font-size: 11pt;
       line-height: 1.55;
-      margin-bottom: 6mm;
+      margin-bottom: 7mm;
     }
     .freitext:empty::before {
       content: "—";
       color: #999;
     }
 
-    table.chronik { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    table.chronik { width: 100%; border-collapse: collapse; font-size: 10pt; }
     table.chronik td {
       border-bottom: 0.4pt solid #ccc;
-      padding: 2.5pt 5pt;
+      padding: 3pt 6pt;
       vertical-align: top;
     }
     table.chronik thead td {
-      border-bottom: 0.8pt solid #000;
-      background: #f0f0f0;
+      border-bottom: 1pt solid #000;
+      background: #eee;
       font-weight: 700;
-      font-size: 8.5pt;
-      letter-spacing: 0.08em;
+      font-size: 9pt;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }
     table.chronik .ts {
       width: 18mm;
       font-family: "Courier New", monospace;
-      color: #555;
     }
     table.chronik .src {
-      width: 30mm;
-      color: ${FILLED};
+      width: 40mm;
       font-weight: 600;
     }
     table.chronik .empty {
       text-align: center;
       color: #888;
       font-style: italic;
-      padding: 8pt;
+      padding: 10pt;
     }
 
     .status-banner {
-      padding: 3pt 8pt;
-      background: ${FILLED};
+      padding: 3pt 9pt;
+      background: #d97706;
       color: #fff;
       font-size: 9pt;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       display: inline-block;
-      border-radius: 3pt;
-      margin-bottom: 3mm;
-    }
-    .status-banner.in-arbeit {
-      background: #d97706;
+      margin-bottom: 4mm;
     }
   </style>
 </head>
@@ -336,90 +327,61 @@ export function renderFahrzeugberichtHtml(d: FahrzeugberichtDaten): string {
   <!-- ═══ SEITE 1 — VORDERSEITE ═══════════════════════════ -->
   <div class="page">
     <div class="hd">
-      <div class="hd-l">
-        ${renderBrandLogo()}
-        <span>FF Eberstalzell</span>
-      </div>
+      <div class="hd-l">FF Eberstalzell</div>
       <div class="hd-r">Fahrzeugbericht</div>
     </div>
 
-    ${d.status === "in_arbeit" ? `<span class="status-banner in-arbeit">In Arbeit — noch nicht abgeschlossen</span>` : ""}
+    ${d.status === "in_arbeit" ? `<span class="status-banner">In Arbeit — noch nicht abgeschlossen</span>` : ""}
 
-    <!-- Block 1: Einsatzort, Datum, Uhrzeit -->
+    <!-- Tabelle 1: Einsatzort, Datum, Uhrzeit von, Uhrzeit bis -->
     <table class="bx">
-      <tr>
-        <td class="lbl">Einsatzort</td>
-        <td class="val${d.einsatzort ? "" : " empty"}">${escape(d.einsatzort) || ""}</td>
-      </tr>
-      <tr>
-        <td class="lbl">Datum</td>
-        <td class="val${datum ? "" : " empty"}">${escape(datum)}</td>
-      </tr>
-      <tr>
-        <td class="lbl">Uhrzeit von</td>
-        <td class="val${vonStr ? "" : " empty"}">${escape(vonStr)}</td>
-      </tr>
-      <tr>
-        <td class="lbl">Uhrzeit bis</td>
-        <td class="val${bisStr ? "" : " empty"}">${escape(bisStr)}</td>
-      </tr>
+      <tr><td class="lbl">Einsatzort</td><td class="val">${escape(d.einsatzort)}</td></tr>
+      <tr><td class="lbl">Datum</td><td class="val">${escape(datum)}</td></tr>
+      <tr><td class="lbl">Uhrzeit von</td><td class="val">${escape(vonStr)}</td></tr>
+      <tr><td class="lbl">Uhrzeit bis</td><td class="val">${escape(bisStr)}</td></tr>
     </table>
 
-    <!-- Block 2: Fahrzeug + KM -->
+    <!-- Tabelle 2: Fahrzeug-Text-Zeile + Kilometer -->
     <table class="bx">
-      <tr class="fzg-row">
-        <td class="lbl">Fahrzeug</td>
-        <td class="val">
-          ${FAHRZEUGE_AUSWAHL.map((f) => {
-            const isActive =
-              f === d.abk ||
-              (f === "TANK" && d.fahrzeugId === "tlf-a-4000") ||
-              (f === "LFB-A2" && d.fahrzeugId === "lfa-b");
-            return `<span class="chk"><span class="cb${isActive ? " on" : ""}">${isActive ? "X" : ""}</span>${f}</span>`;
-          }).join(" / ")}
-        </td>
-      </tr>
-      <tr>
-        <td class="lbl">Kilometer</td>
-        <td class="val${kmStr ? "" : " empty"}">${escape(kmStr)}</td>
-      </tr>
+      <tr><td class="lbl">Fahrzeug</td><td class="val">${escape(fahrzeugStr)}</td></tr>
+      <tr><td class="lbl">Kilometer</td><td class="val">${escape(kmStr)}</td></tr>
     </table>
 
-    <!-- Block 3: Fahrer, Kdt, Mannschaft -->
+    <!-- Tabelle 3: Fahrer + Kdt + Mannschaft 1-7 mit "Mannschaft"-Label
+         rowspan ueber die 7 Slot-Zeilen -->
     <table class="crew">
       <tr>
         <td class="lbl">Fahrer</td>
-        <td colspan="2" class="name${d.fahrer ? "" : " empty"}">${escape(d.fahrer ?? "")}</td>
-        <td class="as">&nbsp;</td>
+        <td colspan="2" class="name">${escape(d.fahrer ?? "")}</td>
+        <td class="as"></td>
       </tr>
       <tr>
         <td class="lbl">Fahrzeug-Kdt.</td>
-        <td colspan="2" class="name${d.fahrzeugKdt ? "" : " empty"}">${escape(d.fahrzeugKdt ?? "")}</td>
-        <td class="as">&nbsp;</td>
+        <td colspan="2" class="name">${escape(d.fahrzeugKdt ?? "")}</td>
+        <td class="as"></td>
       </tr>
       ${mannschaftPadded
         .map(
           (m, i) => `<tr>
             ${i === 0 ? `<td class="lbl merged" rowspan="7">Mannschaft</td>` : ""}
             <td class="no">${i + 1}</td>
-            <td class="name${m ? "" : " empty"}">${m ? escape(m.name) + (m.rang ? ` <span style="font-weight:400;color:#666">· ${escape(m.rang)}</span>` : "") : ""}</td>
-            <td class="as">${m?.atemschutzAktiv ? `<span class="yes">AS${m.atemschutzDauerMin ? ` ${m.atemschutzDauerMin}'` : ""}</span>` : `AS`}</td>
+            <td class="name">${m ? escape(m.name) : ""}</td>
+            <td class="as">${m?.atemschutzAktiv ? "AS" : ""}</td>
           </tr>`,
         )
         .join("")}
     </table>
 
-    <!-- Block 4: Geraete, Mittel -->
-    <div class="geraete">
-      <div class="lbl">
-        Geräte, Mittel
-        <small>Pumpe, Generator, Seilwinde, Leiter, Lüfter, Ölbindemittel, etc.</small>
-      </div>
-      <div class="val${d.geraete.length > 0 ? "" : " empty"}">
-        ${d.geraete.length > 0 ? d.geraete.map(escape).join(" · ") : ""}
-        ${d.oelSaecke > 0 ? `<div style="margin-top:3pt;font-weight:700">Ölbindemittel: ${d.oelSaecke} Sack</div>` : ""}
-      </div>
-    </div>
+    <!-- Tabelle 4: Geraete, Mittel -->
+    <table class="geraete">
+      <tr>
+        <td class="lbl">
+          Geräte, Mittel
+          <small>Pumpe, Generator,<br/>Seilwinde, Leiter, Lüfter<br/>Ölbindemittel, etc.</small>
+        </td>
+        <td class="val">${escape(geraeteList)}${d.oelSaecke > 0 ? `\nÖlbindemittel: ${d.oelSaecke} Sack` : ""}</td>
+      </tr>
+    </table>
 
     <div class="ft">Näherer Tätigkeitsbericht auf Rückseite</div>
   </div>
@@ -429,7 +391,7 @@ export function renderFahrzeugberichtHtml(d: FahrzeugberichtDaten): string {
     <div class="p2-head">
       <div>
         <div class="lbl">Fahrzeug</div>
-        <div class="v">${escape(d.abk)} · ${escape(d.funkrufname)}</div>
+        <div class="v">${escape(fahrzeugStr)}</div>
       </div>
       <div>
         <div class="lbl">Einsatz · ${escape(datum)}${vonStr ? ` · ab ${escape(vonStr)}` : ""}</div>
@@ -477,7 +439,7 @@ export function renderFahrzeugberichtHtml(d: FahrzeugberichtDaten): string {
 </html>`;
 }
 
-// ─── Helpers (lokal — Hauptbericht-Template hat eigene) ────────────
+// ─── Helpers ──────────────────────────────────────────────────
 
 function escape(s: string | undefined | null): string {
   if (s == null) return "";
@@ -494,9 +456,9 @@ function pad(n: number): string {
 
 function formatDate(iso: string): string {
   try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return "";
+    return `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}.${dt.getFullYear()}`;
   } catch {
     return "";
   }
@@ -504,14 +466,19 @@ function formatDate(iso: string): string {
 
 function formatTime(iso: string): string {
   try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return "";
+    return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   } catch {
     return "";
   }
 }
 
+/**
+ * Wird derzeit nicht im Layout verwendet (Vordruck hat kein Logo) —
+ * bleibt fuer zukuenftige Variante mit Logo-Header verfuegbar.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function renderBrandLogo(): string {
   const dataUrl = getBrandLogoDataUrl();
   if (!dataUrl) return "";
