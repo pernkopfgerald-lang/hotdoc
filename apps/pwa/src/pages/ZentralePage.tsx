@@ -397,9 +397,19 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // Fahrzeugberichte aller Fahrzeuge zum aktiven Einsatz pollen.
   // Refresht alle 15 s — schneller als der Einsatz-Poll, damit der
   // Einsatzleiter sieht wenn ein Tablet einen Bericht abschließt.
+  //
+  // WICHTIG: beim ID-Wechsel SOFORT auf [] leeren, sonst zeigt die UI
+  // bis zum ersten Call (~hunderte ms bis zu 15 s) die fahrzeugberichte
+  // vom VORIGEN Einsatz an — und wenn der vorige Einsatz schon einen
+  // abgeschlossenen KDO-Bericht hatte, denkt der User "der neue Einsatz
+  // hat sofort KDO als abgeschlossen gesetzt" (echter Bug-Report).
   useEffect(() => {
-    if (!aktiverEinsatzId) return;
+    if (!aktiverEinsatzId) {
+      setFahrzeugberichte([]);
+      return;
+    }
     let cancelled = false;
+    setFahrzeugberichte([]);
     const load = async () => {
       try {
         const r = await apiCall<{ items: FahrzeugberichtApiDoc[] }>(
