@@ -23,6 +23,10 @@ interface ManuellAnlageBody {
   uebungThema?: string;
   uebungsleiter?: string;
   uebungsTyp?: string;
+  /** Auto-Pflichtbereich-Erkennung — wird gesetzt wenn der Einsatzort im
+   *  Gemeindegebiet Eberstalzell liegt (siehe Backend isInEberstalzell). */
+  pflichtbereich?: boolean;
+  einsatzzoneEzell?: boolean;
   /** UUID — Idempotenz-Schutz fuer Retry bei Netz-Wackler / Offline-Outbox. */
   idempotencyKey: string;
 }
@@ -235,12 +239,36 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     setErr(null);
     // Idempotency-Key — derselbe Key, falls Retry oder Outbox-Replay.
     const idempotencyKey = crypto.randomUUID();
-    // Fallback-Einsatzort wenn nur GPS gesetzt ist — Backend braucht min 3 Zeichen.
-    const ortString = einsatzort.trim()
-      ? einsatzort.trim()
-      : koord
-        ? `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`
-        : "Unbekannt";
+    // Fallback-Einsatzort wenn nur GPS gesetzt ist:
+    //   1. Versuche Reverse-Geocoding (Photon) — wenn Adresse → nutze die
+    //   2. Sonst (z.B. Autobahn, freies Feld) → "GPS lat, lng"
+    // Backend braucht min 3 Zeichen einsatzort.
+    let ortString = einsatzort.trim();
+    let autoPflicht: { pflichtbereich?: boolean; einsatzzoneEzell?: boolean } = {};
+    if (!ortString && koord) {
+      try {
+        const geo = await apiCall<{
+          ok: true;
+          address: string | null;
+          inEberstalzell: boolean;
+          pflichtbereich?: boolean;
+          einsatzzoneEzell?: boolean;
+        }>(
+          `/api/geocoding/reverse?lat=${encodeURIComponent(String(koord.lat))}&lng=${encodeURIComponent(String(koord.lng))}`,
+        );
+        if (geo.address) {
+          ortString = geo.address;
+        } else {
+          ortString = `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
+        }
+        if (geo.pflichtbereich) autoPflicht.pflichtbereich = true;
+        if (geo.einsatzzoneEzell) autoPflicht.einsatzzoneEzell = true;
+      } catch {
+        // Geocoding-Fehler → GPS-Fallback
+        ortString = `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
+      }
+    }
+    if (!ortString) ortString = "Unbekannt";
     const body: ManuellAnlageBody = {
       einsatzTyp: typ,
       einsatzort: ortString,
@@ -250,6 +278,10 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         : {}),
       ...(koord ? { koordinaten: koord } : {}),
       ...(grund.trim() ? { grund: grund.trim() } : {}),
+      // Auto-Pflichtbereich-Erkennung bei Eberstalzell (siehe Backend
+      // routes/geocoding.ts:isInEberstalzell). Wird vom Reverse-Geocode-
+      // Call oben mitgeliefert wenn der Punkt in der Gemeinde-Bbox liegt.
+      ...autoPflicht,
       idempotencyKey,
     };
     if (typ === "lotsendienst") {

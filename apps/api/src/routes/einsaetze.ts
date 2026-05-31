@@ -118,6 +118,12 @@ const ManuellAnlageBodySchema = z.object({
     .optional(),
   verrechenbar: z.boolean().optional(),
   rechnungsadresse: z.string().optional(),
+  /** Auto-Pflichtbereich-Erkennung (siehe routes/geocoding.ts:isInEberstalzell).
+   *  Wenn der Einsatzort in der Eberstalzell-Bbox liegt, setzt das Tablet
+   *  diese Werte auf true beim Anlegen. Der Florian-Editor uebernimmt sie
+   *  als Default; der User kann sie immer noch manuell ueberschreiben. */
+  pflichtbereich: z.boolean().optional(),
+  einsatzzoneEzell: z.boolean().optional(),
   /** Disposition: welche Fahrzeuge bearbeiten den Einsatz?
    *  Leer/undefined → alle Fahrzeuge sehen ihn (Default). */
   zugewieseneFahrzeuge: z
@@ -188,6 +194,12 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async
     ...(d.zugewieseneFahrzeuge && d.zugewieseneFahrzeuge.length > 0
       ? { zugewieseneFahrzeuge: d.zugewieseneFahrzeuge }
       : {}),
+    // Auto-Pflichtbereich aus Geocoder-Erkennung: wenn der Client den Wert
+    // mitschickt (weil GPS in Eberstalzell-Bbox), uebernehmen wir ihn als
+    // Vorbefuellung — Florian-Editor zeigt die Checkbox bereits gesetzt,
+    // User kann das immer noch in der UI uebersteuern.
+    ...(d.pflichtbereich !== undefined ? { pflichtbereich: d.pflichtbereich } : {}),
+    ...(d.einsatzzoneEzell !== undefined ? { einsatzzoneEzell: d.einsatzzoneEzell } : {}),
     zeitmarken: {},
     beteiligteStellen: [],
     sonstigeAnwesendeFF: { aktive: [] },

@@ -15,6 +15,7 @@ import { devicesRouter } from "./routes/devices.js";
 import { devRouter } from "./routes/dev.js";
 import { einsaetzeRouter } from "./routes/einsaetze.js";
 import { geocodeRouter } from "./routes/geocode.js";
+import { geocodingRouter } from "./routes/geocoding.js";
 import { healthRouter } from "./routes/health.js";
 import { pdfRouter } from "./routes/pdf.js";
 import { positionsRouter } from "./routes/positions.js";
@@ -93,6 +94,7 @@ async function main(): Promise<void> {
   app.use(pdfRouter);
   app.use(audioRouter);
   app.use(geocodeRouter);
+  app.use(geocodingRouter);
   app.use(positionsRouter);
   app.use(routingRouter);
   app.use(devicesRouter);

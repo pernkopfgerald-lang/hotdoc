@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "../config.js";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
+import { isInEberstalzell } from "../routes/geocoding.js";
 import { listAlarms, type BlaulichtAlarmData } from "../services/blaulichtsms/client.js";
 import { pushAlarm } from "../services/fcm.js";
 import { recordBlaulichtSmsPoll } from "../services/state.js";
@@ -110,6 +111,16 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
             lat: a.geolocation.coordinates.lat,
             lng: a.geolocation.coordinates.lng,
           },
+          // Auto-Pflichtbereich: BlaulichtSMS-Alarme mit GPS in der
+          // Eberstalzell-Gemeinde-Bbox setzen pflichtbereich + Einsatzzone
+          // automatisch — der Florian-Editor zeigt die Checkboxen
+          // schon angekreuzt, der EL kann sie bei Bedarf umstellen.
+          ...(isInEberstalzell(
+            a.geolocation.coordinates.lat,
+            a.geolocation.coordinates.lng,
+          )
+            ? { pflichtbereich: true, einsatzzoneEzell: true }
+            : {}),
         }
       : {}),
     alarmierungZeit: a.alarmDate,

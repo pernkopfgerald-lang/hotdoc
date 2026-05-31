@@ -23,6 +23,7 @@
  */
 
 import { getBrandLogoDataUrl } from "./brand.js";
+import { renderFahrzeugberichtPageHtml } from "./fahrzeugbericht.js";
 
 export interface BerichtDaten {
   einsatzId: string;
@@ -454,38 +455,51 @@ function renderChronikSeite(d: BerichtDaten): string {
 </div>`;
 }
 
-/** Eigene Seiten pro Fahrzeugbericht mit Mannschaft / Geräten / Taetigkeiten. */
+/**
+ * Eigene Seiten pro Fahrzeugbericht mit dem Original-Vordruck-Tabellen-
+ * Layout. Wird vom standalone-Fahrzeugbericht-PDF (fahrzeugbericht.ts)
+ * geteilt, damit beide Varianten konsistent dasselbe Layout zeigen.
+ * Frueher war das ein eigenes Key-Value-Layout — User hat sich
+ * beklagt dass das nicht dem Original-Vordruck entspricht.
+ */
 function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
   if (!d.fahrzeugberichte || d.fahrzeugberichte.length === 0) return "";
   return d.fahrzeugberichte
     .map(
       (f) => /* html */ `
 <div class="page">
-  <div class="hd">
-    <div class="hd-l">${renderBrandLogo()}</div>
-    <div class="hd-r">
-      <div class="hd-sub-title">Fahrzeugbericht · ${escape(f.abk)}</div>
-      <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;margin-top:2pt;color:#555">
-        ${escape(f.funkrufname)} · ${f.status === "abgeschlossen" ? "ABGESCHLOSSEN" : "in Arbeit"}
-      </div>
-    </div>
-  </div>
-
-  <div class="fzg-detail">
-    <div class="row"><b>KM gefahren</b><span style="color:#1e3a8a;font-weight:700">${f.kmGefahren.toFixed(1).replace(".", ",")} km</span></div>
-    ${f.fahrzeugKdt ? `<div class="row"><b>Fahrzeug-Kdt</b><span style="color:#1e3a8a;font-weight:600">${escape(f.fahrzeugKdt)}</span></div>` : ""}
-    ${f.fahrer ? `<div class="row"><b>Fahrer</b><span style="color:#1e3a8a;font-weight:600">${escape(f.fahrer)}</span></div>` : ""}
-    <div class="row"><b>Mannschaft</b><span>${f.mannschaft.length} Personen</span></div>
-    ${f.mannschaft.length > 0 ? `<ul>${f.mannschaft
-      .map(
-        (m) =>
-          `<li>${escape(m.name)}${m.atemschutzAktiv ? ` <strong style="color:#b91c1c">(Atemschutz${m.atemschutzDauerMin ? ` · ${m.atemschutzDauerMin} min` : ""})</strong>` : ""}</li>`,
-      )
-      .join("")}</ul>` : ""}
-    ${f.geraete.length > 0 ? `<div class="row"><b>Geräte</b><span style="color:#1e3a8a">${f.geraete.map(escape).join(" · ")}</span></div>` : ""}
-    ${f.oelSaecke > 0 ? `<div class="row"><b>Ölbindemittel</b><span style="color:#1e3a8a;font-weight:700">${f.oelSaecke} Sack</span></div>` : ""}
-    ${f.taetigkeitsbericht ? `<div style="margin-top:3mm"><b style="color:#555;font-size:8.5pt">Tätigkeiten:</b><div class="freitext" style="min-height:30mm;margin-top:1mm">${escape(f.taetigkeitsbericht)}</div></div>` : ""}
-  </div>
+  ${renderFahrzeugberichtPageHtml({
+    einsatzId: d.einsatzId,
+    fahrzeugId: f.abk,
+    abk: f.abk,
+    funkrufname: f.funkrufname,
+    einsatzort: d.einsatzort,
+    alarmierungZeit: d.alarmierungZeit,
+    ...(d.einsatzende ? { zeitBis: d.einsatzende } : {}),
+    kmGefahren: f.kmGefahren,
+    ...(f.fahrer ? { fahrer: f.fahrer } : {}),
+    ...(f.fahrzeugKdt ? { fahrzeugKdt: f.fahrzeugKdt } : {}),
+    mannschaft: f.mannschaft.map((m) => ({
+      name: m.name,
+      atemschutzAktiv: m.atemschutzAktiv,
+      ...(m.atemschutzDauerMin !== undefined
+        ? { atemschutzDauerMin: m.atemschutzDauerMin }
+        : {}),
+    })),
+    geraete: f.geraete,
+    oelSaecke: f.oelSaecke,
+    taetigkeitsbericht: f.taetigkeitsbericht ?? "",
+    chronik: [],
+    status: f.status,
+  })}
+  ${
+    f.taetigkeitsbericht
+      ? `<div style="margin-top:6mm">
+           <h2 style="font-size:13pt;font-weight:700;margin:0 0 3mm;padding-bottom:3pt;border-bottom:1pt solid #000;font-family:Arial,sans-serif">Tätigkeitsbericht · ${escape(f.abk)}</h2>
+           <div style="min-height:40mm;padding:6pt 8pt;border:0.8pt solid #000;white-space:pre-wrap;font-size:11pt;line-height:1.55;font-family:Arial,sans-serif">${escape(f.taetigkeitsbericht)}</div>
+         </div>`
+      : ""
+  }
 </div>`,
     )
     .join("");

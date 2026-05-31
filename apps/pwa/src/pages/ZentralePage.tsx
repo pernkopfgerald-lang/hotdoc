@@ -8,7 +8,7 @@ import {
   Clipboard,
   Clock,
   Download,
-  FileText,
+
   GraduationCap,
   Lock,
   Map as MapIcon,
@@ -20,7 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
@@ -237,6 +237,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [aktiveEinsaetze, setAktiveEinsaetze] = useState<EinsatzApiDoc[]>([]);
   const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
+  /**
+   * Gerade-eben-angelegte Einsatz-ID — schuetzt davor dass der naechste
+   * Polling-Tick die ID auf items[0] zuruecksetzt waehrend der Backend
+   * den neuen Einsatz noch nicht in der aktiv-Liste hat (kann bis ~10 s
+   * dauern). Wird nach 30 s wieder geloescht.
+   */
+  const justCreatedRef = useRef<{ id: string; ts: number } | null>(null);
   const aktiverEinsatz: EinsatzApiDoc | null =
     aktiveEinsaetze.find((e) => e._id === aktiverEinsatzId) ?? null;
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
@@ -362,6 +369,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         // (z. B. abgeschlossen oder gewipt) → auf den ersten verbleibenden umschalten.
         setAktiverEinsatzId((prev) => {
           if (prev && r.items.some((e) => e._id === prev)) return prev;
+          // Wenn der gerade neu angelegte Einsatz noch nicht in der Liste
+          // ist (Backend braucht 5-10 s bis Cache-Refresh), nicht ueberschreiben.
+          // Greift maximal 30 s — danach erwarten wir dass er definitiv da ist.
+          const justCreated = justCreatedRef.current;
+          if (justCreated && Date.now() - justCreated.ts < 30_000) {
+            return justCreated.id;
+          }
           return r.items[0]?._id ?? null;
         });
         if (r.items.length === 0) {
@@ -1409,28 +1423,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Meldung von der Einsatzleitung" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <FileText size={20} />
-              Freitext Einsatzleiter
-            </div>
-            <span className="card-meta">
-              {editor.meldungEinsatzleitung.length} / 4000 Zeichen
-            </span>
-          </div>
-          <textarea
-            className="input"
-            rows={6}
-            maxLength={4000}
-            placeholder="Beobachtungen, Lagebild, Übergabe an Polizei/RK, Nachalarmierungen, Auffälligkeiten…"
-            value={editor.meldungEinsatzleitung}
-            disabled={schreibschutz}
-            onChange={(e) => patchEditor({ meldungEinsatzleitung: e.target.value })}
-            style={{ resize: "vertical", fontSize: 14, lineHeight: 1.5 }}
-          />
-        </section>
+        {/* Feld "Freitext Einsatzleiter" wurde entfernt (User-Wunsch) — die
+            Meldung der Einsatzleitung kommt jetzt direkt in das Chronik-Feld
+            unten, das umbenannt wurde auf "Einsatzbericht / Chronologie".
+            meldungEinsatzleitung bleibt im API-Schema erhalten fuer
+            Backwaerts-Kompatibilitaet mit aelteren Einsaetzen. */}
 
         {/* Auto-Save-Toast: nur sichtbar wenn was los ist (speichert/gespeichert/Fehler). */}
         {(saveBusy || saveOk || saveErr) && (
@@ -1954,15 +1951,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             {/* "Zusammenfassung Mannschaft"-Section entfernt — die Werte stehen
                 schon im Top-Header der Einsatz-Karte (Mannschaft, Berichte). */}
 
-        <SectionHead title="Globale Einsatzchronik" />
+        <SectionHead title="Einsatzbericht / Chronologie" />
         <section className="card">
           <div className="card-head">
             <div className="card-title">
               <Clipboard size={20} />
-              Chronologie aller Fahrzeuge
+              Einsatzbericht / Chronologie
             </div>
             <span className="card-meta">
-              {aktiverEinsatzId ? "Live aus Replikation" : "kein aktiver Einsatz"}
+              {aktiverEinsatzId
+                ? "Live · Funkverkehr + Meldung Einsatzleiter"
+                : "kein aktiver Einsatz"}
             </span>
           </div>
           <ChronikTimeline eintraege={chronik} />
@@ -2509,9 +2508,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         onClose={() => setNeuerEinsatzOpen(null)}
         onCreated={(einsatzId) => {
           setNeuerEinsatzOpen(null);
-          // Auto-Switch auf den neu angelegten Einsatz — bis zum naechsten
-          // Poll-Tick haben wir ihn noch nicht in aktiveEinsaetze[], aber
-          // sobald er reinkommt, ist die Selection schon gesetzt.
+          // Auto-Switch auf den neu angelegten Einsatz — robust gegen den
+          // naechsten Poll-Tick der ihn noch nicht in items[] hat.
+          justCreatedRef.current = { id: einsatzId, ts: Date.now() };
           setAktiverEinsatzId(einsatzId);
         }}
       />
