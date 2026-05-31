@@ -119,7 +119,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
       // Einsatz-Hauptberich-PDF holen, also einsatzId verwenden. Im Florian-
       // Modus ist item._id bereits die Einsatz-Doc-ID.
       const pdfId = item.einsatzId ?? item._id;
-      const res = await fetch(`/api/einsaetze/${encodeURIComponent(pdfId)}/pdf`, {
+      const { resolveApiUrl } = await import("../lib/api");
+      const res = await fetch(resolveApiUrl(`/api/einsaetze/${encodeURIComponent(pdfId)}/pdf`), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -50,7 +50,8 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
 
   async function claim() {
     try {
-      const res = await fetch(`/api/auth/qr/${encodeURIComponent(token)}`);
+      const { resolveApiUrl } = await import("../lib/api");
+      const res = await fetch(resolveApiUrl(`/api/auth/qr/${encodeURIComponent(token)}`));
       const body = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         token?: string;

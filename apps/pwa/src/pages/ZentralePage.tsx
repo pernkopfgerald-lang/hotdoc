@@ -680,7 +680,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     setDownloadErr(null);
     try {
       const token = getTabletToken();
-      const res = await fetch(`/api/einsaetze/${encodeURIComponent(einsatzId)}/pdf`, {
+      const { resolveApiUrl } = await import("../lib/api");
+      const res = await fetch(resolveApiUrl(`/api/einsaetze/${encodeURIComponent(einsatzId)}/pdf`), {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       if (!res.ok) {

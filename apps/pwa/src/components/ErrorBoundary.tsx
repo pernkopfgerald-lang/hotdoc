@@ -43,7 +43,14 @@ export class ErrorBoundary extends Component<Props, State> {
     // trotzdem zeigen.
     try {
       const token = localStorage.getItem("hotdoc.tabletToken");
-      void fetch("/api/admin/client-error", {
+      // Capacitor-Webview hat Origin localhost — relativ schlaegt fehl.
+      // Cheap inline-resolution damit ErrorBoundary keine Module-Imports braucht
+      // (kann passieren wenn das Module-Loading selber kaputt ist).
+      const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      const errorUrl = cap?.isNativePlatform?.()
+        ? "https://hotdoc-api.fly.dev/api/admin/client-error"
+        : "/api/admin/client-error";
+      void fetch(errorUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

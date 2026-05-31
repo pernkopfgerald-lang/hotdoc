@@ -82,7 +82,8 @@ export function Setup({ onSetupDone }: Props) {
   async function tryRegister(fahrzeugId: FahrzeugId): Promise<boolean> {
     const deviceId = crypto.randomUUID();
     try {
-      const res = await fetch("/api/auth/tablet/pin-register", {
+      const { resolveApiUrl } = await import("../lib/api");
+      const res = await fetch(resolveApiUrl("/api/auth/tablet/pin-register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fahrzeugId, deviceId }),

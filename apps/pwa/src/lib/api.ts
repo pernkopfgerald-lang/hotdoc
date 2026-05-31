@@ -4,9 +4,35 @@
  * an alle Calls — der Token kommt aus dem Setup-PIN-Register-Flow.
  *
  * Liefert immer das geparste JSON oder wirft ApiError.
+ *
+ * URL-Aufloesung:
+ *  - PWA (Browser): relative Pfade, Caddy proxied /api/* an hotdoc-api.
+ *  - APK (Capacitor-Webview): Origin ist `https://localhost/`, dort gibt
+ *    es keinen Proxy. Wir muessen die API-URL explizit absolut machen.
+ *    Detection ueber `window.Capacitor.isNativePlatform()` — kein Import,
+ *    weil dieser Layer keinen Capacitor-Plugin braucht.
  */
 
 export const TOKEN_KEY = "hotdoc.tabletToken";
+
+/** Production-API-Basis fuer Capacitor-Native — ueber https. */
+const NATIVE_API_BASE = "https://hotdoc-api.fly.dev";
+
+interface CapacitorGlobal {
+  isNativePlatform?: () => boolean;
+}
+
+export function resolveApiUrl(path: string): string {
+  // Schon absolute URL → unveraendert lassen
+  if (/^https?:\/\//i.test(path)) return path;
+  // Capacitor-Webview erkennt sich ueber window.Capacitor
+  const cap = (globalThis as { Capacitor?: CapacitorGlobal }).Capacitor;
+  if (cap?.isNativePlatform?.()) {
+    // Sicherstellen dass kein doppelter Slash entsteht
+    return `${NATIVE_API_BASE}${path.startsWith("/") ? path : "/" + path}`;
+  }
+  return path;
+}
 
 export function getTabletToken(): string | null {
   try {
@@ -56,7 +82,7 @@ export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
   if (opts.signal) init.signal = opts.signal;
 
-  const res = await fetch(path, init);
+  const res = await fetch(resolveApiUrl(path), init);
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   const body: unknown = text ? safeJson(text) : null;
