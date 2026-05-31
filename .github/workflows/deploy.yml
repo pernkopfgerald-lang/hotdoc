@@ -1,0 +1,99 @@
+name: Auto-Deploy API + PWA + Backoffice
+
+# Bei jedem Push auf main werden alle drei fly-Apps redeployed:
+#   hotdoc-api          (Node-Backend)
+#   hotdoc-eberstalzell (PWA fuer Tablets, Caddy + dist/)
+#   hotdoc-backoffice   (React-Admin, Caddy + dist/)
+#
+# Die APK ist EXPLIZIT NICHT enthalten — das ist ein separater
+# Release-Workflow der nur bei Tags v*.*.* triggert (siehe
+# release-apk.yml). Hintergrund: APK-Build dauert 3-4 min und
+# braucht einen Signing-Keystore — sollte nur bei expliziten
+# Releases laufen, nicht bei jedem Commit.
+#
+# Per workflow_dispatch kann man auch manuell jeden Service
+# einzeln deployen ohne Push.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      # Aenderungen die kein Backend-Code sind -> kein Deploy
+      - '.github/**'
+      - 'docs/**'
+      - '**/*.md'
+      - 'deploy/apk/**'
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Welche Services deployen? (api, pwa, backoffice, all)'
+        required: false
+        default: 'all'
+        type: choice
+        options: [all, api, pwa, backoffice]
+
+jobs:
+  # ───────────────────────────────────────────────────────────────
+  # API — Node-Backend, dependency-armer Build, schnellster Deploy
+  # ───────────────────────────────────────────────────────────────
+  deploy-api:
+    if: ${{ github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'api' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy hotdoc-api
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --config fly.api.toml --remote-only --strategy immediate
+
+  # ───────────────────────────────────────────────────────────────
+  # PWA — Vite-Build im Container, Caddy serves statische dist/
+  # ───────────────────────────────────────────────────────────────
+  deploy-pwa:
+    if: ${{ github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'pwa' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy hotdoc-eberstalzell (PWA)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --config fly.pwa.toml --remote-only --strategy immediate
+
+  # ───────────────────────────────────────────────────────────────
+  # Backoffice — gleicher Build-Pattern wie PWA
+  # ───────────────────────────────────────────────────────────────
+  deploy-backoffice:
+    if: ${{ github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'backoffice' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy hotdoc-backoffice
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --config fly.backoffice.toml --remote-only --strategy immediate
+
+  # ───────────────────────────────────────────────────────────────
+  # Zusammenfassung — laeuft immer am Schluss, auch wenn Teile failen
+  # ───────────────────────────────────────────────────────────────
+  summary:
+    needs: [deploy-api, deploy-pwa, deploy-backoffice]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Status-Report
+        run: |
+          {
+            echo "## Auto-Deploy Zusammenfassung"
+            echo ""
+            echo "| Service | Status |"
+            echo "|---|---|"
+            echo "| hotdoc-api          | ${{ needs.deploy-api.result }} |"
+            echo "| hotdoc-eberstalzell | ${{ needs.deploy-pwa.result }} |"
+            echo "| hotdoc-backoffice   | ${{ needs.deploy-backoffice.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
