@@ -246,7 +246,14 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     let ortString = einsatzort.trim();
     let autoPflicht: { pflichtbereich?: boolean; einsatzzoneEzell?: boolean } = {};
     if (!ortString && koord) {
+      // Reverse-Geocoding mit knappem 2.5-s-Timeout — wenn Photon laenger
+      // braucht, fallen wir auf GPS-String zurueck. User-Wartezeit > 3 s
+      // ist beim Einsatz-Anlegen nicht akzeptabel ("ca. 20 sekunden"-Bug).
+      // Backend macht den Geocode-Lookup trotzdem im Hintergrund + cached,
+      // beim naechsten Mal in der Umgebung ist's instant.
       try {
+        const ctl = new AbortController();
+        const timeoutId = setTimeout(() => ctl.abort(), 2_500);
         const geo = await apiCall<{
           ok: true;
           address: string | null;
@@ -255,7 +262,9 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           einsatzzoneEzell?: boolean;
         }>(
           `/api/geocoding/reverse?lat=${encodeURIComponent(String(koord.lat))}&lng=${encodeURIComponent(String(koord.lng))}`,
+          { signal: ctl.signal },
         );
+        clearTimeout(timeoutId);
         if (geo.address) {
           ortString = geo.address;
         } else {
@@ -264,8 +273,19 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         if (geo.pflichtbereich) autoPflicht.pflichtbereich = true;
         if (geo.einsatzzoneEzell) autoPflicht.einsatzzoneEzell = true;
       } catch {
-        // Geocoding-Fehler → GPS-Fallback
+        // Geocoding-Timeout oder Fehler → GPS-Fallback. Pflichtbereich
+        // wird trotzdem clientseitig via Bbox erkannt: Eberstalzell-Box
+        // liegt zwischen 48.00-48.08 lat / 13.93-14.04 lng.
         ortString = `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
+        const inE =
+          koord.lat >= 48.0 &&
+          koord.lat <= 48.08 &&
+          koord.lng >= 13.93 &&
+          koord.lng <= 14.04;
+        if (inE) {
+          autoPflicht.pflichtbereich = true;
+          autoPflicht.einsatzzoneEzell = true;
+        }
       }
     }
     if (!ortString) ortString = "Unbekannt";

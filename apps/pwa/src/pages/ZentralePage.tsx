@@ -244,6 +244,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    * dauern). Wird nach 30 s wieder geloescht.
    */
   const justCreatedRef = useRef<{ id: string; ts: number } | null>(null);
+  /**
+   * Forciertes Reload der aktiven Einsatz-Liste — wird nach onCreated
+   * aufgerufen damit der neue Einsatz sofort in `aktiveEinsaetze`
+   * landet und der `aktiverEinsatz`-Find ihn findet. Sonst wartet der
+   * User bis zu 30 s (Polling-Intervall) bis der Editor was anzeigt.
+   * Wird im useEffect bei Mount initialisiert.
+   */
+  const reloadAktiveEinsaetzeRef = useRef<() => void>(() => undefined);
   const aktiverEinsatz: EinsatzApiDoc | null =
     aktiveEinsaetze.find((e) => e._id === aktiverEinsatzId) ?? null;
   const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
@@ -386,8 +394,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         // ungewollter Reset bei kurzem Netz-Wackler).
       }
     };
+    // Reload-Hook fuer onCreated: ruft direkt load() ohne aufs naechste
+    // Polling-Intervall zu warten.
+    reloadAktiveEinsaetzeRef.current = () => {
+      void load();
+    };
     void load();
-    const t = setInterval(() => void load(), 30_000);
+    // Polling alle 10 s (statt 30 s) — damit Multi-Tablet-Updates schneller
+    // sichtbar sind. Backend-API ist billig (couchdb _all_docs mit prefix).
+    const t = setInterval(() => void load(), 10_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -2522,6 +2537,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           // naechsten Poll-Tick der ihn noch nicht in items[] hat.
           justCreatedRef.current = { id: einsatzId, ts: Date.now() };
           setAktiverEinsatzId(einsatzId);
+          // Forciertes Reload der Einsatz-Liste — Backend hat den neuen
+          // Einsatz schon angelegt + zurueckgegeben, wir warten nicht aufs
+          // naechste 10-s-Polling. So ist der Editor binnen <300 ms befuellt
+          // statt nach 5-10 s wie vorher.
+          reloadAktiveEinsaetzeRef.current();
         }}
       />
 
