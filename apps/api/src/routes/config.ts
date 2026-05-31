@@ -248,10 +248,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
   // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
   "app-version": {
-    currentVersion: "0.1.6",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.6-release.apk",
+    currentVersion: "0.1.7",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.7-release.apk",
     releaseNotes:
-      "v0.1.6 — Auto-Update via Release-Builds (CI)\n\n• Erste signierte Release-APK, gebaut in der GitHub-Actions-Cloud — kein lokales Windows-Build mehr noetig.\n• UpdateBanner: 1-Klick-Update direkt aus der App mit Progress-Bar. Android-Dialog 'Aktualisieren?' erscheint, fertig.\n• Custom ApkInstaller-Capacitor-Plugin ersetzt den Browser-Umweg.\n• Beim ersten Install (v0.1.5-debug -> v0.1.6-release) noch einmalig manuell deinstallieren wegen Signing-Key-Wechsel. Ab v0.1.7+ kommen Updates auto-magisch.",
+      "v0.1.7 — Florianstation-Upgrade + Fahrzeugbericht-Vordruck\n\n• Florianstation Lagekarte: Klick auf Status-Card lässt Marker pulsieren + Mannschafts-Details (Fahrer/Kdt/Besatzung) klappen unter der Card auf.\n• Drei Zoom-Tasten an beiden Karten: Lagebild (200m), Gesamt (alle Fahrzeuge), Zentrieren.\n• Pop-Out-Fenster für 2. Bildschirm via /florian-map.\n• Florian-Position korrigiert: echte Solarstraße 1 statt 5 km zu weit nördlich — wirkt auch auf KM-Berechnung.\n• Fahrzeugbericht-PDF (Anhang + standalone) im Original-Vordruck-Layout mit FF-Wappen + 4 Tabellen.\n• Neuer Bericht öffnet sich automatisch (war Bug).\n• 'Meldung Einsatzleitung'-Feld entfernt — Text kommt direkt in 'Einsatzbericht / Chronologie'.\n• GPS → Adresse via Reverse-Geocoding (Photon).\n• Pflichtbereich + Einsatzzone automatisch bei Eberstalzell-GPS.",
     minSupported: "0.1.0",
   },
 };

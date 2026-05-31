@@ -21,6 +21,23 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.7",
+    date: "2026-05-31",
+    title: "Florianstation-Upgrade + Fahrzeugbericht-Vordruck",
+    bullets: [
+      "Florianstation Lagekarte: Klick auf Status-Card lässt Marker pulsieren + Mannschafts-Details (Fahrer/Kdt/Besatzung) klappen unter der Card auf",
+      "Drei Zoom-Tasten an beiden Karten: Lagebild (200m um Einsatzort), Gesamt (alle Fahrzeuge im Frame), Zentrieren",
+      "Pop-Out-Fenster für 2. Bildschirm via /florian-map — eigene Live-Karte mit Polling, perfekt für Lageeinweisung am Beamer",
+      "Lagekarte vergrößert (500px statt 320px)",
+      "Florian-Position korrigiert: war 5 km zu weit nördlich (Heischbach), jetzt echte Solarstraße 1 — wirkt sich auch auf KM-Berechnung aller Fahrzeuge aus",
+      "Fahrzeugbericht-PDF (Anhang + standalone) komplett überarbeitet auf das Original-Vordruck-Layout mit FF-Wappen, 4 Tabellen, Footer-Balken",
+      "Neuer Bericht öffnet sich automatisch (war Bug: kam als Tab aber blieb auf altem Einsatz)",
+      "Florian-Editor: 'Meldung Einsatzleitung'-Feld entfernt — Text kommt jetzt direkt in 'Einsatzbericht / Chronologie'",
+      "GPS → Adresse: Reverse-Geocoding via Photon. Nur wenn keine Adresse (Autobahn, Feld) → 'GPS lat,lng'",
+      "Pflichtbereich + Einsatzzone werden automatisch gesetzt wenn der Einsatzort im Gemeindegebiet Eberstalzell liegt — beim BlaulichtSMS-Alarm UND beim manuellen Anlegen",
+    ],
+  },
+  {
     version: "0.1.6",
     date: "2026-05-31",
     title: "Auto-Update via Release-Builds",
