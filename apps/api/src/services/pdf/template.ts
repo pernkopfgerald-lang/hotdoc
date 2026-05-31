@@ -119,9 +119,10 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   const vTime = (val: string | undefined): string =>
     val ? `<span style="color:${FILLED};font-weight:600">${escape(formatTime(val))}</span>` : "__ : __";
   const triBox = (val: boolean | null | undefined, label: string): string => {
-    // Markierung jetzt nur ueber die Box selbst — User-Wunsch dass der
-    // Text DAHINTER nicht eingefaerbt wird sondern die Box angekreuzt.
-    if (val === true) return `${boxFilled(true)} ${label}`;
+    // Markierung ueber Box (sichtbares ✕ in dunkelblauem Quadrat) PLUS
+    // Text-Faerbung — User-Variante: beides zusammen damit auch beim
+    // schnellen Ueberfliegen klar ist was selektiert ist.
+    if (val === true) return `${boxFilled(true)} <strong style="color:${FILLED}">${label}</strong>`;
     if (val === false) return `${boxFilled(false)} ${label}`;
     return `${box(false)} ${label}`;
   };
@@ -264,7 +265,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td>Alarmiert durch
         <span class="cb">${boxFilled(d.alarmierungAuthor === "BWST")} BWST</span>
         <span class="cb">${boxFilled(d.alarmierungAuthor === "LWZ")} LWZ</span>
-        ${d.alarmierungAuthor && d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ" ? `<span class="cb">${boxFilled(true)} ${escape(d.alarmierungAuthor)}</span>` : ""}
+        ${d.alarmierungAuthor && d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ" ? `<span class="cb">${boxFilled(true)} <strong style="color:${FILLED}">${escape(d.alarmierungAuthor)}</strong></span>` : ""}
       </td>
     </tr>
     <tr>
@@ -285,8 +286,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       ${FAHRZEUGE_REIHE.map(
         (f) => {
           const sel = eingesetzeFzgSet.has(f.toUpperCase());
-          // Markierung jetzt nur ueber die Box — Text bleibt schwarz
-          return `<td style="text-align:center">${boxFilled(sel)} ${f}</td>`;
+          return `<td style="text-align:center;${sel ? `color:${FILLED};font-weight:700;` : ""}">${boxFilled(sel)} ${f}</td>`;
         },
       ).join("")}
     </tr>
@@ -298,8 +298,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       (row) => `<tr>${row
         .map((art) => {
           const selected = d.einsatzart === art;
-          // Markierung nur ueber die Box — Text bleibt schwarz
-          return `<td class="col">${boxFilled(selected)} ${art}</td>`;
+          return `<td class="col">${boxFilled(selected)} <span class="${selected ? "check-on" : ""}">${art}</span></td>`;
         })
         .join("")}</tr>`,
     ).join("")}
@@ -321,7 +320,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${
           d.beteiligteStellen && d.beteiligteStellen.length > 0
             ? d.beteiligteStellen
-                .map((s) => `${boxFilled(true)} ${escape(s)}<br>`)
+                .map((s) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(s)}</span><br>`)
                 .join("")
             : `<span style="color:#888">keine angegeben</span>`
         }
@@ -348,11 +347,11 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${
           d.sonstigeAnwesendeFF && d.sonstigeAnwesendeFF.length > 0
             ? d.sonstigeAnwesendeFF
-                .map((f) => `${boxFilled(true)} ${escape(f)}<br>`)
+                .map((f) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(f)}</span><br>`)
                 .join("")
             : `<span style="color:#888">keine</span>`
         }
-        ${d.sonstigeFreitext ? `<div style="margin-top:2pt">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
+        ${d.sonstigeFreitext ? `<div style="margin-top:2pt;color:${FILLED}">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
       </td>
       <td class="val" style="vertical-align:top">
         Eingesetzt: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
