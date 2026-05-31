@@ -468,35 +468,42 @@ function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
     .map(
       (f) => /* html */ `
 <div class="page">
-  ${renderFahrzeugberichtPageHtml({
-    einsatzId: d.einsatzId,
-    fahrzeugId: f.abk,
-    abk: f.abk,
-    funkrufname: f.funkrufname,
-    einsatzort: d.einsatzort,
-    alarmierungZeit: d.alarmierungZeit,
-    ...(d.einsatzende ? { zeitBis: d.einsatzende } : {}),
-    kmGefahren: f.kmGefahren,
-    ...(f.fahrer ? { fahrer: f.fahrer } : {}),
-    ...(f.fahrzeugKdt ? { fahrzeugKdt: f.fahrzeugKdt } : {}),
-    mannschaft: f.mannschaft.map((m) => ({
-      name: m.name,
-      atemschutzAktiv: m.atemschutzAktiv,
-      ...(m.atemschutzDauerMin !== undefined
-        ? { atemschutzDauerMin: m.atemschutzDauerMin }
-        : {}),
-    })),
-    geraete: f.geraete,
-    oelSaecke: f.oelSaecke,
-    taetigkeitsbericht: f.taetigkeitsbericht ?? "",
-    chronik: [],
-    status: f.status,
-  })}
+  ${renderFahrzeugberichtPageHtml(
+    {
+      einsatzId: d.einsatzId,
+      fahrzeugId: f.abk,
+      abk: f.abk,
+      funkrufname: f.funkrufname,
+      einsatzort: d.einsatzort,
+      alarmierungZeit: d.alarmierungZeit,
+      ...(d.einsatzende ? { zeitBis: d.einsatzende } : {}),
+      kmGefahren: f.kmGefahren,
+      ...(f.fahrer ? { fahrer: f.fahrer } : {}),
+      ...(f.fahrzeugKdt ? { fahrzeugKdt: f.fahrzeugKdt } : {}),
+      mannschaft: f.mannschaft.map((m) => ({
+        name: m.name,
+        atemschutzAktiv: m.atemschutzAktiv,
+        ...(m.atemschutzDauerMin !== undefined
+          ? { atemschutzDauerMin: m.atemschutzDauerMin }
+          : {}),
+      })),
+      geraete: f.geraete,
+      oelSaecke: f.oelSaecke,
+      taetigkeitsbericht: f.taetigkeitsbericht ?? "",
+      chronik: [],
+      status: f.status,
+    },
+    // Footer-Banner "Näherer Tätigkeitsbericht auf Rückseite" weglassen —
+    // im Hauptbericht-Anhang folgt der Tätigkeitsbericht direkt unter der
+    // Tabelle auf derselben Seite, der Verweis auf eine Rückseite waere
+    // irreführend.
+    { showRueckseiteFooter: false },
+  )}
   ${
     f.taetigkeitsbericht
-      ? `<div style="margin-top:6mm">
-           <h2 style="font-size:13pt;font-weight:700;margin:0 0 3mm;padding-bottom:3pt;border-bottom:1pt solid #000;font-family:Arial,sans-serif">Tätigkeitsbericht · ${escape(f.abk)}</h2>
-           <div style="min-height:40mm;padding:6pt 8pt;border:0.8pt solid #000;white-space:pre-wrap;font-size:11pt;line-height:1.55;font-family:Arial,sans-serif">${escape(f.taetigkeitsbericht)}</div>
+      ? `<div style="margin-top:5mm">
+           <h2 style="font-size:12pt;font-weight:700;margin:0 0 2mm;padding-bottom:2pt;border-bottom:1pt solid #000;font-family:Arial,sans-serif">Tätigkeitsbericht · ${escape(f.abk)}</h2>
+           <div style="padding:5pt 7pt;border:0.8pt solid #000;white-space:pre-wrap;font-size:10.5pt;line-height:1.5;font-family:Arial,sans-serif">${escape(f.taetigkeitsbericht)}</div>
          </div>`
       : ""
   }

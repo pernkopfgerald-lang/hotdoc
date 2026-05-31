@@ -71,8 +71,17 @@ export interface FahrzeugberichtDaten {
  * Inline-Styles statt CSS-Klassen — damit die Funktion auch von außen
  * (template.ts:renderFahrzeugberichtSeiten) re-used werden kann ohne
  * Class-Name-Konflikte.
+ *
+ * @param opts.showRueckseiteFooter Default true — rendert den schwarzen
+ *   "Näherer Tätigkeitsbericht auf Rückseite"-Balken. Im Hauptbericht-
+ *   Anhang (template.ts) ist der Taetigkeitsbericht aber DIRECT unter
+ *   der Tabelle auf derselben Seite, da soll der Banner weg.
  */
-export function renderFahrzeugberichtPageHtml(d: FahrzeugberichtDaten): string {
+export function renderFahrzeugberichtPageHtml(
+  d: FahrzeugberichtDaten,
+  opts: { showRueckseiteFooter?: boolean } = {},
+): string {
+  const showRueckseiteFooter = opts.showRueckseiteFooter ?? true;
   const datum = formatDate(d.alarmierungZeit);
   const vonStr = formatTime(d.alarmierungZeit);
   const bisStr = d.zeitBis ? formatTime(d.zeitBis) : "";
@@ -170,7 +179,7 @@ export function renderFahrzeugberichtPageHtml(d: FahrzeugberichtDaten): string {
       </tr>
     </table>
 
-    <div style="margin-top:6mm;padding:4pt 10pt;background:#000;color:#fff;font-weight:700;font-size:11pt;text-align:right;letter-spacing:0.01em;font-family:Arial,sans-serif">Näherer Tätigkeitsbericht auf Rückseite</div>
+    ${showRueckseiteFooter ? `<div style="margin-top:6mm;padding:4pt 10pt;background:#000;color:#fff;font-weight:700;font-size:11pt;text-align:right;letter-spacing:0.01em;font-family:Arial,sans-serif">Näherer Tätigkeitsbericht auf Rückseite</div>` : ""}
   </div>`;
 }
 
