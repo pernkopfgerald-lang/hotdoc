@@ -23,11 +23,23 @@
     }
   }
 
-  # Index/Browse — Funktionaer kann auf der URL nachschauen welche APKs
-  # da sind. Kein Auth — der APK-Filename ist nicht geheim (das Backend
-  # entscheidet welche Version aktuell-empfohlen ist).
+  # /_all → File-Browser fuer alle APKs (Archiv-Uebersicht)
+  handle /_all* {
+    rewrite * /
+    file_server browse {
+      hide /healthz /apk-info.json /index.html /ff-logo.png
+    }
+  }
+
+  # / → schoene Landing mit aktueller Version + Release-Notes
   handle / {
-    file_server browse
+    rewrite * /index.html
+    file_server
+  }
+
+  # Sonstige requests (apk-info.json, ff-logo.png) → direkt
+  handle {
+    file_server
   }
 
   # Logs auf stdout

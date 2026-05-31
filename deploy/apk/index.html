@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#C8102E" />
+  <title>HotDoc — Android App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --red: #C8102E;
+      --red-strong: #A30B25;
+      --bg: #0B1220;
+      --bg-2: #11151E;
+      --fg: #F2F5FA;
+      --fg-2: #ACB6C8;
+      --fg-3: #6E7A8E;
+      --ok: #34D399;
+      --warn: #FBBF24;
+      --border: rgba(255, 255, 255, 0.10);
+      --border-strong: rgba(255, 255, 255, 0.18);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Onest", system-ui, sans-serif;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 12% 8%, rgba(200, 16, 46, 0.18), transparent 60%),
+        radial-gradient(ellipse 50% 35% at 88% 92%, rgba(56, 95, 232, 0.10), transparent 65%);
+      pointer-events: none;
+      z-index: -1;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 36px 22px 64px;
+    }
+    .hd {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 28px;
+    }
+    .logo {
+      width: 56px; height: 56px;
+      display: grid; place-items: center;
+      border-radius: 16px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      box-shadow: 0 12px 30px -10px rgba(0,0,0,0.5);
+    }
+    .logo img { width: 40px; height: 40px; object-fit: contain; }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+      margin-top: 4px;
+    }
+    .card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 20px 40px -16px rgba(0,0,0,0.4);
+    }
+    .version-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    .version-row .v {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--fg);
+      letter-spacing: -0.01em;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: color-mix(in srgb, var(--ok) 18%, transparent);
+      color: var(--ok);
+      border: 1px solid color-mix(in srgb, var(--ok) 36%, transparent);
+    }
+    .badge.dot::before {
+      content: "";
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 8px var(--ok);
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.5 } }
+    .meta {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: var(--fg-3);
+      letter-spacing: 0.04em;
+      margin-bottom: 18px;
+    }
+    .cta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 18px 22px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%);
+      color: #fff;
+      text-decoration: none;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      box-shadow:
+        0 0 0 1px rgba(200, 16, 46, 0.45),
+        0 22px 56px -14px rgba(200, 16, 46, 0.55);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+      border: 0;
+    }
+    .cta:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 0 0 1px rgba(200, 16, 46, 0.5),
+        0 28px 60px -16px rgba(200, 16, 46, 0.6);
+    }
+    .cta svg { width: 22px; height: 22px; }
+    .notes {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--fg-2);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .notes-title {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+      margin: 0 0 10px;
+    }
+    .archive {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11.5px;
+      color: var(--fg-3);
+    }
+    .archive a {
+      color: var(--fg-2);
+      text-decoration: none;
+      border-bottom: 1px dashed var(--border-strong);
+    }
+    .archive a:hover { color: var(--fg); }
+    .footer {
+      text-align: center;
+      margin-top: 36px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+    }
+    .install-hint {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: color-mix(in srgb, var(--warn) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+      border-radius: 12px;
+      font-size: 12.5px;
+      color: var(--fg-2);
+      line-height: 1.5;
+    }
+    .install-hint b { color: var(--fg); }
+    @media (max-width: 480px) {
+      main { padding: 24px 16px 48px; }
+      h1 { font-size: 20px; }
+      .version-row .v { font-size: 20px; }
+      .card { padding: 20px; border-radius: 16px; }
+      .cta { font-size: 15px; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="hd">
+      <span class="logo"><img src="/ff-logo.png" alt="FF Eberstalzell" onerror="this.style.display='none'" /></span>
+      <div>
+        <h1>HotDoc · Android-App</h1>
+        <div class="sub">FF Eberstalzell · Einsatzdokumentation</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="version-row">
+        <div>
+          <div class="v" id="version">…</div>
+          <div class="meta" id="meta">prüfe aktuelle Version …</div>
+        </div>
+        <span class="badge dot" id="status">Live</span>
+      </div>
+
+      <a class="cta" id="download" href="#" download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        <span id="download-label">APK herunterladen</span>
+      </a>
+
+      <div class="install-hint">
+        <b>Erst-Install:</b> nach dem Klick auf Download fragt Android nach „Installation aus dieser Quelle erlauben" — einmal bestätigen. Schon installiert? Alte HotDoc-App vorher deinstallieren, weil der Signing-Key bei Debug-Builds neu generiert wird.
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="notes-title">Release-Notes</p>
+      <div class="notes" id="notes">…</div>
+    </div>
+
+    <div class="archive">
+      Alle Versionen: <a href="/_all">Übersicht</a>
+    </div>
+
+    <div class="footer">HotDoc · v<span id="ver-foot">…</span></div>
+  </main>
+
+  <script>
+    const API = "https://hotdoc-api.fly.dev";
+    const FALLBACK_URL = "/hotdoc-v0.1.0-debug.apk";
+    const FALLBACK_VERSION = "0.1.0-debug";
+
+    // Wir muessen authentifiziert sein um /api/devices/app-version aufzurufen
+    // — die Landing ist aber oeffentlich. Daher gehen wir ueber einen
+    // public-readable Mirror /apk-info.json (legen wir gleichzeitig im
+    // Static-Image ab, vom Backoffice befuellt).
+    fetch("/apk-info.json", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        const cur = data?.currentVersion ?? FALLBACK_VERSION;
+        const url = data?.apkUrl ?? FALLBACK_URL;
+        const notes = data?.releaseNotes ?? "Keine Release-Notes hinterlegt.";
+        const date = data?.publishedAt ? new Date(data.publishedAt) : null;
+        document.getElementById("version").textContent = "v" + cur;
+        document.getElementById("ver-foot").textContent = cur;
+        document.getElementById("download").href = url;
+        document.getElementById("download-label").textContent = "APK v" + cur + " herunterladen";
+        document.getElementById("notes").textContent = notes;
+        const dateStr = date
+          ? date.toLocaleDateString("de-AT", { day: "2-digit", month: "long", year: "numeric" })
+          : "Datum unbekannt";
+        document.getElementById("meta").textContent = "Veröffentlicht " + dateStr;
+      })
+      .catch(() => {
+        document.getElementById("version").textContent = "v" + FALLBACK_VERSION;
+        document.getElementById("ver-foot").textContent = FALLBACK_VERSION;
+        document.getElementById("download").href = FALLBACK_URL;
+        document.getElementById("download-label").textContent = "APK herunterladen";
+        document.getElementById("notes").textContent = "Release-Info konnte nicht geladen werden — Download trotzdem verfügbar.";
+        document.getElementById("status").textContent = "Fallback";
+        document.getElementById("status").style.background = "rgba(251, 191, 36, 0.18)";
+        document.getElementById("status").style.color = "#FBBF24";
+        document.getElementById("status").style.borderColor = "rgba(251, 191, 36, 0.36)";
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "currentVersion": "0.1.0-debug",
+  "apkUrl": "/hotdoc-v0.1.0-debug.apk",
+  "releaseNotes": "Erste Capacitor-APK mit allen UX-Fixes aus Session 1-3 + Bug-Fixes:\n• Person aus Mannschaft/Fahrer/Kdt rauslöschen (rotes ×)\n• Uhrzeit bis manuell editierbar — beim Abschluss nicht überschrieben\n• Auto-Register beim Boot\n• Update-Banner in der App\n• Florian-Editor mit kollabierbaren Sektionen, Auto-Save, dunkelblau\n• Karten-Klick → Pulse + Detail-Panel\n• Backoffice: Geräte-Tab + App-Version-Tab + Beteiligte-Stellen-CRUD",
+  "publishedAt": "2026-05-31T16:21:00+02:00"
+}

@@ -1,4 +1,4 @@
-import { Download, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { checkForUpdate, triggerUpdateDownload } from "../lib/app-update";
 import { getTabletToken } from "../lib/api";
@@ -26,6 +26,7 @@ export function UpdateBanner() {
     apkUrl: string;
     notes: string;
   } | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const check = async (): Promise<void> => {
@@ -65,16 +66,16 @@ export function UpdateBanner() {
         top: 12,
         right: 12,
         zIndex: 1400,
-        maxWidth: 320,
-        padding: "10px 12px 10px 14px",
+        maxWidth: 360,
+        padding: expanded ? "12px 14px" : "10px 12px 10px 14px",
         borderRadius: 12,
         background:
           "linear-gradient(135deg, color-mix(in srgb, var(--red) 92%, transparent), color-mix(in srgb, var(--red-strong) 90%, transparent))",
         color: "#fff",
         boxShadow: "var(--glow-red), 0 12px 28px -10px rgba(0,0,0,0.4)",
         display: "flex",
-        alignItems: "center",
-        gap: 10,
+        flexDirection: "column",
+        gap: 8,
         fontFamily: "var(--font-sans)",
         fontSize: 13,
         fontWeight: 600,
@@ -82,21 +83,22 @@ export function UpdateBanner() {
         animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
-      <Download size={16} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div>HotDoc {info.latest} verfügbar</div>
-        <div
-          style={{
-            fontSize: 10,
-            fontFamily: "var(--font-mono)",
-            opacity: 0.85,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-          }}
-        >
-          aktuell {info.current}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Download size={16} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div>HotDoc {info.latest} verfügbar</div>
+          <div
+            style={{
+              fontSize: 10,
+              fontFamily: "var(--font-mono)",
+              opacity: 0.85,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            aktuell {info.current}
+          </div>
         </div>
-      </div>
       <button
         type="button"
         onClick={() => void triggerUpdateDownload(info.apkUrl)}
@@ -114,6 +116,24 @@ export function UpdateBanner() {
       >
         Update
       </button>
+      {info.notes ? (
+        <button
+          type="button"
+          aria-label={expanded ? "Release-Notes ausblenden" : "Release-Notes anzeigen"}
+          onClick={() => setExpanded((x) => !x)}
+          style={{
+            background: "transparent",
+            color: "rgba(255,255,255,0.85)",
+            border: 0,
+            borderRadius: 6,
+            padding: 4,
+            cursor: "pointer",
+            minHeight: 0,
+          }}
+        >
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      ) : null}
       <button
         type="button"
         aria-label="Verstecken"
@@ -137,6 +157,27 @@ export function UpdateBanner() {
       >
         <X size={14} />
       </button>
+      </div>
+      {expanded && info.notes ? (
+        <div
+          style={{
+            marginTop: 2,
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "rgba(0,0,0,0.18)",
+            color: "rgba(255,255,255,0.95)",
+            fontSize: 11.5,
+            fontWeight: 500,
+            lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 220,
+            overflow: "auto",
+          }}
+        >
+          {info.notes}
+        </div>
+      ) : null}
     </div>
   );
 }
