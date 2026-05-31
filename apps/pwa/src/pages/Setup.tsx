@@ -1,8 +1,25 @@
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Download, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { db } from "../db/pouch";
 import { BrandLogo } from "../components/BrandLogo";
+import { isNative } from "../lib/platform";
+
+/**
+ * Erkennt einen Android-Browser, der NICHT bereits die APK ist. Genau
+ * dort macht der "APK installieren"-Hinweis Sinn — auf iOS-Safari, am
+ * Desktop oder in der laufenden APK selbst waere er nutzlos bzw. zirkulaer.
+ */
+function shouldShowApkHint(): boolean {
+  if (isNative()) return false;
+  try {
+    return /Android/i.test(navigator.userAgent);
+  } catch {
+    return false;
+  }
+}
+
+const APK_DOWNLOAD_URL = "https://hotdoc-apk.fly.dev/hotdoc-v0.1.0-debug.apk";
 
 interface Props {
   onSetupDone: (fahrzeugId: FahrzeugId) => void;
@@ -347,6 +364,82 @@ export function Setup({ onSetupDone }: Props) {
       >
         Diese Einstellung kann später nur durch einen Funktionär geändert werden.
       </p>
+
+      {/* ─── Android-APK-Hinweis ─── nur fuer Browser-Aufruf auf Android */}
+      {shouldShowApkHint() ? (
+        <a
+          href={APK_DOWNLOAD_URL}
+          download
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            marginTop: 16,
+            padding: "14px 16px 14px 14px",
+            borderRadius: "var(--radius-m)",
+            background:
+              "linear-gradient(135deg, color-mix(in srgb, var(--ok) 14%, transparent), color-mix(in srgb, var(--ok) 6%, transparent))",
+            border: "1px solid var(--ok-border)",
+            boxShadow: "0 6px 18px -8px var(--emerald-glow)",
+            color: "var(--fg)",
+            textDecoration: "none",
+            transition: "transform 180ms var(--ease-smooth)",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-1px)")}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = "")}
+        >
+          <span
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "var(--ok-tint)",
+              color: "var(--ok)",
+              flexShrink: 0,
+              border: "1px solid var(--ok-border)",
+            }}
+          >
+            <Smartphone size={22} strokeWidth={2.2} />
+          </span>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "var(--tracking-tight)" }}>
+              Als Android-App installieren
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: "var(--tracking-caps)",
+                textTransform: "uppercase",
+                color: "var(--fg-3)",
+              }}
+            >
+              Echte APK · ~9 MB · Boot-Persistent
+            </div>
+            <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2, lineHeight: 1.4 }}>
+              Browser-Lesezeichen sind unzuverlässig — die APK läuft auch nach Tablet-Neustart sofort weiter und kann später FCM-Push empfangen.
+            </div>
+          </div>
+          <span
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: "var(--ok)",
+              color: "#fff",
+              flexShrink: 0,
+              boxShadow: "0 4px 12px -2px var(--emerald-glow)",
+            }}
+          >
+            <Download size={16} strokeWidth={2.5} />
+          </span>
+        </a>
+      ) : null}
 
       {/* ─── Datenschutz-Karte ─── */}
       <div
