@@ -98,20 +98,12 @@ export async function checkForUpdate(
   }
 }
 
-/** Oeffnet die APK-URL im Default-Browser/PackageInstaller. */
+/** Oeffnet die APK-URL im Default-Browser/PackageInstaller.
+ *  Im Webview triggert window.open einen Intent — Chrome uebernimmt
+ *  den Download, danach startet der PackageInstaller (Android-System-
+ *  Dialog "App installieren?"). */
 export async function triggerUpdateDownload(apkUrl: string): Promise<void> {
-  if (!Capacitor.isNativePlatform()) {
-    window.open(apkUrl, "_blank");
-    return;
-  }
-  try {
-    const { App } = await import("@capacitor/app");
-    // App.openUrl mit der APK-URL — Android delegiert an Chrome/Browser,
-    // der die APK runterlaedt und PackageInstaller triggert.
-    await App.openUrl?.({ url: apkUrl }).catch(() => {
-      window.open(apkUrl, "_blank");
-    });
-  } catch {
-    window.open(apkUrl, "_blank");
-  }
+  // Auf Native UND im Browser identisch: window.open delegiert an Chrome,
+  // das die APK runterlaedt + PackageInstaller-Intent ausloest.
+  window.open(apkUrl, "_blank");
 }
