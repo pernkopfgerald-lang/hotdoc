@@ -23,6 +23,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
+import { AboutModal } from "../components/AboutModal";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { StatusBanner } from "../components/StatusBanner";
@@ -320,6 +321,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   const [archivOpenFlorian, setArchivOpenFlorian] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   /** Wenn der 403 vom Abschluss-Endpoint zurückkommt, ist meist der Token
    *  veraltet (alte Rolle "mannschaft" für zentrale). Wir zeigen dann einen
    *  direkten Re-Auth-Button im Fehler-Banner statt nur Text. */
@@ -1979,7 +1981,23 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
-        {APP_VERSION} · {APP_BUILD}
+        <button
+          type="button"
+          onClick={() => setAboutOpen(true)}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "inherit",
+            font: "inherit",
+            cursor: "pointer",
+            textDecoration: "underline",
+            minHeight: 0,
+            padding: 0,
+          }}
+          title="Über HotDoc · Entwickler · Lizenz · Release-Notes"
+        >
+          {APP_VERSION} · {APP_BUILD}
+        </button>
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
         <span className="sep">·</span>
@@ -2303,6 +2321,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         open={archivOpenFlorian}
         onClose={() => setArchivOpenFlorian(false)}
       />
+
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }

@@ -248,10 +248,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
   // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
   "app-version": {
-    currentVersion: "0.1.1",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.1-debug.apk",
+    currentVersion: "0.1.3",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.3-debug.apk",
     releaseNotes:
-      "v0.1.1 — Bug-Fixes + Florianstation-Korrekturen\n\n• Topbar zeigt 'Einsatzzentrale' statt 'Fahrzeugbericht' auf Florianstation\n• Eigenstaendiges Fahrzeugbericht-PDF im Papier-Original-Layout (mit Einsatzchronik auf der Rueckseite)\n• Person aus Mannschaft/Fahrer/Kdt rausloeschen (rotes ×)\n• Uhrzeit bis manuell editierbar — beim Abschluss nicht ueberschrieben\n• Capacitor-Webview: API-URL-Aufloesung repariert (Erstes Login geht jetzt durch)\n• Auto-Register beim Boot\n• Ausklappbarer Release-Notes-Banner in der App\n• APK-Download-Landing-Page mit Release-Notes",
+      "v0.1.3 — Solo-Tablet + KM-Automatik + About-Seite\n\n• Solo-Tablet-Workflow: Im Abschluss-Modal die Option 'Einsatzbericht ebenfalls jetzt abschliessen' — kein Florianstation-Schritt noetig wenn nur ein Fahrzeug am Einsatz war.\n• KM-Automatik: Strecke FF-Haus ↔ Einsatzort × 2, primaer ueber GraphHopper-Route, sonst Luftlinie × 1,3. Fahrzeugkdt kann ueberschreiben — manueller Wert gewinnt immer.\n• WAS-Box-Probealarm-Filter: samstaegliche Probealarme werden nicht mehr als Einsatz angelegt.\n• About-Seite in PWA + Backoffice mit Entwickler-Kontakt und Release-Notes-Historie.",
     minSupported: "0.1.0",
   },
 };

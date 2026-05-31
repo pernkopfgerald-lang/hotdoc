@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Lock, X } from "lucide-react";
+import { useState } from "react";
 
 export interface AbschlussCheck {
   ok: boolean;
@@ -12,8 +13,13 @@ interface Props {
   checks: AbschlussCheck[];
   /** Statistik-Zeile unten — z. B. Dauer, KM, Personen */
   summary: { label: string; value: string }[];
-  onConfirm: () => void;
+  /** Callback bekommt zusaetzlich die User-Wahl ob der Einsatz selbst
+   *  ebenfalls abgeschlossen werden soll (Solo-Tablet-Workflow). */
+  onConfirm: (alsoCloseEinsatz: boolean) => void;
   onCancel: () => void;
+  /** Wenn true, wird die "Auch Einsatz abschliessen"-Option angezeigt
+   *  (nur sinnvoll wenn nur ein Fahrzeug am Einsatz beteiligt war). */
+  showCloseEinsatzOption?: boolean;
 }
 
 /**
@@ -22,7 +28,16 @@ interface Props {
  * eine Zusammenfassung. Erst die explizite Confirm-Aktion lockt den
  * Bericht und übergibt ihn an die Zentrale (Florian Eberstalzell).
  */
-export function AbschlussModal({ open, funkrufname, checks, summary, onConfirm, onCancel }: Props) {
+export function AbschlussModal({
+  open,
+  funkrufname,
+  checks,
+  summary,
+  onConfirm,
+  onCancel,
+  showCloseEinsatzOption,
+}: Props) {
+  const [alsoCloseEinsatz, setAlsoCloseEinsatz] = useState(false);
   if (!open) return null;
   const offene = checks.filter((c) => !c.ok);
   const canConfirm = offene.length === 0;
@@ -139,6 +154,37 @@ export function AbschlussModal({ open, funkrufname, checks, summary, onConfirm, 
           ))}
         </div>
 
+        {/* Solo-Tablet-Option: auch den Einsatz selbst abschliessen.
+            Nur wenn keine Florianstation den Hauptbericht erwartet. */}
+        {showCloseEinsatzOption ? (
+          <label
+            className="flex items-start gap-2 px-3 py-3 cursor-pointer"
+            style={{
+              borderTop: "1px solid var(--border)",
+              background: alsoCloseEinsatz ? "var(--info-tint)" : "transparent",
+              transition: "background 180ms ease",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={alsoCloseEinsatz}
+              onChange={(e) => setAlsoCloseEinsatz(e.target.checked)}
+              style={{ marginTop: 3, accentColor: "var(--info)" }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                className="text-[13px] font-semibold"
+                style={{ color: alsoCloseEinsatz ? "var(--info)" : "var(--fg)" }}
+              >
+                Einsatzbericht ebenfalls jetzt abschließen
+              </div>
+              <div className="text-[11px] mt-0.5" style={{ color: "var(--fg-3)" }}>
+                Für Solo-Einsätze wo nur dieses Fahrzeug beteiligt war und keine Florianstation den Hauptbericht nachträgt. Setzt den Schreibschutz auch auf den Einsatz selbst.
+              </div>
+            </div>
+          </label>
+        ) : null}
+
         {/* CTAs */}
         <footer className="flex gap-2 p-3">
           <button
@@ -151,7 +197,7 @@ export function AbschlussModal({ open, funkrufname, checks, summary, onConfirm, 
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => onConfirm(alsoCloseEinsatz)}
             className="flex-1 rounded-m px-3 py-2.5 text-sm font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
             style={{
               background: canConfirm

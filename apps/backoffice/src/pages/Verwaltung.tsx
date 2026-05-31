@@ -1,4 +1,5 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, QrCode, Download, Trash2 } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, QrCode, Download, Trash2, Info } from "lucide-react";
+import { AboutPanel } from "../components/AboutPanel";
 import {
   listDevices,
   deleteDevice,
@@ -207,7 +208,8 @@ type Tab =
   | "stammdaten"
   | "tablet-inventar"
   | "devices"
-  | "app-version";
+  | "app-version"
+  | "about";
 
 export function Verwaltung({ auth, onLogout }: Props) {
   const [tab, setTab] = useState<Tab>("berichte");
@@ -311,6 +313,9 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "app-version"} onClick={() => setTab("app-version")} icon={<Download size={16} />}>
           App-Version
         </TabButton>
+        <TabButton active={tab === "about"} onClick={() => setTab("about")} icon={<Info size={16} />}>
+          Über
+        </TabButton>
       </nav>
 
       <main
@@ -356,6 +361,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "tablet-inventar" && <TabletInventarPanel currentUser={auth.benutzer?.username ?? "—"} />}
         {tab === "devices" && <DevicesPanel />}
         {tab === "app-version" && <AppVersionPanel />}
+        {tab === "about" && <AboutPanel />}
       </main>
     </div>
   );

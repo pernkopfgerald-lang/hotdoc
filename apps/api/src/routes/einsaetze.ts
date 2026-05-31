@@ -219,7 +219,12 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async
 }) as RequestHandler);
 
 // ─── POST /api/einsaetze/:id/abschluss ─── FR-6 ─────────────
-einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("einsatzleiter"), (async (req, res) => {
+// Mannschaft-Rolle reicht — Solo-Tablet-Einsaetze (kein Florian, nur
+// ein Fahrzeug) sollen auch direkt vom Fahrzeug-Tablet abgeschlossen
+// werden koennen. Die Florianstation hat ohnehin die einsatzleiter-
+// Rolle und kann das jederzeit zusaetzlich. Der abschlussOverride-
+// Hinweis im PDF zeigt offene Fahrzeugberichte transparent.
+einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), (async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const session = req.session!;
   const doc = (await db.get(id)) as Record<string, unknown>;

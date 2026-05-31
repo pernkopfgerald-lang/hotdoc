@@ -2,6 +2,7 @@ import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, T
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
+import { AboutModal } from "../components/AboutModal";
 import { IdleView } from "../components/IdleView";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
@@ -74,6 +75,9 @@ interface EinsatzInstance {
    *  leer ist — wenn der Kdt schon manuell eingetragen hat, ueberschreibt
    *  der Abschluss seine Eingabe nicht. */
   uhrzeitBisHHMM: string;
+  /** Manueller KM-Override durch den Fahrzeugkdt. null = Auto-Wert aus
+   *  GraphHopper-Route × 2 (oder Luftlinie × 1.3 × 2 als Fallback). */
+  kmManualOverride: number | null;
 }
 
 interface Props {
@@ -103,6 +107,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   /** Read-only Archiv-Modal. */
   const [archivOpen, setArchivOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   // einsaetze[] startet leer — kein Phantom-Einsatz, keine Vorbelegung.
   // Backend-Poll fuegt einen Eintrag hinzu sobald ein echter Einsatz im
@@ -240,6 +245,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         chronik: [],
         abgeschlossen: persisted,
         uhrzeitBisHHMM: "",
+        kmManualOverride: null,
       };
     };
 
@@ -901,8 +907,27 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     onSwitchFahrzeug(id);
   }
 
+  /**
+   * KM-Berechnung priorisiert:
+   *   1. Manueller Override durch den Fahrzeugkdt (wenn vorhanden)
+   *   2. GraphHopper-Route Feuerwehrhaus → Einsatzort × 2 (Hin+Rück)
+   *   3. Luftlinie × 1.3 (Strassen-Faktor) × 2 als Fallback wenn Routing
+   *      noch nicht zurueckgegeben hat oder die API down ist
+   *
+   * Die manuelle Eingabe gewinnt IMMER — der Kdt weiss am besten ob er
+   * den direkten Weg gefahren ist oder noch ein Mannschaftsfahrzeug
+   * abgeholt hat. Auto-Wert bleibt sichtbar als Vergleich.
+   */
   function computeKm(): number {
     if (!active) return 0;
+    if (typeof active.kmManualOverride === "number") return active.kmManualOverride;
+    return computeKmAuto();
+  }
+  function computeKmAuto(): number {
+    if (!active) return 0;
+    if (route && route.distanceM > 0) {
+      return (route.distanceM / 1000) * 2;
+    }
     const luftlinie = haversineKm(HOME_POS, active.einsatzPos);
     return luftlinie * ROAD_FACTOR * 2;
   }
@@ -992,9 +1017,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     }
   }
 
-  function abschliessen() {
+  function abschliessen(alsoCloseEinsatz: boolean) {
     if (!active) return;
     const km = computeKm();
+    const einsatzId = active.id;
     patchActive((e) => ({
       ...e,
       abgeschlossen: {
@@ -1004,9 +1030,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       },
     }));
     setAbschlussModalOpen(false);
-    // Upload im Hintergrund anstoßen — UI ist schon abgeschlossen, der
-    // User sieht die Sync-Statusbadge in der Abschluss-View.
     void uploadFahrzeugbericht(active, km);
+    // Solo-Tablet-Workflow: Wenn der Funktionaer das Hakerl gesetzt hat,
+    // schliesst der Fahrzeug-Abschluss auch gleich den Einsatz selbst.
+    // Backend erlaubt das seit dem requireAuth("mannschaft")-Switch.
+    if (alsoCloseEinsatz) {
+      void apiCall(`/api/einsaetze/${encodeURIComponent(einsatzId)}/abschluss`, {
+        method: "POST",
+        body: {},
+      }).catch((err) => {
+        console.warn("[abschluss] Einsatz-Abschluss fehlgeschlagen:", err);
+      });
+    }
   }
 
   /**
@@ -1206,6 +1241,88 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 <label className="caption">Einsatzort</label>
                 <input className="input filled" value={active.alarm.einsatzort} readOnly />
               </div>
+              {/* Strecke / Kilometer — Auto-Berechnung Feuerwehrhaus ↔ Einsatzort × 2 */}
+              <div className="grid-2" style={{ marginTop: 14, gap: 14 }}>
+                <div className="field">
+                  <label className="caption">
+                    Strecke (Hin+Rück) · Auto
+                  </label>
+                  <div className="input-row filled">
+                    <input
+                      value={`${computeKmAuto().toFixed(1).replace(".", ",")} km`}
+                      readOnly
+                      className="num"
+                      style={{ color: "var(--fg-3)", fontWeight: 500 }}
+                    />
+                    <div
+                      className="chev"
+                      title={
+                        route && route.distanceM > 0
+                          ? "Über GraphHopper-Route berechnet"
+                          : "Luftlinie × 1,3 (GraphHopper noch nicht da)"
+                      }
+                    >
+                      <span style={{ fontSize: 11 }}>
+                        {route && route.distanceM > 0 ? "GH" : "≈"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="caption">
+                    Tatsächlich gefahren · Eingabe Fzg-Kdt
+                  </label>
+                  <div
+                    className={`input-row${
+                      typeof active.kmManualOverride === "number" ? " filled" : ""
+                    }`}
+                  >
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="9999"
+                      value={
+                        typeof active.kmManualOverride === "number"
+                          ? String(active.kmManualOverride)
+                          : ""
+                      }
+                      placeholder={`${computeKmAuto().toFixed(1).replace(".", ",")} (übernehmen)`}
+                      onChange={(e) => {
+                        const v = e.target.value.trim();
+                        patchActive((x) => ({
+                          ...x,
+                          kmManualOverride:
+                            v === "" || Number.isNaN(Number(v))
+                              ? null
+                              : Math.max(0, Math.min(9999, Number(v))),
+                        }));
+                      }}
+                      disabled={!!active.abgeschlossen}
+                      className="num"
+                    />
+                    {typeof active.kmManualOverride === "number" ? (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Auf Auto-Wert zurücksetzen"
+                        title="Auf Auto-Wert zurücksetzen"
+                        disabled={!!active.abgeschlossen}
+                        onClick={() =>
+                          patchActive((x) => ({ ...x, kmManualOverride: null }))
+                        }
+                        style={{ width: 30, height: 30, minHeight: 30 }}
+                      >
+                        <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                      </button>
+                    ) : (
+                      <div className="chev">
+                        <span style={{ fontSize: 11 }}>km</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section className="card">
@@ -1361,7 +1478,23 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
-        {APP_VERSION} · {APP_BUILD}
+        <button
+          type="button"
+          onClick={() => setAboutOpen(true)}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "inherit",
+            font: "inherit",
+            cursor: "pointer",
+            textDecoration: "underline",
+            minHeight: 0,
+            padding: 0,
+          }}
+          title="Über HotDoc · Entwickler · Lizenz · Release-Notes"
+        >
+          {APP_VERSION} · {APP_BUILD}
+        </button>
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
         <span className="sep">·</span>
@@ -1458,6 +1591,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           IdleView) öffnen jetzt das gleiche Modal. */}
 
       <AbschlussModal
+        showCloseEinsatzOption
         open={abschlussModalOpen}
         funkrufname={fahrzeug.funkrufname}
         checks={checks}
@@ -1536,6 +1670,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         fahrzeugId={fahrzeugId}
         fahrzeugName={fahrzeug.funkrufname}
       />
+
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }

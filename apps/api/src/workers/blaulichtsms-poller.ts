@@ -39,7 +39,55 @@ export async function pollOnce(): Promise<{ neu: number; gesamt: number }> {
   }
 }
 
+/**
+ * Erkennt den woechentlichen WAS-Box-Probealarm: jeden Samstag im Zeitraum
+ * 11:50 - 13:15 Uhr lokaler Zeit mit Pattern "WAS-Box Probealarm fuer FF
+ * Eberstalzell" im alarmText. Der wird nicht als Einsatz angelegt — er
+ * dient nur zur Pruefung der Alarmgeber. Spaeter koennen wir hier den
+ * Watchdog hochziehen ("FF hat samstags kein Probealarm bekommen!"). Aktuell
+ * nur skippen.
+ */
+function istWasBoxProbealarm(a: BlaulichtAlarmData): boolean {
+  const text = (a.alarmText ?? "").toLowerCase();
+  const isProbe =
+    text.includes("was-box probealarm") ||
+    text.includes("was-box-probealarm") ||
+    text.includes("probealarm") && text.includes("was-box");
+  if (!isProbe) return false;
+  try {
+    const d = new Date(a.alarmDate);
+    if (Number.isNaN(d.getTime())) return false;
+    // Local time — Europe/Vienna. Node nutzt TZ env oder default UTC; auf
+    // fly.io ist TZ nicht gesetzt. Wir konvertieren ueber Intl auf "Vienna".
+    const fmt = new Intl.DateTimeFormat("de-AT", {
+      timeZone: "Europe/Vienna",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(d);
+    const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+    const hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+    const mm = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+    if (!/^sa/i.test(weekday)) return false;
+    const totalMin = hh * 60 + mm;
+    return totalMin >= 11 * 60 + 50 && totalMin <= 13 * 60 + 15;
+  } catch {
+    return false;
+  }
+}
+
 async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
+  // Filter: woechentlicher WAS-Box-Probealarm. Nur skippen, kein Einsatz-Doc
+  // anlegen. Wird auch nicht in der FCM-Push-Pipeline weitergereicht.
+  if (istWasBoxProbealarm(a)) {
+    logger.info(
+      { alarmId: a.alarmId, alarmDate: a.alarmDate },
+      "WAS-Box-Probealarm erkannt — als Einsatz uebersprungen",
+    );
+    return false;
+  }
   const id = `einsatz:${a.alarmId}`;
   try {
     await db.get(id);

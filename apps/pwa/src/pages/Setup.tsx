@@ -1,7 +1,8 @@
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
-import { ChevronRight, Download, Smartphone } from "lucide-react";
+import { ChevronRight, Download, Info, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { db } from "../db/pouch";
+import { AboutModal } from "../components/AboutModal";
 import { BrandLogo } from "../components/BrandLogo";
 import { isNative } from "../lib/platform";
 
@@ -45,6 +46,7 @@ export function Setup({ onSetupDone }: Props) {
   const [selectedFzg, setSelectedFzg] = useState<FahrzeugId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   // Wenn der Boot-Check festgestellt hat, dass der vorhandene Token tot
   // war (z. B. nach Backend-Restart, JWT-Secret-Rotation oder iOS-Safari-
@@ -441,6 +443,33 @@ export function Setup({ onSetupDone }: Props) {
           </span>
         </a>
       ) : null}
+
+      {/* Über HotDoc Link */}
+      <button
+        type="button"
+        onClick={() => setAboutOpen(true)}
+        style={{
+          marginTop: 14,
+          padding: "10px 14px",
+          background: "transparent",
+          border: "1px solid var(--glass-border)",
+          borderRadius: "var(--radius-s)",
+          color: "var(--fg-2)",
+          fontFamily: "inherit",
+          fontSize: 12.5,
+          fontWeight: 600,
+          letterSpacing: "var(--tracking-ui)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+        }}
+      >
+        <Info size={14} />
+        Über HotDoc · Entwickler · Lizenz · Release-Notes
+      </button>
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       {/* ─── Datenschutz-Karte ─── */}
       <div
