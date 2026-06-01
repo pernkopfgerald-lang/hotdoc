@@ -226,10 +226,8 @@ function hhmmToIso(hhmm: string, refDateIso: string): string | undefined {
  * Florianstation / Einsatzzentrale — Hauptbericht-Layout (Anhang B des
  * Spec). Aggregiert Fahrzeugberichte aus dem Einsatz, zeigt Status
  * pro Fahrzeug und übernimmt die Übergabe an den Bearbeiter (PDF +
- * syBOS-Spickzettel).
- *
- * Vollständige Backend-Anbindung (Aggregation aus CouchDB-Views) kommt
- * in Phase 6 — aktuell sind die Werte aus dem Mock-Alarm-Demo.
+ * syBOS-Spickzettel). Werte werden live aus CouchDB aggregiert
+ * (Mannschaft, AS-Trupps, Öl, Fahrzeug-Status, GPS-Positionen).
  */
 export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE.zentrale;
@@ -1970,20 +1968,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             enablePopOut
             defaultHeight={500}
           />
-          <p
-            style={{
-              marginTop: 8,
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "var(--fg-3)",
-            }}
-          >
-            Live-Position-Sharing via SSE folgt mit Phase 4 — aktuell mock-positionen um den
-            Einsatzort und das Feuerwehrhaus.
-          </p>
         </section>
 
         {/* Aggregations + Chronik + Uebergabe nur sichtbar mit aktivem Einsatz. */}
