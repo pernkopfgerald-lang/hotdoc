@@ -28,7 +28,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { QrAnchorModal } from "../components/QrAnchorModal";
 import { Florianstation } from "./Florianstation";
-import type { AuthResponse } from "@hotdoc/shared";
+import { FLORIAN_ADDRESS, type AuthResponse } from "@hotdoc/shared";
 
 /** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
 function AddItemForm({ onAdd, placeholder }: { onAdd: (text: string) => void; placeholder: string }) {
@@ -265,8 +265,12 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "berichte"} onClick={() => setTab("berichte")} icon={<FileText size={16} />}>
           Berichte
         </TabButton>
+        {/* Florianstation-Tab — Hauptbericht-Editor mit Auto-Save (PUT /api/einsaetze/:id)
+            und Live-Spalte mit echten Fahrzeugberichten aus /api/einsaetze/:id/fahrzeugberichte.
+            AS-Anzeige zeigt nur Anzahl der am Fz verfuegbaren AS-Traeger, keine
+            Ueberwachung (Audit T-05). Phantom-Mock-Liste entfernt (T-01). */}
         <TabButton active={tab === "florian"} onClick={() => setTab("florian")} icon={<Activity size={16} />}>
-          Florianstation
+          Florian Eberstalzell
         </TabButton>
         <TabButton active={tab === "archiv"} onClick={() => setTab("archiv")} icon={<Archive size={16} />}>
           Archiv
@@ -344,7 +348,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
             configKey="beteiligte-stellen"
             title="Beteiligte Stellen (global)"
             icon={<Siren size={20} />}
-            description="Diese Liste erscheint im Florianstation-Editor als anhakbare Chips, wenn der Einsatzleiter dokumentiert, wer noch auf der Einsatzstelle anwesend war (Polizei, Rotes Kreuz, Notarzt, …). Änderungen wirken sich sofort auf den Florianstation-Editor aus."
+            description="Diese Liste erscheint im Editor von Florian Eberstalzell als anhakbare Chips, wenn der Einsatzleiter dokumentiert, wer noch auf der Einsatzstelle anwesend war (Polizei, Rotes Kreuz, Notarzt, …). Änderungen wirken sich sofort aus."
             placeholder="Neue Stelle …"
           />
         )}
@@ -353,7 +357,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
             configKey="sonstige-ff"
             title="Sonstige Feuerwehren (global)"
             icon={<Flame size={20} />}
-            description="Liste der ueblichen Nachbar-Feuerwehren. Im Florianstation-Editor als Schnellauswahl-Chips verfügbar (Sturm, BMA-Übergreifend, Personenrettung-Mitarbeit …)."
+            description="Liste der ueblichen Nachbar-Feuerwehren. Im Editor von Florian Eberstalzell als Schnellauswahl-Chips verfügbar (Sturm, BMA-Übergreifend, Personenrettung-Mitarbeit …)."
             placeholder="Neue FF …"
           />
         )}
@@ -1517,7 +1521,7 @@ function NummerierungPanel() {
       >
         <strong>Wichtig:</strong> Beim Jahreswechsel beginnen beide Zähler bei 001.
         Bei Offline-Vergabe (mehrere Tablets ohne Verbindung) wird die Nummer
-        provisorisch vergeben — bei Reconnect prüft die Florianstation auf Konflikte
+        provisorisch vergeben — bei Reconnect prüft Florian Eberstalzell auf Konflikte
         und schlägt eine Korrektur vor (siehe <code style={{ fontFamily: "var(--font-mono)" }}>docs/sync-architecture.md</code>).
       </p>
     </section>
@@ -1716,6 +1720,7 @@ function StammdatenPanel() {
             className="input"
             value={data.feuerwehrhausAdresse ?? ""}
             onChange={(e) => setData({ ...data, feuerwehrhausAdresse: e.target.value })}
+            placeholder={FLORIAN_ADDRESS}
           />
         </div>
         <div className="field">

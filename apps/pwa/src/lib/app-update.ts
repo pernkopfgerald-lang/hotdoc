@@ -39,8 +39,9 @@ function semverCompare(a: string, b: string): number {
   return 0;
 }
 
-/** Holt die aktuell installierte App-Version vom Capacitor App-Plugin. */
-export async function getInstalledVersion(): Promise<string> {
+/** Holt die aktuell installierte App-Version vom Capacitor App-Plugin.
+ *  Nur intern fuer checkForUpdate verwendet — kein Re-Export. */
+async function getInstalledVersion(): Promise<string> {
   if (!Capacitor.isNativePlatform()) return "web";
   try {
     const { App } = await import("@capacitor/app");
@@ -98,12 +99,3 @@ export async function checkForUpdate(
   }
 }
 
-/** Oeffnet die APK-URL im Default-Browser/PackageInstaller.
- *  Im Webview triggert window.open einen Intent — Chrome uebernimmt
- *  den Download, danach startet der PackageInstaller (Android-System-
- *  Dialog "App installieren?"). */
-export async function triggerUpdateDownload(apkUrl: string): Promise<void> {
-  // Auf Native UND im Browser identisch: window.open delegiert an Chrome,
-  // das die APK runterlaedt + PackageInstaller-Intent ausloest.
-  window.open(apkUrl, "_blank");
-}

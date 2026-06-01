@@ -49,13 +49,18 @@ export function AbschlussModal({
         if (e.target === e.currentTarget) onCancel();
       }}
     >
+      {/* D-10: Border + Beacon + Icon-Tile signalisieren den Pruefstatus
+          (gruen = alles ok, kann abschliessen / amber = Pflichtfelder offen).
+          Der primaere CTA-Button bleibt FF-rot (Brand-Aktion) — er sagt
+          "abschliessen", nicht "alles ok". Frueher waren Border + CTA beide
+          rot, was den canConfirm-Zustand visuell zerstoert hat. */}
       <div
         className="w-full max-w-2xl overflow-hidden rounded-l border"
         style={{
-          borderColor: canConfirm ? "var(--red-border)" : "var(--amber-border)",
+          borderColor: canConfirm ? "var(--emerald-border)" : "var(--amber-border)",
           background: "var(--card-gradient)",
           boxShadow: canConfirm
-            ? "0 30px 80px -30px var(--red-glow), var(--shadow-card)"
+            ? "0 30px 80px -30px var(--emerald-glow), var(--shadow-card)"
             : "0 30px 80px -30px var(--amber-glow), var(--shadow-card)",
         }}
       >
@@ -65,7 +70,7 @@ export function AbschlussModal({
           className="h-[3px] w-full"
           style={{
             background: canConfirm
-              ? "linear-gradient(90deg, transparent 0%, var(--red) 18%, var(--red) 82%, transparent 100%)"
+              ? "linear-gradient(90deg, transparent 0%, var(--ok) 18%, var(--ok) 82%, transparent 100%)"
               : "linear-gradient(90deg, transparent 0%, var(--amber) 18%, var(--amber) 82%, transparent 100%)",
             animation: "beacon 2.4s ease-in-out infinite",
           }}
@@ -77,10 +82,10 @@ export function AbschlussModal({
               className="grid h-9 w-9 place-items-center rounded-md text-white"
               style={{
                 background: canConfirm
-                  ? "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)"
+                  ? "linear-gradient(135deg, var(--ok) 0%, color-mix(in srgb, var(--ok) 70%, #000) 100%)"
                   : "linear-gradient(135deg, var(--amber) 0%, color-mix(in srgb, var(--amber) 60%, #000) 100%)",
                 boxShadow: canConfirm
-                  ? "0 0 18px -2px var(--red-glow)"
+                  ? "0 0 18px -2px var(--emerald-glow)"
                   : "0 0 18px -2px var(--amber-glow)",
               }}
             >
@@ -155,7 +160,7 @@ export function AbschlussModal({
         </div>
 
         {/* Solo-Tablet-Option: auch den Einsatz selbst abschliessen.
-            Nur wenn keine Florianstation den Hauptbericht erwartet. */}
+            Nur wenn Florian Eberstalzell keinen Hauptbericht erwartet. */}
         {showCloseEinsatzOption ? (
           <label
             className="flex items-start gap-2 px-3 py-3 cursor-pointer"
@@ -179,7 +184,7 @@ export function AbschlussModal({
                 Einsatzbericht ebenfalls jetzt abschließen
               </div>
               <div className="text-[11px] mt-0.5" style={{ color: "var(--fg-3)" }}>
-                Für Solo-Einsätze wo nur dieses Fahrzeug beteiligt war und keine Florianstation den Hauptbericht nachträgt. Setzt den Schreibschutz auch auf den Einsatz selbst.
+                Für Solo-Einsätze wo nur dieses Fahrzeug beteiligt war und Florian Eberstalzell keinen Hauptbericht nachträgt. Setzt den Schreibschutz auch auf den Einsatz selbst.
               </div>
             </div>
           </label>

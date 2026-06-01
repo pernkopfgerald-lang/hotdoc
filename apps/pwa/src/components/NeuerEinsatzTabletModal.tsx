@@ -51,12 +51,14 @@ const UEBUNGS_TYPEN = [
   "Sonstige",
 ] as const;
 
+// U-06: einfachere Labels. "Manuell" ist Tech-Jargon — "Einsatz ohne Alarm"
+// trifft, was es wirklich ist (im Gegensatz zum BlaulichtSMS-Alarm).
 const TYP_META: Record<
   EinsatzTyp,
   { label: string; sub: string; icon: typeof Wrench; color: string; glow: string }
 > = {
   manuell: {
-    label: "Neuer Einsatz",
+    label: "Einsatz ohne Alarm",
     sub: "Bericht ohne BlaulichtSMS-Alarm",
     icon: Wrench,
     color: "var(--info)",
@@ -77,6 +79,34 @@ const TYP_META: Record<
     glow: "var(--glow-ok)",
   },
 };
+
+// U-08: localStorage-Key fuer haeufig verwendete Einsatzarten. Wir behalten
+// die letzten 5 zur schnelleren Auswahl.
+const RECENT_KEY = "hotdoc.einsatzart.recent";
+const RECENT_MAX = 5;
+
+function loadRecentEinsatzarten(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === "string").slice(0, RECENT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentEinsatzart(art: string): void {
+  if (!art) return;
+  try {
+    const cur = loadRecentEinsatzarten().filter((x) => x !== art);
+    const next = [art, ...cur].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // Storage gesperrt — egal, kein UX-Block.
+  }
+}
 
 /**
  * Einsatzarten — alphabetisch sortiert (User-Wunsch). Frueher waren
@@ -102,6 +132,10 @@ function sortedEinsatzarten(): string[] {
  */
 export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }: Props) {
   const [typ, setTyp] = useState<EinsatzTyp>(initialTyp ?? "manuell");
+  /** U-08: Suchfilter ueber die Einsatzart-Pillen. */
+  const [einsatzartSuche, setEinsatzartSuche] = useState("");
+  /** U-08: zuletzt verwendete Einsatzarten (aus localStorage). */
+  const [recentEinsatzarten, setRecentEinsatzarten] = useState<string[]>(() => loadRecentEinsatzarten());
   const [einsatzort, setEinsatzort] = useState("");
   /** Koordinaten aus dem Geocoder (falls der User einen Treffer geklickt hat).
    *  Wird beim Submit mit ans Backend geschickt — die Florian-Karte zeigt
@@ -138,8 +172,36 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
   useEffect(() => {
     if (open) {
       setTyp(initialTyp ?? "manuell");
+      // U-08: Recent-Liste beim Oeffnen frisch laden + Suche leeren.
+      setRecentEinsatzarten(loadRecentEinsatzarten());
+      setEinsatzartSuche("");
     }
   }, [open, initialTyp]);
+
+  // U-06: bei Wechsel des Einsatz-Typs typ-spezifische Felder zuruecksetzen.
+  // Damit verirren sich keine Lotsendienst-Werte in einer Uebung etc.
+  function changeTyp(nextTyp: EinsatzTyp): void {
+    if (nextTyp === typ) return;
+    setTyp(nextTyp);
+    // Lotsendienst-Felder
+    setAuftraggeber("");
+    setRoute("");
+    setVerrechenbar(true);
+    setRechnungsadresse("");
+    // Uebungs-Felder
+    setUebungThema("");
+    setUebungsleiterPerson(null);
+    setUebungsTyp("");
+    // manuell-Felder
+    setGrund("");
+    // Einsatzart bei Wechsel weg von "manuell" loeschen — bei "lotsendienst"
+    // und "uebung" wird sie nicht angezeigt, sollte aber auch nicht alt
+    // weiterleben.
+    if (nextTyp !== "manuell") {
+      setEinsatzart("");
+    }
+    setErr(null);
+  }
 
   // ─── Personalliste laden (für Übungsleiter-Picker) ───
   // Wird nur beim ersten Öffnen geholt — die Liste ist seitens Backend
@@ -305,6 +367,11 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         "/api/einsaetze/manuell",
         { method: "POST", body },
       );
+      // U-08: Einsatzart in die "Haeufig"-Liste persistieren — nur bei
+      // erfolgreichem Submit, damit nicht jeder Probe-Klick reingerutscht.
+      if (typ === "manuell" && einsatzart) {
+        pushRecentEinsatzart(einsatzart);
+      }
       resetAll();
       onCreated(result.id, typ);
     } catch (e) {
@@ -359,7 +426,8 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           // Breiter (720 statt 560), damit die Hochkant-Android-Tastatur
           // dem Formular nicht den Atem nimmt. 100dvh statt 100vh, damit
           // bei eingeblendeter Tastatur trotzdem scrollbar bleibt.
-          width: "min(720px, calc(100% - 24px))",
+          // D-18: Modal-Width Stufe md (720px) — Standard-Editor.
+          width: "min(var(--modal-w-md), calc(100% - 24px))",
           maxHeight: "calc(100dvh - 32px)",
           overflow: "auto",
           background: "var(--glass-1)",
@@ -443,7 +511,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               <button
                 key={t}
                 type="button"
-                onClick={() => setTyp(t)}
+                onClick={() => changeTyp(t)}
                 className="vehicle-chip"
                 style={{
                   ...(active
@@ -469,10 +537,94 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           })}
         </div>
 
-        {/* Einsatzart-Pillen — NUR bei "Neuer Einsatz" (manuell) sichtbar */}
+        {/* Einsatzart-Pillen — NUR bei "Neuer Einsatz" (manuell) sichtbar.
+            U-08: Such-Input + "Haeufig"-Sektion mit den letzten 5 Auswahlen. */}
         {typ === "manuell" ? (
           <div className="field">
             <label className="caption">Einsatzart</label>
+            <div className="input-row filled" style={{ paddingLeft: 14, marginBottom: 8 }}>
+              <Wrench size={14} color="var(--fg-3)" />
+              <input
+                type="search"
+                value={einsatzartSuche}
+                onChange={(e) => setEinsatzartSuche(e.target.value)}
+                placeholder="Stichwort suchen …"
+                autoFocus
+              />
+              {einsatzartSuche && (
+                <button
+                  type="button"
+                  onClick={() => setEinsatzartSuche("")}
+                  aria-label="Suche loeschen"
+                  className="icon-btn"
+                  style={{ width: 30, height: 30, minHeight: 30 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Haeufig-Sektion — nur ohne aktive Suche und nur wenn es Eintraege gibt */}
+            {!einsatzartSuche.trim() && recentEinsatzarten.length > 0 ? (
+              <>
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "var(--tracking-caps)",
+                    textTransform: "uppercase",
+                    color: "var(--fg-3)",
+                    marginBottom: 6,
+                  }}
+                >
+                  Haeufig
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    marginBottom: 10,
+                    paddingBottom: 8,
+                    borderBottom: "1px dashed var(--border)",
+                  }}
+                >
+                  {recentEinsatzarten.map((art) => {
+                    const active = einsatzart === art;
+                    return (
+                      <button
+                        key={`recent:${art}`}
+                        type="button"
+                        onClick={() => setEinsatzart(active ? "" : art)}
+                        className={`chip${active ? " selected" : ""}`}
+                        style={{
+                          fontSize: 12,
+                          padding: "6px 10px",
+                          minHeight: 32,
+                          lineHeight: 1.2,
+                          gap: 4,
+                          ...(active
+                            ? {
+                                background: "var(--info-tint)",
+                                color: "var(--info)",
+                                borderColor: "var(--blue-border)",
+                                boxShadow: "var(--glow-info)",
+                              }
+                            : {}),
+                        }}
+                      >
+                        {active ? (
+                          <Flame size={10} strokeWidth={2.4} style={{ color: "var(--info)" }} />
+                        ) : null}
+                        {art}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+
             <div
               style={{
                 display: "flex",
@@ -483,37 +635,57 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 padding: 2,
               }}
             >
-              {sortedEinsatzarten().map((art) => {
-                const active = einsatzart === art;
-                return (
-                  <button
-                    key={art}
-                    type="button"
-                    onClick={() => setEinsatzart(active ? "" : art)}
-                    className={`chip${active ? " selected" : ""}`}
-                    style={{
-                      fontSize: 11.5,
-                      padding: "5px 9px",
-                      minHeight: 28,
-                      lineHeight: 1.2,
-                      gap: 4,
-                      ...(active
-                        ? {
-                            background: "var(--info-tint)",
-                            color: "var(--info)",
-                            borderColor: "var(--blue-border)",
-                            boxShadow: "var(--glow-info)",
-                          }
-                        : {}),
-                    }}
-                  >
-                    {active ? (
-                      <Flame size={10} strokeWidth={2.4} style={{ color: "var(--info)" }} />
-                    ) : null}
-                    {art}
-                  </button>
-                );
-              })}
+              {(() => {
+                const q = einsatzartSuche.trim().toLowerCase();
+                const all = sortedEinsatzarten();
+                const list = q ? all.filter((a) => a.toLowerCase().includes(q)) : all;
+                if (list.length === 0) {
+                  return (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fg-3)",
+                        padding: "10px 4px",
+                      }}
+                    >
+                      Kein Treffer · nimm den Stichwort-Freitext unten.
+                    </div>
+                  );
+                }
+                return list.map((art) => {
+                  const active = einsatzart === art;
+                  return (
+                    <button
+                      key={art}
+                      type="button"
+                      onClick={() => setEinsatzart(active ? "" : art)}
+                      className={`chip${active ? " selected" : ""}`}
+                      style={{
+                        // D-07: 11.5 → var(--font-sm) (12px) — eine Stufe groesser
+                        // im Type-Scale. Praktisch identisch, aber token-treu.
+                        fontSize: "var(--font-sm)",
+                        padding: "5px 9px",
+                        minHeight: 28,
+                        lineHeight: 1.2,
+                        gap: 4,
+                        ...(active
+                          ? {
+                              background: "var(--info-tint)",
+                              color: "var(--info)",
+                              borderColor: "var(--blue-border)",
+                              boxShadow: "var(--glow-info)",
+                            }
+                          : {}),
+                      }}
+                    >
+                      {active ? (
+                        <Flame size={10} strokeWidth={2.4} style={{ color: "var(--info)" }} />
+                      ) : null}
+                      {art}
+                    </button>
+                  );
+                });
+              })()}
             </div>
             <div
               style={{

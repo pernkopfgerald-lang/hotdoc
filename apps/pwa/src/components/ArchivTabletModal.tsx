@@ -1,10 +1,12 @@
 import {
+  AlertTriangle,
   Archive,
   Calendar,
   Download,
   FileText,
   Flame,
   GraduationCap,
+  Loader2,
   MapPin,
   RotateCcw,
   Search,
@@ -172,7 +174,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(880px, calc(100% - 24px))",
+          // D-18: Modal-Width Stufe lg (880px) — Multi-Spalten-View (Archiv).
+          width: "min(var(--modal-w-lg), calc(100% - 24px))",
           maxHeight: "calc(100dvh - 32px)",
           display: "flex",
           flexDirection: "column",
@@ -264,43 +267,87 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
           }}
         >
           {loading ? (
+            /* U-15: echter Loading-Spinner statt nur Text "laedt …" */
             <div
               style={{
-                padding: "40px 0",
+                padding: "48px 0",
                 textAlign: "center",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 10,
                 color: "var(--fg-3)",
-                fontFamily: "var(--font-mono)",
-                fontSize: 12,
-                letterSpacing: "var(--tracking-caps)",
-                textTransform: "uppercase",
               }}
             >
-              lädt …
+              <Loader2 size={24} className="animate-spin" />
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "var(--tracking-caps)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Archiv wird geladen …
+              </span>
             </div>
           ) : err ? (
+            /* U-15: rotes Banner mit AlertTriangle — "Verbindung pruefen"
+               als handlungsanleitender Hinweis (statt blosser Fehlertext). */
             <div
               role="alert"
               style={{
-                padding: "12px 14px",
+                padding: "14px 16px",
                 borderRadius: "var(--radius-s)",
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 fontSize: 13,
                 border: "1px solid var(--red-border)",
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
               }}
             >
-              Archiv konnte nicht geladen werden: {err}
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <strong>Verbindung pruefen.</strong> Das Archiv konnte nicht
+                geladen werden — WLAN/Mobilfunk checken und neu oeffnen.
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    opacity: 0.85,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {err}
+                </div>
+              </div>
             </div>
           ) : filtered.length === 0 ? (
+            /* U-15: Empty-State klar unterscheiden — Suche leer vs. echtes
+               leeres Archiv. */
             <div
               style={{
-                padding: "40px 0",
+                padding: "48px 0",
                 textAlign: "center",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
                 color: "var(--fg-3)",
-                fontSize: 13,
               }}
             >
-              {query ? "Keine Treffer für die Suche." : "Noch keine abgeschlossenen Berichte."}
+              <Archive size={28} strokeWidth={1.6} style={{ opacity: 0.5 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-2)" }}>
+                {query ? "Keine Treffer fuer die Suche." : "Keine Berichte im Archiv gefunden."}
+              </div>
+              {!query && (
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  Abgeschlossene Berichte erscheinen hier nach dem Einsatz.
+                </div>
+              )}
             </div>
           ) : (
             filtered.map((i) => {

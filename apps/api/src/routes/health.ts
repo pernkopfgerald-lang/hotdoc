@@ -84,7 +84,7 @@ healthRouter.get("/", (_req, res) => {
     </p>
     <div class="grid" style="margin-top:6px">
       <div>· <a href="https://hotdoc-eberstalzell.fly.dev/">PWA für Tablets</a></div>
-      <div>· <a href="https://hotdoc-backoffice.fly.dev/">Backoffice / Florianstation</a></div>
+      <div>· <a href="https://hotdoc-backoffice.fly.dev/">Backoffice / Florian Eberstalzell</a></div>
     </div>
   </main>
 </body>

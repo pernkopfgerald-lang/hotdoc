@@ -21,10 +21,15 @@ import { pdfRouter } from "./routes/pdf.js";
 import { positionsRouter } from "./routes/positions.js";
 import { routingRouter } from "./routes/routing.js";
 import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
+import { shutdownPdfGenerator } from "./services/pdf/generator.js";
+import { stopEviction } from "./services/positions-state.js";
 import { startAudioRetentionCron } from "./workers/audio-retention.js";
 import { startAuditRetentionCron } from "./workers/audit-retention.js";
 import { startAutoCloseStaleCron } from "./workers/auto-close-stale.js";
-import { startBlaulichtSmsPoller } from "./workers/blaulichtsms-poller.js";
+import {
+  startBlaulichtSmsPoller,
+  stopBlaulichtSmsPoller,
+} from "./workers/blaulichtsms-poller.js";
 import { startPhantomCleanupCron } from "./workers/phantom-fzgber-cleanup.js";
 import { startSyBosSyncCron } from "./workers/sybos-sync.js";
 
@@ -129,6 +134,36 @@ async function main(): Promise<void> {
   app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, "@hotdoc/api gestartet");
   });
+
+  // O-08/O-09: Graceful Shutdown. fly.io schickt SIGTERM beim Redeploy
+  // und beim Scale-Down. Wir geben den Workern + Subsystemen 5 Sekunden
+  // Zeit, sauber runterzufahren (Puppeteer-Browser schliessen, Cron-
+  // Timer stoppen, BlaulichtSMS-Poller-Interval clearen). Danach hartes
+  // process.exit damit fly nicht ewig wartet.
+  let shuttingDown = false;
+  function gracefulShutdown(signal: string): void {
+    if (shuttingDown) return; // Doppel-Signal ignorieren
+    shuttingDown = true;
+    logger.info({ signal }, "Graceful Shutdown gestartet");
+    // Puppeteer-Browser schliessen — sonst bleibt der Headless-Chromium
+    // als Zombie haengen.
+    void shutdownPdfGenerator().catch((err) => {
+      logger.warn({ err: err instanceof Error ? err.message : String(err) }, "shutdownPdfGenerator fehlgeschlagen");
+    });
+    // BlaulichtSMS-Poller stoppen — sonst feuert das setInterval noch
+    // einmal mit halb-runtergefahrener DB-Connection.
+    stopBlaulichtSmsPoller();
+    // Positions-State Eviction-Interval stoppen.
+    stopEviction();
+    // Letzte Sicherheits-Mauer: nach 5s hart raus. Im Normalfall sollten
+    // die obigen await/clearInterval-Calls < 1s brauchen.
+    setTimeout(() => {
+      logger.info("Graceful Shutdown abgeschlossen, exit");
+      process.exit(0);
+    }, 5000).unref?.();
+  }
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 
 main().catch((err) => {

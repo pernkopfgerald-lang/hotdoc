@@ -16,10 +16,8 @@ import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 import {
   LoginRequestSchema,
-  TabletRegisterRequestSchema,
   type AuthResponse,
   type Benutzer,
-  type TabletAuth,
 } from "@hotdoc/shared";
 import { env } from "../config.js";
 import { db } from "../couch/client.js";
@@ -31,6 +29,7 @@ import {
   recordSuccessfulLogin,
 } from "../lib/rate-limit.js";
 import { writeAuditEvent } from "../services/audit.js";
+import { revokeToken } from "../services/auth/blacklist.js";
 import { signSession, verifySession } from "../services/auth/jwt.js";
 import { verifyPassword } from "../services/auth/password.js";
 
@@ -183,55 +182,14 @@ authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, re
   res.json(response);
 }) as RequestHandler);
 
-// — POST /api/auth/tablet/register —
-authRouter.post("/api/auth/tablet/register", (async (req, res) => {
-  const parsed = TabletRegisterRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
-    return;
-  }
-  const { msisdn, fahrzeugId, deviceId } = parsed.data;
-
-  // Prüfe: existiert bereits eine Registrierung mit dieser MSISDN für ein anderes Tablet?
-  const existing = await findTabletByMsisdn(msisdn);
-  if (existing && existing.deviceId !== deviceId) {
-    logger.warn({ msisdn, fahrzeugId }, "MSISDN bereits an anderes Tablet gebunden — Überschreiben");
-  }
-
-  const deviceToken = randomBytes(32).toString("hex");
-  const doc: TabletAuth = {
-    _id: `tablet:${deviceId}`,
-    type: "tablet-auth",
-    deviceId,
-    msisdn,
-    fahrzeugId,
-    deviceToken,
-    tokenAusgestelltAm: new Date().toISOString(),
-    aktiv: true,
-  };
-  const result = await db.insert({
-    ...doc,
-    ...(existing ? { _rev: existing._rev } : {}),
-  });
-
-  const { token, expiresAt } = await signSession({
-    sub: doc._id,
-    username: `tablet:${fahrzeugId}`,
-    rolle: "mannschaft",
-    fahrzeugId,
-  });
-
-  logger.info({ fahrzeugId, msisdn, rev: result.rev }, "Tablet registriert");
-
-  const response: AuthResponse = {
-    ok: true,
-    rolle: "mannschaft",
-    token,
-    expiresAt,
-    fahrzeugId,
-  };
-  res.json(response);
-}) as RequestHandler);
+// — POST /api/auth/tablet/register — ENTFERNT (Audit F-01)
+//
+// Der Legacy-Endpoint hatte weder requireAuth noch loginRateLimit und
+// nahm jeden POST mit { msisdn, fahrzeugId, deviceId } an → vollwertiger
+// mannschaft-Token. Im Setup-Flow der PWA wurde er nie aufgerufen (es
+// laeuft alles ueber /tablet/pin-register). Aus Audit-Befund F-01 (S1
+// Sicherheits-Luecke) komplett entfernt; bei Bedarf via QR-Sticker- oder
+// pin-register-Pfad neu implementieren mit Rate-Limit + Tailscale-Gating.
 
 // — Helpers —
 function extractBearer(header: string | undefined): string | null {
@@ -257,17 +215,8 @@ async function findBenutzerByUsername(username: string): Promise<Benutzer | null
   }
 }
 
-async function findTabletByMsisdn(msisdn: string): Promise<TabletAuth | null> {
-  try {
-    const result = await db.find({
-      selector: { type: "tablet-auth", msisdn },
-      limit: 1,
-    });
-    return (result.docs[0] as TabletAuth | undefined) ?? null;
-  } catch {
-    return null;
-  }
-}
+// findTabletByMsisdn() entfernt mit /tablet/register (Audit F-01).
+// Wenn das MSISDN-Lookup wieder gebraucht wird, hier neu hinzufuegen.
 
 // ─────────────────────────────────────────────────────────────────────
 // QR-Handoff — Notfall-Übergabe Tablet → Handy
@@ -556,6 +505,20 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
 // hätten.
 authRouter.post("/api/auth/handoff/release", requireAuth(), (async (req, res) => {
   const session = req.session!;
+  // F-34: serverseitiges Token-Revoke. Beim Handoff-Release wandert die
+  // (sub, iat)-Identitaet des aktuellen Tokens in die Blacklist — bis zum
+  // exp-Zeitpunkt des Tokens bleibt der Eintrag bestehen, danach raeumt
+  // der Cleanup ihn weg. So kann ein verloren gegangenes Handy-Geraet
+  // mit Handoff-Token den Server nicht mehr ueberreden, ihn zu akzeptieren.
+  if (typeof session.iat === "number") {
+    // exp ist Sekunden — zu ISO konvertieren fuer Blacklist-Cleanup.
+    const expiresAtIso =
+      typeof session.exp === "number"
+        ? new Date(session.exp * 1000).toISOString()
+        : // Fallback: 7 Tage in der Zukunft (entspricht SESSION_TTL_SEC-Maximum).
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await revokeToken(session.sub, session.iat, expiresAtIso, "handoff-release");
+  }
   await writeAuditEvent({
     type: "handoff-release",
     actorUsername: session.username,

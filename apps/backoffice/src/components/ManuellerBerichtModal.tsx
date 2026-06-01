@@ -376,7 +376,7 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
                 <input
                   value={uebungsleiter}
                   onChange={(e) => setUebungsleiter(e.target.value)}
-                  placeholder="Name (z. B. Pernkopf Gerald)"
+                  placeholder="Name des Übungsleiters"
                   className="input"
                 />
               </div>
@@ -473,9 +473,9 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
           }}
         >
           {formType === "manuell" ? (
-            <><Activity size={10} style={{ verticalAlign: -1, marginRight: 4 }} /> Wird in der Florianstation als aktiver Einsatz angezeigt</>
+            <><Activity size={10} style={{ verticalAlign: -1, marginRight: 4 }} /> Wird bei Florian Eberstalzell als aktiver Einsatz angezeigt</>
           ) : formType === "lotsendienst" ? (
-            <><Siren size={10} style={{ verticalAlign: -1, marginRight: 4 }} /> Wird wie ein normaler Einsatz dokumentiert · Verrechnung folgt</>
+            <><Siren size={10} style={{ verticalAlign: -1, marginRight: 4 }} /> Wird wie ein normaler Einsatz dokumentiert.</>
           ) : (
             <><GraduationCap size={10} style={{ verticalAlign: -1, marginRight: 4 }} /> Übungsdokumentation · AS-Trupps zählen für Ausbildungsstunden</>
           )}

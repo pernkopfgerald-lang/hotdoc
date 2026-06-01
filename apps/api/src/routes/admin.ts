@@ -11,12 +11,13 @@ import { logger } from "../lib/logger.js";
 export const adminRouter: Router = Router();
 
 /**
- * Echte Status-Probe aller Schnittstellen — wird vom DemoBanner sowie
- * dem Backoffice-Tab "Schnittstellen" gepollt.
+ * Echte Status-Probe aller Schnittstellen — wird vom Backoffice-Tab
+ * "Schnittstellen" (SchnittstellenPanel) sowie dem PWA-Login-Bildschirm
+ * gepollt.
  *
  * Bleibt absichtlich öffentlich: zeigt nur "Integration X ist online/
- * offline", keine Credentials/IPs. Frontend-Banner braucht das vor
- * dem Login (Demo-Banner-Polling).
+ * offline", keine Credentials/IPs. Frontend braucht das vor dem Login
+ * fuer den Status-Indikator.
  */
 adminRouter.get("/api/admin/health", async (_req, res) => {
   const health = await collectHealth();

@@ -46,6 +46,27 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // U-14: Code-Erstellung als eigene Funktion — Refresh-Button kann sie
+  // bei abgelaufenem oder bald-ablaufendem Code erneut aufrufen.
+  async function createNewCode(): Promise<void> {
+    setState({ kind: "creating" });
+    try {
+      const r = await apiCall<{ ok: true; code: string; expiresAt: string }>(
+        "/api/auth/handoff/create",
+        {
+          method: "POST",
+          body: { ...(einsatzId ? { einsatzId } : {}) },
+        },
+      );
+      setState({ kind: "ready", code: r.code, expiresAt: r.expiresAt });
+    } catch (e) {
+      setState({
+        kind: "error",
+        msg: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   // Beim Öffnen: Code erstellen.
   useEffect(() => {
     if (!open) {
@@ -53,24 +74,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
       return;
     }
     if (state.kind !== "idle") return;
-    setState({ kind: "creating" });
-    void (async () => {
-      try {
-        const r = await apiCall<{ ok: true; code: string; expiresAt: string }>(
-          "/api/auth/handoff/create",
-          {
-            method: "POST",
-            body: { ...(einsatzId ? { einsatzId } : {}) },
-          },
-        );
-        setState({ kind: "ready", code: r.code, expiresAt: r.expiresAt });
-      } catch (e) {
-        setState({
-          kind: "error",
-          msg: e instanceof Error ? e.message : String(e),
-        });
-      }
-    })();
+    void createNewCode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -177,7 +181,8 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
     >
       <div
         style={{
-          width: "min(440px, 100%)",
+          // D-18: Modal-Width Stufe sm (440px) — Bestaetigungs-Dialog.
+          width: "min(var(--modal-w-sm), 100%)",
           background: "var(--glass-1)",
           backdropFilter: "var(--blur-1)",
           WebkitBackdropFilter: "var(--blur-1)",
@@ -334,7 +339,8 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               </div>
             </div>
 
-            {/* Countdown + Anweisung */}
+            {/* Countdown + Anweisung — U-14: bei < 60s zusaetzlich Warnbanner
+                mit Refresh-Button "Neuen Code anfordern". */}
             <div
               style={{
                 padding: "10px 12px",
@@ -350,8 +356,38 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             >
               <QrCode size={14} />
               <span style={{ flex: 1 }}>
-                Gültig noch <strong>{mins}:{String(secs).padStart(2, "0")}</strong>
+                {secondsLeft < 60 ? (
+                  <>
+                    <strong>Code laeuft ab</strong> · noch {mins}:{String(secs).padStart(2, "0")}
+                  </>
+                ) : (
+                  <>
+                    Gültig noch <strong>{mins}:{String(secs).padStart(2, "0")}</strong>
+                  </>
+                )}
               </span>
+              {secondsLeft < 60 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopPolling();
+                    void createNewCode();
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: "var(--warn)",
+                    color: "#fff",
+                    border: 0,
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    minHeight: 0,
+                  }}
+                >
+                  Neuen Code anfordern
+                </button>
+              )}
             </div>
 
             <p
@@ -382,13 +418,15 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>{successText}</p>
           </div>
         ) : state.kind === "expired" ? (
+          /* U-14: bei abgelaufenem Code grosser Auto-Refresh-Button
+             ("Neuen Code erstellen") statt "Bitte schliessen und neu". */
           <div
             style={{
               padding: "30px 20px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 12,
+              gap: 14,
               color: "var(--warn)",
               textAlign: "center",
             }}
@@ -396,8 +434,30 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             <AlertTriangle size={40} strokeWidth={1.8} />
             <strong style={{ fontSize: 15 }}>Code ist abgelaufen</strong>
             <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>
-              Der QR-Code war 5 Minuten gültig. Schließe den Dialog und versuche es erneut.
+              Der QR-Code war 5 Minuten gültig. Direkt einen neuen Code erstellen?
             </p>
+            <button
+              type="button"
+              onClick={() => void createNewCode()}
+              style={{
+                marginTop: 4,
+                padding: "12px 20px",
+                fontSize: 14,
+                fontWeight: 700,
+                background: "var(--warn)",
+                color: "#fff",
+                border: 0,
+                borderRadius: 10,
+                cursor: "pointer",
+                minHeight: 48,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <QrCode size={16} />
+              Neuen Code erstellen
+            </button>
           </div>
         ) : state.kind === "error" ? (
           <div

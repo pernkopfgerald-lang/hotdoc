@@ -106,7 +106,7 @@ export async function fetchChronikDiff(
     return r.chronik.filter((e) => !bekannteIds.has(e.id));
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
-      // Einsatz noch nicht in CouchDB — z. B. Demo-Mock noch nicht synced
+      // Einsatz noch nicht in CouchDB — Replication-Latenz.
       return [];
     }
     // Netz-Aussetzer ist harmlos, nächster Poll versucht's wieder

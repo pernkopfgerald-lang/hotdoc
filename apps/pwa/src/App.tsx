@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
 import { QrClaim } from "./components/QrClaim";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -7,11 +7,20 @@ import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
 import { registerDevice } from "./lib/device-register";
 import { flushOutbox } from "./lib/einsatz-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
+import { clearReportStates } from "./lib/report-state";
 import { BerichtPage } from "./pages/BerichtPage";
-import { FlorianMapPopout } from "./pages/FlorianMapPopout";
-import { Setup } from "./pages/Setup";
 import { ZentralePage } from "./pages/ZentralePage";
-import type { FahrzeugId } from "@hotdoc/shared";
+import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
+
+// Lazy-Loaded Pages — Setup wird nur beim Erst-Login gebraucht (nicht beim
+// Daily-Boot), FlorianMapPopout nur wenn die ZentralePage ein zweites
+// Fenster oeffnet. Spart auf dem Standard-Tablet ~30 kB JS beim First-Paint.
+// React.lazy() lost den Default-Export auf — beide Module exportieren
+// named, deshalb der `.then`-Wrapper.
+const Setup = lazy(() => import("./pages/Setup").then((m) => ({ default: m.Setup })));
+const FlorianMapPopout = lazy(() =>
+  import("./pages/FlorianMapPopout").then((m) => ({ default: m.FlorianMapPopout })),
+);
 
 type State =
   | { kind: "loading" }
@@ -40,13 +49,41 @@ function readQrTokenFromUrl(): string | null {
   return m?.[1] ?? null;
 }
 
+/**
+ * Kleiner Fallback fuer Lazy-Loaded Routen — bewusst minimal, damit der
+ * Browser ihn ohne weitere Chunk-Loads rendern kann. Gleicher Look wie der
+ * Loading-State weiter unten, damit der User keinen Bruch wahrnimmt.
+ */
+function LazyFallback() {
+  return (
+    <div
+      style={{
+        display: "grid",
+        placeItems: "center",
+        minHeight: "100vh",
+        color: "var(--fg-3)",
+        fontFamily: "var(--font-mono)",
+        fontSize: 12,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+      }}
+    >
+      lädt …
+    </div>
+  );
+}
+
 export function App() {
   // Pop-Out-Route: wird via window.open('/florian-map') aus ZentralePage
   // geoeffnet. Eigene Toplevel-Page ohne State-Machine, eigenes Polling.
   // Bypassed Setup/Handoff/QR-Routing — wenn kein Token vorhanden, zeigt
   // FlorianMapPopout eine eigene Fehlermeldung.
   if (window.location.pathname === "/florian-map") {
-    return <FlorianMapPopout />;
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <FlorianMapPopout />
+      </Suspense>
+    );
   }
   const [state, setState] = useState<State>({ kind: "loading" });
   // Re-Boot-Generation: erhoeht sich wenn der Watchdog erkennt dass das
@@ -272,6 +309,14 @@ export function App() {
   async function resetSetup() {
     const doc = await getFahrzeugConfig();
     if (doc) await db.remove(doc._id, doc._rev);
+    // Bei Setup-Reset alle lokalen Bericht-Abschluss-States loeschen — wenn
+    // der Funktionaer das Tablet an ein anderes Fahrzeug uebergibt, soll
+    // der naechste User nicht alte "abgeschlossen"-Markierungen sehen.
+    // Pro Fahrzeug ein Eintrag (hotdoc.report-state.<id>); wir loeschen
+    // sicherheitshalber alle.
+    for (const id of Object.keys(FAHRZEUGE) as FahrzeugId[]) {
+      clearReportStates(id);
+    }
     setState({ kind: "setup" });
   }
 
@@ -383,7 +428,11 @@ export function App() {
   }
 
   if (state.kind === "setup") {
-    return <Setup onSetupDone={(id) => setState({ kind: "ready", fahrzeugId: id })} />;
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <Setup onSetupDone={(id) => setState({ kind: "ready", fahrzeugId: id })} />
+      </Suspense>
+    );
   }
 
   // Zentrale → Hauptbericht-Ansicht

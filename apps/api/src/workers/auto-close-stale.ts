@@ -64,6 +64,49 @@ interface FahrzeugberichtMin {
   _rev: string;
   einsatzId?: string;
   status?: string;
+  geaendertAm?: string;
+}
+
+/**
+ * Bulk-Update mit per-doc Conflict-Retry (Auto-Close-Variante).
+ * Spiegelt routes/einsaetze.ts:bulkUpdateWithRetry — bewusst dupliziert
+ * damit die Worker-Datei keine Abhaengigkeit zu den Routes hat (zirkular-
+ * frei, einfacher zu testen).
+ */
+async function bulkUpdateWithRetry(
+  docs: Array<Record<string, unknown>>,
+): Promise<{ ok: number; failed: string[] }> {
+  if (docs.length === 0) return { ok: 0, failed: [] };
+  const bulkResult = await db.bulk({ docs });
+  const failed: string[] = [];
+  let ok = 0;
+  for (let i = 0; i < bulkResult.length; i++) {
+    const row = bulkResult[i];
+    const sourceDoc = docs[i];
+    if (!row || !sourceDoc) continue;
+    if (!row.error) {
+      ok += 1;
+      continue;
+    }
+    const docId = (sourceDoc._id as string | undefined) ?? row.id;
+    if (row.error !== "conflict" || !docId) {
+      failed.push(docId ?? "unknown");
+      continue;
+    }
+    try {
+      const fresh = (await db.get(docId)) as Record<string, unknown>;
+      const merged: Record<string, unknown> = { ...sourceDoc, _rev: fresh._rev };
+      await db.insert(merged as Parameters<typeof db.insert>[0]);
+      ok += 1;
+    } catch (err) {
+      failed.push(docId);
+      logger.warn(
+        { err, id: docId },
+        "Auto-Close: bulkUpdateWithRetry Retry fehlgeschlagen",
+      );
+    }
+  }
+  return { ok, failed };
 }
 
 export async function runAutoCloseStale(): Promise<CloseResult> {
@@ -90,6 +133,36 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     include_docs: true,
   });
 
+  // Lade alle Fahrzeugberichte VORHER — wir brauchen sie sowohl fuer die
+  // Stale-Pruefung (Mannschaft tippt noch im Fahrzeugbericht obwohl der
+  // Einsatz-Header sich seit Stunden nicht geaendert hat) als auch fuer
+  // die Kaskade unten. Eine Liste, zwei Verwendungen.
+  const fzgList = await db.list({
+    startkey: "fzgber:",
+    endkey: "fzgber:￯",
+    include_docs: true,
+  });
+  const allFzg = fzgList.rows
+    .map((r) => r.doc as (FahrzeugberichtMin & { type?: string }) | undefined)
+    .filter((d): d is NonNullable<typeof d> => !!d && d.type === "fahrzeugbericht");
+
+  /**
+   * Findet den juengsten geaendertAm aller Fahrzeugberichte eines Einsatzes.
+   * Mannschaft kann ueber Stunden im Fahrzeugbericht tippen ohne den Einsatz-
+   * Header zu aendern — dann darf der Einsatz NICHT auto-geschlossen werden.
+   */
+  function jungsterFzgTimestamp(einsatzId: string): number {
+    let max = -Infinity;
+    for (const f of allFzg) {
+      if (f.einsatzId !== einsatzId) continue;
+      if (!f.geaendertAm) continue;
+      const t = new Date(f.geaendertAm).getTime();
+      if (Number.isNaN(t)) continue;
+      if (t > max) max = t;
+    }
+    return max;
+  }
+
   const stale: EinsatzMin[] = [];
   for (const row of einsaetze.rows) {
     const doc = row.doc as (EinsatzMin & { type?: string }) | undefined;
@@ -103,6 +176,11 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     const t = new Date(ts).getTime();
     if (Number.isNaN(t)) continue;
     if (t > cutoff) continue;
+    // Fahrzeugbericht-Aktivitaet beruecksichtigen: wenn irgendein
+    // Fahrzeugbericht des Einsatzes neuer als cutoff ist, tippt die
+    // Mannschaft noch — Einsatz aus stale-Liste streichen.
+    const fzgMax = jungsterFzgTimestamp(doc._id);
+    if (fzgMax > cutoff) continue;
     stale.push(doc);
   }
   result.pruefte_einsaetze = stale.length;
@@ -121,15 +199,6 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
   );
 
   const now = new Date().toISOString();
-  // Lade alle Fahrzeugberichte einmal — kleiner Index, billiger als pro Einsatz.
-  const fzgList = await db.list({
-    startkey: "fzgber:",
-    endkey: "fzgber:￯",
-    include_docs: true,
-  });
-  const allFzg = fzgList.rows
-    .map((r) => r.doc as (FahrzeugberichtMin & { type?: string }) | undefined)
-    .filter((d): d is NonNullable<typeof d> => !!d && d.type === "fahrzeugbericht");
 
   for (const einsatz of stale) {
     const offeneFzg = allFzg.filter(
@@ -163,17 +232,36 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     }
 
     try {
-      const bulk = await db.bulk({ docs: docsToUpdate });
-      const fehler = bulk.filter((r) => r.error).length;
-      if (fehler > 0) {
-        result.fehler += fehler;
+      const { ok, failed } = await bulkUpdateWithRetry(docsToUpdate);
+      if (failed.length > 0) {
+        result.fehler += failed.length;
         logger.warn(
-          { einsatzId: einsatz._id, fehler, total: docsToUpdate.length },
-          "Auto-Close: Bulk-Update mit Fehlern",
+          { einsatzId: einsatz._id, failed: failed.length, failedIds: failed, total: docsToUpdate.length },
+          "Auto-Close: Bulk-Update mit (auch nach Retry) verbliebenen Fehlern",
         );
-      } else {
+        // cascade_failed-Marker am Hauptauftrag, sofern der Hauptauftrag
+        // selbst durchging und nur die Fahrzeugberichte verwaisten.
+        const hauptauftragFailed = failed.includes(einsatz._id);
+        if (!hauptauftragFailed) {
+          try {
+            const fresh = (await db.get(einsatz._id)) as Record<string, unknown>;
+            await db.insert({
+              ...fresh,
+              cascade_failed: true,
+              cascade_failed_ids: failed,
+              geaendertAm: new Date().toISOString(),
+            } as Parameters<typeof db.insert>[0]);
+          } catch (markErr) {
+            logger.warn(
+              { err: markErr, einsatzId: einsatz._id },
+              "Auto-Close: cascade_failed-Marker konnte nicht gesetzt werden",
+            );
+          }
+        }
+      }
+      if (ok > 0) {
         result.geschlossen += 1;
-        result.cascade_fzgber += offeneFzg.length;
+        result.cascade_fzgber += Math.max(0, ok - 1); // ohne den Einsatz selbst
         await writeAuditEvent({
           type: "einsatz-abschluss",
           actorUsername: "system:auto-close",
@@ -182,6 +270,7 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
             grund: "auto-close-stale",
             inaktivStunden: hours,
             kaskadierteFahrzeugberichte: offeneFzg.length,
+            ...(failed.length > 0 ? { kaskadenFehler: failed.length } : {}),
           },
         });
       }

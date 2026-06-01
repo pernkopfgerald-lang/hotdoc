@@ -91,6 +91,54 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true,
     },
+    rollupOptions: {
+      output: {
+        // Manuelles Chunk-Splitting fuer das Initial-Load-Budget:
+        // grosse Libs ziehen wir in eigene Vendor-Chunks raus, damit das
+        // Main-Bundle klein bleibt und die Vendor-Chunks zwischen Releases
+        // gecached werden koennen (Hash aendert sich nur bei echtem
+        // Library-Update).
+        //
+        // Funktionale Variante statt Object-Map, weil Rollup bei Object-Map
+        // die Chunks in deklarierter Reihenfolge zuordnet und transitive
+        // React-Module sonst in den ersten Vendor-Chunk wandern (z. B.
+        // landet React/ReactDOM bei react-leaflet im vendor-leaflet).
+        // Hier pruefen wir den Modul-ID-Pfad und routen React explizit zuerst.
+        //
+        // Lazy-geladene Pages (Setup, FlorianMapPopout, VorschauModal) bekommen
+        // automatisch eigene Chunks ueber React.lazy() — die brauchen hier
+        // keinen Eintrag.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          // React zuerst — verhindert dass scheduler/jsx-runtime
+          // in einem peer-dependenten Chunk landet.
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/")
+          ) {
+            return "vendor-react";
+          }
+          if (
+            id.includes("node_modules/leaflet/") ||
+            id.includes("node_modules/react-leaflet/") ||
+            id.includes("node_modules/@react-leaflet/")
+          ) {
+            return "vendor-leaflet";
+          }
+          if (id.includes("node_modules/pouchdb-")) {
+            return "vendor-pouchdb";
+          }
+          if (id.includes("node_modules/qrcode.react/")) {
+            return "vendor-qrcode";
+          }
+          if (id.includes("node_modules/lucide-react/")) {
+            return "vendor-icons";
+          }
+          return undefined;
+        },
+      },
+    },
   },
   resolve: {
     alias: {

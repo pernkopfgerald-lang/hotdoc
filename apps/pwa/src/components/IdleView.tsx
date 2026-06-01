@@ -72,6 +72,7 @@ export function IdleView({
         }}
       >
         <div
+          className="idle-radio-glow"
           style={{
             position: "relative",
             display: "grid",
@@ -83,6 +84,8 @@ export function IdleView({
             backdropFilter: "var(--blur-2)",
             WebkitBackdropFilter: "var(--blur-2)",
             border: "1px solid var(--glass-border)",
+            // D-09: 60px-Halo nur im Default-Light. Lite-Mode killt den
+            // Glow via .idle-radio-glow-Override in design.css.
             boxShadow: "var(--glass-shadow-2), 0 0 60px -16px var(--emerald-glow)",
             color: "var(--ok)",
           }}

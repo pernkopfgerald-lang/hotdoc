@@ -1,5 +1,5 @@
-import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Smartphone, Truck, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Truck, Users } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
@@ -28,7 +28,12 @@ import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
-import { VorschauModal } from "../components/VorschauModal";
+// VorschauModal nur on-demand laden — wird erst beim Klick auf
+// „Vorschau" gebraucht und zieht das gesamte PDF-Layout in den Speicher.
+// Spart First-Paint-Kosten auf Fahrzeug-Tablets.
+const VorschauModal = lazy(() =>
+  import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
+);
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import { apiCall } from "../lib/api";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
@@ -85,6 +90,10 @@ interface EinsatzInstance {
 interface Props {
   fahrzeugId: FahrzeugId;
   onSwitchFahrzeug: (id: FahrzeugId) => void;
+  /** Wird vom Caller bereitgestellt aber von BerichtPage selbst aktuell
+   *  nicht mehr direkt genutzt — der Reset-Button lebt im Setup/About-Flow.
+   *  Bleibt im Interface damit App.tsx bei der Verkabelung typensicher bleibt
+   *  und ein spaeterer Reset-Knopf hier wieder eingebunden werden kann. */
   onResetSetup: () => void;
   /** Single-Device-Logout nach erfolgreichem QR-Handoff. */
   onHandoffLogout: () => void;
@@ -95,7 +104,7 @@ interface Props {
  * Mannschaftsplätze und Geräteliste kommen aus der Fahrzeugkonfiguration.
  * Für Zentrale gibt es eine eigene Page (Hauptbericht, Anhang B des Spec).
  */
-export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHandoffLogout }: Props) {
+export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE[fahrzeugId];
   const gearList = GEAR_BY_FAHRZEUG[fahrzeugId];
 
@@ -122,6 +131,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     einsatzart: string;
     einsatzort: string;
   } | null>(null);
+  /**
+   * Zeitstempel des letzten erfolgreichen Auto-Save-Roundtrips. Wird vom
+   * Live-Sync (`syncBerichtLive`) auf Date.now() gesetzt und unten im
+   * Footer als dezenter Status angezeigt — der frühere "Entwurf
+   * speichern"-Button hat dieses Versprechen vorgegaukelt ohne onClick
+   * (Audit-Befund U-01). Auto-Save ist seit Anfang Implementierung der
+   * Default, der Button war Trust-Illusion.
+   */
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<number | null>(null);
+  /** U-21: Toast nach Strg+S, wird nach 3s automatisch ausgeblendet. */
+  const [savedToastAt, setSavedToastAt] = useState<number | null>(null);
   /** Tab-Schließen-Dialog für Fahrzeug-Tablet. */
   const [tabToClose, setTabToClose] = useState<{
     id: string;
@@ -297,34 +317,42 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         // Stamm-Felder die die Florianstation aendern kann (einsatzart,
         // stichwort, einsatzort, Koordinaten) → der Fahrzeug-Bericht zeigt
         // immer die aktuelle Klassifikation, nicht die vom Anlage-Zeitpunkt.
-        let anyNewToUs = false;
+        //
+        // WICHTIG: Side-Effects (anyNewToUs/firstNewId/inheritPersonalRef-
+        // Clear, hydratedIdsRef.add, Pop-Up-Trigger) werden VOR setEinsaetze
+        // aus dem aktuellen einsaetzeRef berechnet — der Updater bleibt eine
+        // reine State-Transition. Vorher haben wir das im Updater gemacht,
+        // was unter React-Strict-Mode (Double-Invocation) Vibration + Pop-Up
+        // doppelt feuern liess.
+        const prevList = einsaetzeRef.current;
+        const knownIds = new Set(prevList.map((e) => e.id));
+        const additions: EinsatzInstance[] = [];
         let firstNewId: string | null = null;
-        setEinsaetze((prev) => {
-          const knownIds = new Set(prev.map((e) => e.id));
-          const additions: EinsatzInstance[] = [];
-          for (const target of list.items) {
-            if (knownIds.has(target._id)) continue;
-            const fresh = buildEinsatzFromApi(target);
-            // Folge-Auftrag-Vererbung: das erste neu erkannte Einsatz-Doc
-            // bekommt das gepuffert Personal — alle weiteren bleiben leer.
-            // Wir markieren die ID auch im hydratedRef, damit der spaetere
-            // Hydrate-Sweep nichts vom Backend drueberzieht (Backend hat noch
-            // keinen Fahrzeugbericht fuer den neuen Einsatz).
-            const inherit = inheritPersonalRef.current;
-            if (inherit && !firstNewId) {
-              fresh.fahrer = inherit.fahrer;
-              fresh.kdt = inherit.kdt;
-              fresh.mannschaft = inherit.mannschaft.map((m, i) => ({
-                ...m,
-                slot: i + 1,
-              }));
-              inheritPersonalRef.current = null;
-              hydratedIdsRef.current.add(target._id);
-            }
-            additions.push(fresh);
-            knownIds.add(target._id);
-            if (!firstNewId) firstNewId = target._id;
+        for (const target of list.items) {
+          if (knownIds.has(target._id)) continue;
+          const fresh = buildEinsatzFromApi(target);
+          // Folge-Auftrag-Vererbung: das erste neu erkannte Einsatz-Doc
+          // bekommt das gepuffert Personal — alle weiteren bleiben leer.
+          // Wir markieren die ID auch im hydratedRef, damit der spaetere
+          // Hydrate-Sweep nichts vom Backend drueberzieht (Backend hat noch
+          // keinen Fahrzeugbericht fuer den neuen Einsatz).
+          const inherit = inheritPersonalRef.current;
+          if (inherit && !firstNewId) {
+            fresh.fahrer = inherit.fahrer;
+            fresh.kdt = inherit.kdt;
+            fresh.mannschaft = inherit.mannschaft.map((m, i) => ({
+              ...m,
+              slot: i + 1,
+            }));
+            inheritPersonalRef.current = null;
+            hydratedIdsRef.current.add(target._id);
           }
+          additions.push(fresh);
+          knownIds.add(target._id);
+          if (!firstNewId) firstNewId = target._id;
+        }
+        const anyNewToUs = additions.length > 0;
+        setEinsaetze((prev) => {
           // Stamm-Felder fuer alle bestehenden Eintraege nachziehen.
           // KEIN Overwrite von alarmierungZeit/alarmId — die kommen vom Alarm.
           const synced = prev.map((e) => {
@@ -353,12 +381,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             const nextEinsatzPos = api.koordinaten ?? e.einsatzPos;
             return { ...e, alarm: nextAlarm, einsatzPos: nextEinsatzPos };
           });
-          if (additions.length === 0) {
-            // Nur Sync — nicht "neuer Einsatz"
-            return synced;
-          }
-          anyNewToUs = true;
-          return [...synced, ...additions];
+          // Bei Reruns (Strict-Mode) kann prev bereits die Additions enthalten —
+          // dedupen damit wir keine Dubletten anhaengen.
+          const prevIds = new Set(synced.map((e) => e.id));
+          const freshAdditions = additions.filter((a) => !prevIds.has(a.id));
+          if (freshAdditions.length === 0) return synced;
+          return [...synced, ...freshAdditions];
         });
         if (anyNewToUs && firstNewId) {
           try {
@@ -725,6 +753,31 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       clearInterval(t);
     };
   }, [fahrzeugId]);
+
+  // U-21: Strg+S / Cmd+S triggert sofortiges Live-Sync und blendet
+  // einen "Gespeichert"-Toast ein. Verhindert den Browser-Default
+  // (Seite speichern), der mit der PWA-Tab-Bar verwirrend wirkt.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (active && !active.abgeschlossen) {
+          void syncBerichtLive(active);
+          setSavedToastAt(Date.now());
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, active?.abgeschlossen]);
+
+  // U-21: Toast nach 3s ausblenden.
+  useEffect(() => {
+    if (savedToastAt === null) return;
+    const t = setTimeout(() => setSavedToastAt(null), 3000);
+    return () => clearTimeout(t);
+  }, [savedToastAt]);
 
   // Live-Sync zum Backend: nach jeder Aenderung am Bericht (Mannschaft,
   // Geraete, Aufträge, ÖL) wird mit 2,5 s Debounce ein status="in_arbeit"-
@@ -1174,6 +1227,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         `/api/einsaetze/${encodeURIComponent(einsatz.id)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
         { method: "PUT", body },
       );
+      // Erfolgreichen Save für UI-Status merken — Footer zeigt dezent
+      // "Auto-gespeichert · HH:MM". Stress-Sicherheit für den Funktionär.
+      setLastAutoSavedAt(Date.now());
     } catch (err) {
       console.warn("[live-sync] Fahrzeugbericht konnte nicht synchronisiert werden:", err);
     }
@@ -1300,29 +1356,88 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                       }}
                     />
                     {active.uhrzeitBisHHMM ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label="Uhrzeit löschen"
-                        title="Uhrzeit löschen"
-                        disabled={!!active.abgeschlossen}
-                        onClick={() =>
-                          patchActive((x) => ({ ...x, uhrzeitBisHHMM: "" }))
-                        }
-                        style={{ width: 30, height: 30, minHeight: 30 }}
-                      >
-                        <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
-                      </button>
+                      <>
+                        {/* U-09: Pille zeigt, dass das Feld manuell ueberschrieben
+                            wurde — sonst koennte man verwechseln, dass es
+                            automatisch beim Abschluss befuellt wird. */}
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            color: "var(--info)",
+                            background: "var(--info-tint)",
+                            border: "1px solid var(--blue-border)",
+                            borderRadius: 6,
+                            padding: "2px 6px",
+                            marginRight: 4,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          manuell ueberschrieben
+                        </span>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          aria-label="Uhrzeit löschen"
+                          title="Uhrzeit löschen"
+                          disabled={!!active.abgeschlossen}
+                          onClick={() =>
+                            patchActive((x) => ({ ...x, uhrzeitBisHHMM: "" }))
+                          }
+                          style={{ width: 30, height: 30, minHeight: 30 }}
+                        >
+                          <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                        </button>
+                      </>
                     ) : (
                       <div className="chev">
                         <span style={{ fontSize: 12 }}>▾</span>
                       </div>
                     )}
                   </div>
+                  {/* U-09: Inline-Hint unter dem Feld — erklaert, dass leer
+                      bleibend automatisch beim Abschluss gesetzt wird. */}
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 11,
+                      color: "var(--fg-3)",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {active.uhrzeitBisHHMM
+                      ? "Wird beim Abschluss nicht mehr ueberschrieben."
+                      : "leer = aktuelle Zeit beim Abschluss uebernehmen"}
+                  </div>
                 </div>
               </div>
               <div className="field" style={{ marginTop: 14 }}>
-                <label className="caption">Einsatzort</label>
+                <label
+                  className="caption"
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  <span>Einsatzort</span>
+                  <span
+                    style={{
+                      fontSize: "var(--font-xs)",
+                      fontFamily: "var(--font-sans)",
+                      fontWeight: 600,
+                      letterSpacing: 0,
+                      textTransform: "none",
+                      color: "var(--fg-3)",
+                      background: "var(--glass-3)",
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-pill)",
+                      border: "1px solid var(--glass-border)",
+                    }}
+                    title="Adresse wird in der Florianstation editiert — hier nur Anzeige."
+                  >
+                    wird in Florian Eberstalzell editiert
+                  </span>
+                </label>
                 <input className="input filled" value={active.alarm.einsatzort} readOnly />
               </div>
               {/* Strecke / Kilometer — Auto-Berechnung Feuerwehrhaus ↔ Einsatzort × 2 */}
@@ -1338,17 +1453,29 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                       className="num"
                       style={{ color: "var(--fg-3)", fontWeight: 500 }}
                     />
+                    {/* U-10: Klarsprache statt Tech-Jargon — "Route" wenn
+                        GraphHopper geliefert hat, sonst "Luftlinie". */}
                     <div
                       className="chev"
                       title={
                         route && route.distanceM > 0
-                          ? "Über GraphHopper-Route berechnet"
-                          : "Luftlinie × 1,3 (GraphHopper noch nicht da)"
+                          ? "Ueber Strassen-Route berechnet (GraphHopper)"
+                          : "Luftlinie × 1,3 — Routing-Server noch nicht da"
                       }
+                      style={{
+                        fontSize: 10,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        padding: "2px 6px",
+                        background: route && route.distanceM > 0 ? "var(--ok-tint)" : "var(--surface-2)",
+                        color: route && route.distanceM > 0 ? "var(--ok)" : "var(--fg-3)",
+                        border: `1px solid ${route && route.distanceM > 0 ? "var(--ok-border)" : "var(--border)"}`,
+                        borderRadius: 6,
+                      }}
                     >
-                      <span style={{ fontSize: 11 }}>
-                        {route && route.distanceM > 0 ? "GH" : "≈"}
-                      </span>
+                      {route && route.distanceM > 0 ? "Route" : "Luftlinie"}
                     </div>
                   </div>
                 </div>
@@ -1409,6 +1536,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               </div>
             </section>
 
+            {/* U-04: Inline-Fahrzeug-Chips entfernt. Klick wechselte
+                frueher SOFORT ohne Confirm — Datenverlust-Trap mitten im
+                Bericht. Wechsel nur noch via Topbar/Confirm-Dialog. Die
+                Karte bleibt sichtbar als Info-Block + Shortcut zum
+                VehicleSwitcher. */}
             <section className="card">
               <div className="card-head">
                 <div className="card-title">
@@ -1419,21 +1551,42 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   <span className="num">{fahrzeug.bezeichnung}</span> · {fahrzeug.funkrufname}
                 </span>
               </div>
-              <div className="vehicle-row">
-                {(["kdo", "tlf-a-4000", "lfa-b", "mtf", "zentrale"] as const).map((id) => {
-                  const active2 = id === fahrzeugId;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      className={`vehicle-chip${active2 ? " active" : ""}`}
-                      onClick={() => !active2 && handleSwitchVehicle(id)}
-                    >
-                      <div className="code">{shortCode(id)}</div>
-                      <div className="sub">{shortSub(id)}</div>
-                    </button>
-                  );
-                })}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "4px 2px",
+                }}
+              >
+                <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
+                  Aktuell als{" "}
+                  <strong style={{ color: "var(--fg)" }}>{fahrzeug.funkrufname}</strong>{" "}
+                  ({fahrzeug.bezeichnung}) angemeldet.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVehicleSwitcherOpen(true)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 12px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    background: "transparent",
+                    color: "var(--fg)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    minHeight: 44,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <Truck size={14} />
+                  Fahrzeug wechseln
+                </button>
               </div>
             </section>
 
@@ -1537,10 +1690,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
 
             <div className="cta-wrap">
               <div className="cta-secondary">
-                <button type="button">
-                  <Save size={16} />
-                  Entwurf speichern
-                </button>
                 <button type="button" onClick={() => setVorschauOpen(true)}>
                   <Eye size={16} />
                   Vorschau Bericht
@@ -1554,91 +1703,56 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               <div className="cta-hint">
                 Übergibt den Bericht an die Zentrale <strong>„Florian Eberstalzell"</strong>.
               </div>
+              {/* Dezenter Auto-Save-Status — ersetzt den frueheren funktionslosen
+                  "Entwurf speichern"-Button (Audit U-01). Auto-Save laeuft im
+                  Hintergrund alle 2,5 s nach Eingaben. */}
+              <div
+                style={{
+                  marginTop: 6,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: lastAutoSavedAt ? "var(--ok)" : "var(--fg-3)",
+                  textAlign: "center",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  justifyContent: "center",
+                  width: "100%",
+                }}
+              >
+                <Save size={11} strokeWidth={2.4} />
+                {lastAutoSavedAt
+                  ? `Automatisch gespeichert · ${new Date(lastAutoSavedAt).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })}`
+                  : "Auto-Speichern aktiv"}
+              </div>
             </div>
           </>
         )}
       </main>
 
+      {/* U-12: Fusszeile reduziert auf {Version, Funkrufname, FX-Toggle}.
+          - "An Handy uebergeben" ist in der Topbar.
+          - "Fahrzeug wechseln" ist in der Topbar + in der Fahrzeug-Karte.
+          - "Setup" war ein Tablet-Reset-Schalter direkt im Footer — zu
+            gefaehrlich (Tablet-Reset bei versehentlichem Klick). Wer das
+            wirklich braucht, kann es jetzt ueber AboutModal aufrufen
+            (Klick auf Version). */}
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
         <button
           type="button"
           onClick={() => setAboutOpen(true)}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            font: "inherit",
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-          }}
-          title="Über HotDoc · Entwickler · Lizenz · Release-Notes"
+          className="foot-link"
+          title="Über HotDoc · Entwickler · Lizenz · Release-Notes · Tablet-Reset"
         >
           {APP_VERSION} · {APP_BUILD}
         </button>
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
-        <span className="sep">·</span>
-        <button
-          type="button"
-          onClick={() => setHandoffOpen(true)}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--red)",
-            font: "inherit",
-            fontWeight: 600,
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-            marginRight: 8,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-          title="Sitzung per QR-Code aufs Handy übertragen (z. B. Tablet-Akku leer)"
-        >
-          <Smartphone size={11} /> An Handy übergeben
-        </button>
-        <span className="sep">·</span>
-        <button
-          type="button"
-          onClick={() => setVehicleSwitcherOpen(true)}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            font: "inherit",
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-            marginRight: 8,
-          }}
-        >
-          Fahrzeug wechseln
-        </button>
-        <span className="sep">·</span>
-        <button
-          type="button"
-          onClick={onResetSetup}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            font: "inherit",
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-          }}
-        >
-          Setup
-        </button>
         <span className="sep">·</span>
         <FxToggle />
       </div>
@@ -1723,25 +1837,32 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         onCancel={() => setAbschlussModalOpen(false)}
       />
 
-      {active ? (
-        <VorschauModal
-          open={vorschauOpen}
-          data={{
-            fahrzeugId,
-            funkrufname: fahrzeug.funkrufname,
-            alarm: active.alarm,
-            fahrer: active.fahrer,
-            kdt: active.kdt,
-            mannschaft: active.mannschaft,
-            gearList,
-            gearSelected: active.gearSelected,
-            oelSaecke: active.oelSaecke,
-            auftraege: active.auftraege,
-            chronik: active.chronik,
-            kmGefahren: kmRound,
-          }}
-          onClose={() => setVorschauOpen(false)}
-        />
+      {/* VorschauModal ist lazy — wir rendern es ueberhaupt nur wenn der
+          User „Vorschau" geoeffnet hat. Beim ersten Open wird der Chunk
+          nachgeladen (Suspense rendert null waehrenddessen — das Modal ist
+          ein Overlay, der Restcontent bleibt sichtbar). Beim zweiten Open
+          ist der Chunk im HTTP-Cache + Module-Cache, also instant. */}
+      {active && vorschauOpen ? (
+        <Suspense fallback={null}>
+          <VorschauModal
+            open={vorschauOpen}
+            data={{
+              fahrzeugId,
+              funkrufname: fahrzeug.funkrufname,
+              alarm: active.alarm,
+              fahrer: active.fahrer,
+              kdt: active.kdt,
+              mannschaft: active.mannschaft,
+              gearList,
+              gearSelected: active.gearSelected,
+              oelSaecke: active.oelSaecke,
+              auftraege: active.auftraege,
+              chronik: active.chronik,
+              kmGefahren: kmRound,
+            }}
+            onClose={() => setVorschauOpen(false)}
+          />
+        </Suspense>
       ) : null}
 
       {/* ─── Neuer Einsatz/Übung/Lotsendienst ─── */}
@@ -1774,6 +1895,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 person: m.person ?? null,
               })),
             };
+            // Auto-Clear nach 30 s: falls der neue Einsatz wider Erwarten nicht
+            // auftaucht (z. B. Backend-Fehler) und ein viel spaeterer, ganz
+            // anderer BlaulichtSMS-Alarm reinkommt, soll der nicht das alte
+            // Personal erben. Der Poll laeuft alle 5 s — 30 s ist grosszuegig.
+            setTimeout(() => {
+              inheritPersonalRef.current = null;
+            }, 30_000);
           }
           // Vibration als haptisches Feedback bei erfolgreichem Anlegen.
           try {
@@ -1794,13 +1922,41 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         fahrzeugName={fahrzeug.funkrufname}
       />
 
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <AboutModal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+      />
 
       {/* ─── Pop-Up: Neuer Einsatz waehrend laufender Bearbeitung.
            Backdrop-Blur sperrt den Hintergrund visuell. Der Fahrzeugkdt
            muss entweder "Oeffnen" klicken (wechselt activeId, der bisherige
            bleibt in der Tab-Leiste sichtbar) oder "Spaeter" (Pop-Up
            geht weg, neuer Einsatz bleibt als Tab in der Leiste). ─── */}
+      {/* U-21: Strg+S Save-Toast — kurzes Banner unten rechts, 3s sichtbar. */}
+      {savedToastAt !== null && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 28,
+            zIndex: 3000,
+            padding: "10px 14px",
+            background: "var(--ok)",
+            color: "#fff",
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Save size={14} /> Gespeichert
+        </div>
+      )}
+
       {newEinsatzPopup && (
         <div
           className="modal-backdrop"
@@ -1829,75 +1985,72 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         >
           <div
             style={{
-              background: "var(--bg, #fff)",
-              color: "var(--text, #111)",
-              borderRadius: 16,
+              // Theme-aware: --bg ist in beiden Themes definiert, --fg
+              // ebenfalls. Vorher waren #fff/#111 hardcoded was im
+              // Dark-Mode falsch aussah.
+              background: "var(--bg)",
+              color: "var(--fg)",
+              borderRadius: "var(--radius-m)",
               padding: "24px 28px",
               width: "min(520px, calc(100% - 32px))",
-              boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
-              border: "3px solid #dc2626",
+              // pulse-red Keyframe lebt jetzt in tokens.css damit das Popup
+              // keinen Inline-<style>-Block mehr braucht und der Animations-
+              // Glow theme-aware ist (via var(--red-glow)).
+              border: "3px solid var(--red)",
               animation: "pulse-red 1.4s ease-in-out infinite",
             }}
           >
-            <style>{`
-              @keyframes pulse-red {
-                0%, 100% { box-shadow: 0 24px 60px rgba(0,0,0,0.35), 0 0 0 0 rgba(220,38,38,0.6); }
-                50%      { box-shadow: 0 24px 60px rgba(0,0,0,0.35), 0 0 0 12px rgba(220,38,38,0); }
-              }
-            `}</style>
+            {/* U-02: drei Zeilen statt vier, sprechende Buttons.
+                Pulse-Label nennt die Quelle "Florianstation". */}
             <div
               style={{
                 display: "inline-block",
                 padding: "4px 14px",
-                borderRadius: 999,
-                background: "#dc2626",
+                borderRadius: "var(--radius-pill)",
+                background: "var(--red)",
                 color: "#fff",
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: "var(--font-sm)",
                 letterSpacing: 0.3,
                 textTransform: "uppercase",
                 marginBottom: 12,
               }}
             >
-              ⚠ Neuer Einsatz
+              ⚠ Neuer Einsatz von der Florianstation
             </div>
             <h2
               id="new-einsatz-popup-title"
-              style={{ margin: "0 0 8px 0", fontSize: 22, lineHeight: 1.25 }}
+              style={{ margin: "0 0 6px 0", fontSize: 22, lineHeight: 1.25 }}
             >
               {newEinsatzPopup.einsatzart || "Einsatz"}
+              {newEinsatzPopup.einsatzort ? (
+                <>
+                  {" "}—{" "}
+                  <span style={{ color: "var(--red)" }}>
+                    {newEinsatzPopup.einsatzort}
+                  </span>
+                </>
+              ) : null}
             </h2>
-            {newEinsatzPopup.einsatzort && (
-              <div
-                style={{
-                  fontSize: 16,
-                  color: "var(--text-muted, #555)",
-                  marginBottom: 18,
-                }}
-              >
-                📍 {newEinsatzPopup.einsatzort}
-              </div>
-            )}
             <div
               style={{
-                fontSize: 14,
-                color: "var(--text-muted, #666)",
+                fontSize: "var(--font-md)",
+                color: "var(--fg-2)",
                 marginBottom: 20,
                 lineHeight: 1.5,
               }}
             >
-              Ein neuer Einsatz wurde dem Fahrzeug zugewiesen. Der aktuelle
-              Bericht bleibt erhalten und ist über die Tab-Leiste oben
-              erreichbar.
+              Aktueller Bericht bleibt offen — du erreichst ihn ueber die
+              Tab-Leiste oben.
             </div>
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="btn"
                 onClick={() => setNewEinsatzPopup(null)}
-                style={{ minWidth: 110 }}
+                style={{ minWidth: 220, minHeight: 48, fontWeight: 600 }}
               >
-                Abbrechen
+                Erst aktuellen Auftrag fertig machen
               </button>
               <button
                 type="button"
@@ -1907,15 +2060,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   setNewEinsatzPopup(null);
                 }}
                 style={{
-                  minWidth: 140,
-                  background: "#dc2626",
-                  borderColor: "#dc2626",
+                  minWidth: 240,
+                  minHeight: 48,
+                  background: "var(--red)",
+                  borderColor: "var(--red)",
                   color: "#fff",
                   fontWeight: 700,
                 }}
                 autoFocus
               >
-                OK
+                Jetzt zum neuen Einsatz wechseln
               </button>
             </div>
           </div>
@@ -1970,15 +2124,9 @@ function shortCode(id: FahrzeugId): string {
     case "zentrale":   return "FLORIAN";
   }
 }
-function shortSub(id: FahrzeugId): string {
-  switch (id) {
-    case "kdo":        return "Kommando";
-    case "tlf-a-4000": return "Tanklösch.";
-    case "lfa-b":      return "Löschfzg.";
-    case "mtf":        return "Mannsch.";
-    case "zentrale":   return "Zentrale";
-  }
-}
+// shortSub wurde frueher von der Inline-Fahrzeug-Chip-Reihe genutzt.
+// Mit U-04 entfernt (Reihe weg). Funktion bleibt nicht im Code, weil sie
+// sonst als toter Export im strict-TS-Build warnt.
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");

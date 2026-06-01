@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { Router, type RequestHandler } from "express";
+import { Router, type Response, type RequestHandler } from "express";
 import { z } from "zod";
 import { EinsatzSchema, FahrzeugberichtSchema } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
@@ -21,9 +21,109 @@ import { writeAuditEvent } from "../services/audit.js";
 
 export const einsaetzeRouter: Router = Router();
 
+/**
+ * Helper: laedt einen Einsatz oder schickt direkt 404. Spart in den
+ * :id-Routen den try/catch-Boilerplate und behandelt 404 konsistent.
+ * Rueckgabe `null` signalisiert: Response wurde bereits geschickt,
+ * Caller muss `return;` machen.
+ */
+async function getEinsatzOr404(
+  id: string,
+  res: Response,
+): Promise<Record<string, unknown> | null> {
+  try {
+    return (await db.get(id)) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      res.status(404).json({ error: "einsatz_not_found" });
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Bulk-Update mit per-doc Conflict-Retry.
+ *
+ * CouchDB-Bulk gibt fuer jedes Doc einen Status — bei `error: "conflict"`
+ * (frische _rev hat sich seit unserem fetch geaendert) holen wir das Doc
+ * neu, setzen den frischen _rev ein, und versuchen genau 1x mit single-
+ * insert nachzuziehen. Wenn auch das fehlschlaegt, sammeln wir die IDs
+ * in `failed[]` damit der Caller einen `cascade_failed`-Marker setzen
+ * kann (Sichtbarkeit fuer manuellen Cleanup).
+ *
+ * @returns ok = Anzahl erfolgreicher Updates inkl. Retries,
+ *          failed = Liste der IDs die endgueltig fehlgeschlagen sind
+ */
+async function bulkUpdateWithRetry(
+  docs: Array<Record<string, unknown>>,
+  log: typeof logger,
+): Promise<{ ok: number; failed: string[] }> {
+  if (docs.length === 0) return { ok: 0, failed: [] };
+  const bulkResult = await db.bulk({ docs });
+  const failed: string[] = [];
+  let ok = 0;
+  for (let i = 0; i < bulkResult.length; i++) {
+    const row = bulkResult[i];
+    const sourceDoc = docs[i];
+    if (!row || !sourceDoc) continue;
+    if (!row.error) {
+      ok += 1;
+      continue;
+    }
+    const docId = (sourceDoc._id as string | undefined) ?? row.id;
+    if (row.error !== "conflict" || !docId) {
+      failed.push(docId ?? "unknown");
+      log.warn(
+        { id: docId, error: row.error, reason: row.reason },
+        "bulkUpdateWithRetry: nicht-conflict-Fehler, kein Retry",
+      );
+      continue;
+    }
+    // Retry-Pfad: CouchDB-Conflict — frischen _rev holen und nochmal
+    // mit single-insert versuchen.
+    try {
+      const fresh = (await db.get(docId)) as Record<string, unknown>;
+      const merged: Record<string, unknown> = {
+        ...sourceDoc,
+        _rev: fresh._rev,
+      };
+      await db.insert(merged as Parameters<typeof db.insert>[0]);
+      ok += 1;
+      log.info(
+        { id: docId },
+        "bulkUpdateWithRetry: Conflict per single-insert geloest",
+      );
+    } catch (err) {
+      failed.push(docId);
+      log.warn(
+        { err, id: docId },
+        "bulkUpdateWithRetry: Retry fehlgeschlagen — Doc bleibt im alten Zustand",
+      );
+    }
+  }
+  return { ok, failed };
+}
+
 // ─── GET /api/einsaetze ─────────────────────────────────────
+// F-29: Pagination via `limit` (Default 200, Max 500) + `skip`. Sortierung
+// und Filterung passieren weiterhin in JS — bei <1000 Einsaetzen unkritisch.
+// Response um `total`, `limit`, `skip` erweitert; `items` bleibt bestehende
+// Liste damit Konsumenten nicht brechen.
+// TODO P-05: Auf Mango-View (durch Index auf alarmierungZeit + status) migrieren wenn >1000 Einsätze
+const DEFAULT_LIST_LIMIT = 200;
+const MAX_LIST_LIMIT = 500;
 einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
   const status = req.query.status as string | undefined;
+  // Pagination-Parameter — defensive parse, clamp auf erlaubte Range
+  const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(rawLimit, MAX_LIST_LIMIT)
+      : DEFAULT_LIST_LIMIT;
+  const rawSkip = Number.parseInt(String(req.query.skip ?? ""), 10);
+  const skip = Number.isFinite(rawSkip) && rawSkip > 0 ? rawSkip : 0;
+
   const list = await db.list({
     startkey: "einsatz:",
     endkey: "einsatz:￰",
@@ -59,7 +159,11 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
       new Date((b as { alarmierungZeit: string }).alarmierungZeit).getTime() -
       new Date((a as { alarmierungZeit: string }).alarmierungZeit).getTime(),
   );
-  res.json({ ok: true, items: docs });
+  // total = Gesamtanzahl NACH Filter, VOR Pagination — fuer UI-Anzeige
+  // "Zeige 1-200 von 423".
+  const total = docs.length;
+  const items = docs.slice(skip, skip + limit);
+  res.json({ ok: true, items, total, limit, skip });
 }) as RequestHandler);
 
 // ─── GET /api/einsaetze/:id ─────────────────────────────────
@@ -225,9 +329,36 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async
     res.status(500).json({ error: "schema_invalid", details: validated.error.flatten() });
     return;
   }
-  const result = await db.insert(doc);
-  logger.info({ id: doc._id, by: session.username }, "Manueller Einsatz angelegt");
-  res.status(201).json({ ok: true, id: doc._id, rev: result.rev });
+  try {
+    const result = await db.insert(doc);
+    logger.info({ id: doc._id, by: session.username }, "Manueller Einsatz angelegt");
+    res.status(201).json({ ok: true, id: doc._id, rev: result.rev });
+  } catch (err) {
+    // 409 — Race-Condition zwischen dem GET oben und diesem INSERT.
+    // Kann passieren wenn zwei Tablet-Retries fast gleichzeitig durchgehen
+    // und unser erster get(docId) noch 404 sah aber inzwischen das andere
+    // Tablet die Doc angelegt hat. Wir behandeln das wie den klassischen
+    // Idempotenz-Pfad oben: existierendes Doc holen und zurueckgeben.
+    if ((err as { statusCode?: number }).statusCode === 409) {
+      try {
+        const existing = (await db.get(docId)) as { _id: string; _rev: string };
+        logger.info(
+          { docId, idempotencyKey: d.idempotencyKey },
+          "Manuell-Anlage: Conflict-Race im INSERT — idempotent zurueckgegeben",
+        );
+        res.json({ ok: true, id: existing._id, rev: existing._rev, idempotent: true });
+        return;
+      } catch (getErr) {
+        logger.error(
+          { err: getErr, docId },
+          "Manuell-Anlage: Conflict im INSERT aber Doc nicht auffindbar",
+        );
+        res.status(500).json({ error: "insert_conflict_no_doc" });
+        return;
+      }
+    }
+    throw err;
+  }
 }) as RequestHandler);
 
 // ─── POST /api/einsaetze/:id/abschluss ─── FR-6 ─────────────
@@ -239,7 +370,8 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async
 einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), (async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const session = req.session!;
-  const doc = (await db.get(id)) as Record<string, unknown>;
+  const doc = await getEinsatzOr404(id, res);
+  if (!doc) return;
   if (doc.status === "abgeschlossen") {
     res.status(409).json({ error: "already_closed" });
     return;
@@ -296,16 +428,37 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       geaendertAm: cascadeNow,
     }));
     try {
-      const bulkResult = await db.bulk({ docs: cascadeDocs });
-      const fehlerhaft = bulkResult.filter((r) => r.error).length;
+      const { ok, failed } = await bulkUpdateWithRetry(cascadeDocs, logger);
       logger.info(
         {
           id,
           cascadeCount: cascadeDocs.length,
-          fehler: fehlerhaft,
+          ok,
+          failed: failed.length,
+          failedIds: failed,
         },
         "Offene Fahrzeugberichte beim Hauptauftrag-Abschluss kaskadiert geschlossen",
       );
+      if (failed.length > 0) {
+        // Marker am Hauptauftrag — wir holen die frischeste _rev (wir haben
+        // soeben den Hauptauftrag selbst gespeichert) und haengen das
+        // Bookkeeping dran. So weiss ein spaeterer manueller Aufraeumer
+        // welche Einsaetze noch verwaiste in_arbeit-Berichte tragen.
+        try {
+          const fresh = (await db.get(id)) as Record<string, unknown>;
+          await db.insert({
+            ...fresh,
+            cascade_failed: true,
+            cascade_failed_ids: failed,
+            geaendertAm: new Date().toISOString(),
+          } as Parameters<typeof db.insert>[0]);
+        } catch (markErr) {
+          logger.warn(
+            { err: markErr, id },
+            "cascade_failed-Marker konnte nicht gesetzt werden",
+          );
+        }
+      }
     } catch (err) {
       // Kaskade-Fehler darf den Haupt-Abschluss nicht stoppen. Der
       // abschlussOverrideHinweis ist im Einsatz schon vermerkt.
@@ -349,7 +502,8 @@ einsaetzeRouter.post(
       return;
     }
     const session = req.session!;
-    const doc = (await db.get(id)) as Record<string, unknown>;
+    const doc = await getEinsatzOr404(id, res);
+    if (!doc) return;
     if (doc.status === "abgeschlossen") {
       res.status(409).json({ error: "already_closed" });
       return;
@@ -394,7 +548,27 @@ einsaetzeRouter.post(
         geaendertAm: now,
       }));
       try {
-        await db.bulk({ docs: cascade });
+        const { ok, failed } = await bulkUpdateWithRetry(cascade, logger);
+        logger.info(
+          { id, cascadeCount: cascade.length, ok, failed: failed.length, failedIds: failed },
+          "Cascade-Verwerfen ausgefuehrt",
+        );
+        if (failed.length > 0) {
+          try {
+            const fresh = (await db.get(id)) as Record<string, unknown>;
+            await db.insert({
+              ...fresh,
+              cascade_failed: true,
+              cascade_failed_ids: failed,
+              geaendertAm: new Date().toISOString(),
+            } as Parameters<typeof db.insert>[0]);
+          } catch (markErr) {
+            logger.warn(
+              { err: markErr, id },
+              "cascade_failed-Marker (verwerfen) konnte nicht gesetzt werden",
+            );
+          }
+        }
       } catch (err) {
         logger.warn({ err, id, count: cascade.length }, "Cascade-Verwerfen fehlgeschlagen");
       }
@@ -438,7 +612,8 @@ einsaetzeRouter.post(
       return;
     }
     const session = req.session!;
-    const doc = (await db.get(id)) as Record<string, unknown>;
+    const doc = await getEinsatzOr404(id, res);
+    if (!doc) return;
     if (doc.status !== "abgeschlossen") {
       res.status(409).json({ error: "not_closed" });
       return;
@@ -480,16 +655,73 @@ einsaetzeRouter.post(
 );
 
 // ─── PUT /api/einsaetze/:id ─── Allg. Update (mit Schreibschutz-Check) ─
-einsaetzeRouter.put("/api/einsaetze/:id", requireAuth(), (async (req, res) => {
+/**
+ * Allowlist der Felder die ueber das generische PUT bearbeitbar sind.
+ * Alles andere (Identitaet, Status, Audit-Marker, Lifecycle-Flags) wird
+ * stillschweigend gefiltert — die Routes /abschluss, /verwerfen,
+ * /reaktivieren und der Anlage-Endpunkt sind die einzigen Stellen, die
+ * Status/schreibschutz/einsatzende/usw. setzen duerfen.
+ *
+ * Aufgenommen sind genau die Felder die Florian-Editor (ZentralePage) und
+ * die manuelle Bearbeitung effektiv schreiben — siehe Frontend-Audit.
+ */
+const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
+  "einsatzort",
+  "einsatzart",
+  "einsatzartFreitext",
+  "einsatzartTyp",
+  "meldungEinsatzleitung",
+  "pflichtbereich",
+  "einsatzzoneEzell",
+  "ueberOertlicheHilfe",
+  "ueberortlicheHilfe", // legacy alias
+  "alarmiertDurch",
+  "beteiligteStellen",
+  "sonstigeAnwesendeFF",
+  "mannschaft",
+  "verrechnung",
+  "oelbindemittel",
+  "zeitmarken",
+  "abschlussOverrideHinweis",
+  "bearbeiterPersonId",
+  "einsatzleiterPersonId",
+  "reservePersonIds",
+  "zugewieseneFahrzeuge",
+  "lotsendienstAuftraggeber",
+  "lotsendienstRoute",
+  "uebungThema",
+  "uebungsleiter",
+  "uebungsTyp",
+  "anrufer",
+  "anruferTel",
+  "einsatzauftragVia",
+  "vidi", // wildcard prefix — siehe Loop unten
+  "fahrzeugPositionen",
+  "chronik",
+]);
+
+einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("einsatzleiter"), (async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
-  const current = (await db.get(id)) as Record<string, unknown>;
+  const current = await getEinsatzOr404(id, res);
+  if (!current) return;
   if (current.schreibschutz === true) {
     res.status(423).json({ error: "schreibschutz_aktiv", hint: "Bericht muss erst reaktiviert werden (FR-14)." });
     return;
   }
+  // Field-Allowlist: nur whitelisted Keys aus dem Body uebernehmen.
+  // Schuetzt vor Privilege-Escalation via PUT (Status reset, schreibschutz
+  // umgehen, Audit-Felder manipulieren). Felder mit "vidi"-Prefix sind
+  // erlaubt damit der Florian-Editor Vidierungs-Workflows pflegen kann.
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const safeBody: Record<string, unknown> = {};
+  for (const key of Object.keys(body)) {
+    if (PUT_EINSATZ_ALLOWED_FIELDS.has(key) || key.startsWith("vidi")) {
+      safeBody[key] = body[key];
+    }
+  }
   const merged = {
     ...current,
-    ...req.body,
+    ...safeBody,
     _id: current._id,
     _rev: current._rev,
     type: "einsatz",
@@ -591,8 +823,47 @@ einsaetzeRouter.put(
       res.status(400).json({ error: "schema_invalid", details: validated.error.flatten() });
       return;
     }
-    const result = await db.insert(merged);
-    res.json({ ok: true, id: docId, rev: result.rev });
+    // F-36: Retry-on-Conflict. CouchDB liefert 409 wenn zwischen unserem
+    // get(existing) oben und dem insert hier ein anderer Client (z.B.
+    // zweiter Tab am selben Fahrzeug-Tablet, paralleler Auto-Save) schon
+    // eine neue _rev geschrieben hat. Wir holen die frische _rev, mergen
+    // erneut und versuchen einmal nach. Wenn auch das fehlschlaegt, geben
+    // wir 409 zurueck — der Client kennt dann den Konflikt und kann den
+    // User informieren.
+    try {
+      const result = await db.insert(merged);
+      res.json({ ok: true, id: docId, rev: result.rev });
+      return;
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+      logger.info(
+        { docId },
+        "PUT fzgber: 409 Conflict — Retry mit frischer _rev",
+      );
+      try {
+        const fresh = (await db.get(docId)) as Record<string, unknown>;
+        const retryMerged = {
+          ...merged,
+          _rev: fresh._rev,
+        };
+        const result = await db.insert(retryMerged);
+        res.json({ ok: true, id: docId, rev: result.rev, retried: true });
+        return;
+      } catch (retryErr) {
+        if ((retryErr as { statusCode?: number }).statusCode === 409) {
+          logger.warn(
+            { docId },
+            "PUT fzgber: Retry erneut 409 — conflict_retry_failed",
+          );
+          res.status(409).json({
+            error: "conflict_retry_failed",
+            hint: "Bericht wurde zwischenzeitlich von anderer Seite geaendert. Bitte erneut laden und nochmal speichern.",
+          });
+          return;
+        }
+        throw retryErr;
+      }
+    }
   }) as RequestHandler,
 );
 
@@ -632,11 +903,20 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), (async (req, r
     throw err;
   }
   if (doc.schreibschutz === true) {
-    res.status(423).json({ error: "schreibschutz_aktiv" });
+    // 423 = Locked. Hint-Feld traegt eine User-lesbare Erlaeuterung damit
+    // das Frontend (Tablet/Florianstation) einen verstaendlichen Toast
+    // anzeigen kann anstatt den nackten Error-Code.
+    res.status(423).json({
+      error: "schreibschutz_aktiv",
+      hint: "Bericht ist abgeschlossen - bitte zuerst reaktivieren",
+    });
     return;
   }
 
   const chronik = ((doc.chronik as unknown[] | undefined) ?? []) as Array<{ id: string }>;
+  // F-42 (S3 niedrig): linearer Scan O(n). Bei <100 Eintraegen pro Einsatz
+  // vernachlaessigbar; bei deutlich groesseren Chroniken (Langzeiteinsatz)
+  // koennte man einen Set<string> ueber ids bauen. Skip bis Bedarf besteht.
   const exists = chronik.find((e) => e.id === parsed.data.id);
   if (exists) {
     // Idempotent — Eintrag schon vorhanden
@@ -740,6 +1020,48 @@ einsaetzeRouter.get(
       status: string;
       geaendertAm?: string;
     }> = [];
+
+    // F-45: N+1 eliminieren — statt pro fzgber ein db.get(einsatzId)
+    // sequentiell, sammeln wir alle unique einsatzIds und holen sie in
+    // einem einzigen db.fetch({keys}) Roundtrip. Mit 50 Fahrzeugberichten
+    // sparen wir 49 HTTP-Calls an CouchDB.
+    type EinsatzKopf = {
+      _id?: string;
+      einsatzart?: string;
+      einsatzartFreitext?: string;
+      einsatzort?: string;
+      alarmierungZeit?: string;
+      einsatzTyp?: string;
+    };
+    const einsatzIds = Array.from(
+      new Set(
+        fzgbers
+          .map((d) => (d as { einsatzId?: string }).einsatzId)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    );
+    const einsatzMap = new Map<string, EinsatzKopf>();
+    if (einsatzIds.length > 0) {
+      try {
+        const bulk = (await db.fetch({ keys: einsatzIds })) as {
+          rows: Array<{ id?: string; doc?: EinsatzKopf; error?: string }>;
+        };
+        for (const row of bulk.rows) {
+          if (row.doc && row.id) {
+            einsatzMap.set(row.id, row.doc);
+          }
+        }
+      } catch (err) {
+        // Bulk-Fetch fehlgeschlagen — wir liefern leere Map zurueck und
+        // die Items kriegen nur die fzgber-eigenen Felder (kein Einsatz-
+        // Stichwort/Adresse). Besser als kompletter 500.
+        logger.warn(
+          { err: err instanceof Error ? err.message : String(err), count: einsatzIds.length },
+          "fahrzeugberichte/meine: Bulk-Fetch der Einsaetze fehlgeschlagen",
+        );
+      }
+    }
+
     for (const d of fzgbers) {
       const doc = d as {
         _id: string;
@@ -750,35 +1072,30 @@ einsaetzeRouter.get(
         mannschaft?: unknown[];
       };
       if (!doc.einsatzId) continue;
-      try {
-        const einsatz = (await db.get(doc.einsatzId)) as {
-          einsatzart?: string;
-          einsatzartFreitext?: string;
-          einsatzort?: string;
-          alarmierungZeit?: string;
-          einsatzTyp?: string;
-        };
-        items.push({
-          _id: doc._id,
-          einsatzId: doc.einsatzId,
-          einsatzart:
-            einsatz.einsatzart ?? einsatz.einsatzartFreitext ?? "Einsatz",
-          ...(einsatz.einsatzartFreitext
-            ? { einsatzartFreitext: einsatz.einsatzartFreitext }
-            : {}),
-          ...(einsatz.einsatzort ? { einsatzort: einsatz.einsatzort } : {}),
-          ...(einsatz.alarmierungZeit
-            ? { alarmierungZeit: einsatz.alarmierungZeit }
-            : {}),
-          ...(einsatz.einsatzTyp ? { einsatzTyp: einsatz.einsatzTyp } : {}),
-          kmGefahrenKm: doc.km?.gefahrenKm ?? 0,
-          mannschaftAnzahl: Array.isArray(doc.mannschaft) ? doc.mannschaft.length : 0,
-          status: doc.status ?? "unbekannt",
-          ...(doc.geaendertAm ? { geaendertAm: doc.geaendertAm } : {}),
-        });
-      } catch {
-        // Einsatz-Doc weg → Fahrzeugbericht orphan, ignorieren
+      const einsatz = einsatzMap.get(doc.einsatzId);
+      if (!einsatz) {
+        // Einsatz-Doc weg → Fahrzeugbericht orphan, ignorieren (selbe
+        // Semantik wie vorher der `catch`-Block).
+        continue;
       }
+      items.push({
+        _id: doc._id,
+        einsatzId: doc.einsatzId,
+        einsatzart:
+          einsatz.einsatzart ?? einsatz.einsatzartFreitext ?? "Einsatz",
+        ...(einsatz.einsatzartFreitext
+          ? { einsatzartFreitext: einsatz.einsatzartFreitext }
+          : {}),
+        ...(einsatz.einsatzort ? { einsatzort: einsatz.einsatzort } : {}),
+        ...(einsatz.alarmierungZeit
+          ? { alarmierungZeit: einsatz.alarmierungZeit }
+          : {}),
+        ...(einsatz.einsatzTyp ? { einsatzTyp: einsatz.einsatzTyp } : {}),
+        kmGefahrenKm: doc.km?.gefahrenKm ?? 0,
+        mannschaftAnzahl: Array.isArray(doc.mannschaft) ? doc.mannschaft.length : 0,
+        status: doc.status ?? "unbekannt",
+        ...(doc.geaendertAm ? { geaendertAm: doc.geaendertAm } : {}),
+      });
     }
     items.sort((a, b) => {
       const ta = new Date(a.alarmierungZeit ?? 0).getTime();

@@ -255,12 +255,12 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   <table class="bx cb-row">
     <tr>
       <td style="width:25%">Pflichtbereich
-        <span class="cb">${triBox(d.pflichtbereich === true || null, "JA")}</span>
-        <span class="cb">${triBox(d.pflichtbereich === false || null, "NEIN")}</span>
+        <span class="cb">${triBox(d.pflichtbereich === true, "JA")}</span>
+        <span class="cb">${triBox(d.pflichtbereich === false, "NEIN")}</span>
       </td>
       <td style="width:25%">Einsatzzone Eberstalzell
-        <span class="cb">${triBox(d.einsatzzoneEzell === true || null, "JA")}</span>
-        <span class="cb">${triBox(d.einsatzzoneEzell === false || null, "NEIN")}</span>
+        <span class="cb">${triBox(d.einsatzzoneEzell === true, "JA")}</span>
+        <span class="cb">${triBox(d.einsatzzoneEzell === false, "NEIN")}</span>
       </td>
       <td>Alarmiert durch
         <span class="cb">${boxFilled(d.alarmierungAuthor === "BWST")} BWST</span>

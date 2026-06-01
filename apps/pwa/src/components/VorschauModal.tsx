@@ -1,4 +1,4 @@
-import { Printer, X } from "lucide-react";
+import { ArrowLeft, Printer, X } from "lucide-react";
 import { useMemo } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import type { AlarmDaten } from "./AlarmCard";
@@ -128,6 +128,50 @@ export function VorschauModal({ open, data, onClose }: Props) {
           style={{ background: "#fff", color: "#000", padding: 24 }}
           dangerouslySetInnerHTML={{ __html: html }}
         />
+
+        {/* U-16: Footer mit "Zurueck zur Bearbeitung" — gleicher Effekt wie
+            das X oben, aber mit klarem Label fuer den Kdt der die Vorschau
+            angeschaut hat und jetzt weiter bearbeiten will. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 18px",
+            background: "var(--surface)",
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              background: "transparent",
+              color: "var(--fg)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 10,
+              cursor: "pointer",
+              minHeight: 44,
+            }}
+          >
+            <ArrowLeft size={14} /> Zurueck zur Bearbeitung
+          </button>
+          <button
+            type="button"
+            onClick={printNow}
+            className="cta"
+            style={{ width: "auto", padding: "10px 16px", fontSize: 13, minHeight: 44 }}
+          >
+            <Printer size={14} /> Drucken
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -340,7 +384,7 @@ function renderHtml(d: VorschauData): string {
   </table>
 
   <div class="ft">
-    HotDoc · Fahrzeugbericht ist Anhang zum Hauptbericht der Einsatzzentrale „Florian Eberstalzell".
+    HotDoc · Fahrzeugbericht ist Anhang zum Hauptbericht von „Florian Eberstalzell".
   </div>
 </div>
   `.trim();

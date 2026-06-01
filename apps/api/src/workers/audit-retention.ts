@@ -95,7 +95,52 @@ export async function runAuditRetention(): Promise<RetentionResult> {
 
   result.durationMs = Date.now() - start;
   logger.info(result, "Audit-Retention-Lauf fertig");
+  // F-34 piggyback: abgelaufene Token-Blacklist-Eintraege gleich mit weg.
+  // Eigene Range-Iteration weil Blacklist nicht reverseTs-codiert ist.
+  try {
+    await cleanupExpiredBlacklist();
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Blacklist-Cleanup nach Audit-Retention fehlgeschlagen",
+    );
+  }
   return result;
+}
+
+/**
+ * Loescht alle `auth:blacklist:*`-Eintraege deren expiresAt < jetzt.
+ *
+ * Hintergrund (F-34): Beim Token-Revoke schreiben wir das (sub, iat)-Paar
+ * mit der exp-Claim des Tokens als expiresAt. Sobald der Token ohnehin
+ * abgelaufen waere, schlaegt die JWT-Signatur-Pruefung sowieso fehl —
+ * der Blacklist-Eintrag waere also redundant. Wir raeumen ihn deshalb
+ * im selben Cron-Slot weg wie die Audit-Events.
+ */
+async function cleanupExpiredBlacklist(): Promise<void> {
+  const list = await db.list({
+    startkey: "auth:blacklist:",
+    endkey: "auth:blacklist:￰",
+    include_docs: true,
+    limit: 500,
+  });
+  const now = Date.now();
+  const toDelete: Array<{ _id: string; _rev: string; _deleted: true }> = [];
+  for (const row of list.rows) {
+    const doc = row.doc as { _id?: string; _rev?: string; expiresAt?: string } | undefined;
+    if (!doc?._id || !doc._rev) continue;
+    const exp = doc.expiresAt ? new Date(doc.expiresAt).getTime() : NaN;
+    if (Number.isFinite(exp) && exp < now) {
+      toDelete.push({ _id: doc._id, _rev: doc._rev, _deleted: true });
+    }
+  }
+  if (toDelete.length === 0) return;
+  const bulkResult = await db.bulk({ docs: toDelete });
+  const fehler = bulkResult.filter((r) => r.error).length;
+  logger.info(
+    { geloescht: toDelete.length - fehler, fehler },
+    "Token-Blacklist-Cleanup fertig",
+  );
 }
 
 /**

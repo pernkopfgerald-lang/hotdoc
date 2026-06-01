@@ -19,9 +19,14 @@ import { pushAlarm } from "../services/fcm.js";
 import { recordBlaulichtSmsPoll } from "../services/state.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
+// F-39: Heartbeat-Zaehler — bei leeren Polls schreiben wir einen debug-Log
+// damit man im Dev-Modus den Live-Tick sieht. In production (level=info)
+// werden debug-Logs unterdrueckt, also kein Spam.
+let pollCount = 0;
 
 export async function pollOnce(): Promise<{ neu: number; gesamt: number }> {
   try {
+    pollCount += 1;
     const alarms = await listAlarms();
     let neu = 0;
     for (const a of alarms) {
@@ -30,6 +35,10 @@ export async function pollOnce(): Promise<{ neu: number; gesamt: number }> {
     }
     if (alarms.length > 0) {
       logger.info({ neu, gesamt: alarms.length }, "BlaulichtSMS-Poll fertig");
+    } else {
+      // F-39: Heartbeat fuer leere Polls. Im Production-Logging (info+)
+      // unsichtbar, im Dev-Modus (debug) Live-Tick sichtbar.
+      logger.debug({ pollCount }, "BlaulichtSMS-Poll leer");
     }
     recordBlaulichtSmsPoll(neu);
     return { neu, gesamt: alarms.length };

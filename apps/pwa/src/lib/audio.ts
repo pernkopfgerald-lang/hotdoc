@@ -115,14 +115,3 @@ function pickMimeType(): string {
   return ""; // Browser-Default
 }
 
-export function statusLabel(s: MicStatus): string {
-  switch (s) {
-    case "idle":       return "bereit";
-    case "requesting": return "Mikrofon-Zugriff …";
-    case "ready":      return "bereit";
-    case "recording":  return "aufnehmend";
-    case "denied":     return "Mikrofon verweigert";
-    case "unavail":    return "kein Mikrofon";
-    case "error":      return "Fehler";
-  }
-}

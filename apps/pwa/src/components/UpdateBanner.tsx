@@ -58,7 +58,17 @@ export function UpdateBanner() {
     };
     void check();
     const t = setInterval(check, 6 * 60 * 60 * 1000);
-    return () => clearInterval(t);
+    // Beim Tab-Wiederreingucken sofort nach Updates fragen — wenn das
+    // Tablet stundenlang im Background lag und der Funktionaer es jetzt
+    // aufmacht, soll er nicht erst auf den naechsten 6h-Intervall warten.
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   if (!info || !info.available) return null;
@@ -144,8 +154,11 @@ export function UpdateBanner() {
           onClick={() => void runUpdate()}
           disabled={status === "running"}
           style={{
-            background: status === "permission" ? "#fbbf24" : "rgba(255,255,255,0.18)",
-            color: status === "permission" ? "#111" : "#fff",
+            // D-02: Permission-Warning-State auf semantische Tokens
+            // (var(--warn) statt fixem Amber, var(--bg-deep) als
+            // Hochkontrast-Text auf Amber).
+            background: status === "permission" ? "var(--warn)" : "rgba(255,255,255,0.18)",
+            color: status === "permission" ? "var(--bg-deep)" : "#fff",
             border: 0,
             borderRadius: 8,
             padding: "6px 10px",

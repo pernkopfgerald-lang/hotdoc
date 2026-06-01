@@ -63,7 +63,8 @@ interface ReqOpts {
  * URL-Pfade die NICHT zum Token-Cleanup führen wenn 401 zurückkommt:
  * - /api/auth/* (Login / Handoff-Claim sind erwartbar manchmal 401, das
  *   ist nicht ein „Session abgelaufen"-Signal)
- * - /api/admin/health (DemoBanner pollt das public — kein Token nötig)
+ * - /api/admin/health (Login-Status-Indikator pollt das public —
+ *   kein Token nötig, SchnittstellenPanel im Backoffice macht das gleich)
  */
 function isAuthBypassPath(path: string): boolean {
   return path.startsWith("/api/auth/") || path === "/api/admin/health";

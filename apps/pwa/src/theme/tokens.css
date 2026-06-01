@@ -68,7 +68,12 @@
   --text-2:           var(--fg-2);
   --text-3:           var(--fg-3);
 
-  /* FF-Brand */
+  /* FF-Brand
+     --brand-red ist der konstante Brand-Token fuer Logo/FF-Header/
+     Markenanwendung — bleibt in JEDEM Theme auf #C8102E. Der
+     semantische --red dagegen schwingt theme-aware fuer Status-/
+     CTA-Verwendung (Dark-Mode wird heller fuer Kontrast). */
+  --brand-red:        #C8102E;
   --red:              #C8102E;
   --red-strong:       #A30B25;
   --red-tint:         rgba(200, 16, 46, 0.10);
@@ -167,6 +172,24 @@
   --font-display:     var(--font-sans);
   --font-mono:        "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
+  /* Type-Scale — feste Stufen statt verstreuter Inline-Float-Werte
+     (z. B. fontSize: 11.5). Komponenten sollen sich auf diese Tokens
+     stuetzen damit max. 4–5 Groessen pro Screen entstehen. */
+  --font-xs:          10px;
+  --font-sm:          12px;
+  --font-md:          14px;
+  --font-lg:          16px;
+  --font-xl:          20px;
+  --font-2xl:         28px;
+
+  /* Modal-Width Stufen — fuer konsistente Modal-Groessen.
+     sm = Bestaetigungs-Dialoge (HandoffModal)
+     md = Standard-Editor (NeuerEinsatzTabletModal)
+     lg = Multi-Spalten-View (ArchivTabletModal) */
+  --modal-w-sm:       440px;
+  --modal-w-md:       720px;
+  --modal-w-lg:       880px;
+
   /* Letter-Spacing-Tokens */
   --tracking-display: -0.038em;
   --tracking-tight:   -0.022em;
@@ -234,6 +257,9 @@
   --text-2:           var(--fg-2);
   --text-3:           var(--fg-3);
 
+  /* --brand-red bleibt #C8102E auch im Dark-Mode — Brand-Konstante.
+     --red dagegen ist semantisch (Status/CTA) und wird heller. */
+  --brand-red:        #C8102E;
   --red:              #FF5468;
   --red-strong:       #FF3148;
   --red-tint:         rgba(255, 84, 104, 0.14);
@@ -337,6 +363,23 @@
   50%      { box-shadow: 0 0 0 9px transparent; }
 }
 
+/* Rote Pulse-Aureole fuer "Neuer Einsatz"-Popup — frueher inline
+   in BerichtPage. Verwendet theme-aware var(--red-glow) damit es
+   im Dark-Mode auch funktioniert. Wichtig: top-level — @keyframes
+   darf nicht in einem Selektor genested werden (esbuild CSS-Error). */
+@keyframes pulse-red {
+  0%, 100% {
+    box-shadow:
+      0 24px 60px rgba(0, 0, 0, 0.35),
+      0 0 0 0 var(--red-glow);
+  }
+  50% {
+    box-shadow:
+      0 24px 60px rgba(0, 0, 0, 0.35),
+      0 0 0 12px transparent;
+  }
+}
+
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.25; }
@@ -395,6 +438,12 @@
      - color-mix() ausweichen wo möglich
    ============================================================ */
 [data-fx="lite"] {
+  /* D-08 Audit: Lite-Mode ueberschreibt NUR GPU-teure Tokens (Blur,
+     Shadow, Glow). Status-Farben (--ok, --warn, --info, --red, --as)
+     bleiben absichtlich auf den :root- bzw. [data-theme="dark"]-
+     Definitionen — die Defaults greifen. Brand-/Surface-/Foreground-
+     Tokens ebenfalls. */
+
   /* Glas → solide Surfaces */
   --glass-1: var(--surface);
   --glass-2: var(--surface);

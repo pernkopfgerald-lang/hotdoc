@@ -38,6 +38,28 @@ const PingBodySchema = z.object({
 /** Stale-Cutoff für die Listen-Antwort. 5 min ohne Ping → Fahrzeug fällt raus. */
 const MAX_PING_AGE_MS = 5 * 60 * 1000;
 
+/**
+ * Fahrzeug-Allowlist — nur diese FahrzeugIds duerfen Pings absetzen.
+ * "zentrale" wird unten extra geblockt (sendet absichtlich keine Pings).
+ * Defensiv damit ein manipulierter Token mit ungueltigem fahrzeugId-Claim
+ * nicht den State korrumpiert. Synchron zum @hotdoc/shared `FahrzeugId`-Type.
+ */
+const ALLOWED_FAHRZEUG_IDS = new Set([
+  "kdo",
+  "tlf-a-4000",
+  "lfa-b",
+  "mtf",
+  "zentrale",
+]);
+
+/**
+ * Pro Fahrzeug-Rate-Limit: max 1 Ping pro 500ms. Schuetzt vor versehentlichen
+ * Ping-Storms (z.B. defektes Tablet ohne Debounce). Map waechst hoechstens
+ * bis ALLOWED_FAHRZEUG_IDS.size → keine Memory-Sorge.
+ */
+const PING_MIN_INTERVAL_MS = 500;
+const lastPingPerFahrzeug = new Map<string, number>();
+
 // — POST /api/positions —
 // Auth-Pflicht. fahrzeugId wird aus session genommen — der Tablet-Client
 // kann sich nicht als ein anderes Fahrzeug ausgeben.
@@ -45,6 +67,12 @@ positionsRouter.post("/api/positions", requireAuth(), (async (req, res) => {
   const session = req.session;
   if (!session?.fahrzeugId) {
     res.status(403).json({ error: "no_fahrzeug_in_session" });
+    return;
+  }
+  // Whitelist-Check: nur bekannte FahrzeugIds — schliesst die Luecke dass ein
+  // Token mit beliebigem fahrzeugId-Claim die positions-Map verschmutzt.
+  if (!ALLOWED_FAHRZEUG_IDS.has(session.fahrzeugId)) {
+    res.status(400).json({ error: "invalid_fahrzeug_id" });
     return;
   }
   const parsed = PingBodySchema.safeParse(req.body);
@@ -59,6 +87,16 @@ positionsRouter.post("/api/positions", requireAuth(), (async (req, res) => {
     res.json({ ok: true, ignored: true });
     return;
   }
+  // Per-Fahrzeug-Rate-Limit: blockt zu schnelle Aufrufe (Tablet ohne
+  // Throttle, hung-Loop, etc.). Tablets pingen normal 3-5s, 500ms ist
+  // sehr permissiv und faengt nur echte Pathologien.
+  const now = Date.now();
+  const last = lastPingPerFahrzeug.get(session.fahrzeugId);
+  if (last !== undefined && now - last < PING_MIN_INTERVAL_MS) {
+    res.status(429).json({ error: "rate_limit_per_vehicle" });
+    return;
+  }
+  lastPingPerFahrzeug.set(session.fahrzeugId, now);
   const ping: FahrzeugPing = {
     fahrzeugId: session.fahrzeugId as FahrzeugPing["fahrzeugId"],
     lat: parsed.data.lat,

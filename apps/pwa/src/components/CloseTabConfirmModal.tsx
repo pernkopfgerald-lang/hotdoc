@@ -120,15 +120,15 @@ export function CloseTabConfirmModal({
       aria-modal="true"
       aria-labelledby="close-tab-title"
     >
+      {/* U-20: Backdrop schliesst NICHT (kein versehentliches Verwerfen
+          durch Tipp neben den Dialog). Der User muss bewusst "Abbrechen"
+          oder ESC druecken. */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           background: "rgba(0,0,0,0.55)",
           backdropFilter: "blur(4px)",
-        }}
-        onClick={() => {
-          if (!busy) onClose();
         }}
       />
       <div
@@ -188,20 +188,35 @@ export function CloseTabConfirmModal({
                 passieren?
               </p>
               {isHauptauftrag && (
-                <p
+                /* U-05: deutlich abgesetzte Warnung — roter Hintergrund,
+                   groessere Schrift (14px), AlertTriangle-Icon sichtbar.
+                   Klar machen, dass der Hauptauftrag alle Fahrzeugberichte
+                   mitschliesst. */
+                <div
                   style={{
-                    margin: "0 0 12px",
-                    fontSize: 12,
-                    color: "var(--warn)",
-                    background: "var(--warn-tint)",
-                    border: "1px solid var(--amber-border)",
-                    borderRadius: 8,
-                    padding: "8px 10px",
+                    margin: "0 0 14px",
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    lineHeight: 1.45,
+                    color: "var(--red)",
+                    background: "var(--red-tint, rgba(217,59,59,0.12))",
+                    border: "1px solid var(--red-border, #d93b3b)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
                   }}
                 >
-                  Hauptauftrag — schließt auch alle noch offenen
-                  Fahrzeugberichte mit.
-                </p>
+                  <AlertTriangle
+                    size={20}
+                    style={{ color: "var(--red)", flexShrink: 0, marginTop: 1 }}
+                  />
+                  <div>
+                    Hauptauftrag — schliesst auch alle noch offenen
+                    Fahrzeugberichte mit.
+                  </div>
+                </div>
               )}
 
               <button
@@ -227,7 +242,9 @@ export function CloseTabConfirmModal({
               >
                 <CheckCircle2 size={18} />
                 <span style={{ flex: 1 }}>
-                  Mit Speichern abschließen
+                  {/* U-05: klarere Sprache — der primaere CTA-Text
+                      beschreibt was passiert (PDF erzeugen + abschliessen). */}
+                  Bericht jetzt abschliessen &amp; PDF erzeugen
                   <span
                     style={{
                       display: "block",
@@ -315,7 +332,7 @@ export function CloseTabConfirmModal({
                 type="text"
                 value={grund}
                 onChange={(e) => setGrund(e.target.value)}
-                placeholder="z.B. Fehlalarm, Test-Daten, falsch angelegt"
+                placeholder="z.B. Fehlalarm, doppelt angelegt, falsche Alarmierung"
                 autoFocus
                 disabled={busy}
                 style={{

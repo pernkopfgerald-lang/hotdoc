@@ -111,7 +111,17 @@ export async function runPhantomCleanup(): Promise<PhantomResult> {
     if (doc.status !== "abgeschlossen") continue;
     if (!doc.einsatzende) continue;
     const t = new Date(doc.einsatzende).getTime();
-    if (Number.isNaN(t)) continue;
+    if (Number.isNaN(t)) {
+      // Defensiv loggen: ein abgeschlossener Einsatz ohne parsbares
+      // einsatzende ist ein Datenkonsistenz-Problem (z.B. fehlgeschlagene
+      // Migration). Wir ueberspringen ihn fuer den Phantom-Cleanup, aber
+      // markieren ihn fuer manuelle Pruefung.
+      logger.warn(
+        { id: doc._id, einsatzende: doc.einsatzende },
+        "Einsatz mit ungültigem einsatzende übersprungen — manuell prüfen",
+      );
+      continue;
+    }
     if (t > cutoff) continue;
     candidates.push(doc);
   }

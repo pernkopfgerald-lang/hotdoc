@@ -15,7 +15,6 @@ import {
   MapPin,
   Phone,
   Siren,
-  Smartphone,
   Truck,
   Users,
   X,
@@ -327,6 +326,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  /** U-21: Strg+S Toast. */
+  const [savedToastAt, setSavedToastAt] = useState<number | null>(null);
   // Auto-Save: nach 1,5 s ohne weitere Tipparbeit speichern. Manueller
   // "Speichern"-Button wurde entfernt — der User soll sich nichts merken muessen.
   useEffect(() => {
@@ -338,6 +339,29 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, editorDirty, aktiverEinsatzId, aktiverEinsatz?.schreibschutz]);
+
+  // U-21: Strg+S / Cmd+S triggert sofortiges saveEditor + zeigt Toast.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        const ist_schreibgeschuetzt = aktiverEinsatz?.schreibschutz === true;
+        if (aktiverEinsatzId && !ist_schreibgeschuetzt) {
+          void saveEditor();
+          setSavedToastAt(Date.now());
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aktiverEinsatzId, aktiverEinsatz?.schreibschutz]);
+
+  useEffect(() => {
+    if (savedToastAt === null) return;
+    const t = setTimeout(() => setSavedToastAt(null), 3000);
+    return () => clearTimeout(t);
+  }, [savedToastAt]);
   // Abschluss-Workflow: separater State-Slot, damit der Confirm-Dialog
   // unabhängig vom normalen Save funktioniert und der Einsatzleiter eine
   // explizite Bestätigung sehen muss bevor der Schreibschutz aktiviert wird.
@@ -345,6 +369,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [abschlussBusy, setAbschlussBusy] = useState(false);
   const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
+  /** U-17: Override-Confirm — wenn der EL trotz noch offener Fahrzeugberichte
+   *  abschliessen will, muss er einen Grund (min 10 Zeichen) angeben. Der
+   *  Grund wandert ins Audit-Log und auf das PDF. */
+  const [abschlussOverrideOpen, setAbschlussOverrideOpen] = useState(false);
+  const [abschlussOverrideGrund, setAbschlussOverrideGrund] = useState("");
   /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   const [archivOpenFlorian, setArchivOpenFlorian] = useState(false);
@@ -671,7 +700,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    * Bei 409 (already_closed): das Tablet hatte einen veralteten Stand
    * — wir laden nur neu, kein Fehler.
    */
-  async function handleAbschluss(): Promise<void> {
+  async function handleAbschluss(overrideGrund?: string): Promise<void> {
     if (!aktiverEinsatzId) {
       setAbschlussErr("Kein aktiver Einsatz ausgewählt.");
       return;
@@ -680,9 +709,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     setAbschlussErr(null);
     setAbschlussOk(null);
     try {
+      // U-17: bei Override-Pfad den Grund als Body mitschicken — Backend
+      // kann ihn in den Audit-Trail/PDF uebernehmen. Der bestehende
+      // Endpoint akzeptiert leeren Body, zusaetzliche Felder werden
+      // ignoriert wenn das Backend sie noch nicht kennt.
+      const body = overrideGrund
+        ? { abschlussOverrideHinweis: overrideGrund }
+        : undefined;
       await apiCall<{ ok: true; id: string; rev: string }>(
         `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/abschluss`,
-        { method: "POST" },
+        body ? { method: "POST", body } : { method: "POST" },
       );
       // Doc neu laden — der Schreibschutz-Status soll sofort sichtbar werden.
       try {
@@ -921,7 +957,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
 
   return (
     <div>
-      <Topbar funkrufname={fahrzeug.funkrufname} einsatzNr={einsatzId} geo={geo} />
+      {/* HILFE: nur auf der Florianstation einblenden (User-Wunsch). */}
+      <Topbar
+        funkrufname={fahrzeug.funkrufname}
+        einsatzNr={einsatzId}
+        geo={geo}
+        showHilfe
+      />
 
       <EinsatzTabs
         tabs={tabs}
@@ -971,7 +1013,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       <span className="dot" style={{ background: "var(--ok)" }} />
                       Bereit
                     </span>
-                    <span className="alarm-tag muted">· Florian Eberstalzell · Einsatzzentrale</span>
+                    <span className="alarm-tag muted">· Florian Eberstalzell</span>
                   </div>
                   <div className="alarm-title">Keine aktive Einsatzdokumentation</div>
                   <div className="alarm-addr" style={{ color: "var(--fg-3)" }}>
@@ -1028,9 +1070,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           <section
             className="alarm"
             style={{
+              // D-02: Statt fester Light-Hex-Gradient ein theme-awares Tint
+              // ueber --info-tint. Im Dark-Mode kommt automatisch der dunklere
+              // Blau-Tint zum Tragen.
               background:
-                "linear-gradient(135deg, #FFFFFF 0%, #F0F7FF 55%, #DBEAFE 100%)",
-              borderColor: "rgba(37,99,235,0.25)",
+                "linear-gradient(135deg, var(--surface) 0%, var(--info-tint) 55%, var(--info-strong) 100%)",
+              borderColor: "var(--blue-border)",
             }}
           >
             <div className="alarm-top">
@@ -1045,9 +1090,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                         className="dot"
                         style={{ background: "var(--info)" }}
                       />
-                      Einsatzzentrale
+                      Florian Eberstalzell
                     </span>
-                    <span className="alarm-tag muted">· Florian Eberstalzell · Hauptbericht</span>
+                    <span className="alarm-tag muted">· Hauptbericht</span>
                   </div>
                   <div className="alarm-title">{einsatzart}</div>
                   <div className="alarm-addr">
@@ -1316,10 +1361,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
+        {/* U-18: Pflicht-Sektion default geoeffnet — wird im jedem zweiten
+            Einsatz gebraucht (Rettung, andere FF). Schluss mit "wo war der
+            Tab nochmal" beim Anklicken. */}
         <SectionHead
           title="Beteiligte Stellen & Sonstige FF"
           collapsible
-          defaultClosed
           storageKey="beteiligte-stellen"
         />
         <section className="card">
@@ -1427,9 +1474,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         </section>
 
         <SectionHead
+          // U-18: Oelbindemittel ist Pflichtfeld bei Verkehrsunfaellen — default offen.
           title="Ölbindemittel"
           collapsible
-          defaultClosed
           storageKey="oelbindemittel"
         />
         <section className="card">
@@ -1563,7 +1610,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       color: "var(--fg-3)",
                     }}
                   >
-                    Sachbearbeiter Florianstation
+                    Sachbearbeiter Florian Eberstalzell
                   </span>
                 </div>
                 {!schreibschutz ? (
@@ -2161,6 +2208,32 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                         : "diese Berichte"}{" "}
                       vom Fahrzeug-Kdt. abgeschlossen{" "}
                       {offene.length === 1 ? "wurde" : "wurden"}.
+                      {/* U-17: Override-Link — fuer den seltenen Fall, dass der EL
+                          den Einsatz trotz offener Fahrzeugberichte schliessen muss
+                          (Tablet kaputt, Kdt im Krankenstand). Mit Grund-Pflicht. */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAbschlussOverrideGrund("");
+                          setAbschlussErr(null);
+                          setAbschlussOverrideOpen(true);
+                        }}
+                        style={{
+                          display: "block",
+                          marginTop: 8,
+                          background: "transparent",
+                          border: 0,
+                          color: "var(--warn)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          padding: 0,
+                          minHeight: 0,
+                        }}
+                      >
+                        Trotzdem abschliessen (mit Grund)
+                      </button>
                     </>
                   ) : istManuellerTyp && beteiligte.length === 0 ? (
                     <>
@@ -2201,6 +2274,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         )}
       </main>
 
+      {/* U-12: Fusszeile reduziert auf {Version, Funkrufname, FX-Toggle}.
+          Handoff, Fahrzeug wechseln, Setup wandern in Topbar/About-Modal. */}
       <div className="appfoot">
         HotDoc
         <span className="sep">·</span>
@@ -2217,73 +2292,40 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             minHeight: 0,
             padding: 0,
           }}
-          title="Über HotDoc · Entwickler · Lizenz · Release-Notes"
+          title="Über HotDoc · Entwickler · Lizenz · Release-Notes · Tablet-Reset"
         >
           {APP_VERSION} · {APP_BUILD}
         </button>
         <span className="sep">·</span>
         {fahrzeug.funkrufname}
         <span className="sep">·</span>
-        <button
-          type="button"
-          onClick={() => setHandoffOpen(true)}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--red)",
-            font: "inherit",
-            fontWeight: 600,
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-            marginRight: 8,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-          title="Sitzung per QR-Code aufs Handy übertragen (z. B. Tablet-Akku leer)"
-        >
-          <Smartphone size={11} /> An Handy übergeben
-        </button>
-        <span className="sep">·</span>
-        <button
-          type="button"
-          onClick={() => setVehicleSwitcherOpen(true)}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            font: "inherit",
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-            marginRight: 8,
-          }}
-        >
-          Fahrzeug wechseln
-        </button>
-        <span className="sep">·</span>
-        <button
-          type="button"
-          onClick={onResetSetup}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            font: "inherit",
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-          }}
-        >
-          Setup
-        </button>
-        <span className="sep">·</span>
         <FxToggle />
       </div>
+
+      {/* U-21: Strg+S Save-Toast — kurzes Banner unten rechts, 3s sichtbar. */}
+      {savedToastAt !== null && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 28,
+            zIndex: 3000,
+            padding: "10px 14px",
+            background: "var(--ok)",
+            color: "#fff",
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <CheckCircle2 size={14} /> Gespeichert
+        </div>
+      )}
 
       <HandoffModal
         open={handoffOpen}
@@ -2560,6 +2602,134 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         </div>
       ) : null}
 
+      {/* U-17: Abschluss-Override-Modal — Grund-Pflicht-Input, min 10 Zeichen.
+          Beim Bestaetigen ruft handleAbschluss mit Grund auf, der ins
+          Audit-Log wandert und (sofern Backend mitkann) am PDF erscheint. */}
+      {abschlussOverrideOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !abschlussBusy && setAbschlussOverrideOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2400,
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(540px, 100%)",
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 16,
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <AlertTriangle size={20} style={{ color: "var(--warn)" }} />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+                Trotzdem abschliessen
+              </h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55 }}>
+              Es sind noch Fahrzeugberichte offen. Du kannst den Hauptbericht
+              trotzdem schliessen — bitte einen Grund angeben (mind. 10 Zeichen).
+              Der Grund wandert ins Audit-Log und auf das PDF.
+            </p>
+            <textarea
+              rows={3}
+              value={abschlussOverrideGrund}
+              onChange={(e) => setAbschlussOverrideGrund(e.target.value)}
+              placeholder="z. B. Tablet LFA-B defekt, Kdt im Krankenstand …"
+              autoFocus
+              disabled={abschlussBusy}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border-strong)",
+                borderRadius: 8,
+                fontSize: 14,
+                color: "var(--fg)",
+                resize: "vertical",
+              }}
+            />
+            {abschlussErr && (
+              <div
+                style={{
+                  fontSize: 12,
+                  padding: "6px 8px",
+                  background: "var(--red-tint)",
+                  color: "var(--red)",
+                  border: "1px solid var(--red-border)",
+                  borderRadius: 6,
+                }}
+              >
+                {abschlussErr}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setAbschlussOverrideOpen(false)}
+                disabled={abschlussBusy}
+                style={{
+                  padding: "10px 16px",
+                  background: "transparent",
+                  color: "var(--fg)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: abschlussBusy ? "not-allowed" : "pointer",
+                  minHeight: 44,
+                }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                disabled={abschlussBusy || abschlussOverrideGrund.trim().length < 10}
+                onClick={async () => {
+                  await handleAbschluss(abschlussOverrideGrund.trim());
+                  if (!abschlussErr) {
+                    setAbschlussOverrideOpen(false);
+                  }
+                }}
+                style={{
+                  padding: "10px 18px",
+                  background: "var(--warn)",
+                  border: 0,
+                  color: "#fff",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor:
+                    abschlussBusy || abschlussOverrideGrund.trim().length < 10
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity: abschlussOverrideGrund.trim().length < 10 ? 0.5 : 1,
+                  minHeight: 44,
+                }}
+              >
+                {abschlussBusy ? "Schliesst ab …" : "Trotzdem abschliessen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <NeuerEinsatzTabletModal
         open={neuerEinsatzOpen !== null}
         initialTyp={neuerEinsatzOpen ?? "manuell"}
@@ -2583,7 +2753,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         onClose={() => setArchivOpenFlorian(false)}
       />
 
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <AboutModal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        onResetSetup={onResetSetup}
+      />
     </div>
   );
 }
@@ -2861,7 +3035,7 @@ function FlorianChronikInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void submit()}
-          placeholder="Florianstation-Eintrag · z. B. Nachalarmierung BFKDT angefordert …"
+          placeholder="Eintrag von Florian Eberstalzell · z. B. Nachalarmierung BFKDT angefordert …"
           disabled={!einsatzId}
         />
         <button

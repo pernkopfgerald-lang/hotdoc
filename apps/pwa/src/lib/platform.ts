@@ -10,8 +10,12 @@
  *  - Network-Plugin statt navigator.onLine → reliable Online/Offline-Events
  *  - Geolocation-Plugin statt navigator.geolocation → bessere GPS-Genauigkeit,
  *    Foreground-Service-faehig
- *  - KeepAwake → Display bleibt waehrend Einsatz an, ohne CSS-Hack
- *  - App-Plugin → echte AppState-Events (Active/Background) statt visibility
+ *
+ * Aktuell aktiv: secureSet/secureGet (Token), getNetworkStatus,
+ * getDeviceInfo, configureStatusBar, hideSplashScreen.
+ * Entfernt im Audit (verwaist): secureRemove, onNetworkChange,
+ * onAppStateChange, setKeepAwake. Sind in der Git-History falls wir
+ * einen Foreground-Service oder Display-Wake-Lock brauchen.
  */
 
 import { Capacitor } from "@capacitor/core";
@@ -57,20 +61,12 @@ export async function secureGet(key: string): Promise<string | null> {
   }
 }
 
-export async function secureRemove(key: string): Promise<void> {
-  if (isNative()) {
-    const { Preferences } = await import("@capacitor/preferences");
-    await Preferences.remove({ key });
-    return;
-  }
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    // egal
-  }
-}
-
 // ─── Netzwerk-Status ──────────────────────────────────────────────────
+//
+// Anmerkung: onNetworkChange und onAppStateChange wurden im Audit als
+// verwaist entfernt (kein Konsument im PWA/Backoffice). Falls die App
+// spaeter eine Foreground-Service-Indikation oder Auto-Reconnect-Logik
+// braucht, koennen sie aus der Git-History wiederhergestellt werden.
 
 export interface NetworkStatus {
   connected: boolean;
@@ -90,92 +86,6 @@ export async function getNetworkStatus(): Promise<NetworkStatus> {
     connected: navigator.onLine,
     connectionType: navigator.onLine ? "unknown" : "none",
   };
-}
-
-export async function onNetworkChange(
-  cb: (s: NetworkStatus) => void,
-): Promise<() => void> {
-  if (isNative()) {
-    const { Network } = await import("@capacitor/network");
-    const handle = await Network.addListener("networkStatusChange", (s) => {
-      cb({
-        connected: s.connected,
-        connectionType: s.connectionType as NetworkStatus["connectionType"],
-      });
-    });
-    return () => {
-      void handle.remove();
-    };
-  }
-  const handler = (): void => {
-    cb({
-      connected: navigator.onLine,
-      connectionType: navigator.onLine ? "unknown" : "none",
-    });
-  };
-  window.addEventListener("online", handler);
-  window.addEventListener("offline", handler);
-  return () => {
-    window.removeEventListener("online", handler);
-    window.removeEventListener("offline", handler);
-  };
-}
-
-// ─── App-State (Foreground/Background) ───────────────────────────────
-
-export type AppState = "active" | "background";
-
-export async function onAppStateChange(
-  cb: (state: AppState) => void,
-): Promise<() => void> {
-  if (isNative()) {
-    const { App } = await import("@capacitor/app");
-    const handle = await App.addListener("appStateChange", (s) => {
-      cb(s.isActive ? "active" : "background");
-    });
-    return () => {
-      void handle.remove();
-    };
-  }
-  const handler = (): void => {
-    cb(document.visibilityState === "visible" ? "active" : "background");
-  };
-  document.addEventListener("visibilitychange", handler);
-  return () => {
-    document.removeEventListener("visibilitychange", handler);
-  };
-}
-
-// ─── Display wach halten (Wake-Lock) ─────────────────────────────────
-//
-// Waehrend eines aktiven Einsatzes soll das Tablet-Display nicht
-// dimmen / sperren. Auf Native via KeepAwake-Plugin (WindowManager-
-// FLAG_KEEP_SCREEN_ON), im Browser via WakeLock-API (ungewiss auf
-// alten Android-Versionen).
-
-let webWakeLockSentinel: WakeLockSentinel | null = null;
-
-export async function setKeepAwake(enabled: boolean): Promise<void> {
-  if (isNative()) {
-    const { KeepAwake } = await import("@capacitor-community/keep-awake");
-    if (enabled) await KeepAwake.keepAwake();
-    else await KeepAwake.allowSleep();
-    return;
-  }
-  try {
-    const nav = navigator as Navigator & {
-      wakeLock?: { request(type: "screen"): Promise<WakeLockSentinel> };
-    };
-    if (enabled) {
-      const lock = await nav.wakeLock?.request("screen");
-      webWakeLockSentinel = lock ?? null;
-    } else if (webWakeLockSentinel) {
-      await webWakeLockSentinel.release();
-      webWakeLockSentinel = null;
-    }
-  } catch {
-    // WakeLock auf altem Android nicht verfuegbar — egal, soll nicht crashen.
-  }
 }
 
 // ─── Geraete-Info ─────────────────────────────────────────────────────
@@ -242,9 +152,3 @@ export async function hideSplashScreen(): Promise<void> {
   }
 }
 
-declare global {
-  /** Webview-WakeLock-Typ (DOM-Lib hat ihn nicht in alle Versionen). */
-  interface WakeLockSentinel {
-    release(): Promise<void>;
-  }
-}

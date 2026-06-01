@@ -28,6 +28,10 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
   const filled = !!data.person;
 
   if (!filled) {
+    // D-13: Die ganze Row ist klickbar (role="button" + onClick + Enter/Space).
+    // Das Plus-Icon ist rein visuell — kein nested Button mit eigenem onClick.
+    // Frueher war der Plus-Button doppelt verkabelt was Screen-Reader irrefuehrt
+    // ("Person waehlen" + parent Row-Klick = zwei semantische Aktionen).
     return (
       <div
         role="button"
@@ -37,21 +41,17 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
           if (e.key === "Enter" || e.key === " ") onPickPerson();
         }}
         className="crew-row empty"
+        aria-label={`Person fuer Slot ${data.slot} waehlen`}
       >
         <div className="crew-num">{data.slot}</div>
         <div className="crew-name placeholder">Person hinzufügen</div>
-        <div className="crew-meta">
-          <button
-            type="button"
+        <div className="crew-meta" aria-hidden="true">
+          <span
             className="icon-btn"
-            aria-label="Person wählen"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPickPerson();
-            }}
+            style={{ pointerEvents: "none" }}
           >
             <Plus size={14} strokeWidth={2.5} />
-          </button>
+          </span>
         </div>
       </div>
     );

@@ -117,8 +117,14 @@ export async function flushOutbox(): Promise<{
       await removeFromOutbox(item);
       ok++;
     } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-        // Schema-Fehler / Auth-Problem → endlos retry hilft nicht, weg damit.
+      // 401 (Token expired) und 423 (Schreibschutz) NICHT löschen — beim
+      // naechsten Sync wieder probieren. Bei 401 reload-t der apiCall-Layer
+      // ohnehin den User in den Setup-Flow; bei 423 ist das Doc temporaer
+      // gesperrt (anderer Tab schreibt gerade), gleich nochmal probieren
+      // bringt was. Endgueltig droppen tun wir nur bei echten Client-
+      // Schema-Fehlern (400, 404, 409, 422).
+      const droppable = new Set([400, 404, 409, 422]);
+      if (err instanceof ApiError && droppable.has(err.status)) {
         await removeFromOutbox(item);
         failed++;
       } else {

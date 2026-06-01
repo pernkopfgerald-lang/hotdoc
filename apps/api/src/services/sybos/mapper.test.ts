@@ -5,16 +5,16 @@ import type { SyBosMaterialRaw, SyBosPersonRaw, SyBosPersUeberpruefungRaw } from
 describe("buildAtemschutzSet", () => {
   it("nimmt nur Personen mit gültiger Atemschutz-Prüfung", () => {
     const rows: SyBosPersUeberpruefungRaw[] = [
-      { Name: "Huemer Manfred", Pruefungsbezeichnung: "Atemschutz-Tauglichkeit", Status: "o" },
-      { Name: "Almhofer Martin", Pruefungsbezeichnung: "Führerschein C", Status: "o" }, // kein AS
-      { Name: "Eder Christoph", Pruefungsbezeichnung: "Atemschutz", Status: "e" }, // abgelaufen
-      { Name: "Bruckner Christoph", Pruefungsbezeichnung: "atemschutz", Status: "o" }, // case-insensitive
+      { Name: "TestUser One", Pruefungsbezeichnung: "Atemschutz-Tauglichkeit", Status: "o" },
+      { Name: "TestUser Two", Pruefungsbezeichnung: "Führerschein C", Status: "o" }, // kein AS
+      { Name: "TestUser Three", Pruefungsbezeichnung: "Atemschutz", Status: "e" }, // abgelaufen
+      { Name: "TestUser Four", Pruefungsbezeichnung: "atemschutz", Status: "o" }, // case-insensitive
     ];
     const set = buildAtemschutzSet(rows);
-    expect(set.has("Huemer Manfred")).toBe(true);
-    expect(set.has("Bruckner Christoph")).toBe(true);
-    expect(set.has("Almhofer Martin")).toBe(false);
-    expect(set.has("Eder Christoph")).toBe(false);
+    expect(set.has("TestUser One")).toBe(true);
+    expect(set.has("TestUser Four")).toBe(true);
+    expect(set.has("TestUser Two")).toBe(false);
+    expect(set.has("TestUser Three")).toBe(false);
     expect(set.size).toBe(2);
   });
 
@@ -30,26 +30,26 @@ describe("buildAtemschutzSet", () => {
 describe("mapPerson", () => {
   const raw: SyBosPersonRaw = {
     ID: 107452,
-    Nachname: "Huemer",
-    Vorname: "Manfred",
+    Nachname: "TestNachname",
+    Vorname: "TestVorname",
     Dienstgrad: "OBM",
     Mobil1: "+436641234567",
-    Email1: "manfred@example.at",
+    Email1: "test@example.at",
     Funktionen: "Maschinist, Atemschutzwart",
   };
 
   it("baut korrekt das CouchDB-Dokument", () => {
-    const asSet = new Set<string>(["Huemer Manfred"]);
+    const asSet = new Set<string>(["TestNachname TestVorname"]);
     const doc = mapPerson(raw, asSet);
     expect(doc).not.toBeNull();
     if (!doc) throw new Error("doc null");
     expect(doc._id).toBe("person:107452");
     expect(doc.type).toBe("person");
     expect(doc.syBosId).toBe(107452);
-    expect(doc.nachname).toBe("Huemer");
-    expect(doc.vorname).toBe("Manfred");
+    expect(doc.nachname).toBe("TestNachname");
+    expect(doc.vorname).toBe("TestVorname");
     expect(doc.dienstgrad).toBe("OBM");
-    expect(doc.email).toBe("manfred@example.at");
+    expect(doc.email).toBe("test@example.at");
     expect(doc.mobil1).toBe("+436641234567");
     expect(doc.atemschutzGueltig).toBe(true);
     expect(doc.aktiv).toBe(true);

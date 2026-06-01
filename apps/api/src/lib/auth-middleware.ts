@@ -29,7 +29,16 @@ export function requireAuth(minRole?: Rolle) {
       return;
     }
     if (minRole && !satisfiesRole(session.rolle, minRole)) {
-      res.status(403).json({ error: "insufficient_role", required: minRole });
+      // F-38: `actual` mitgeben damit das Frontend (Solo-Tablet-Abschluss-
+      // Toast) bei Session-Drift erklaeren kann WAS der User aktuell hat.
+      // Beispiel: einsatzleiter-Endpoint angesprochen, Token traegt aber
+      // nur mannschaft → das Tablet zeigt "Du bist als mannschaft eingeloggt,
+      // benoetigt: einsatzleiter — bitte Tablet neu registrieren".
+      res.status(403).json({
+        error: "insufficient_role",
+        required: minRole,
+        actual: session.rolle,
+      });
       return;
     }
     req.session = session;

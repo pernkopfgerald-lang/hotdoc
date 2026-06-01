@@ -1,11 +1,16 @@
 /**
  * Logo wird via Vite-Asset-Import gebunden — Vite generiert beim Build
- * einen hash-versionierten Pfad wie `/assets/ff-eberstalzell-logo-abc123.png`.
+ * einen hash-versionierten Pfad wie `/assets/ff-eberstalzell-logo-abc123.webp`.
  * Das umgeht das Caddy-Cache-Problem: bei jedem Logo-Update kriegt die
  * Datei einen neuen Hash, Browser laden zwangsweise neu — kein
  * "max-age=31536000, immutable"-Lock-In mehr.
+ *
+ * Format: WebP (q=85) statt PNG — ~13 kB statt ~116 kB. Browsersupport:
+ * iOS 14+, Android 4+, Chrome 32+, Safari 14+, Firefox 65+ → von der
+ * PWA voll abgedeckt. PNG-Fallback bleibt unter ../assets/ liegen, falls
+ * jemand einen Print-Workflow oder Email-Embed braucht.
  */
-import logoUrl from "../assets/ff-eberstalzell-logo.png";
+import logoUrl from "../assets/ff-eberstalzell-logo.webp";
 
 interface Props {
   /**

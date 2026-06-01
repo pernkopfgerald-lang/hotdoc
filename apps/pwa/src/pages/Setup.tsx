@@ -1,10 +1,23 @@
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
-import { ChevronRight, Download, Info, Smartphone } from "lucide-react";
+import { AlertTriangle, ChevronRight, Download, Info, Lock, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { db } from "../db/pouch";
 import { AboutModal } from "../components/AboutModal";
 import { BrandLogo } from "../components/BrandLogo";
 import { isNative } from "../lib/platform";
+
+/**
+ * Test-Phasen-Schutz: jedes Fahrzeug muss sich beim Klick mit PIN 1234
+ * anmelden. PIN wird NICHT in der UI verraten — die Kameraden bekommen
+ * sie aus der WhatsApp/Schulung. Pro Fahrzeug-Auswahl (nicht pro Tablet
+ * einmalig), damit auch beim Fahrzeug-Wechsel im laufenden Test-Betrieb
+ * die Eingabe wiederholt werden muss.
+ *
+ * Schwacher Schutz (clientseitig), aber für die geschlossene Test-Phase
+ * mit FF-Kameraden ausreichend. Vor dem produktiven Live-Betrieb wandert
+ * der Check in den Backend-Endpoint /api/auth/tablet/pin-register zurück.
+ */
+const SETUP_PIN = "1234";
 
 /**
  * Erkennt einen Android-Browser, der NICHT bereits die APK ist. Genau
@@ -51,6 +64,15 @@ export function Setup({ onSetupDone }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
+  /** Klick auf eine Fahrzeug-Karte oeffnet diesen Dialog. Erst nach
+   *  korrektem PIN ("1234", Test-Phasen-Schutz) wird der Backend-Call
+   *  abgeschickt. Verhindert versehentliche Einrichtung UND blockt
+   *  Fremde die zufaellig die PWA-URL kennen. */
+  const [confirmFzg, setConfirmFzg] = useState<FahrzeugId | null>(null);
+  /** PIN-Eingabe im Confirm-Dialog. Beim Schliessen/Wechseln immer
+   *  geleert. Korrekter PIN-String aktiviert den "Ja, festlegen"-Button. */
+  const [confirmPin, setConfirmPin] = useState("");
+  const [confirmPinErr, setConfirmPinErr] = useState<string | null>(null);
 
   // Wenn der Boot-Check festgestellt hat, dass der vorhandene Token tot
   // war (z. B. nach Backend-Restart, JWT-Secret-Rotation oder iOS-Safari-
@@ -68,15 +90,48 @@ export function Setup({ onSetupDone }: Props) {
   })();
 
   /**
-   * Fahrzeug-Klick → sofortige Backend-Registrierung. Bei Erfolg landet das
-   * Tablet direkt auf der Bericht-Page.
+   * Fahrzeug-Klick → oeffnet Confirm-Dialog mit PIN-Eingabe.
+   * Erst nach korrektem PIN + "Ja, festlegen" wird der Backend-Call
+   * abgeschickt.
    */
-  async function selectFahrzeug(fId: FahrzeugId) {
+  function selectFahrzeug(fId: FahrzeugId) {
+    setError(null);
+    setConfirmPin("");
+    setConfirmPinErr(null);
+    setConfirmFzg(fId);
+  }
+
+  /**
+   * Schliesst den Confirm-Dialog inkl. PIN-State-Reset.
+   */
+  function closeConfirm() {
+    setConfirmFzg(null);
+    setConfirmPin("");
+    setConfirmPinErr(null);
+  }
+
+  /**
+   * Backend-Registrierung — wird vom Confirm-Dialog gerufen.
+   * Prueft zuerst den PIN; bei falsch wird der Dialog mit Fehlermeldung
+   * weiter angezeigt. Erst bei korrektem PIN wird tryRegister gerufen.
+   */
+  async function confirmFahrzeugSelection(fId: FahrzeugId): Promise<void> {
+    if (confirmPin.trim() !== SETUP_PIN) {
+      setConfirmPinErr("PIN nicht korrekt — bitte erneut eingeben.");
+      setConfirmPin("");
+      return;
+    }
     setSelectedFzg(fId);
     setError(null);
+    setConfirmPinErr(null);
     setBusy(true);
-    await tryRegister(fId);
+    const ok = await tryRegister(fId);
     setBusy(false);
+    if (!ok) {
+      // Dialog offen lassen, damit User erneut klicken kann.
+      return;
+    }
+    closeConfirm();
   }
 
   /**
@@ -276,7 +331,7 @@ export function Setup({ onSetupDone }: Props) {
                 key={id}
                 type="button"
                 disabled={busy}
-                onClick={() => void selectFahrzeug(id)}
+                onClick={() => selectFahrzeug(id)}
                 className="person filled"
                 style={{
                   cursor: busy ? "wait" : "pointer",
@@ -475,21 +530,235 @@ export function Setup({ onSetupDone }: Props) {
       </button>
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
-      {/* ─── Datenschutz-Karte ─── */}
-      <div
-        className="card"
+      {/* U-07: Bestaetigungs-Dialog vor Fahrzeug-Registrierung.
+          "Dieses Tablet wird als <Funkrufname> registriert. Spaeter nur
+          durch Funktionaer aenderbar." */}
+      {confirmFzg !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="setup-confirm-title"
+          onClick={() => !busy && closeConfirm()}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(460px, 100%)",
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 16,
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  background: "var(--warn-tint)",
+                  color: "var(--warn)",
+                  border: "1px solid var(--amber-border)",
+                }}
+              >
+                <AlertTriangle size={20} />
+              </span>
+              <h3
+                id="setup-confirm-title"
+                style={{ margin: 0, fontSize: 16, fontWeight: 700 }}
+              >
+                Dieses Tablet als <span style={{ color: "var(--info)" }}>
+                  {FAHRZEUGE[confirmFzg].funkrufname}
+                </span> festlegen?
+              </h3>
+            </div>
+            <p style={{ margin: 0, fontSize: 13.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
+              Das Tablet wird als <strong>{FAHRZEUGE[confirmFzg].funkrufname}</strong>{" "}
+              ({FAHRZEUGE[confirmFzg].bezeichnung}) registriert.
+              Spaeter nur durch einen Funktionaer aenderbar.
+            </p>
+
+            {/* PIN-Eingabe — Test-Phasen-Schutz pro Fahrzeug. PIN ist in
+                Schulung/WhatsApp kommuniziert, nicht hier im UI sichtbar. */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirmFahrzeugSelection(confirmFzg);
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: 8 }}
+            >
+              <label
+                htmlFor="setup-confirm-pin"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--fg)",
+                }}
+              >
+                <Lock size={14} />
+                PIN zur Bestaetigung
+              </label>
+              <input
+                id="setup-confirm-pin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                autoFocus
+                value={confirmPin}
+                onChange={(e) => {
+                  setConfirmPin(e.target.value);
+                  if (confirmPinErr) setConfirmPinErr(null);
+                }}
+                maxLength={12}
+                disabled={busy}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  fontSize: 20,
+                  letterSpacing: "0.5em",
+                  textAlign: "center",
+                  background: "var(--surface-2)",
+                  border: confirmPinErr
+                    ? "1px solid var(--red)"
+                    : "1px solid var(--border-strong)",
+                  borderRadius: 10,
+                  color: "var(--fg)",
+                  outline: "none",
+                }}
+              />
+            </form>
+
+            {confirmPinErr ? (
+              <div
+                role="alert"
+                style={{
+                  padding: "8px 10px",
+                  background: "var(--red-tint)",
+                  color: "var(--red)",
+                  border: "1px solid var(--red-border)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              >
+                {confirmPinErr}
+              </div>
+            ) : null}
+            {error ? (
+              <div
+                role="alert"
+                style={{
+                  padding: "8px 10px",
+                  background: "var(--red-tint)",
+                  color: "var(--red)",
+                  border: "1px solid var(--red-border)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              >
+                {error}
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={closeConfirm}
+                disabled={busy}
+                style={{
+                  flex: 1,
+                  padding: "12px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  background: "var(--surface-2)",
+                  color: "var(--fg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  cursor: busy ? "wait" : "pointer",
+                  minHeight: 48,
+                }}
+              >
+                Anderes waehlen
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmFahrzeugSelection(confirmFzg)}
+                disabled={busy || confirmPin.trim().length === 0}
+                className="cta"
+                style={{
+                  flex: 1,
+                  padding: "12px 14px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  minHeight: 48,
+                  opacity: confirmPin.trim().length === 0 ? 0.6 : 1,
+                  cursor:
+                    busy || confirmPin.trim().length === 0
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                {busy ? "Lege fest …" : `Ja, ${FAHRZEUGE[confirmFzg].funkrufname} festlegen`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* D-19: Datenschutz-Disclosure — gleich-gewichtig mit Hero/Fahrzeug
+          ist visuelle Inflation. Wir verstecken die Details hinter einem
+          <details>-Element. Funktionaer & Datenschutz-Beauftragte koennen
+          klicken zum Aufklappen, alle anderen sehen nur den 1-zeiligen
+          Hinweis. */}
+      <details
         style={{
           marginTop: 16,
-          padding: 18,
-          borderStyle: "dashed",
-          borderColor: "var(--glass-border)",
+          padding: "10px 14px",
           background: "var(--glass-4)",
+          border: "1px dashed var(--glass-border)",
+          borderRadius: "var(--radius-s)",
+          color: "var(--fg-2)",
         }}
       >
-        <div className="caption" style={{ marginBottom: 8 }}>
-          Datenschutz-Hinweis
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontSize: "var(--font-sm)",
+            fontWeight: 600,
+            color: "var(--fg-3)",
+            letterSpacing: "var(--tracking-caps)",
+            textTransform: "uppercase",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          Datenschutz · klick zum Aufklappen
+        </summary>
+        <div
+          style={{
+            fontSize: "var(--font-sm)",
+            color: "var(--fg-2)",
+            lineHeight: 1.6,
+            marginTop: 10,
+          }}
+        >
           HotDoc speichert nur Daten die für die Einsatzdokumentation der FF Eberstalzell
           notwendig sind:
           <ul style={{ margin: "8px 0 4px", paddingLeft: 18 }}>
@@ -501,7 +770,7 @@ export function Setup({ onSetupDone }: Props) {
           Bei Fragen wende dich an den Funktionär oder die Datenschutz-Beauftragte der
           Feuerwehr.
         </div>
-      </div>
+      </details>
     </main>
   );
 }

@@ -1433,6 +1433,14 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
 }
 
+/* D-09: IdleView-Aurora-Glow Lite-Mode-Reduktion. Default-Light:
+   60px-Halo um Radio-Icon ist GPU-intensiv. Lite-Mode killt es ganz —
+   altes Tablet braucht den Effekt nicht. Im Default-Light bleibt der
+   Glow erhalten (visuell wichtig fuer "Bereit"-Geste). */
+[data-fx="lite"] .idle-radio-glow {
+  box-shadow: var(--glass-shadow-2) !important;
+}
+
 /* Page-Reveal-Stagger aus */
 [data-fx="lite"] .page,
 [data-fx="lite"] .page > * {
@@ -1546,6 +1554,28 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   text-transform: uppercase;
 }
 .appfoot .sep { margin: 0 8px; color: var(--fg-4); }
+
+/* Inline-Link-Buttons im Footer — frueher 5x identische Inline-Styles
+   in BerichtPage. Variante .danger faerbt den Link in --red (z. B.
+   "An Handy uebergeben"). */
+.foot-link {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  min-height: 0;
+  padding: 0;
+}
+.foot-link.danger {
+  color: var(--red);
+  font-weight: 600;
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* ─── Status-Pill (GPS / OFFLINE / etc.) ──────────────────── */
 .status-pill {

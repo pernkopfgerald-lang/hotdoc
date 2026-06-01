@@ -62,7 +62,10 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
           borderColor: "var(--border)",
           color: "var(--fg-2)",
         }}
-        title="Neuen Einsatz/Übung/Lotsendienst anlegen"
+        // U-13: Tooltip + aria-label klarer — der "+"-Button oeffnet eine
+        // Auswahl ueber Einsatz / Uebung / Lotsendienst.
+        title="Neuen Einsatz anlegen — Auswahl: Einsatz · Übung · Lotsendienst"
+        aria-label="Neuen Einsatz anlegen — Auswahl: Einsatz · Übung · Lotsendienst"
       >
         <Plus size={13} />
         Neuer Einsatz
@@ -118,43 +121,45 @@ function EinsatzTab({
       >
         {closed ? <CheckCircle2 size={13} /> : tab.manuell ? <Plus size={13} /> : <Siren size={13} />}
       </span>
+      {/* D-14: Status-Icon (CheckCircle/Plus/Siren) reicht — die Sub-Label
+          "Aktiv"/"Folgeauftrag" sind redundant zum Icon. Nur die
+          "geschlossen"-Variante mit Lock-Icon bleibt sichtbar, weil das ein
+          stark abgesetzter Endstatus ist (selten gezeigt, Funktionaer soll
+          ihn klar sehen). */}
       <div className="flex flex-col leading-tight">
         <span className="max-w-[180px] truncate text-[13px] font-semibold tracking-tight">
           {tab.einsatzart}
         </span>
-        <span
-          className="font-mono text-[9px] font-medium uppercase tracking-[0.1em]"
-          style={{ color: closed ? "var(--ok)" : active ? "var(--red)" : "var(--fg-3)" }}
-        >
-          {closed ? (
-            <span className="inline-flex items-center gap-1">
-              <Lock size={9} /> geschlossen
-            </span>
-          ) : tab.manuell ? (
-            "Folgeauftrag"
-          ) : (
-            "Aktiv"
-          )}
-        </span>
+        {closed ? (
+          <span
+            className="font-mono text-[9px] font-medium uppercase tracking-[0.1em] inline-flex items-center gap-1"
+            style={{ color: "var(--ok)" }}
+          >
+            <Lock size={9} /> geschlossen
+          </span>
+        ) : null}
       </div>
       {active ? <ChevronDown size={12} className="ml-1 opacity-50" /> : null}
       {onClose && (
+        /* U-19: X-Button auf 32x32 Icon-Box, padding:8 ergibt 48x48
+           effektives Touch-Target — sicher 44x44 fuer Tablet-Bedienung. */
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          aria-label="Bericht schließen"
-          title="Bericht schließen"
+          aria-label="Bericht schliessen"
+          title="Bericht schliessen"
           style={{
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 22,
-            height: 22,
+            width: 32,
+            height: 32,
             marginLeft: 4,
-            borderRadius: 6,
+            padding: 8,
+            borderRadius: 8,
             background: "transparent",
             border: 0,
             color: "var(--fg-3)",
@@ -168,7 +173,7 @@ function EinsatzTab({
             e.currentTarget.style.background = "transparent";
           }}
         >
-          <X size={12} strokeWidth={2.4} />
+          <X size={16} strokeWidth={2.4} />
         </button>
       )}
     </div>

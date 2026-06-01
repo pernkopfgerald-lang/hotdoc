@@ -1,10 +1,10 @@
 /**
  * Geräte- und Mittel-Listen pro Fahrzeugtyp.
  *
- * In Phase 2 wandert das in den Backend-Endpoint /api/config/geraete und
- * wird in der Einsatzzentrale-Verwaltung gepflegt. Aktuell als Default-
- * Konstanten — die Listen entsprechen dem Sollausstattungsstand
- * (Quelle: FF Eberstalzell Geräteinventar 2026).
+ * Default-Konstanten — die Listen entsprechen dem Sollausstattungsstand
+ * (Quelle: FF Eberstalzell Geräteinventar 2026). Werden vom Funktionaer
+ * via Backoffice "Geraete"-Tab (config:geraete) ueberschrieben sobald die
+ * PWA die Live-Config faehrt.
  */
 
 import type { GearItem } from "../components/GearChips";

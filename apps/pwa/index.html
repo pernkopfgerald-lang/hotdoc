@@ -19,10 +19,24 @@
     <meta name="application-name" content="HotDoc" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Async-Font-Load: rel="stylesheet" mit media="print" + onload-Swap
+         lädt die Google-Fonts non-blocking. Der erste Paint nutzt den
+         System-Fallback (siehe `font-family: ..., system-ui` in design.css),
+         Inter/JetBrains-Mono swappen ein sobald sie da sind. Spart auf
+         3G/4G ~300–600 ms FCP, weil das Stylesheet sonst Render-blocking
+         ist. `noscript`-Fallback fuer Browser ohne JS (Capacitor hat JS,
+         deshalb ist das ein PWA-only Edge-Case). -->
     <link
       href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript
+      ><link
+        href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+    /></noscript>
     <title>HotDoc · FF Eberstalzell</title>
     <script>
       // Pre-paint theme to avoid color flash
