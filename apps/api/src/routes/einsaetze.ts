@@ -278,6 +278,43 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   };
   const result = await db.insert(updated);
   logger.info({ id, by: session.username }, "Einsatz abgeschlossen");
+
+  // F3: Cascade-Abschluss aller noch offenen Fahrzeugberichte.
+  // Hintergrund: wenn der Einsatzleiter den Hauptauftrag schließt, sollen
+  // KEINE in-arbeit Fahrzeugberichte mehr offen sein — die Tab-Kachel bleibt
+  // sonst auf dem Fahrzeug-Tablet ewig hängen ("Geist-Tab"). Wir markieren
+  // die als auto-abgeschlossen damit das PDF die Information trägt:
+  // "Vom EL beim Hauptauftrag-Abschluss automatisch geschlossen".
+  if (offeneFzgber.length > 0) {
+    const cascadeNow = new Date().toISOString();
+    const cascadeDocs = offeneFzgber.map((f) => ({
+      ...(f as Record<string, unknown>),
+      status: "abgeschlossen" as const,
+      autoAbgeschlossen: true,
+      autoAbgeschlossenAm: cascadeNow,
+      autoAbgeschlossenGrund: "hauptauftrag-geschlossen" as const,
+      geaendertAm: cascadeNow,
+    }));
+    try {
+      const bulkResult = await db.bulk({ docs: cascadeDocs });
+      const fehlerhaft = bulkResult.filter((r) => r.error).length;
+      logger.info(
+        {
+          id,
+          cascadeCount: cascadeDocs.length,
+          fehler: fehlerhaft,
+        },
+        "Offene Fahrzeugberichte beim Hauptauftrag-Abschluss kaskadiert geschlossen",
+      );
+    } catch (err) {
+      // Kaskade-Fehler darf den Haupt-Abschluss nicht stoppen. Der
+      // abschlussOverrideHinweis ist im Einsatz schon vermerkt.
+      logger.warn(
+        { err, id, count: cascadeDocs.length },
+        "Cascade-Abschluss der Fahrzeugberichte fehlgeschlagen — Hauptauftrag bleibt geschlossen",
+      );
+    }
+  }
   // Audit-Trail (Spec §17.1) — Pflicht-Ereignis. Schreib-Fehler werden im
   // Audit-Service geschluckt, damit der User-flow nicht blockiert wird.
   await writeAuditEvent({
@@ -291,6 +328,98 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   res.json({ ok: true, id, rev: result.rev });
 }) as RequestHandler);
 
+// ─── POST /api/einsaetze/:id/verwerfen ──────────────────────
+// "Schließen ohne Speichern" — der Bericht wird abgeschlossen, aber mit
+// `verworfen: true` markiert. Das PDF zeigt eine "VERWORFEN"-Banner-Zeile,
+// der Phantom-Cleanup räumt es bei Bedarf auf, und das Archiv kann
+// nach verworfenen Einträgen filtern. Cascade-schließt offene
+// Fahrzeugberichte mit autoAbgeschlossenGrund="hauptauftrag-verworfen".
+const VerwerfenBodySchema = z.object({
+  grund: z.string().min(3).optional(),
+});
+
+einsaetzeRouter.post(
+  "/api/einsaetze/:id/verwerfen",
+  requireAuth("mannschaft"),
+  (async (req, res) => {
+    const id = decodeURIComponent(String(req.params.id));
+    const parsed = VerwerfenBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
+      return;
+    }
+    const session = req.session!;
+    const doc = (await db.get(id)) as Record<string, unknown>;
+    if (doc.status === "abgeschlossen") {
+      res.status(409).json({ error: "already_closed" });
+      return;
+    }
+    const now = new Date().toISOString();
+    const updated = {
+      ...doc,
+      status: "abgeschlossen",
+      schreibschutz: true,
+      verworfen: true,
+      einsatzende: now,
+      autoAbgeschlossen: true,
+      autoAbgeschlossenAm: now,
+      autoAbgeschlossenGrund: "vom-user-verworfen" as const,
+      ...(parsed.data.grund ? { verwerfungsGrund: parsed.data.grund } : {}),
+      abschlussOverrideHinweis: parsed.data.grund
+        ? `Bericht ohne Speichern verworfen — Grund: ${parsed.data.grund}`
+        : "Bericht ohne Speichern verworfen.",
+      geaendertAm: now,
+    };
+    const result = await db.insert(updated);
+
+    // Cascade: offene Fahrzeugberichte mit verwerfen-Marker schließen
+    const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
+    const fzgList = await db.list({
+      startkey: fzgPrefix,
+      endkey: `${fzgPrefix}￰`,
+      include_docs: true,
+    });
+    const offeneFzg = fzgList.rows
+      .map((r) => r.doc)
+      .filter((d): d is NonNullable<typeof d> => !!d)
+      .filter((d) => (d as { status?: string }).status === "in_arbeit");
+    if (offeneFzg.length > 0) {
+      const cascade = offeneFzg.map((f) => ({
+        ...(f as Record<string, unknown>),
+        status: "abgeschlossen" as const,
+        verworfen: true,
+        autoAbgeschlossen: true,
+        autoAbgeschlossenAm: now,
+        autoAbgeschlossenGrund: "hauptauftrag-verworfen" as const,
+        geaendertAm: now,
+      }));
+      try {
+        await db.bulk({ docs: cascade });
+      } catch (err) {
+        logger.warn({ err, id, count: cascade.length }, "Cascade-Verwerfen fehlgeschlagen");
+      }
+    }
+
+    logger.warn(
+      { id, by: session.username, grund: parsed.data.grund },
+      "Einsatz VERWORFEN (Schließen ohne Speichern)",
+    );
+    await writeAuditEvent({
+      type: "einsatz-abschluss",
+      actorUsername: session.username,
+      actorRolle: session.rolle,
+      einsatzId: id,
+      ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+      details: {
+        grund: parsed.data.grund ?? "vom-user-verworfen",
+        verworfen: true,
+      },
+    });
+    res.json({ ok: true, id, rev: result.rev, verworfen: true });
+  }) as RequestHandler,
+);
+
 // ─── POST /api/einsaetze/:id/reaktivieren ─── FR-14 ─────────
 const ReaktivierenBodySchema = z.object({
   grund: z.string().min(10, "Reaktivierungs-Grund mind. 10 Zeichen"),
@@ -298,7 +427,9 @@ const ReaktivierenBodySchema = z.object({
 
 einsaetzeRouter.post(
   "/api/einsaetze/:id/reaktivieren",
-  requireAuth("funktionaer"),
+  // einsatzleiter (Florianstation) darf auch reaktivieren — frueher
+  // war "funktionaer" Pflicht, der EL hatte keinen Zugriff.
+  requireAuth("einsatzleiter"),
   (async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const parsed = ReaktivierenBodySchema.safeParse(req.body);

@@ -79,30 +79,13 @@ const TYP_META: Record<
 };
 
 /**
- * Häufig genutzte Einsatzarten — zuerst gelistet, damit die Mannschaft
- * sie in zwei Daumen-Klicks erreicht. Reihenfolge in Anlehnung an das
- * Papier-Formular der FF Eberstalzell. Restliche EINSATZARTEN folgen
- * darunter alphabetisch.
+ * Einsatzarten — alphabetisch sortiert (User-Wunsch). Frueher waren
+ * "haeufige" Einsatzarten vorgezogen, aber das war fuer neue Mitarbeiter
+ * verwirrend (anderer Stack wenn sie etwas suchen). Reine A-Z-Sortierung
+ * mit Locale-Compare (Umlaute korrekt).
  */
-const FREQUENT_EINSATZARTEN: readonly string[] = [
-  "Brand KFZ",
-  "Brand Wohnhaus",
-  "Brand Gewerbe",
-  "BMA",
-  "Brandverdacht",
-  "VU Eingekl. Per.",
-  "Personenrettung",
-  "Pumparbeiten",
-  "Sturm",
-  "Ölspur",
-  "Türöffnung",
-  "Tierrettung",
-];
-
 function sortedEinsatzarten(): string[] {
-  const frequent = new Set(FREQUENT_EINSATZARTEN);
-  const rest = (EINSATZARTEN as readonly string[]).filter((a) => !frequent.has(a));
-  return [...FREQUENT_EINSATZARTEN, ...rest.sort((a, b) => a.localeCompare(b))];
+  return [...EINSATZARTEN].sort((a, b) => a.localeCompare(b, "de"));
 }
 
 /**
@@ -509,9 +492,11 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                     onClick={() => setEinsatzart(active ? "" : art)}
                     className={`chip${active ? " selected" : ""}`}
                     style={{
-                      fontSize: 13,
-                      padding: "8px 12px",
-                      minHeight: 34,
+                      fontSize: 11.5,
+                      padding: "5px 9px",
+                      minHeight: 28,
+                      lineHeight: 1.2,
+                      gap: 4,
                       ...(active
                         ? {
                             background: "var(--info-tint)",
@@ -523,7 +508,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                     }}
                   >
                     {active ? (
-                      <Flame size={11} strokeWidth={2.4} style={{ color: "var(--info)" }} />
+                      <Flame size={10} strokeWidth={2.4} style={{ color: "var(--info)" }} />
                     ) : null}
                     {art}
                   </button>

@@ -23,6 +23,7 @@ import { routingRouter } from "./routes/routing.js";
 import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
 import { startAudioRetentionCron } from "./workers/audio-retention.js";
 import { startAuditRetentionCron } from "./workers/audit-retention.js";
+import { startAutoCloseStaleCron } from "./workers/auto-close-stale.js";
 import { startBlaulichtSmsPoller } from "./workers/blaulichtsms-poller.js";
 import { startPhantomCleanupCron } from "./workers/phantom-fzgber-cleanup.js";
 import { startSyBosSyncCron } from "./workers/sybos-sync.js";
@@ -119,6 +120,10 @@ async function main(): Promise<void> {
   // nach Einsatz-Abschluss — Folge des Auto-Open-Verhaltens bei BlaulichtSMS-
   // Alarmen, bei denen nicht jedes Fahrzeug ausrückt.
   startPhantomCleanupCron();
+  // Auto-Close: schließt stale Aufträge ab nach AUTO_CLOSE_HOURS (Default 6h).
+  // Greift wenn ein Tablet ohne Abschluss weggelegt wird. Cascade-schließt
+  // auch offene Fahrzeugberichte. Wert <= 0 deaktiviert das Feature.
+  startAutoCloseStaleCron();
 
   // — Start —
   app.listen(env.PORT, () => {

@@ -6,6 +6,7 @@ import {
   Flame,
   GraduationCap,
   MapPin,
+  RotateCcw,
   Search,
   X,
 } from "lucide-react";
@@ -61,6 +62,16 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [downloadBusy, setDownloadBusy] = useState<string | null>(null);
+  /**
+   * Reaktivierungs-Dialog — wenn der EL (Florianstation) einen
+   * abgeschlossenen Einsatz wieder öffnen will. Inline-State mit
+   * der ID des Einsatzes der gerade bestätigt wird + Grund-Input.
+   * Backend braucht Grund (mind. 10 Zeichen) fuer den Audit-Trail.
+   */
+  const [reaktivOpen, setReaktivOpen] = useState<{ id: string; title: string } | null>(null);
+  const [reaktivGrund, setReaktivGrund] = useState("");
+  const [reaktivBusy, setReaktivBusy] = useState(false);
+  const [reaktivErr, setReaktivErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -382,6 +393,23 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                       ) : null}
                     </div>
                   </div>
+                  {!fahrzeugId && (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() =>
+                        setReaktivOpen({ id: i._id, title })
+                      }
+                      aria-label="Bericht reaktivieren"
+                      title="Bericht reaktivieren"
+                      style={{
+                        background: "var(--warn-tint)",
+                        color: "var(--warn)",
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="icon-btn"
@@ -398,6 +426,135 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
           )}
         </div>
       </div>
+      {/* ─── Reaktivierungs-Dialog (Florianstation only) ─── */}
+      {reaktivOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reaktiv-dialog-title"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1600,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(540px, calc(100% - 32px))",
+              background: "var(--glass-1)",
+              border: "1px solid var(--glass-border-strong)",
+              borderRadius: 16,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              animation: "glass-reveal 200ms var(--ease-decel) both",
+            }}
+          >
+            <h3
+              id="reaktiv-dialog-title"
+              style={{ margin: 0, fontSize: 18, fontWeight: 700 }}
+            >
+              Bericht reaktivieren
+            </h3>
+            <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
+              <strong>{reaktivOpen.title}</strong> wird wieder geöffnet.
+              Bitte einen Grund angeben (mind. 10 Zeichen) — wird ins
+              Audit-Log eingetragen und auf dem PDF als Reaktivierungs-Hinweis
+              gerendert.
+            </div>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="z. B. Nachtrag Atemschutz-Daten · syBOS-Korrektur · …"
+              value={reaktivGrund}
+              onChange={(e) => setReaktivGrund(e.target.value)}
+              style={{ resize: "vertical", fontSize: 14 }}
+              autoFocus
+            />
+            {reaktivErr && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--red)",
+                  padding: "6px 8px",
+                  background: "var(--red-tint)",
+                  borderRadius: 6,
+                }}
+              >
+                {reaktivErr}
+              </div>
+            )}
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                className="btn"
+                disabled={reaktivBusy}
+                onClick={() => {
+                  setReaktivOpen(null);
+                  setReaktivGrund("");
+                  setReaktivErr(null);
+                }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={reaktivBusy}
+                onClick={async () => {
+                  if (reaktivGrund.trim().length < 10) {
+                    setReaktivErr("Grund mind. 10 Zeichen.");
+                    return;
+                  }
+                  setReaktivBusy(true);
+                  setReaktivErr(null);
+                  try {
+                    await apiCall(
+                      `/api/einsaetze/${encodeURIComponent(reaktivOpen.id)}/reaktivieren`,
+                      { method: "POST", body: { grund: reaktivGrund.trim() } },
+                    );
+                    setReaktivOpen(null);
+                    setReaktivGrund("");
+                    // Modal schliessen → ZentralePage holt den
+                    // reaktivierten Einsatz beim naechsten Poll.
+                    onClose();
+                  } catch (e) {
+                    setReaktivErr(
+                      e instanceof Error ? e.message : "Reaktivierung fehlgeschlagen",
+                    );
+                  } finally {
+                    setReaktivBusy(false);
+                  }
+                }}
+                style={{
+                  background: "var(--warn)",
+                  borderColor: "var(--warn)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  minWidth: 140,
+                }}
+              >
+                {reaktivBusy ? "…" : "Reaktivieren"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

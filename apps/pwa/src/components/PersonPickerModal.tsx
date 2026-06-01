@@ -63,6 +63,13 @@ export function PersonPickerModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="picker-title"
+      // Click-Events innerhalb dieses Modals duerfen NICHT zum Parent
+      // bubblen — sonst schliesst der Backdrop-Click-Handler des Parent-
+      // Modals (z.B. NeuerEinsatzTabletModal) versehentlich das ganze
+      // Modal mit, wenn der User auf eine Person klickt. User-Bug-Report:
+      // "wenn ich Übung anlegen und dann einen Übungsleiter auswähle,
+      // dann schließt er die Maske".
+      onClick={(e) => e.stopPropagation()}
     >
       <button
         type="button"

@@ -1,4 +1,4 @@
-import { MapPin, Moon, Sun, WifiOff } from "lucide-react";
+import { ArrowLeftRight, MapPin, Moon, Smartphone, Sun, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
@@ -11,9 +11,23 @@ interface Props {
   /** Optional. Wenn nicht gesetzt: aus funkrufname abgeleitet
    *  (enthaelt "Florian" → "Einsatzzentrale", sonst "Fahrzeugbericht"). */
   mode?: "fahrzeug" | "zentrale";
+  /** Optional. Fahrzeug-Tablet: zeigt Fahrzeug-wechseln-Button in der
+   *  Mitte der Topbar. Frueher war der nur in der Fusszeile, was zu
+   *  unsichtbar war. */
+  onSwitchVehicle?: () => void;
+  /** Optional. Fahrzeug-Tablet: zeigt Handoff-Button (Uebergeben an Handy)
+   *  in der Mitte der Topbar. */
+  onHandoff?: () => void;
 }
 
-export function Topbar({ funkrufname, einsatzNr, geo, mode }: Props) {
+export function Topbar({
+  funkrufname,
+  einsatzNr,
+  geo,
+  mode,
+  onSwitchVehicle,
+  onHandoff,
+}: Props) {
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
 
@@ -51,6 +65,71 @@ export function Topbar({ funkrufname, einsatzNr, geo, mode }: Props) {
           {funkrufname ? ` · ${funkrufname}` : ""}
         </div>
       </div>
+
+      {/* Fahrzeug-Tablet-Aktionen mittig in der Topbar — deutlich sichtbarer
+          als die alten Footer-Links. */}
+      {(onSwitchVehicle || onHandoff) && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            marginLeft: "auto",
+            marginRight: 8,
+          }}
+        >
+          {onSwitchVehicle && (
+            <button
+              type="button"
+              onClick={onSwitchVehicle}
+              className="btn"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                background: "var(--info-tint)",
+                color: "var(--info)",
+                border: "1px solid var(--blue-border)",
+                borderRadius: 10,
+                minHeight: 0,
+              }}
+              aria-label="Fahrzeug wechseln"
+              title="Fahrzeug wechseln"
+            >
+              <ArrowLeftRight size={14} strokeWidth={2.4} />
+              Fahrzeug wechseln
+            </button>
+          )}
+          {onHandoff && (
+            <button
+              type="button"
+              onClick={onHandoff}
+              className="btn"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                fontSize: 13,
+                fontWeight: 600,
+                background: "var(--warn-tint)",
+                color: "var(--warn)",
+                border: "1px solid var(--amber-border)",
+                borderRadius: 10,
+                minHeight: 0,
+              }}
+              aria-label="An Handy übergeben (QR-Code)"
+              title="Sitzung an Handy übergeben (QR-Code)"
+            >
+              <Smartphone size={14} strokeWidth={2.4} />
+              Übergeben
+            </button>
+          )}
+        </div>
+      )}
 
       {geo ? <GeoChip geo={geo} /> : null}
 

@@ -12,6 +12,7 @@ import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { StatusBanner } from "../components/StatusBanner";
 import { DictateButton, type DictateResult } from "../components/DictateButton";
+import { CloseTabConfirmModal } from "../components/CloseTabConfirmModal";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FxToggle } from "../components/FxToggle";
 import { GearChips } from "../components/GearChips";
@@ -120,6 +121,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     id: string;
     einsatzart: string;
     einsatzort: string;
+  } | null>(null);
+  /** Tab-Schließen-Dialog für Fahrzeug-Tablet. */
+  const [tabToClose, setTabToClose] = useState<{
+    id: string;
+    label: string;
   } | null>(null);
 
   // einsaetze[] startet leer — kein Phantom-Einsatz, keine Vorbelegung.
@@ -1212,13 +1218,28 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
 
   return (
     <div>
-      <Topbar funkrufname={fahrzeug.funkrufname} {...(active ? { einsatzNr: active.alarm.alarmId } : {})} geo={geo} />
+      <Topbar
+        funkrufname={fahrzeug.funkrufname}
+        {...(active ? { einsatzNr: active.alarm.alarmId } : {})}
+        geo={geo}
+        onSwitchVehicle={() => setVehicleSwitcherOpen(true)}
+        onHandoff={() => setHandoffOpen(true)}
+      />
 
       <EinsatzTabs
         tabs={tabs}
         activeId={activeId}
         onSelect={setActiveId}
         onNew={() => setNeuerEinsatzOpen("manuell")}
+        onCloseTab={(id) => {
+          const tab = tabs.find((t) => t.id === id);
+          setTabToClose({
+            id,
+            label: tab
+              ? `${tab.einsatzart}${tab.einsatzort ? " · " + tab.einsatzort : ""}`
+              : "Bericht",
+          });
+        }}
       />
 
       <StatusBanner />
@@ -1649,6 +1670,45 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         onClose={() => setVehicleSwitcherOpen(false)}
       />
 
+      {/* Tab-Schließen-Dialog (X im Browser-Tab-Reiter) */}
+      <CloseTabConfirmModal
+        open={tabToClose !== null}
+        tabLabel={tabToClose?.label ?? ""}
+        isHauptauftrag={false}
+        onClose={() => setTabToClose(null)}
+        onConfirmAbschluss={async () => {
+          if (!tabToClose) return;
+          // Wenn der zu schließende Tab der aktive ist: regulärer
+          // Abschluss-Flow inkl. Upload-State + Einsatz-schließen.
+          if (tabToClose.id === activeId) {
+            abschliessen(true);
+            return;
+          }
+          // Ansonsten: nur den Einsatz im Backend schließen, lokalen
+          // Tab vergessen. Der Polling-Tick filtert den abgeschlossenen
+          // Tab anschließend weg.
+          await apiCall(
+            `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/abschluss`,
+            { method: "POST", body: {} },
+          );
+          setEinsaetze((prev) => prev.filter((e) => e.id !== tabToClose.id));
+        }}
+        onConfirmVerwerfen={async (grund) => {
+          if (!tabToClose) return;
+          await apiCall(
+            `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/verwerfen`,
+            { method: "POST", body: { grund } },
+          );
+          // Lokal sofort entfernen damit der Tab verschwindet.
+          setEinsaetze((prev) => prev.filter((e) => e.id !== tabToClose.id));
+          if (tabToClose.id === activeId) {
+            // Auto-Switch zum nächsten Tab oder Idle
+            const remaining = einsaetze.filter((e) => e.id !== tabToClose.id);
+            setActiveId(remaining[0]?.id ?? "");
+          }
+        }}
+      />
+
       {/* NeuerAuftragModal entfernt — Konsolidierung mit NeuerEinsatzTabletModal,
           beide Buttons ("+ Neuer Einsatz" oben im Tab-Header und unten in der
           IdleView) öffnen jetzt das gleiche Modal. */}
@@ -1837,7 +1897,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 onClick={() => setNewEinsatzPopup(null)}
                 style={{ minWidth: 110 }}
               >
-                Später
+                Abbrechen
               </button>
               <button
                 type="button"
@@ -1855,7 +1915,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 }}
                 autoFocus
               >
-                Einsatz öffnen
+                OK
               </button>
             </div>
           </div>

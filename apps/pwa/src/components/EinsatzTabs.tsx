@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, Lock, Plus, Siren } from "lucide-react";
+import { CheckCircle2, ChevronDown, Lock, Plus, Siren, X } from "lucide-react";
 
 export interface EinsatzTabSummary {
   id: string;
@@ -13,15 +13,28 @@ interface Props {
   activeId: string;
   onSelect: (id: string) => void;
   onNew: () => void;
+  /**
+   * Optional. Wenn gesetzt: zeigt ein × an jedem Tab. Klick triggert
+   * den Schliessen-Dialog im Parent. Parent entscheidet was passiert
+   * (abschliessen mit Speichern / verwerfen / abbrechen).
+   */
+  onCloseTab?: (id: string) => void;
 }
 
 /**
- * Browser-Tab-Style Reiter über alle aktiven Aufträge dieses Tablets.
- * Klick wechselt den aktuellen Auftrag, "+" legt einen neuen an
- * (übernimmt Personal aus dem aktiven Auftrag — Einsatzort wählt der Nutzer).
+ * Browser-Tab-Style Reiter über alle aktuell offenen Aufträge dieses
+ * Tablets. Klick wechselt den aktuellen Auftrag, "+" legt einen neuen
+ * an (übernimmt Personal aus dem aktiven Auftrag — Einsatzort wählt
+ * der Nutzer).
+ *
+ * Abgeschlossene Aufträge werden NICHT mehr in der Tab-Leiste angezeigt
+ * (User-Wunsch). Sie sind nur noch im Archiv erreichbar. Frueher war
+ * der Tab visuell abgegraut sichtbar — das hat den Funktionaer verwirrt
+ * weil er gedacht hat er kann noch was eingeben.
  */
-export function EinsatzTabs({ tabs, activeId, onSelect, onNew }: Props) {
-  if (tabs.length === 0) return null;
+export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Props) {
+  const visible = tabs.filter((t) => t.status !== "abgeschlossen");
+  if (visible.length === 0) return null;
   return (
     <div
       className="sticky top-[68px] z-[15] flex items-end gap-1 overflow-x-auto px-4 pt-1.5"
@@ -31,12 +44,13 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew }: Props) {
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {tabs.map((t) => (
+      {visible.map((t) => (
         <EinsatzTab
           key={t.id}
           tab={t}
           active={t.id === activeId}
           onClick={() => onSelect(t.id)}
+          {...(onCloseTab ? { onClose: () => onCloseTab(t.id) } : {})}
         />
       ))}
       <button
@@ -61,18 +75,27 @@ function EinsatzTab({
   tab,
   active,
   onClick,
+  onClose,
 }: {
   tab: EinsatzTabSummary;
   active: boolean;
   onClick: () => void;
+  onClose?: () => void;
 }) {
   const closed = tab.status === "abgeschlossen";
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       aria-current={active}
-      className="group flex shrink-0 items-center gap-2 rounded-t-[12px] border-x border-t px-3.5 py-2 text-left transition"
+      className="group flex shrink-0 items-center gap-2 rounded-t-[12px] border-x border-t px-3.5 py-2 text-left transition cursor-pointer"
       style={{
         background: active ? "var(--surface)" : "var(--surface-2)",
         borderColor: active ? "var(--border-strong)" : "var(--border)",
@@ -115,6 +138,39 @@ function EinsatzTab({
         </span>
       </div>
       {active ? <ChevronDown size={12} className="ml-1 opacity-50" /> : null}
-    </button>
+      {onClose && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          aria-label="Bericht schließen"
+          title="Bericht schließen"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 22,
+            height: 22,
+            marginLeft: 4,
+            borderRadius: 6,
+            background: "transparent",
+            border: 0,
+            color: "var(--fg-3)",
+            cursor: "pointer",
+            transition: "background 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "var(--surface-3)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <X size={12} strokeWidth={2.4} />
+        </button>
+      )}
+    </div>
   );
 }

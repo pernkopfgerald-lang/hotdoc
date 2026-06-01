@@ -26,6 +26,7 @@ import { APP_BUILD, APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
+import { CloseTabConfirmModal } from "../components/CloseTabConfirmModal";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
@@ -237,6 +238,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [aktiveEinsaetze, setAktiveEinsaetze] = useState<EinsatzApiDoc[]>([]);
   const [aktiverEinsatzId, setAktiverEinsatzId] = useState<string | null>(null);
+  /** Tab-Schließen-Dialog: welcher Auftrag wird via X-Klick geschlossen? */
+  const [tabToClose, setTabToClose] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
   /**
    * Gerade-eben-angelegte Einsatz-ID — schuetzt davor dass der naechste
    * Polling-Tick die ID auf items[0] zuruecksetzt waehrend der Backend
@@ -927,6 +933,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           setAktiverEinsatzId(fullId);
         }}
         onNew={() => setNeuerEinsatzOpen("manuell")}
+        onCloseTab={(id) => {
+          const fullId = id.startsWith("einsatz:") ? id : `einsatz:${id}`;
+          const tab = tabs.find((t) => t.id === fullId);
+          setTabToClose({
+            id: fullId,
+            label: tab
+              ? `${tab.einsatzart}${tab.einsatzort ? " · " + tab.einsatzort : ""}`
+              : "Auftrag",
+          });
+        }}
       />
 
       <StatusBanner />
@@ -2303,6 +2319,39 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           onSwitchFahrzeug(id);
         }}
         onClose={() => setVehicleSwitcherOpen(false)}
+      />
+
+      {/* ─── Tab-Schließen-Dialog (X im Browser-Tab-Reiter) ─── */}
+      <CloseTabConfirmModal
+        open={tabToClose !== null}
+        tabLabel={tabToClose?.label ?? ""}
+        isHauptauftrag={true}
+        onClose={() => setTabToClose(null)}
+        onConfirmAbschluss={async () => {
+          if (!tabToClose) return;
+          await apiCall(
+            `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/abschluss`,
+            { method: "POST" },
+          );
+          // Wenn der geschlossene Tab der aktive war: weg vom abgeschlossenen
+          // Einsatz — der nächste Polling-Tick filtert ihn weg, der EinsatzTabs-
+          // Reducer setzt den Index automatisch auf den nächsten aktiven Einsatz.
+          if (tabToClose.id === aktiverEinsatzId) {
+            setAktiverEinsatzId(null);
+          }
+          reloadAktiveEinsaetzeRef.current();
+        }}
+        onConfirmVerwerfen={async (grund) => {
+          if (!tabToClose) return;
+          await apiCall(
+            `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/verwerfen`,
+            { method: "POST", body: { grund } },
+          );
+          if (tabToClose.id === aktiverEinsatzId) {
+            setAktiverEinsatzId(null);
+          }
+          reloadAktiveEinsaetzeRef.current();
+        }}
       />
 
       {/* ─── PersonPicker für Bearbeiter ODER Reserve ─── */}
