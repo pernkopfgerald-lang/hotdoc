@@ -957,12 +957,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
 
   return (
     <div>
-      {/* HILFE: nur auf der Florianstation einblenden (User-Wunsch). */}
+      {/* HILFE + Fahrzeug-Wechsel + Handoff: Florian Eberstalzell ist
+          oft das "geteilte" Tablet im FF-Haus — der Funktionaer muss
+          auch hier schnell zwischen Fahrzeugen wechseln koennen (zB
+          wenn er das Tablet kurz ans Mannschafts-Fahrzeug uebergibt
+          bevor er selbst auf die KDO wechselt). */}
       <Topbar
         funkrufname={fahrzeug.funkrufname}
         einsatzNr={einsatzId}
         geo={geo}
         showHilfe
+        onSwitchVehicle={() => setVehicleSwitcherOpen(true)}
+        onHandoff={() => setHandoffOpen(true)}
       />
 
       <EinsatzTabs
