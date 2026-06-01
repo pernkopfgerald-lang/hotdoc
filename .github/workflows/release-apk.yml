@@ -118,10 +118,27 @@ jobs:
           find deploy/apk/apks -name '*-debug.apk' -delete || true
 
       - name: apk-info.json updaten
+        # Release-Notes kommen aus der annotated tag-message (git tag -a vX.X.X -m "…")
+        # bzw. aus einem generischen Fallback wenn workflow_dispatch ohne tag laeuft.
+        # Frueher waren die Notes hier nicht aktualisiert worden - dadurch zeigte
+        # das deployed apk-info.json immer den Text der ersten Release-Build-Version.
         run: |
           V=${{ steps.version.outputs.v }}
-          NOTES=$(printf 'v%s - Release-Build via GitHub Actions\\n\\nAuto-gebaut, signiert mit dauerhaftem Keystore. Update via UpdateBanner direkt aus der App.' "$V")
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # tag-message extrahieren - bei annotated tags der ganze Body inkl Subject
+            TAG_MSG=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")
+            if [ -z "$TAG_MSG" ]; then
+              TAG_MSG="v$V - Release-Build via GitHub Actions"
+            fi
+          else
+            TAG_MSG="v$V - manueller Release-Build via workflow_dispatch"
+          fi
+          # TAG_MSG in den shell-Block exportieren damit node sie via
+          # process.env.TAG_MSG lesen kann. Innerhalb desselben run:-Blocks
+          # genuegt das normale export — GITHUB_ENV waere fuer steps DANACH.
+          export TAG_MSG
+          # Notes + Version + URL + Datum in apk-info.json schreiben.
           node -e "
             const fs = require('fs');
             const path = 'deploy/apk/apk-info.json';
@@ -129,8 +146,10 @@ jobs:
             data.currentVersion = '$V';
             data.apkUrl = '/hotdoc-v$V-release.apk';
             data.publishedAt = '$DATE';
+            data.releaseNotes = process.env.TAG_MSG && process.env.TAG_MSG.trim() || data.releaseNotes;
             fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
             console.log('apk-info.json updated:', data.currentVersion, data.apkUrl);
+            console.log('Notes (first 200):', (data.releaseNotes||'').slice(0,200));
           "
 
       - name: APK-Artifact hochladen (auch ohne fly-Deploy zugaenglich)
