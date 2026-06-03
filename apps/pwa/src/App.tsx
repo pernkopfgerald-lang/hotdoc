@@ -64,7 +64,7 @@ function LazyFallback() {
         minHeight: "100vh",
         color: "var(--fg-3)",
         fontFamily: "var(--font-mono)",
-        fontSize: 12,
+        fontSize: 15,
         letterSpacing: "0.12em",
         textTransform: "uppercase",
       }}
@@ -353,7 +353,7 @@ export function App() {
           minHeight: "100vh",
           color: "var(--fg-3)",
           fontFamily: "var(--font-mono)",
-          fontSize: 12,
+          fontSize: 15,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
         }}

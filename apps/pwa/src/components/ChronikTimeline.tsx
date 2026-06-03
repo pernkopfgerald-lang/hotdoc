@@ -159,7 +159,7 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                     style={{
                       marginLeft: 6,
                       fontFamily: "var(--font-mono)",
-                      fontSize: 9,
+                      fontSize: 11.5,
                       fontWeight: 500,
                       color: "var(--fg-3)",
                       letterSpacing: "0.06em",
@@ -194,7 +194,7 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                     lang="de-AT"
                     disabled={busy}
                     maxLength={2000}
-                    style={{ resize: "vertical", fontSize: 13 }}
+                    style={{ resize: "vertical", fontSize: 16.5 }}
                     onKeyDown={(ev) => {
                       // Ctrl/Cmd+Enter speichert, Esc bricht ab.
                       if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
@@ -217,7 +217,7 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                     {errId === e.id ? (
                       <span
                         style={{
-                          fontSize: 11,
+                          fontSize: 14,
                           color: "var(--red)",
                           marginRight: "auto",
                           fontFamily: "var(--font-mono)",
@@ -240,7 +240,7 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                         background: "transparent",
                         border: "1px solid var(--border)",
                         borderRadius: 8,
-                        fontSize: 12,
+                        fontSize: 15,
                         color: "var(--fg-2)",
                         cursor: busy ? "wait" : "pointer",
                         minHeight: 0,
@@ -263,7 +263,7 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                         background: "var(--ok-tint)",
                         border: "1px solid var(--ok-border)",
                         borderRadius: 8,
-                        fontSize: 12,
+                        fontSize: 15,
                         fontWeight: 600,
                         color: "var(--ok)",
                         cursor:
@@ -356,7 +356,7 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                       <div
                         style={{
                           marginTop: 6,
-                          fontSize: 12,
+                          fontSize: 15,
                           color: "var(--fg-3)",
                           fontFamily: "var(--font-mono)",
                         }}

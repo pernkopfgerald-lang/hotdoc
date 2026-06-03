@@ -157,7 +157,7 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
         <div
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
+            fontSize: 13,
             fontWeight: 700,
             letterSpacing: "var(--tracking-caps)",
             textTransform: "uppercase",
@@ -230,7 +230,7 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
                   padding: "0 16px",
                   minHeight: 48,
                   fontWeight: 600,
-                  fontSize: 14,
+                  fontSize: 17.5,
                   gap: 8,
                   display: "flex",
                   alignItems: "center",
@@ -292,7 +292,7 @@ function Card({
           <h2
             style={{
               margin: 0,
-              fontSize: 17,
+              fontSize: 21.5,
               fontWeight: 700,
               letterSpacing: "var(--tracking-tight)",
               color: "var(--fg)",
@@ -303,7 +303,7 @@ function Card({
           <p
             style={{
               margin: 0,
-              fontSize: 13.5,
+              fontSize: 17,
               lineHeight: 1.5,
               color: "var(--fg-2)",
               letterSpacing: "var(--tracking-ui)",

@@ -271,7 +271,7 @@ export function FlorianMapPopout(): JSX.Element {
           background: "var(--surface)",
           borderBottom: "1px solid var(--border)",
           fontFamily: "var(--font-mono)",
-          fontSize: 12,
+          fontSize: 15,
           fontWeight: 700,
           letterSpacing: "0.06em",
           textTransform: "uppercase",

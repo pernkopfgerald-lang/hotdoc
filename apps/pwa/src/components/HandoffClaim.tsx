@@ -122,7 +122,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
         <div
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: 10,
+            fontSize: 12.5,
             fontWeight: 700,
             letterSpacing: "0.18em",
             textTransform: "uppercase",
@@ -143,14 +143,14 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
               }}
             >
               <Loader2 size={36} className="animate-spin" style={{ color: "var(--fg-2)" }} />
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg)" }}>
+              <div style={{ fontSize: 20, fontWeight: 600, color: "var(--fg)" }}>
                 Übernehme Sitzung …
               </div>
             </div>
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 13,
+                fontSize: 16.5,
                 color: "var(--fg-3)",
                 letterSpacing: "0.1em",
               }}
@@ -170,13 +170,13 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
               }}
             >
               <CheckCircle2 size={52} strokeWidth={1.8} />
-              <div style={{ fontSize: 17, fontWeight: 700, color: "var(--fg)" }}>
+              <div style={{ fontSize: 21.5, fontWeight: 700, color: "var(--fg)" }}>
                 Übergabe erfolgreich
               </div>
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 11,
+                  fontSize: 14,
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
                   color: "var(--fg-3)",
@@ -187,7 +187,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
             </div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: 16.5,
                 color: "var(--fg-2)",
                 display: "inline-flex",
                 alignItems: "center",
@@ -210,7 +210,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
               }}
             >
               <AlertTriangle size={44} strokeWidth={1.8} />
-              <div style={{ fontSize: 17, fontWeight: 700, color: "var(--fg)" }}>
+              <div style={{ fontSize: 21.5, fontWeight: 700, color: "var(--fg)" }}>
                 Übergabe fehlgeschlagen
               </div>
             </div>
@@ -221,7 +221,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 border: "1px solid var(--red-border)",
-                fontSize: 13,
+                fontSize: 16.5,
                 textAlign: "left",
               }}
             >
@@ -236,7 +236,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
                 border: "1px solid var(--border-strong)",
                 background: "var(--surface-2)",
                 color: "var(--fg)",
-                fontSize: 14,
+                fontSize: 17.5,
                 fontWeight: 600,
                 cursor: "pointer",
               }}

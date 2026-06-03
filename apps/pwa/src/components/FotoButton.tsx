@@ -52,7 +52,7 @@ export function FotoButton({ onCapture, busy }: Props) {
           background: "var(--surface-2)",
           color: "var(--fg)",
           fontWeight: 600,
-          fontSize: 15,
+          fontSize: 19,
           cursor: busy ? "wait" : "pointer",
           opacity: busy ? 0.6 : 1,
         }}

@@ -140,7 +140,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <h1
                 style={{
                   margin: 0,
-                  fontSize: 22,
+                  fontSize: 27.5,
                   fontWeight: 800,
                   color: "var(--fg)",
                   letterSpacing: "-0.01em",
@@ -152,7 +152,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   margin: "4px 0 0",
                   fontFamily: "var(--font-mono)",
-                  fontSize: 10,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
@@ -164,7 +164,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
           </div>
 
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "var(--fg-2)" }}>
+          <p style={{ margin: 0, fontSize: 17.5, lineHeight: 1.55, color: "var(--fg-2)" }}>
             Die App ist auf einen unerwarteten Fehler gestoßen und kann an dieser Stelle nicht
             weiterarbeiten. Deine Daten sind sicher im Backend gespeichert (alle Änderungen die
             du gespeichert hast sind nicht weg).
@@ -177,7 +177,7 @@ export class ErrorBoundary extends Component<Props, State> {
               background: "var(--surface-2)",
               border: "1px solid var(--border)",
               fontFamily: "var(--font-mono)",
-              fontSize: 11,
+              fontSize: 14,
               color: "var(--red)",
               overflow: "auto",
               maxHeight: 120,
@@ -201,7 +201,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   "linear-gradient(180deg, var(--info) 0%, color-mix(in srgb, var(--info) 70%, #000) 100%)",
                 color: "#fff",
                 fontWeight: 700,
-                fontSize: 14,
+                fontSize: 17.5,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
@@ -224,7 +224,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 background: "var(--surface-2)",
                 color: "var(--fg)",
                 fontWeight: 600,
-                fontSize: 14,
+                fontSize: 17.5,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
@@ -243,7 +243,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   cursor: "pointer",
                   fontFamily: "var(--font-mono)",
-                  fontSize: 10,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   letterSpacing: "0.12em",
                   textTransform: "uppercase",
@@ -260,7 +260,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
                   fontFamily: "var(--font-mono)",
-                  fontSize: 10,
+                  fontSize: 12.5,
                   color: "var(--fg-2)",
                   overflow: "auto",
                   maxHeight: 200,
@@ -274,7 +274,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   style={{
                     margin: "8px 0 0",
                     fontFamily: "var(--font-mono)",
-                    fontSize: 10,
+                    fontSize: 12.5,
                     color: "var(--warn)",
                   }}
                 >
@@ -291,7 +291,7 @@ export class ErrorBoundary extends Component<Props, State> {
               borderRadius: 10,
               background: "var(--info-tint)",
               border: "1px dashed var(--blue-border)",
-              fontSize: 12,
+              fontSize: 15,
               lineHeight: 1.5,
               color: "var(--fg-2)",
             }}

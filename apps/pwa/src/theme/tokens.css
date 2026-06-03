@@ -61,8 +61,8 @@
 
   /* Text-Hierarchie — präziser Kontrast */
   --fg:               #0B1220;
-  --fg-2:             #475569;
-  --fg-3:             #8693A8;
+  --fg-2:             #3B4757;
+  --fg-3:             #5A6678;
   --fg-4:             #B9C2D0;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
@@ -173,19 +173,23 @@
   /* ────────────────────────────────────────────────
      TYPOGRAPHIE
      ──────────────────────────────────────────────── */
-  --font-sans:        "Onest", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", sans-serif;
+  /* Lesbarkeit > Markenoptik auf dem Einsatz-Tablet: die SYSTEM-UI-Schrift
+     zuerst (Roboto auf den Android-Tablets) — hochoptimiert fuer Bildschirm-
+     Lesbarkeit UND immer offline verfuegbar (kein Google-Fonts-Download im
+     Funkloch). Onest bleibt als spaeter Fallback. */
+  --font-sans:        system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Onest", sans-serif;
   --font-display:     var(--font-sans);
   --font-mono:        "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
   /* Type-Scale — feste Stufen statt verstreuter Inline-Float-Werte
      (z. B. fontSize: 11.5). Komponenten sollen sich auf diese Tokens
      stuetzen damit max. 4–5 Groessen pro Screen entstehen. */
-  --font-xs:          10px;
-  --font-sm:          12px;
-  --font-md:          14px;
-  --font-lg:          16px;
-  --font-xl:          20px;
-  --font-2xl:         28px;
+  --font-xs:          12.5px;
+  --font-sm:          15px;
+  --font-md:          17.5px;
+  --font-lg:          20px;
+  --font-xl:          25px;
+  --font-2xl:         35px;
 
   /* Modal-Width Stufen — fuer konsistente Modal-Groessen.
      sm = Bestaetigungs-Dialoge (HandoffModal)
@@ -255,8 +259,8 @@
   --border-strong:    rgba(255, 255, 255, 0.14);
 
   --fg:               #F2F5FA;
-  --fg-2:             #ACB6C8;
-  --fg-3:             #6E7A8E;
+  --fg-2:             #C2CCDC;
+  --fg-3:             #9AA6BA;
   --fg-4:             #424B5C;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);

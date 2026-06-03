@@ -110,7 +110,7 @@ function Banner({
         border: `1px dashed ${styles.border}`,
         background: styles.bg,
         color: styles.color,
-        fontSize: 12,
+        fontSize: 15,
       }}
     >
       <Icon size={13} />
@@ -120,7 +120,7 @@ function Banner({
           borderRadius: 4,
           background: `${styles.color}26`,
           fontFamily: "var(--font-mono)",
-          fontSize: 10,
+          fontSize: 12.5,
           fontWeight: 700,
           letterSpacing: "0.14em",
         }}

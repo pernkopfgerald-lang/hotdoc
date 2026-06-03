@@ -224,7 +224,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               id="handoff-title"
               style={{
                 margin: 0,
-                fontSize: 17,
+                fontSize: 21.5,
                 fontWeight: 700,
                 letterSpacing: "-0.01em",
               }}
@@ -235,7 +235,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               style={{
                 margin: "2px 0 0",
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -280,7 +280,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             <span
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 11,
+                fontSize: 14,
                 letterSpacing: "0.1em",
                 textTransform: "uppercase",
               }}
@@ -315,7 +315,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 10,
+                  fontSize: 12.5,
                   fontWeight: 700,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
@@ -328,7 +328,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 22,
+                  fontSize: 27.5,
                   fontWeight: 800,
                   letterSpacing: "0.18em",
                   color: "var(--fg)",
@@ -348,7 +348,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 background: secondsLeft < 60 ? "var(--warn-tint)" : "var(--surface-2)",
                 border: `1px solid ${secondsLeft < 60 ? "var(--amber-border)" : "var(--border)"}`,
                 color: secondsLeft < 60 ? "var(--warn)" : "var(--fg-2)",
-                fontSize: 13,
+                fontSize: 16.5,
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
@@ -375,7 +375,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                   }}
                   style={{
                     padding: "4px 10px",
-                    fontSize: 12,
+                    fontSize: 15,
                     fontWeight: 600,
                     background: "var(--warn)",
                     color: "#fff",
@@ -393,7 +393,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             <p
               style={{
                 margin: 0,
-                fontSize: 12,
+                fontSize: 15,
                 lineHeight: 1.55,
                 color: "var(--fg-3)",
               }}
@@ -414,8 +414,8 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             }}
           >
             <CheckCircle2 size={48} strokeWidth={1.8} />
-            <strong style={{ fontSize: 16 }}>Übernahme erfolgreich</strong>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>{successText}</p>
+            <strong style={{ fontSize: 20 }}>Übernahme erfolgreich</strong>
+            <p style={{ margin: 0, fontSize: 16.5, color: "var(--fg-2)" }}>{successText}</p>
           </div>
         ) : state.kind === "expired" ? (
           /* U-14: bei abgelaufenem Code grosser Auto-Refresh-Button
@@ -432,8 +432,8 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             }}
           >
             <AlertTriangle size={40} strokeWidth={1.8} />
-            <strong style={{ fontSize: 15 }}>Code ist abgelaufen</strong>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)" }}>
+            <strong style={{ fontSize: 19 }}>Code ist abgelaufen</strong>
+            <p style={{ margin: 0, fontSize: 16.5, color: "var(--fg-2)" }}>
               Der QR-Code war 5 Minuten gültig. Direkt einen neuen Code erstellen?
             </p>
             <button
@@ -442,7 +442,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               style={{
                 marginTop: 4,
                 padding: "12px 20px",
-                fontSize: 14,
+                fontSize: 17.5,
                 fontWeight: 700,
                 background: "var(--warn)",
                 color: "#fff",
@@ -467,7 +467,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               background: "var(--red-tint)",
               color: "var(--red)",
               border: "1px solid var(--red-border)",
-              fontSize: 13,
+              fontSize: 16.5,
               display: "flex",
               alignItems: "center",
               gap: 8,

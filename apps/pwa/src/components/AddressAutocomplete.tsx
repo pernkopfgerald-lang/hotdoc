@@ -194,7 +194,7 @@ export function AddressAutocomplete({
             <div
               style={{
                 padding: "12px 14px",
-                fontSize: 12,
+                fontSize: 15,
                 color: "var(--red)",
                 background: "var(--red-tint)",
                 borderRadius: "var(--radius-s)",
@@ -206,7 +206,7 @@ export function AddressAutocomplete({
             <div
               style={{
                 padding: "12px 14px",
-                fontSize: 12.5,
+                fontSize: 15.5,
                 color: "var(--fg-3)",
                 fontStyle: "italic",
               }}
@@ -275,7 +275,7 @@ export function AddressAutocomplete({
                   >
                     <span
                       style={{
-                        fontSize: 14,
+                        fontSize: 17.5,
                         fontWeight: 600,
                         color: "var(--fg)",
                         overflow: "hidden",
@@ -289,7 +289,7 @@ export function AddressAutocomplete({
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
-                          fontSize: 10,
+                          fontSize: 12.5,
                           fontWeight: 600,
                           letterSpacing: "var(--tracking-caps)",
                           textTransform: "uppercase",

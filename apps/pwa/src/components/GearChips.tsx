@@ -158,7 +158,7 @@ function OelSmartChip({
         <span style={{ minWidth: 18, textAlign: "center", fontWeight: 700, color: "var(--fg)" }}>
           {saecke}
         </span>
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em" }}>Säcke</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: "0.06em" }}>Säcke</span>
         <button
           type="button"
           onClick={() => step(1)}

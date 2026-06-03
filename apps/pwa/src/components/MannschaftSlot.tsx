@@ -101,7 +101,7 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
             aria-label="Atemschutz aktivieren"
             onClick={onToggleAs}
             title="Atemschutz aktivieren"
-            style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11, letterSpacing: "0.06em" }}
+            style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 14, letterSpacing: "0.06em" }}
           >
             AS
           </button>

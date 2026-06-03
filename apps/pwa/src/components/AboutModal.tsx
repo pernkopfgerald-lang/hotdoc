@@ -68,7 +68,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
           <h2
             style={{
               margin: 0,
-              fontSize: 20,
+              fontSize: 25,
               fontWeight: 700,
               letterSpacing: "-0.02em",
             }}
@@ -100,7 +100,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
@@ -119,7 +119,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                   alignItems: "center",
                   gap: 8,
                   padding: "10px 14px",
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 600,
                   background: "transparent",
                   color: "var(--fg-2)",
@@ -146,7 +146,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                 }}
               >
                 <AlertTriangle size={16} style={{ color: "var(--warn)", flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: "var(--warn)", flex: 1, minWidth: 200 }}>
+                <span style={{ fontSize: 16.5, color: "var(--warn)", flex: 1, minWidth: 200 }}>
                   Wirklich? Du musst danach wieder ein Fahrzeug auswaehlen
                   und der laufende Bericht ist im Backend gespeichert.
                 </span>
@@ -159,7 +159,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     color: "var(--fg)",
                     border: "1px solid var(--border)",
                     borderRadius: 8,
-                    fontSize: 12,
+                    fontSize: 15,
                     fontWeight: 600,
                     cursor: "pointer",
                     minHeight: 36,
@@ -180,7 +180,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     color: "#fff",
                     border: 0,
                     borderRadius: 8,
-                    fontSize: 12,
+                    fontSize: 15,
                     fontWeight: 700,
                     cursor: "pointer",
                     minHeight: 36,

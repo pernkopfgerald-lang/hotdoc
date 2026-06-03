@@ -253,7 +253,7 @@ export function Setup({ onSetupDone }: Props) {
         <div>
           <h1
             style={{
-              fontSize: 38,
+              fontSize: 47.5,
               fontWeight: 700,
               letterSpacing: "var(--tracking-display)",
               color: "var(--fg)",
@@ -266,7 +266,7 @@ export function Setup({ onSetupDone }: Props) {
           <div
             style={{
               fontFamily: "var(--font-mono)",
-              fontSize: 11,
+              fontSize: 14,
               fontWeight: 700,
               letterSpacing: "var(--tracking-caps)",
               textTransform: "uppercase",
@@ -280,7 +280,7 @@ export function Setup({ onSetupDone }: Props) {
 
         <p
           style={{
-            fontSize: 14.5,
+            fontSize: 18,
             color: "var(--fg-2)",
             maxWidth: 440,
             lineHeight: 1.55,
@@ -305,7 +305,7 @@ export function Setup({ onSetupDone }: Props) {
             WebkitBackdropFilter: "var(--blur-3)",
             border: "1px solid var(--blue-border)",
             color: "var(--fg)",
-            fontSize: 13,
+            fontSize: 16.5,
             lineHeight: 1.55,
             boxShadow: "var(--glow-info)",
           }}
@@ -350,7 +350,7 @@ export function Setup({ onSetupDone }: Props) {
                   className="avatar"
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: 11,
+                    fontSize: 14,
                     background: isZentrale
                       ? "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)"
                       : "linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%)",
@@ -373,11 +373,11 @@ export function Setup({ onSetupDone }: Props) {
                     gap: 3,
                   }}
                 >
-                  <span style={{ fontSize: 16, fontWeight: 600 }}>{f.funkrufname}</span>
+                  <span style={{ fontSize: 20, fontWeight: 600 }}>{f.funkrufname}</span>
                   <span
                     style={{
                       fontFamily: "var(--font-mono)",
-                      fontSize: 10.5,
+                      fontSize: 13,
                       fontWeight: 600,
                       letterSpacing: "var(--tracking-caps)",
                       textTransform: "uppercase",
@@ -403,7 +403,7 @@ export function Setup({ onSetupDone }: Props) {
               borderRadius: "var(--radius-s)",
               background: "var(--red-tint)",
               color: "var(--red)",
-              fontSize: 13,
+              fontSize: 16.5,
               fontWeight: 500,
               border: "1px solid var(--red-border)",
             }}
@@ -418,7 +418,7 @@ export function Setup({ onSetupDone }: Props) {
           marginTop: 10,
           textAlign: "center",
           fontFamily: "var(--font-mono)",
-          fontSize: 10,
+          fontSize: 12.5,
           textTransform: "uppercase",
           letterSpacing: "var(--tracking-caps)",
           color: "var(--fg-3)",
@@ -466,13 +466,13 @@ export function Setup({ onSetupDone }: Props) {
             <Smartphone size={22} strokeWidth={2.2} />
           </span>
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "var(--tracking-tight)" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "var(--tracking-tight)" }}>
               Als Android-App installieren
             </div>
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 600,
                 letterSpacing: "var(--tracking-caps)",
                 textTransform: "uppercase",
@@ -481,7 +481,7 @@ export function Setup({ onSetupDone }: Props) {
             >
               Echte APK · ~9 MB · Boot-Persistent
             </div>
-            <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2, lineHeight: 1.4 }}>
+            <div style={{ fontSize: 15, color: "var(--fg-2)", marginTop: 2, lineHeight: 1.4 }}>
               Browser-Lesezeichen sind unzuverlässig — die APK läuft auch nach Tablet-Neustart sofort weiter und kann später FCM-Push empfangen.
             </div>
           </div>
@@ -515,7 +515,7 @@ export function Setup({ onSetupDone }: Props) {
           borderRadius: "var(--radius-s)",
           color: "var(--fg-2)",
           fontFamily: "inherit",
-          fontSize: 12.5,
+          fontSize: 15.5,
           fontWeight: 600,
           letterSpacing: "var(--tracking-ui)",
           cursor: "pointer",
@@ -582,14 +582,14 @@ export function Setup({ onSetupDone }: Props) {
               </span>
               <h3
                 id="setup-confirm-title"
-                style={{ margin: 0, fontSize: 16, fontWeight: 700 }}
+                style={{ margin: 0, fontSize: 20, fontWeight: 700 }}
               >
                 Dieses Tablet als <span style={{ color: "var(--info)" }}>
                   {FAHRZEUGE[confirmFzg].funkrufname}
                 </span> festlegen?
               </h3>
             </div>
-            <p style={{ margin: 0, fontSize: 13.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
+            <p style={{ margin: 0, fontSize: 17, color: "var(--fg-2)", lineHeight: 1.55 }}>
               Das Tablet wird als <strong>{FAHRZEUGE[confirmFzg].funkrufname}</strong>{" "}
               ({FAHRZEUGE[confirmFzg].bezeichnung}) registriert.
               Spaeter nur durch einen Funktionaer aenderbar.
@@ -610,7 +610,7 @@ export function Setup({ onSetupDone }: Props) {
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 600,
                   color: "var(--fg)",
                 }}
@@ -634,7 +634,7 @@ export function Setup({ onSetupDone }: Props) {
                 style={{
                   width: "100%",
                   padding: "12px 14px",
-                  fontSize: 20,
+                  fontSize: 25,
                   letterSpacing: "0.5em",
                   textAlign: "center",
                   background: "var(--surface-2)",
@@ -657,7 +657,7 @@ export function Setup({ onSetupDone }: Props) {
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
                   borderRadius: 8,
-                  fontSize: 12,
+                  fontSize: 15,
                 }}
               >
                 {confirmPinErr}
@@ -672,7 +672,7 @@ export function Setup({ onSetupDone }: Props) {
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
                   borderRadius: 8,
-                  fontSize: 12,
+                  fontSize: 15,
                 }}
               >
                 {error}
@@ -686,7 +686,7 @@ export function Setup({ onSetupDone }: Props) {
                 style={{
                   flex: 1,
                   padding: "12px 14px",
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 600,
                   background: "var(--surface-2)",
                   color: "var(--fg)",
@@ -706,7 +706,7 @@ export function Setup({ onSetupDone }: Props) {
                 style={{
                   flex: 1,
                   padding: "12px 14px",
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 700,
                   minHeight: 48,
                   opacity: confirmPin.trim().length === 0 ? 0.6 : 1,

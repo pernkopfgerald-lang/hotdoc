@@ -212,7 +212,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
               id="archiv-title"
               style={{
                 margin: 0,
-                fontSize: 17,
+                fontSize: 21.5,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-tight)",
               }}
@@ -222,7 +222,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-caps)",
                 textTransform: "uppercase",
@@ -283,7 +283,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
               <span
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 11,
+                  fontSize: 14,
                   letterSpacing: "var(--tracking-caps)",
                   textTransform: "uppercase",
                 }}
@@ -301,7 +301,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                 borderRadius: "var(--radius-s)",
                 background: "var(--red-tint)",
                 color: "var(--red)",
-                fontSize: 13,
+                fontSize: 16.5,
                 border: "1px solid var(--red-border)",
                 display: "flex",
                 gap: 10,
@@ -316,7 +316,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                   style={{
                     marginTop: 6,
                     fontFamily: "var(--font-mono)",
-                    fontSize: 10,
+                    fontSize: 12.5,
                     opacity: 0.85,
                     wordBreak: "break-word",
                   }}
@@ -340,11 +340,11 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
               }}
             >
               <Archive size={28} strokeWidth={1.6} style={{ opacity: 0.5 }} />
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-2)" }}>
+              <div style={{ fontSize: 17.5, fontWeight: 600, color: "var(--fg-2)" }}>
                 {query ? "Keine Treffer fuer die Suche." : "Keine Berichte im Archiv gefunden."}
               </div>
               {!query && (
-                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                <div style={{ fontSize: 15, opacity: 0.85 }}>
                   Abgeschlossene Berichte erscheinen hier nach dem Einsatz.
                 </div>
               )}
@@ -394,7 +394,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                   >
                     <div
                       style={{
-                        fontSize: 15,
+                        fontSize: 19,
                         fontWeight: 600,
                         color: "var(--fg)",
                         overflow: "hidden",
@@ -406,7 +406,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                     </div>
                     <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 15,
                         color: "var(--fg-2)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -418,7 +418,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                     <div
                       style={{
                         fontFamily: "var(--font-mono)",
-                        fontSize: 10,
+                        fontSize: 12.5,
                         fontWeight: 600,
                         letterSpacing: "var(--tracking-caps)",
                         textTransform: "uppercase",
@@ -514,11 +514,11 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
           >
             <h3
               id="reaktiv-dialog-title"
-              style={{ margin: 0, fontSize: 18, fontWeight: 700 }}
+              style={{ margin: 0, fontSize: 22.5, fontWeight: 700 }}
             >
               Bericht reaktivieren
             </h3>
-            <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
+            <div style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
               <strong>{reaktivOpen.title}</strong> wird wieder geöffnet.
               Bitte einen Grund angeben (mind. 10 Zeichen) — wird ins
               Audit-Log eingetragen und auf dem PDF als Reaktivierungs-Hinweis
@@ -530,13 +530,13 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
               placeholder="z. B. Nachtrag Atemschutz-Daten · syBOS-Korrektur · …"
               value={reaktivGrund}
               onChange={(e) => setReaktivGrund(e.target.value)}
-              style={{ resize: "vertical", fontSize: 14 }}
+              style={{ resize: "vertical", fontSize: 17.5 }}
               autoFocus
             />
             {reaktivErr && (
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 15,
                   color: "var(--red)",
                   padding: "6px 8px",
                   background: "var(--red-tint)",

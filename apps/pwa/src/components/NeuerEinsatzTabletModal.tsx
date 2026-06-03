@@ -481,7 +481,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               id="neuer-einsatz-title"
               style={{
                 margin: 0,
-                fontSize: 18,
+                fontSize: 22.5,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-tight)",
               }}
@@ -491,7 +491,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-caps)",
                 textTransform: "uppercase",
@@ -539,7 +539,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 }}
               >
                 <Icon size={20} strokeWidth={2.2} color={active ? TYP_META[t].color : "var(--fg-2)"} />
-                <div className="code" style={{ fontSize: 12 }}>
+                <div className="code" style={{ fontSize: 15 }}>
                   {TYP_META[t].label}
                 </div>
               </button>
@@ -580,7 +580,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 <div
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: 10,
+                    fontSize: 12.5,
                     fontWeight: 700,
                     letterSpacing: "var(--tracking-caps)",
                     textTransform: "uppercase",
@@ -609,7 +609,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                         onClick={() => setEinsatzart(active ? "" : art)}
                         className={`chip${active ? " selected" : ""}`}
                         style={{
-                          fontSize: 12,
+                          fontSize: 15,
                           padding: "6px 10px",
                           minHeight: 32,
                           lineHeight: 1.2,
@@ -653,7 +653,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                   return (
                     <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 15,
                         color: "var(--fg-3)",
                         padding: "10px 4px",
                       }}
@@ -700,7 +700,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 color: "var(--fg-3)",
                 letterSpacing: "0.06em",
                 marginTop: 6,
@@ -755,7 +755,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               title="Aktuelle GPS-Position als Adresse übernehmen"
               style={{
                 padding: "0 14px",
-                fontSize: 13,
+                fontSize: 16.5,
                 fontWeight: 600,
                 background: "var(--info-tint)",
                 color: "var(--info)",
@@ -776,7 +776,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               style={{
                 marginTop: 6,
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 600,
                 letterSpacing: "0.06em",
                 color: "var(--ok)",
@@ -847,7 +847,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 onChange={(e) => setVerrechenbar(e.target.checked)}
                 style={{ width: 18, height: 18 }}
               />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>Verrechenbar</span>
+              <span style={{ fontSize: 17.5, fontWeight: 600 }}>Verrechenbar</span>
             </label>
             {verrechenbar ? (
               <div className="field">
@@ -888,7 +888,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                         "linear-gradient(135deg, var(--ok-tint), var(--glass-2))",
                       color: "var(--ok)",
                       fontFamily: "var(--font-mono)",
-                      fontSize: 12,
+                      fontSize: 15,
                     }}
                   >
                     {initials(uebungsleiterPerson)}
@@ -902,14 +902,14 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                       minWidth: 0,
                     }}
                   >
-                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>
+                    <span style={{ fontSize: 19, fontWeight: 600, color: "var(--fg)" }}>
                       {uebungsleiterPerson.nachname} {uebungsleiterPerson.vorname}
                     </span>
                     {uebungsleiterPerson.dienstgrad ? (
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
-                          fontSize: 10,
+                          fontSize: 12.5,
                           fontWeight: 600,
                           letterSpacing: "var(--tracking-caps)",
                           textTransform: "uppercase",
@@ -993,7 +993,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               borderRadius: "var(--radius-s)",
               background: "var(--red-tint)",
               color: "var(--red)",
-              fontSize: 13,
+              fontSize: 16.5,
               fontWeight: 500,
               border: "1px solid var(--red-border)",
               boxShadow: "var(--glow-red-soft)",
@@ -1017,7 +1017,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               alignItems: "center",
               minHeight: 56,
               fontWeight: 600,
-              fontSize: 14,
+              fontSize: 17.5,
             }}
           >
             Abbrechen
@@ -1027,7 +1027,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             className="cta"
             onClick={() => void submit()}
             disabled={busy}
-            style={{ flex: 1, padding: "16px 18px", fontSize: 15 }}
+            style={{ flex: 1, padding: "16px 18px", fontSize: 19 }}
           >
             <Plus size={20} />
             {busy ? "Lege an …" : "Bericht anlegen"}

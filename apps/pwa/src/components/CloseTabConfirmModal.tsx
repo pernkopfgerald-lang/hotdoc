@@ -158,7 +158,7 @@ export function CloseTabConfirmModal({
           <AlertTriangle size={18} style={{ color: "var(--warn)" }} />
           <h3
             id="close-tab-title"
-            style={{ margin: 0, fontSize: 16, fontWeight: 700, flex: 1 }}
+            style={{ margin: 0, fontSize: 20, fontWeight: 700, flex: 1 }}
           >
             {step === "choice" ? "Bericht schließen?" : "Verwerfen bestätigen"}
           </h3>
@@ -184,7 +184,7 @@ export function CloseTabConfirmModal({
         <div style={{ padding: 18 }}>
           {step === "choice" && (
             <>
-              <p style={{ margin: "0 0 14px", fontSize: 14, color: "var(--fg-2)" }}>
+              <p style={{ margin: "0 0 14px", fontSize: 17.5, color: "var(--fg-2)" }}>
                 Was soll mit{" "}
                 <strong style={{ color: "var(--fg)" }}>{tabLabel}</strong>{" "}
                 passieren?
@@ -200,7 +200,7 @@ export function CloseTabConfirmModal({
                     display: "flex",
                     gap: 10,
                     alignItems: "flex-start",
-                    fontSize: 14,
+                    fontSize: 17.5,
                     fontWeight: 600,
                     lineHeight: 1.45,
                     color: "var(--red)",
@@ -236,7 +236,7 @@ export function CloseTabConfirmModal({
                   border: "1px solid var(--green-border)",
                   color: "var(--ok)",
                   borderRadius: 10,
-                  fontSize: 14,
+                  fontSize: 17.5,
                   fontWeight: 600,
                   cursor: busy ? "wait" : "pointer",
                   textAlign: "left",
@@ -250,7 +250,7 @@ export function CloseTabConfirmModal({
                   <span
                     style={{
                       display: "block",
-                      fontSize: 11,
+                      fontSize: 14,
                       fontWeight: 400,
                       opacity: 0.8,
                       marginTop: 2,
@@ -277,7 +277,7 @@ export function CloseTabConfirmModal({
                     border: "1px solid var(--red-border, #d93b3b)",
                     color: "var(--red)",
                     borderRadius: 10,
-                    fontSize: 14,
+                    fontSize: 17.5,
                     fontWeight: 600,
                     cursor: busy ? "wait" : "pointer",
                     textAlign: "left",
@@ -289,7 +289,7 @@ export function CloseTabConfirmModal({
                     <span
                       style={{
                         display: "block",
-                        fontSize: 11,
+                        fontSize: 14,
                         fontWeight: 400,
                         opacity: 0.8,
                         marginTop: 2,
@@ -314,7 +314,7 @@ export function CloseTabConfirmModal({
                   border: "1px solid var(--border)",
                   color: "var(--fg-2)",
                   borderRadius: 10,
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 500,
                   cursor: busy ? "wait" : "pointer",
                 }}
@@ -326,7 +326,7 @@ export function CloseTabConfirmModal({
 
           {step === "verwerfen-confirm" && (
             <>
-              <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--fg-2)" }}>
+              <p style={{ margin: "0 0 12px", fontSize: 16.5, color: "var(--fg-2)" }}>
                 Bitte einen kurzen Grund angeben, warum der Bericht verworfen
                 wird. Das hilft beim späteren Audit-Trail.
               </p>
@@ -343,7 +343,7 @@ export function CloseTabConfirmModal({
                   background: "var(--surface-2)",
                   border: "1px solid var(--border-strong)",
                   borderRadius: 8,
-                  fontSize: 14,
+                  fontSize: 17.5,
                   color: "var(--fg)",
                   marginBottom: 12,
                   outline: "none",
@@ -361,7 +361,7 @@ export function CloseTabConfirmModal({
                     border: "1px solid var(--border)",
                     color: "var(--fg-2)",
                     borderRadius: 10,
-                    fontSize: 13,
+                    fontSize: 16.5,
                     fontWeight: 500,
                     cursor: busy ? "wait" : "pointer",
                   }}
@@ -379,7 +379,7 @@ export function CloseTabConfirmModal({
                     border: 0,
                     color: "white",
                     borderRadius: 10,
-                    fontSize: 13,
+                    fontSize: 16.5,
                     fontWeight: 600,
                     cursor: busy || grund.trim().length < 3 ? "not-allowed" : "pointer",
                     opacity: grund.trim().length < 3 ? 0.5 : 1,
@@ -400,7 +400,7 @@ export function CloseTabConfirmModal({
                 border: "1px solid var(--red-border, #d93b3b)",
                 color: "var(--red)",
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 15,
               }}
             >
               {error}

@@ -92,7 +92,7 @@ button,
   background: var(--surface-2);
   color: var(--fg);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 17.5px;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
@@ -174,7 +174,7 @@ html {
   -webkit-backdrop-filter: var(--blur-3);
   border: 1px solid var(--glass-border);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--fg-3);
   letter-spacing: 0.04em;
@@ -193,7 +193,7 @@ html {
   border-radius: 999px;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -254,7 +254,7 @@ html {
   color: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11.5px;
   font-weight: 700;
 }
 
@@ -291,7 +291,7 @@ html {
   backdrop-filter: var(--blur-3);
   -webkit-backdrop-filter: var(--blur-3);
   color: var(--fg-3) !important;
-  font-size: 9px !important;
+  font-size: 11.5px !important;
   border-radius: 8px 0 0 0 !important;
 }
 .leaflet-control-attribution a {

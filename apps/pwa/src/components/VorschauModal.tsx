@@ -104,7 +104,7 @@ export function VorschauModal({ open, data, onClose }: Props) {
             borderBottom: "1px solid var(--border)",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)" }}>
+          <div style={{ fontSize: 17.5, fontWeight: 700, color: "var(--fg)" }}>
             Vorschau · Fahrzeugbericht {data.alarm.alarmId} · {FAHRZEUGE[data.fahrzeugId].bezeichnung}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -112,7 +112,7 @@ export function VorschauModal({ open, data, onClose }: Props) {
               type="button"
               onClick={printNow}
               className="cta"
-              style={{ width: "auto", padding: "8px 14px", fontSize: 13 }}
+              style={{ width: "auto", padding: "8px 14px", fontSize: 16.5 }}
             >
               <Printer size={14} /> Drucken
             </button>
@@ -151,7 +151,7 @@ export function VorschauModal({ open, data, onClose }: Props) {
               alignItems: "center",
               gap: 8,
               padding: "10px 14px",
-              fontSize: 13,
+              fontSize: 16.5,
               fontWeight: 600,
               background: "transparent",
               color: "var(--fg)",
@@ -167,7 +167,7 @@ export function VorschauModal({ open, data, onClose }: Props) {
             type="button"
             onClick={printNow}
             className="cta"
-            style={{ width: "auto", padding: "10px 16px", fontSize: 13, minHeight: 44 }}
+            style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, minHeight: 44 }}
           >
             <Printer size={14} /> Drucken
           </button>

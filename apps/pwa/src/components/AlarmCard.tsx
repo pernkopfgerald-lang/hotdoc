@@ -56,7 +56,7 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
             color: "#fff",
             fontFamily: "var(--font-mono)",
             fontWeight: 800,
-            fontSize: 11,
+            fontSize: 14,
             letterSpacing: "var(--tracking-caps)",
             textTransform: "uppercase",
             marginBottom: 12,

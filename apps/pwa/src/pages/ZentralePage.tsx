@@ -1388,7 +1388,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       type="button"
                       className="cta"
                       onClick={() => setNeuerEinsatzOpen("manuell")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center" }}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center" }}
                     >
                       <Siren size={14} /> Einsatz anlegen
                     </button>
@@ -1396,7 +1396,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       type="button"
                       className="cta"
                       onClick={() => setNeuerEinsatzOpen("uebung")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--ok) 80%, transparent)" }}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--ok) 80%, transparent)" }}
                     >
                       <GraduationCap size={14} /> Übung anlegen
                     </button>
@@ -1404,7 +1404,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       type="button"
                       className="cta"
                       onClick={() => setNeuerEinsatzOpen("lotsendienst")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)" }}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)" }}
                     >
                       <MapPin size={14} /> Lotsendienst anlegen
                     </button>
@@ -1412,7 +1412,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       type="button"
                       className="cta"
                       onClick={() => setArchivOpenFlorian(true)}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 13, gap: 6, display: "inline-flex", alignItems: "center", background: "var(--surface-2)", color: "var(--fg)", border: "1px solid var(--border-strong)" }}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "var(--surface-2)", color: "var(--fg)", border: "1px solid var(--border-strong)" }}
                     >
                       <Archive size={14} /> Archiv durchsuchen
                     </button>
@@ -1452,7 +1452,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   color: "#fff",
                   fontFamily: "var(--font-mono)",
                   fontWeight: 800,
-                  fontSize: 11,
+                  fontSize: 14,
                   letterSpacing: "var(--tracking-caps)",
                   textTransform: "uppercase",
                   marginBottom: 12,
@@ -1618,7 +1618,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
-                      fontSize: 14,
+                      fontSize: 17.5,
                       cursor: schreibschutz ? "not-allowed" : "pointer",
                       opacity: schreibschutz ? 0.55 : 1,
                     }}
@@ -1644,7 +1644,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       background: "transparent",
                       border: 0,
                       color: "var(--fg-3)",
-                      fontSize: 11,
+                      fontSize: 14,
                       cursor: schreibschutz ? "not-allowed" : "pointer",
                       textDecoration: "underline",
                       minHeight: 0,
@@ -1758,7 +1758,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   alignItems: "center",
                   gap: 8,
                   paddingTop: 12,
-                  fontSize: 14,
+                  fontSize: 17.5,
                   cursor: schreibschutz ? "not-allowed" : "pointer",
                   opacity: schreibschutz ? 0.55 : 1,
                 }}
@@ -1798,7 +1798,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -1839,7 +1839,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             <div
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
+                fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -1916,7 +1916,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 }
               />
             </div>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-3)", flex: 1 }}>
+            <p style={{ margin: 0, fontSize: 16.5, color: "var(--fg-3)", flex: 1 }}>
               Aktuell <strong>{editor.oelSaecke}</strong> Säcke ausgewiesen.
               Beim PDF-Export erscheint die Markierung „Ölbindemittel verwendet" automatisch
               wenn die Anzahl &gt; 0 ist.
@@ -1953,7 +1953,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   }}
                 >
                   <div className="field">
-                    <label className="caption" style={{ fontSize: 11 }}>Anzahl</label>
+                    <label className="caption" style={{ fontSize: 14 }}>Anzahl</label>
                     <input
                       type="number"
                       min={0}
@@ -1969,7 +1969,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     />
                   </div>
                   <div className="field">
-                    <label className="caption" style={{ fontSize: 11 }}>Tot</label>
+                    <label className="caption" style={{ fontSize: 14 }}>Tot</label>
                     <input
                       type="number"
                       min={0}
@@ -1985,7 +1985,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     />
                   </div>
                   <div className="field">
-                    <label className="caption" style={{ fontSize: 11 }}>Verletzt</label>
+                    <label className="caption" style={{ fontSize: 14 }}>Verletzt</label>
                     <input
                       type="number"
                       min={0}
@@ -2001,7 +2001,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     />
                   </div>
                   <div className="field">
-                    <label className="caption" style={{ fontSize: 11 }}>Unverletzt</label>
+                    <label className="caption" style={{ fontSize: 14 }}>Unverletzt</label>
                     <input
                       type="number"
                       min={0}
@@ -2029,7 +2029,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   }}
                 >
                   <div className="field">
-                    <label className="caption" style={{ fontSize: 11 }}>Groß</label>
+                    <label className="caption" style={{ fontSize: 14 }}>Groß</label>
                     <input
                       type="number"
                       min={0}
@@ -2045,7 +2045,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     />
                   </div>
                   <div className="field">
-                    <label className="caption" style={{ fontSize: 11 }}>Klein</label>
+                    <label className="caption" style={{ fontSize: 14 }}>Klein</label>
                     <input
                       type="number"
                       min={0}
@@ -2132,7 +2132,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
                           background: on ? "var(--accent)" : "transparent",
                           color: on ? "#fff" : "var(--fg)",
-                          fontSize: 12,
+                          fontSize: 15,
                           fontWeight: 600,
                           cursor: schreibschutz ? "not-allowed" : "pointer",
                           opacity: schreibschutz ? 0.55 : 1,
@@ -2172,7 +2172,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                             border: `1px solid ${on ? "var(--warn)" : "var(--border-strong)"}`,
                             background: on ? "var(--warn)" : "transparent",
                             color: on ? "#fff" : "var(--fg)",
-                            fontSize: 12,
+                            fontSize: 15,
                             fontWeight: 600,
                             cursor: schreibschutz ? "not-allowed" : "pointer",
                             opacity: schreibschutz ? 0.55 : 1,
@@ -2188,7 +2188,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   <p
                     style={{
                       margin: "0 0 8px",
-                      fontSize: 11,
+                      fontSize: 14,
                       color: "var(--fg-3)",
                       fontStyle: "italic",
                     }}
@@ -2220,7 +2220,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           borderRadius: 6,
                           background: "var(--warn-tint)",
                           color: "var(--warn)",
-                          fontSize: 11,
+                          fontSize: 14,
                           fontWeight: 600,
                           display: "inline-flex",
                           alignItems: "center",
@@ -2244,7 +2244,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                               color: "inherit",
                               cursor: "pointer",
                               padding: 0,
-                              fontSize: 13,
+                              fontSize: 16.5,
                               lineHeight: 1,
                               minHeight: 0,
                             }}
@@ -2284,7 +2284,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   : "var(--ok-tint)",
               color: saveErr ? "var(--red)" : saveBusy ? "var(--info)" : "var(--ok)",
               border: `1px solid ${saveErr ? "var(--red-border)" : saveBusy ? "var(--blue-border)" : "var(--ok-border)"}`,
-              fontSize: 12,
+              fontSize: 15,
               fontWeight: 600,
               boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
               display: "flex",
@@ -2354,7 +2354,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   <span
                     style={{
                       fontFamily: "var(--font-mono)",
-                      fontSize: 10,
+                      fontSize: 12.5,
                       fontWeight: 600,
                       letterSpacing: "var(--tracking-caps)",
                       textTransform: "uppercase",
@@ -2437,7 +2437,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             ) : (
               <div
                 style={{
-                  fontSize: 12.5,
+                  fontSize: 15.5,
                   color: "var(--fg-3)",
                   fontStyle: "italic",
                   padding: "4px 2px",
@@ -2474,7 +2474,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             </span>
           </div>
 
-          <p style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
+          <p style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
             Keine Auswahl → alle Fahrzeug-Tablets sehen den Einsatz (Default bei
             BlaulichtSMS-Alarm). Auswahl filtert die Sichtbarkeit auf die markierten
             Fahrzeuge — nuetzlich bei Sturm um Adressen aufzuteilen.
@@ -2499,7 +2499,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   className={`chip${aktiv ? " active" : ""}`}
                   style={{
                     padding: "10px 16px",
-                    fontSize: 13,
+                    fontSize: 16.5,
                     fontWeight: 600,
                     background: aktiv ? "var(--info)" : "var(--surface)",
                     color: aktiv ? "#fff" : "var(--fg)",
@@ -2603,7 +2603,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     <div
                       style={{
                         fontFamily: "var(--font-mono)",
-                        fontSize: 11,
+                        fontSize: 14,
                         color: "var(--fg-3)",
                         textTransform: "uppercase",
                         letterSpacing: "0.08em",
@@ -2634,7 +2634,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           "minmax(110px, max-content) 1fr",
                         rowGap: 4,
                         columnGap: 12,
-                        fontSize: 12.5,
+                        fontSize: 15.5,
                         animation:
                           "glass-reveal 180ms var(--ease-decel) both",
                       }}
@@ -2642,7 +2642,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
-                          fontSize: 10,
+                          fontSize: 12.5,
                           color: "var(--fg-3)",
                           textTransform: "uppercase",
                           letterSpacing: "0.06em",
@@ -2655,7 +2655,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
-                          fontSize: 10,
+                          fontSize: 12.5,
                           color: "var(--fg-3)",
                           textTransform: "uppercase",
                           letterSpacing: "0.06em",
@@ -2668,7 +2668,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
-                          fontSize: 10,
+                          fontSize: 12.5,
                           color: "var(--fg-3)",
                           textTransform: "uppercase",
                           letterSpacing: "0.06em",
@@ -2700,7 +2700,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           <span
                             style={{
                               fontFamily: "var(--font-mono)",
-                              fontSize: 10,
+                              fontSize: 12.5,
                               color: "var(--warn)",
                               textTransform: "uppercase",
                               letterSpacing: "0.06em",
@@ -2847,7 +2847,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 borderRadius: 10,
                 background: "var(--red-tint)",
                 color: "var(--red)",
-                fontSize: 13,
+                fontSize: 16.5,
                 border: "1px solid var(--red-border)",
               }}
             >
@@ -2871,7 +2871,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 marginTop: 8,
                 padding: "8px 12px",
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 15,
                 background: "var(--ok-tint)",
                 color: "var(--ok)",
                 border: "1px solid var(--ok-border)",
@@ -2887,7 +2887,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 marginTop: 8,
                 padding: "8px 12px",
                 borderRadius: 8,
-                fontSize: 12,
+                fontSize: 15,
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 border: "1px solid var(--red-border)",
@@ -2918,7 +2918,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     borderRadius: 6,
                     fontWeight: 600,
                     cursor: "pointer",
-                    fontSize: 12,
+                    fontSize: 15,
                   }}
                 >
                   Jetzt neu anmelden
@@ -3024,7 +3024,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           background: "transparent",
                           border: 0,
                           color: "var(--warn)",
-                          fontSize: 12,
+                          fontSize: 15,
                           fontWeight: 600,
                           textDecoration: "underline",
                           cursor: "pointer",
@@ -3115,7 +3115,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             background: "var(--ok)",
             color: "#fff",
             borderRadius: 10,
-            fontSize: 13,
+            fontSize: 16.5,
             fontWeight: 600,
             boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
             display: "inline-flex",
@@ -3282,7 +3282,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   id="abschluss-title"
                   style={{
                     margin: 0,
-                    fontSize: 17,
+                    fontSize: 21.5,
                     fontWeight: 700,
                     letterSpacing: "-0.01em",
                   }}
@@ -3293,7 +3293,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   style={{
                     margin: "2px 0 0",
                     fontFamily: "var(--font-mono)",
-                    fontSize: 10,
+                    fontSize: 12.5,
                     fontWeight: 700,
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
@@ -3307,7 +3307,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
 
             <div
               style={{
-                fontSize: 13,
+                fontSize: 16.5,
                 lineHeight: 1.55,
                 color: "var(--fg-2)",
                 background: "var(--warn-tint)",
@@ -3356,7 +3356,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   onChange={(e) => setAbschlussVerrechenbar(e.target.checked)}
                   style={{ width: 18, height: 18, accentColor: "var(--info)" }}
                 />
-                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>
+                <span style={{ fontSize: 17.5, fontWeight: 600, color: "var(--fg)" }}>
                   Einsatz ist verrechenbar
                 </span>
               </label>
@@ -3367,7 +3367,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   value={abschlussRechnungsadresse}
                   onChange={(e) => setAbschlussRechnungsadresse(e.target.value)}
                   placeholder="Rechnungsadresse (optional)"
-                  style={{ fontSize: 13 }}
+                  style={{ fontSize: 16.5 }}
                 />
               ) : null}
             </div>
@@ -3376,7 +3376,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               <div
                 role="alert"
                 style={{
-                  fontSize: 12,
+                  fontSize: 15,
                   padding: "8px 12px",
                   borderRadius: 8,
                   background: "var(--red-tint)",
@@ -3476,11 +3476,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <AlertTriangle size={20} style={{ color: "var(--warn)" }} />
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
                 Trotzdem abschliessen
               </h3>
             </div>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-2)", lineHeight: 1.55 }}>
+            <p style={{ margin: 0, fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
               Es sind noch Fahrzeugberichte offen. Du kannst den Hauptbericht
               trotzdem schliessen — bitte einen Grund angeben (mind. 10 Zeichen).
               Der Grund wandert ins Audit-Log und auf das PDF.
@@ -3498,7 +3498,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 background: "var(--surface-2)",
                 border: "1px solid var(--border-strong)",
                 borderRadius: 8,
-                fontSize: 14,
+                fontSize: 17.5,
                 color: "var(--fg)",
                 resize: "vertical",
               }}
@@ -3506,7 +3506,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             {abschlussErr && (
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 15,
                   padding: "6px 8px",
                   background: "var(--red-tint)",
                   color: "var(--red)",
@@ -3528,7 +3528,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   color: "var(--fg)",
                   border: "1px solid var(--border-strong)",
                   borderRadius: 10,
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 600,
                   cursor: abschlussBusy ? "not-allowed" : "pointer",
                   minHeight: 44,
@@ -3551,7 +3551,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   border: 0,
                   color: "#fff",
                   borderRadius: 10,
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 700,
                   cursor:
                     abschlussBusy || abschlussOverrideGrund.trim().length < 10
@@ -3700,7 +3700,7 @@ function SectionHead({
         style={{
           color: "var(--fg-3)",
           fontFamily: "var(--font-mono)",
-          fontSize: 12,
+          fontSize: 15,
           fontWeight: 700,
           letterSpacing: "0.04em",
           marginLeft: 4,
@@ -3759,7 +3759,7 @@ function FreitextAddRow({
           border: 0,
           color: "#fff",
           borderRadius: 8,
-          fontSize: 13,
+          fontSize: 16.5,
           fontWeight: 700,
           cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
           opacity: disabled || !text.trim() ? 0.55 : 1,
@@ -3833,7 +3833,7 @@ function TriToggle({
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                fontSize: 14,
+                fontSize: 17.5,
                 cursor: disabled ? "not-allowed" : "pointer",
               }}
             >
@@ -3857,7 +3857,7 @@ function TriToggle({
               background: "transparent",
               border: 0,
               color: "var(--fg-3)",
-              fontSize: 11,
+              fontSize: 14,
               cursor: disabled ? "not-allowed" : "pointer",
               textDecoration: "underline",
               minHeight: 0,
@@ -3938,7 +3938,7 @@ function FlorianChronikInput({
             borderRadius: 8,
             background: "var(--red-tint)",
             color: "var(--red)",
-            fontSize: 12,
+            fontSize: 15,
             border: "1px solid var(--red-border)",
           }}
         >
@@ -3972,7 +3972,7 @@ function FlorianChronikInput({
       <p
         style={{
           marginTop: 8,
-          fontSize: 11,
+          fontSize: 14,
           fontFamily: "var(--font-mono)",
           color: "var(--fg-3)",
           letterSpacing: "0.06em",

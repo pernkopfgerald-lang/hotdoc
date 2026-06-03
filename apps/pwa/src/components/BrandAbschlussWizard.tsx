@@ -191,12 +191,12 @@ export function BrandAbschlussWizard({
           <div style={{ flex: 1 }}>
             <h2
               id="brand-wizard-title"
-              style={{ margin: 0, fontSize: 18, fontWeight: 700 }}
+              style={{ margin: 0, fontSize: 22.5, fontWeight: 700 }}
             >
               Brand-Abschluss · syBOS-Statistik
             </h2>
             <div
-              style={{ fontSize: 12, color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}
+              style={{ fontSize: 15, color: "var(--fg-3)", fontFamily: "var(--font-mono)" }}
             >
               Schritt {step} von {totalSteps}
               {lookupLoading ? " · Lade Objekt-Defaults …" : ""}
@@ -216,7 +216,7 @@ export function BrandAbschlussWizard({
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              fontSize: 13,
+              fontSize: 16.5,
             }}
           >
             <X size={14} /> Abbrechen
@@ -254,7 +254,7 @@ export function BrandAbschlussWizard({
               border: "1px solid var(--info-border)",
               color: "var(--info)",
               borderRadius: 8,
-              fontSize: 12,
+              fontSize: 15,
               fontWeight: 600,
             }}
           >
@@ -490,7 +490,7 @@ export function BrandAbschlussWizard({
                 color: "var(--fg-2)",
                 borderRadius: 10,
                 fontWeight: 600,
-                fontSize: 13,
+                fontSize: 16.5,
                 cursor: "pointer",
                 minHeight: 44,
               }}
@@ -589,9 +589,9 @@ function StepBlock({
 }) {
   return (
     <section>
-      <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{title}</h3>
+      <h3 style={{ margin: 0, fontSize: 21.5, fontWeight: 700 }}>{title}</h3>
       {hint && (
-        <p style={{ margin: "4px 0 16px", color: "var(--fg-3)", fontSize: 13 }}>{hint}</p>
+        <p style={{ margin: "4px 0 16px", color: "var(--fg-3)", fontSize: 16.5 }}>{hint}</p>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
     </section>
@@ -608,7 +608,7 @@ function Label({
   return (
     <div
       style={{
-        fontSize: 12,
+        fontSize: 15,
         fontWeight: 700,
         color: "var(--fg-2)",
         textTransform: "uppercase",
@@ -646,7 +646,7 @@ function ChipMultiSelect({
               border: `1px solid ${on ? "var(--red)" : "var(--border-strong)"}`,
               background: on ? "var(--red)" : "transparent",
               color: on ? "#fff" : "var(--fg)",
-              fontSize: 13,
+              fontSize: 16.5,
               fontWeight: 600,
               cursor: "pointer",
               minHeight: 36,
@@ -685,7 +685,7 @@ function RadioGroup({
               border: `1px solid ${on ? "var(--red)" : "var(--border-strong)"}`,
               background: on ? "var(--red-tint)" : "transparent",
               color: on ? "var(--red)" : "var(--fg)",
-              fontSize: 13,
+              fontSize: 16.5,
               fontWeight: on ? 700 : 600,
               cursor: "pointer",
               minHeight: 36,
@@ -710,7 +710,7 @@ function NumberField({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 12, color: "var(--fg-3)" }}>{label}</span>
+      <span style={{ fontSize: 15, color: "var(--fg-3)" }}>{label}</span>
       <input
         type="number"
         min={0}
@@ -724,7 +724,7 @@ function NumberField({
           border: "1px solid var(--border-strong)",
           background: "var(--surface)",
           color: "var(--fg)",
-          fontSize: 14,
+          fontSize: 17.5,
           textAlign: "right",
           width: "100%",
         }}

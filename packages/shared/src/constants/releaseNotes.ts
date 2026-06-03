@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.20",
+    date: "2026-06-03",
+    title: "Größere, besser lesbare Schrift",
+    bullets: [
+      "Alle Schriften in der Tablet-Ansicht um 25 % vergrößert — besser lesbar mit Handschuhen, in der Sonne und unter Stress.",
+      "Schriftart auf die System-Schrift umgestellt (auf den Android-Tablets Roboto): maximal lesbar und immer offline verfügbar, kein Google-Fonts-Download im Funkloch mehr nötig.",
+      "Stärkere Text-Kontraste (sekundäre/tertiäre Labels deutlich dunkler bzw. heller) für bessere Lesbarkeit.",
+    ],
+  },
+  {
     version: "0.1.19",
     date: "2026-06-03",
     title: "Übungsbericht im Einsatzbericht-Format",

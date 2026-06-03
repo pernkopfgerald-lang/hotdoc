@@ -1699,14 +1699,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   <label className="caption">Datum</label>
                   <div className="input-row filled">
                     <input value={datumStr} readOnly />
-                    <div className="chev"><span style={{ fontSize: 12 }}>▾</span></div>
+                    <div className="chev"><span style={{ fontSize: 15 }}>▾</span></div>
                   </div>
                 </div>
                 <div className="field">
                   <label className="caption">Uhrzeit von</label>
                   <div className="input-row filled">
                     <input value={zeitStr} readOnly className="num" />
-                    <div className="chev"><span style={{ fontSize: 12 }}>▾</span></div>
+                    <div className="chev"><span style={{ fontSize: 15 }}>▾</span></div>
                   </div>
                 </div>
                 <div className="field">
@@ -1734,7 +1734,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                         <span
                           style={{
                             fontFamily: "var(--font-mono)",
-                            fontSize: 9,
+                            fontSize: 11.5,
                             fontWeight: 700,
                             letterSpacing: "0.08em",
                             textTransform: "uppercase",
@@ -1760,12 +1760,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                           }
                           style={{ width: 30, height: 30, minHeight: 30 }}
                         >
-                          <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                          <span style={{ fontSize: 17.5, lineHeight: 1 }}>×</span>
                         </button>
                       </>
                     ) : (
                       <div className="chev">
-                        <span style={{ fontSize: 12 }}>▾</span>
+                        <span style={{ fontSize: 15 }}>▾</span>
                       </div>
                     )}
                   </div>
@@ -1774,7 +1774,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   <div
                     style={{
                       marginTop: 4,
-                      fontSize: 11,
+                      fontSize: 14,
                       color: "var(--fg-3)",
                       lineHeight: 1.4,
                     }}
@@ -1833,7 +1833,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                       background: "var(--info-tint)",
                       color: "var(--info)",
                       fontWeight: 700,
-                      fontSize: 13,
+                      fontSize: 16.5,
                       cursor:
                         active.abgeschlossen || gpsAdrBusy || !geo.fix
                           ? "not-allowed"
@@ -1903,7 +1903,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                       }
                       style={{ width: 30, height: 30, minHeight: 30 }}
                     >
-                      <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                      <span style={{ fontSize: 17.5, lineHeight: 1 }}>×</span>
                     </button>
                   ) : (
                     // U-10: Klarsprache — "Route" wenn GraphHopper lieferte,
@@ -1916,7 +1916,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                           : "Luftlinie × 1,3 — Routing-Server noch nicht da"
                       }
                       style={{
-                        fontSize: 10,
+                        fontSize: 12.5,
                         fontFamily: "var(--font-mono)",
                         fontWeight: 700,
                         letterSpacing: "0.06em",
@@ -1935,7 +1935,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 <div
                   style={{
                     marginTop: 4,
-                    fontSize: 11,
+                    fontSize: 14,
                     color: "var(--fg-3)",
                     lineHeight: 1.4,
                   }}
@@ -1970,7 +1970,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   padding: "4px 2px",
                 }}
               >
-                <div style={{ fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
+                <div style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
                   Aktuell als{" "}
                   <strong style={{ color: "var(--fg)" }}>{fahrzeug.funkrufname}</strong>{" "}
                   ({fahrzeug.bezeichnung}) angemeldet.
@@ -1983,7 +1983,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     alignItems: "center",
                     gap: 6,
                     padding: "8px 12px",
-                    fontSize: 13,
+                    fontSize: 16.5,
                     fontWeight: 600,
                     background: "transparent",
                     color: "var(--fg)",
@@ -2050,7 +2050,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     }
                     style={{ accentColor: "var(--info)" }}
                   />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
+                  <span style={{ fontSize: 16.5, fontWeight: 600, color: "var(--fg)" }}>
                     {active.kdt.nachname} {active.kdt.vorname} ist Einsatzleiter
                   </span>
                 </label>
@@ -2188,7 +2188,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     background: "var(--info)",
                     color: "#fff",
                     fontWeight: 800,
-                    fontSize: 20,
+                    fontSize: 25,
                     cursor:
                       active.abgeschlossen || !chronikInput.trim()
                         ? "not-allowed"
@@ -2253,7 +2253,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 style={{
                   marginTop: 6,
                   fontFamily: "var(--font-mono)",
-                  fontSize: 10,
+                  fontSize: 12.5,
                   fontWeight: 600,
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
@@ -2505,7 +2505,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             background: "var(--ok)",
             color: "#fff",
             borderRadius: 10,
-            fontSize: 13,
+            fontSize: 16.5,
             fontWeight: 600,
             boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
             display: "inline-flex",
@@ -2580,7 +2580,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             </div>
             <h2
               id="new-einsatz-popup-title"
-              style={{ margin: "0 0 6px 0", fontSize: 22, lineHeight: 1.25 }}
+              style={{ margin: "0 0 6px 0", fontSize: 27.5, lineHeight: 1.25 }}
             >
               {newEinsatzPopup.einsatzart || "Einsatz"}
               {newEinsatzPopup.einsatzort ? (

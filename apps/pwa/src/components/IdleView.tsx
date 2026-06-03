@@ -112,7 +112,7 @@ export function IdleView({
         <div>
           <h1
             style={{
-              fontSize: 28,
+              fontSize: 35,
               fontWeight: 700,
               letterSpacing: "var(--tracking-display)",
               color: "var(--fg)",
@@ -125,7 +125,7 @@ export function IdleView({
           <div
             style={{
               fontFamily: "var(--font-mono)",
-              fontSize: 11,
+              fontSize: 14,
               fontWeight: 700,
               letterSpacing: "var(--tracking-caps)",
               textTransform: "uppercase",
@@ -139,7 +139,7 @@ export function IdleView({
         <p
           style={{
             margin: 0,
-            fontSize: 13,
+            fontSize: 16.5,
             color: "var(--fg-2)",
             maxWidth: 420,
             lineHeight: 1.5,
@@ -166,7 +166,7 @@ export function IdleView({
             WebkitBackdropFilter: "var(--blur-3)",
             border: "1px solid var(--glass-border)",
             color: "var(--fg-2)",
-            fontSize: 12.5,
+            fontSize: 15.5,
             fontFamily: "var(--font-mono)",
             letterSpacing: "var(--tracking-caps)",
             textTransform: "uppercase",
@@ -191,7 +191,7 @@ export function IdleView({
             border: "1px solid var(--red-border)",
             boxShadow: "var(--glow-red-soft)",
             color: "var(--red)",
-            fontSize: 12.5,
+            fontSize: 15.5,
             fontWeight: 600,
             justifyContent: "center",
             flexWrap: "wrap",
@@ -210,7 +210,7 @@ export function IdleView({
                 gap: 6,
                 display: "inline-flex",
                 alignItems: "center",
-                fontSize: 11,
+                fontSize: 14,
                 fontWeight: 700,
                 minHeight: 30,
                 letterSpacing: "0.06em",
@@ -237,7 +237,7 @@ export function IdleView({
             background: "var(--ok-tint)",
             border: "1px solid var(--ok-border)",
             color: "var(--ok)",
-            fontSize: 11.5,
+            fontSize: 14.5,
             fontWeight: 600,
             fontFamily: "var(--font-mono)",
             letterSpacing: "var(--tracking-caps)",
@@ -265,7 +265,7 @@ export function IdleView({
             background: "var(--amber-soft)",
             border: "1px solid var(--amber-border)",
             color: "var(--amber)",
-            fontSize: 11.5,
+            fontSize: 14.5,
             fontWeight: 600,
             fontFamily: "var(--font-mono)",
             letterSpacing: "var(--tracking-caps)",
@@ -389,7 +389,7 @@ function QuickActionCard({
       </span>
       <span
         style={{
-          fontSize: 21,
+          fontSize: 26.5,
           fontWeight: 700,
           letterSpacing: "var(--tracking-tight)",
         }}
@@ -399,7 +399,7 @@ function QuickActionCard({
       <span
         style={{
           fontFamily: "var(--font-mono)",
-          fontSize: 12,
+          fontSize: 15,
           fontWeight: 600,
           letterSpacing: "var(--tracking-caps)",
           textTransform: "uppercase",

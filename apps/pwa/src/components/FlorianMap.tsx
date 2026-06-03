@@ -486,7 +486,7 @@ export function FlorianMap({
             padding: "4px 8px",
           }}
         >
-          <strong style={{ fontSize: 15 }}>Karte · Live-Positionen</strong>
+          <strong style={{ fontSize: 19 }}>Karte · Live-Positionen</strong>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch Karte/Foto/Hybrid */}
             <TileLayerSwitch choice={tileChoice} onChange={handleTileChange} />
@@ -601,7 +601,7 @@ export function FlorianMap({
                 gap: 8,
               }}
             >
-              <strong style={{ fontSize: 14 }}>{selectedFzg.funkrufname}</strong>
+              <strong style={{ fontSize: 17.5 }}>{selectedFzg.funkrufname}</strong>
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
@@ -613,7 +613,7 @@ export function FlorianMap({
                   cursor: "pointer",
                   color: "var(--fg-3)",
                   fontFamily: "var(--font-mono)",
-                  fontSize: 14,
+                  fontSize: 17.5,
                   fontWeight: 700,
                   minHeight: 0,
                   padding: "2px 6px",
@@ -625,7 +625,7 @@ export function FlorianMap({
             </div>
             <div
               style={{
-                fontSize: 11,
+                fontSize: 14,
                 color: "var(--fg-3)",
                 fontFamily: "var(--font-mono)",
                 letterSpacing: "0.06em",
@@ -674,7 +674,7 @@ export function FlorianMap({
                   display: "flex",
                   flexDirection: "column",
                   gap: 5,
-                  fontSize: 12,
+                  fontSize: 15,
                 }}
               >
                 {selectedMannschaft.fahrer ? (
@@ -682,7 +682,7 @@ export function FlorianMap({
                     <span
                       style={{
                         fontFamily: "var(--font-mono)",
-                        fontSize: 10,
+                        fontSize: 12.5,
                         color: "var(--fg-3)",
                         textTransform: "uppercase",
                         letterSpacing: "0.06em",
@@ -698,7 +698,7 @@ export function FlorianMap({
                     <span
                       style={{
                         fontFamily: "var(--font-mono)",
-                        fontSize: 10,
+                        fontSize: 12.5,
                         color: "var(--fg-3)",
                         textTransform: "uppercase",
                         letterSpacing: "0.06em",
@@ -714,7 +714,7 @@ export function FlorianMap({
                     <span
                       style={{
                         fontFamily: "var(--font-mono)",
-                        fontSize: 10,
+                        fontSize: 12.5,
                         color: "var(--fg-3)",
                         textTransform: "uppercase",
                         letterSpacing: "0.06em",
@@ -793,7 +793,7 @@ function TileLayerSwitch({
             style={{
               padding: "3px 8px",
               fontFamily: "var(--font-mono)",
-              fontSize: 10,
+              fontSize: 12.5,
               fontWeight: 700,
               letterSpacing: "0.06em",
               textTransform: "uppercase",
@@ -883,7 +883,7 @@ function Legend() {
         background: "color-mix(in srgb, var(--surface) 92%, transparent)",
         border: "1px solid var(--border)",
         fontFamily: "var(--font-mono)",
-        fontSize: 10,
+        fontSize: 12.5,
         fontWeight: 600,
         letterSpacing: "0.08em",
         textTransform: "uppercase",

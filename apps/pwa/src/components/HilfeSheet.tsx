@@ -166,13 +166,13 @@ export function HilfeSheet({ open, onClose }: Props) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3
               id="hilfe-title"
-              style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--fg)" }}
+              style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--fg)" }}
             >
               Hilfe-Center
             </h3>
             <div
               style={{
-                fontSize: 11,
+                fontSize: 14,
                 fontFamily: "var(--font-mono)",
                 fontWeight: 600,
                 letterSpacing: "0.06em",
@@ -235,7 +235,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               style={{
                 width: "100%",
                 padding: "10px 38px 10px 38px",
-                fontSize: 14,
+                fontSize: 17.5,
                 background: "var(--surface-2)",
                 border: "1px solid var(--border)",
                 borderRadius: 10,
@@ -269,7 +269,7 @@ export function HilfeSheet({ open, onClose }: Props) {
           {query && (
             <div
               style={{
-                fontSize: 11,
+                fontSize: 14,
                 fontFamily: "var(--font-mono)",
                 fontWeight: 600,
                 letterSpacing: "0.06em",
@@ -342,7 +342,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontSize: 14,
+                            fontSize: 17.5,
                             fontWeight: 700,
                             color: "var(--fg)",
                           }}
@@ -351,7 +351,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                         </div>
                         <div
                           style={{
-                            fontSize: 11,
+                            fontSize: 14,
                             fontFamily: "var(--font-mono)",
                             fontWeight: 600,
                             letterSpacing: "0.06em",
@@ -397,7 +397,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               background: "var(--info-tint)",
               border: "1px solid var(--blue-border)",
               borderRadius: 10,
-              fontSize: 12.5,
+              fontSize: 15.5,
               color: "var(--info)",
               lineHeight: 1.55,
               display: "flex",
@@ -434,10 +434,10 @@ function EmptyState({ query }: { query: string }) {
       }}
     >
       <Search size={32} style={{ color: "var(--fg-3)", marginBottom: 6 }} />
-      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)" }}>
+      <div style={{ fontSize: 17.5, fontWeight: 700, color: "var(--fg)" }}>
         Nichts gefunden zu '{query}'
       </div>
-      <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
+      <div style={{ fontSize: 15.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
         Versuche kürzere Begriffe oder Synonyme.
         Tipp: 'Mannschaft', 'Atemschutz', 'PDF', 'Handy'.
       </div>
@@ -458,7 +458,7 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
     >
       <div
         style={{
-          fontSize: 14,
+          fontSize: 17.5,
           fontWeight: 700,
           color: "var(--fg)",
           marginBottom: 4,
@@ -469,7 +469,7 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
       </div>
       <div
         style={{
-          fontSize: 13,
+          fontSize: 16.5,
           color: "var(--fg-2)",
           lineHeight: 1.6,
           whiteSpace: "pre-wrap",
@@ -490,7 +490,7 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
             <span
               key={tag}
               style={{
-                fontSize: 10.5,
+                fontSize: 13,
                 fontFamily: "var(--font-mono)",
                 fontWeight: 600,
                 letterSpacing: "0.04em",

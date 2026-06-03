@@ -127,7 +127,7 @@ export function UpdateBanner() {
         flexDirection: "column",
         gap: 8,
         fontFamily: "var(--font-sans)",
-        fontSize: 13,
+        fontSize: 16.5,
         fontWeight: 600,
         letterSpacing: "var(--tracking-ui)",
         animation: "glass-reveal 220ms var(--ease-decel) both",
@@ -139,7 +139,7 @@ export function UpdateBanner() {
           <div>HotDoc {info.latest} verfügbar</div>
           <div
             style={{
-              fontSize: 10,
+              fontSize: 12.5,
               fontFamily: "var(--font-mono)",
               opacity: 0.85,
               letterSpacing: "0.06em",
@@ -163,7 +163,7 @@ export function UpdateBanner() {
             borderRadius: 8,
             padding: "6px 10px",
             fontWeight: 700,
-            fontSize: 12,
+            fontSize: 15,
             cursor: status === "running" ? "wait" : "pointer",
             minHeight: 0,
             minWidth: 64,
@@ -242,7 +242,7 @@ export function UpdateBanner() {
       {statusMessage && (
         <div
           style={{
-            fontSize: 11.5,
+            fontSize: 14.5,
             fontWeight: 500,
             background: "rgba(0,0,0,0.18)",
             padding: "6px 8px",
@@ -262,7 +262,7 @@ export function UpdateBanner() {
             borderRadius: 8,
             background: "rgba(0,0,0,0.18)",
             color: "rgba(255,255,255,0.95)",
-            fontSize: 11.5,
+            fontSize: 14.5,
             fontWeight: 500,
             lineHeight: 1.5,
             whiteSpace: "pre-wrap",

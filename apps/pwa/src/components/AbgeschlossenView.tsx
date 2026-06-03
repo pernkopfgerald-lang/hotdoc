@@ -225,7 +225,7 @@ export function AbgeschlossenView({
           <div
             style={{
               fontFamily: "var(--font-mono)",
-              fontSize: 10,
+              fontSize: 12.5,
               fontWeight: 700,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -349,13 +349,13 @@ function QuickActionCard({
       >
         <Icon size={18} strokeWidth={2.2} />
       </span>
-      <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.011em" }}>
+      <span style={{ fontSize: 17.5, fontWeight: 700, letterSpacing: "-0.011em" }}>
         {label}
       </span>
       <span
         style={{
           fontFamily: "var(--font-mono)",
-          fontSize: 10,
+          fontSize: 12.5,
           fontWeight: 600,
           letterSpacing: "0.1em",
           textTransform: "uppercase",

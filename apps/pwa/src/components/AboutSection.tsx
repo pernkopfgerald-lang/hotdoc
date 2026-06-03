@@ -52,7 +52,7 @@ export function AboutSection() {
                 "linear-gradient(135deg, var(--red), var(--red-strong))",
               color: "#fff",
               fontWeight: 700,
-              fontSize: 22,
+              fontSize: 27.5,
               letterSpacing: "-0.02em",
               boxShadow: "var(--glow-red-soft)",
             }}
@@ -63,7 +63,7 @@ export function AboutSection() {
             <h2
               style={{
                 margin: 0,
-                fontSize: 22,
+                fontSize: 27.5,
                 fontWeight: 700,
                 letterSpacing: "-0.02em",
               }}
@@ -72,7 +72,7 @@ export function AboutSection() {
             </h2>
             <div
               style={{
-                fontSize: 12.5,
+                fontSize: 15.5,
                 color: "var(--fg-2)",
                 marginTop: 2,
               }}
@@ -87,7 +87,7 @@ export function AboutSection() {
             gap: 18,
             marginTop: 10,
             fontFamily: "var(--font-mono)",
-            fontSize: 11,
+            fontSize: 14,
             fontWeight: 600,
             letterSpacing: "0.06em",
             color: "var(--fg-3)",
@@ -108,7 +108,7 @@ export function AboutSection() {
         </div>
         <div
           style={{
-            fontSize: 17,
+            fontSize: 21.5,
             fontWeight: 700,
             letterSpacing: "-0.01em",
           }}
@@ -117,7 +117,7 @@ export function AboutSection() {
         </div>
         <div
           style={{
-            fontSize: 13,
+            fontSize: 16.5,
             color: "var(--red)",
             fontWeight: 600,
             marginTop: 2,
@@ -131,7 +131,7 @@ export function AboutSection() {
             display: "flex",
             flexDirection: "column",
             gap: 8,
-            fontSize: 13,
+            fontSize: 16.5,
             color: "var(--fg-2)",
           }}
         >
@@ -190,7 +190,7 @@ export function AboutSection() {
         </div>
         <div
           style={{
-            fontSize: 13,
+            fontSize: 16.5,
             color: "var(--fg-2)",
             lineHeight: 1.65,
           }}
@@ -277,7 +277,7 @@ export function AboutSection() {
                 <span
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: 13,
+                    fontSize: 16.5,
                     fontWeight: 700,
                     color: "var(--red)",
                     letterSpacing: "0.04em",
@@ -288,7 +288,7 @@ export function AboutSection() {
                 <span
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: 11,
+                    fontSize: 14,
                     color: "var(--fg-3)",
                     letterSpacing: "0.04em",
                   }}
@@ -297,7 +297,7 @@ export function AboutSection() {
                 </span>
                 <span
                   style={{
-                    fontSize: 12.5,
+                    fontSize: 15.5,
                     fontWeight: 700,
                     color: "var(--fg)",
                     letterSpacing: "0.02em",
@@ -311,7 +311,7 @@ export function AboutSection() {
                 style={{
                   margin: 0,
                   paddingLeft: 18,
-                  fontSize: 13,
+                  fontSize: 16.5,
                   color: "var(--fg-2)",
                   lineHeight: 1.6,
                 }}
@@ -344,7 +344,7 @@ function Section({
           fontWeight: 700,
           color: "var(--fg)",
           marginBottom: 4,
-          fontSize: 13.5,
+          fontSize: 17,
         }}
       >
         {title}

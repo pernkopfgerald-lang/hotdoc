@@ -88,14 +88,14 @@ export function HandoffBanner({ onReleased }: Props) {
           background: dringend ? "var(--red-tint)" : "var(--warn-tint)",
           color: dringend ? "var(--red)" : "var(--warn)",
           border: `1px dashed ${dringend ? "var(--red-border)" : "var(--amber-border)"}`,
-          fontSize: 12,
+          fontSize: 15,
         }}
       >
         <Smartphone size={14} />
         <span
           style={{
             fontFamily: "var(--font-mono)",
-            fontSize: 10,
+            fontSize: 12.5,
             fontWeight: 700,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -118,7 +118,7 @@ export function HandoffBanner({ onReleased }: Props) {
             color: "#fff",
             padding: "4px 10px",
             borderRadius: 8,
-            fontSize: 11,
+            fontSize: 14,
             fontWeight: 700,
             letterSpacing: "0.06em",
             cursor: "pointer",
@@ -140,7 +140,7 @@ export function HandoffBanner({ onReleased }: Props) {
             color: dringend ? "var(--red)" : "var(--warn)",
             padding: "4px 10px",
             borderRadius: 8,
-            fontSize: 11,
+            fontSize: 14,
             fontWeight: 700,
             letterSpacing: "0.06em",
             cursor: "pointer",
@@ -211,14 +211,14 @@ export function HandoffBanner({ onReleased }: Props) {
                 <AlertTriangle size={20} />
               </span>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
                   Sitzung wirklich freigeben?
                 </h3>
                 <p
                   style={{
                     margin: "2px 0 0",
                     fontFamily: "var(--font-mono)",
-                    fontSize: 10,
+                    fontSize: 12.5,
                     fontWeight: 600,
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
@@ -229,7 +229,7 @@ export function HandoffBanner({ onReleased }: Props) {
                 </p>
               </div>
             </div>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: "var(--fg-2)" }}>
+            <p style={{ margin: 0, fontSize: 16.5, lineHeight: 1.55, color: "var(--fg-2)" }}>
               Stelle vor dem Freigeben sicher, dass du <strong>alle Änderungen gespeichert</strong>{" "}
               hast. Nach der Freigabe muss das Tablet sich mit seiner PIN wieder anmelden um
               die Sitzung fortzusetzen.
@@ -245,7 +245,7 @@ export function HandoffBanner({ onReleased }: Props) {
                   border: "1px solid var(--border-strong)",
                   background: "var(--surface-2)",
                   color: "var(--fg)",
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
@@ -263,7 +263,7 @@ export function HandoffBanner({ onReleased }: Props) {
                   background:
                     "linear-gradient(180deg, var(--warn) 0%, color-mix(in srgb, var(--warn) 70%, #000) 100%)",
                   color: "#fff",
-                  fontSize: 13,
+                  fontSize: 16.5,
                   fontWeight: 700,
                   letterSpacing: "0.04em",
                   cursor: busy ? "wait" : "pointer",

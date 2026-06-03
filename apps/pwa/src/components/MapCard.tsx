@@ -565,7 +565,7 @@ export function MapCard({
             style={{
               padding: "4px 10px 6px",
               fontFamily: "var(--font-mono)",
-              fontSize: 10,
+              fontSize: 12.5,
               fontWeight: 700,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -584,7 +584,7 @@ export function MapCard({
                 display: "flex",
                 gap: 10,
                 padding: "8px 10px",
-                fontSize: 13,
+                fontSize: 16.5,
                 lineHeight: 1.35,
                 color: "var(--fg)",
                 borderBottom: idx < route.instructions.length - 1 ? "1px solid var(--border)" : 0,
@@ -595,7 +595,7 @@ export function MapCard({
                   flexShrink: 0,
                   width: 22,
                   textAlign: "center",
-                  fontSize: 14,
+                  fontSize: 17.5,
                 }}
                 aria-hidden
               >
@@ -606,7 +606,7 @@ export function MapCard({
                 style={{
                   flexShrink: 0,
                   fontFamily: "var(--font-mono)",
-                  fontSize: 11,
+                  fontSize: 14,
                   fontWeight: 700,
                   color: "var(--fg-3)",
                 }}
@@ -723,7 +723,7 @@ function MapCardTileLayerSwitch({
               display: "inline-flex",
               alignItems: "center",
               fontFamily: "var(--font-mono)",
-              fontSize: 11,
+              fontSize: 14,
               fontWeight: 700,
               letterSpacing: "0.06em",
               textTransform: "uppercase",
