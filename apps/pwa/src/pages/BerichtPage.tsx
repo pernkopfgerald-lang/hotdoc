@@ -36,7 +36,7 @@ import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 const VorschauModal = lazy(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
-import { GEAR_BY_FAHRZEUG } from "../data/gear";
+import { useGeraete } from "../lib/geraete-config";
 import { apiCall, ApiError } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
 import { enqueueRequest } from "../lib/request-outbox";
@@ -170,7 +170,10 @@ function mergeDraftIntoInstance(
  */
 export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE[fahrzeugId];
-  const gearList = GEAR_BY_FAHRZEUG[fahrzeugId];
+  // BUG-Fix: Geräte-Liste aus der LIVE-Backoffice-Konfig (config:geraete)
+  // statt der hartkodierten Default-Liste — sonst zeigen Fahrzeugbericht und
+  // Backoffice unterschiedliche Geräte. Fallback auf Defaults bleibt offline.
+  const gearList = useGeraete(fahrzeugId);
 
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState<PickerTarget | null>(null);

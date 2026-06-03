@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.18",
+    date: "2026-06-03",
+    title: "Geräte-Liste aus dem Backoffice",
+    bullets: [
+      "Die Geräte-Auswahl im Fahrzeugbericht zeigt jetzt genau die im Backoffice gepflegte Liste 'Geräte & Mittel pro Fahrzeug' — vorher war im Tablet eine fest verdrahtete Standardliste hinterlegt, die nicht zur Backoffice-Pflege passte. Änderungen im Backoffice wirken jetzt automatisch (ohne Netz: letzte bekannte Liste).",
+    ],
+  },
+  {
     version: "0.1.17",
     date: "2026-06-03",
     title: "Reaktivierung & Übungs-Titel",
