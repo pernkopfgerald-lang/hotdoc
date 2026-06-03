@@ -4,7 +4,10 @@
  * Dispatcher pro einsatzTyp:
  *   - alarm/manuell → Papier-Original-Layout (renderHauptberichtHtml)
  *   - lotsendienst  → Lotsendienst-Layout mit Verrechnungs-Block
- *   - uebung        → Übungs-Layout mit Teilnehmer-Tabelle + AS-Stunden
+ *   - uebung        → derselbe Renderer wie der Einsatzbericht
+ *                     (renderHauptberichtHtml mit istUebung=true): GRUEN als
+ *                     "ÜBUNG", je-Fahrzeug-Anhangblaetter, Einsatz-only-
+ *                     Bloecke ausgeblendet. Siehe buildUebungHtml.
  */
 
 import { Router, type RequestHandler } from "express";
@@ -20,7 +23,6 @@ import {
   type BerichtDaten,
 } from "../services/pdf/template.js";
 import { normalizeChronikEntry } from "../services/pdf/chronik-adapter.js";
-import { renderUebungHtml, type UebungDaten, type UebungsTyp } from "../services/pdf/uebung.js";
 import {
   renderFahrzeugberichtHtml,
   fahrzeugAbk,
@@ -247,14 +249,21 @@ async function buildLotsendienstHtml(
 }
 
 /**
- * Baut den vollstaendigen Hauptbericht-HTML inklusive Anhang-Seiten
- * (Chronik + Fahrzeugberichte). Alle Einzelfelder werden aus dem Einsatz-Doc
- * gezogen, Mannschafts-Aggregate aus den Fahrzeugberichten berechnet.
+ * Baut das vollstaendige `BerichtDaten`-Objekt inklusive Anhang-Daten
+ * (Chronik + Fahrzeugberichte + Fotos). Alle Einzelfelder werden aus dem
+ * Einsatz-Doc gezogen, Mannschafts-Aggregate aus den Fahrzeugberichten
+ * berechnet.
+ *
+ * Wird sowohl vom Hauptbericht (`buildHauptberichtHtml`) als auch vom
+ * Übungsbericht (`buildUebungHtml`) genutzt — der Übungsbericht laeuft
+ * dadurch durch denselben Renderer und bekommt die je-Fahrzeug-Anhang-
+ * blaetter automatisch. Die Übungs-spezifischen Overlays + das Entfernen
+ * der Einsatz-only-Felder passieren in `buildUebungHtml`.
  */
-async function buildHauptberichtHtml(
+async function buildBerichtDaten(
   id: string,
   doc: Record<string, unknown>,
-): Promise<string> {
+): Promise<BerichtDaten> {
   const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
   const reaktivierungen = (
     (doc.reaktivierungen as Array<{ am: string; grund: string }> | undefined) ?? []
@@ -504,99 +513,69 @@ async function buildHauptberichtHtml(
       : {}),
   };
 
-  return renderHauptberichtHtml(data);
+  return data;
 }
 
+/**
+ * Baut den vollstaendigen Hauptbericht-HTML (alarm/manuell) inklusive
+ * Anhang-Seiten. Duenner Wrapper um `buildBerichtDaten` + Renderer.
+ */
+async function buildHauptberichtHtml(
+  id: string,
+  doc: Record<string, unknown>,
+): Promise<string> {
+  return renderHauptberichtHtml(await buildBerichtDaten(id, doc));
+}
+
+/**
+ * Übungsbericht (2026-06-03): laeuft durch DENSELBEN Renderer wie der
+ * Einsatzbericht (`renderHauptberichtHtml`), damit die Übung den vollen
+ * Charakter + die je-Fahrzeug-Anhangblaetter bekommt. Wir bauen zuerst die
+ * volle `BerichtDaten` (Mannschaft je Fahrzeug, Geraete, Chronik, Fahrzeug-
+ * berichte, Fotos) und overlayen dann die Übungs-spezifischen Felder. Die
+ * Einsatz-only-Bloecke (syBOS-Statistik, Verrechnung, Pflichtbereich/
+ * Einsatzzone/ueberoertliche Hilfe, Einsatzauftrag-via, Anrufer) werden vom
+ * data-Objekt entfernt — der Renderer blendet sie zusaetzlich per
+ * `istUebung`-Guard aus, doppelt haelt besser.
+ */
 async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promise<string> {
-  const fzgBerichte = await loadFahrzeugberichte(id);
+  const data = await buildBerichtDaten(id, doc);
 
-  // Teilnehmer = alle Personen aus allen Fahrzeugberichten (Übung kann auch
-  // ohne Fahrzeug erfasst werden — dann leere Liste).
-  const teilnehmerMap = new Map<
-    number,
-    {
-      id: number;
-      atemschutzAktiv: boolean;
-      atemschutzDauerMin: number | null;
-      fahrzeugAbk: string | undefined;
-    }
-  >();
+  data.istUebung = true;
+  data.einsatzQuelle = "Übung";
 
-  for (const fz of fzgBerichte) {
-    const fid = (fz.fahrzeugId as string) ?? "?";
-    const abk = FAHRZEUG_ABK[fid] ?? fid.toUpperCase();
-    const m = (fz.mannschaft as Array<{
-      personId: number;
-      atemschutzAktiv?: boolean;
-      atemschutzDauerMin?: number;
-    }> | undefined) ?? [];
+  // Großer Titel/Thema: uebungThema (Fallback: einsatzart). Wird im Kopf als
+  // Übungsthema-Zeile angezeigt.
+  const thema = String(doc.uebungThema ?? doc.einsatzart ?? "Übung");
+  data.uebungThema = thema;
 
-    for (const slot of m) {
-      if (!slot.personId) continue;
-      const existing = teilnehmerMap.get(slot.personId);
-      if (!existing) {
-        teilnehmerMap.set(slot.personId, {
-          id: slot.personId,
-          atemschutzAktiv: !!slot.atemschutzAktiv,
-          atemschutzDauerMin: typeof slot.atemschutzDauerMin === "number" ? slot.atemschutzDauerMin : null,
-          fahrzeugAbk: abk,
-        });
-      }
-    }
-    const kdt = fz.fahrzeugKdtPersonId as number | undefined;
-    const fahrer = fz.fahrerPersonId as number | undefined;
-    if (kdt && !teilnehmerMap.has(kdt)) {
-      teilnehmerMap.set(kdt, { id: kdt, atemschutzAktiv: false, atemschutzDauerMin: null, fahrzeugAbk: abk });
-    }
-    if (fahrer && !teilnehmerMap.has(fahrer)) {
-      teilnehmerMap.set(fahrer, { id: fahrer, atemschutzAktiv: false, atemschutzDauerMin: null, fahrzeugAbk: abk });
-    }
+  // Übungsleiter: explizit am Doc ODER der bereits ermittelte einsatzleiter
+  // (Fahrzeug-Kdt mit kdtIstEinsatzleiter — bei Übungen wird der Übungsleiter
+  // automatisch zum Fahrzeug-Kdt, siehe Task #155).
+  if (doc.uebungsleiter) {
+    data.uebungsleiter = String(doc.uebungsleiter);
+  } else if (data.einsatzleiter) {
+    data.uebungsleiter = data.einsatzleiter;
   }
 
-  const teilnehmer = await Promise.all(
-    Array.from(teilnehmerMap.values()).map(async (t) => {
-      const person = await loadPerson(t.id);
-      return {
-        name: person
-          ? `${person.nachname ?? ""} ${person.vorname ?? ""}`.trim() || `Pers-${t.id}`
-          : `Pers-${t.id}`,
-        ...(person?.dienstgrad ? { rang: person.dienstgrad } : {}),
-        atemschutzAktiv: t.atemschutzAktiv,
-        ...(t.atemschutzDauerMin !== null ? { atemschutzDauerMin: t.atemschutzDauerMin } : {}),
-        ...(t.fahrzeugAbk ? { fahrzeugAbk: t.fahrzeugAbk } : {}),
-      };
-    }),
-  );
+  if (doc.uebungsTyp) {
+    data.uebungsTyp = String(doc.uebungsTyp);
+  }
 
-  // Nach Nachname sortieren damit Listen reproduzierbar sind
-  teilnehmer.sort((a, b) => a.name.localeCompare(b.name, "de"));
+  // Einsatz-only-Felder entfernen — fuer die Übung irrelevant und vom User
+  // bewusst ausgeklammert. Der Renderer guarded zwar zusaetzlich per
+  // istUebung, aber so steht im data-Objekt auch nichts Irrefuehrendes mehr.
+  delete data.technischeStatistik;
+  delete data.brandStatistik;
+  delete data.verrechenbar;
+  delete data.pflichtbereich;
+  delete data.einsatzzoneEzell;
+  delete data.ueberOertlicheHilfe;
+  delete data.einsatzauftragVia;
+  delete data.anrufer;
+  delete data.anruferTel;
 
-  const notizen = fzgBerichte
-    .map((fz) => String(fz.taetigkeitsbericht ?? "").trim())
-    .filter((t) => t.length > 0)
-    .join("\n\n");
-
-  const data: UebungDaten = {
-    einsatzId: id,
-    berichtsNummer: deriveBerichtNrFromId(
-      id,
-      doc.einsatzart as string | undefined,
-      doc.alarmierungZeit as string | undefined,
-    ),
-    einsatzQuelle: "Übung",
-    uebungThema: String(doc.uebungThema ?? doc.einsatzart ?? "Übung"),
-    ...(doc.uebungsTyp ? { uebungsTyp: doc.uebungsTyp as UebungsTyp } : {}),
-    ...(doc.uebungsleiter ? { uebungsleiter: String(doc.uebungsleiter) } : {}),
-    einsatzort: String(doc.einsatzort ?? "—"),
-    alarmierungZeit: String(doc.alarmierungZeit ?? ""),
-    ...(doc.einsatzende ? { einsatzende: String(doc.einsatzende) } : {}),
-    teilnehmer,
-    ...(doc.meldungEinsatzleitung
-      ? { meldungEinsatzleitung: String(doc.meldungEinsatzleitung) }
-      : {}),
-    ...(notizen ? { notizen } : {}),
-  };
-  return renderUebungHtml(data);
+  return renderHauptberichtHtml(data);
 }
 
 // ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────

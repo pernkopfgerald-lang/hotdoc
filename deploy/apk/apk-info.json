@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.18",
-  "apkUrl": "/hotdoc-v0.1.18-release.apk",
-  "releaseNotes": "v0.1.18 — Geräte-Liste aus dem Backoffice\n\n• Die Geräte-Auswahl im Fahrzeugbericht zeigt jetzt genau die im Backoffice gepflegte Liste 'Geräte & Mittel pro Fahrzeug' — vorher war im Tablet eine fest verdrahtete Standardliste hinterlegt. Änderungen im Backoffice wirken jetzt automatisch.\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.17.",
-  "publishedAt": "2026-06-03T18:00:00+00:00",
+  "currentVersion": "0.1.19",
+  "apkUrl": "/hotdoc-v0.1.19-release.apk",
+  "releaseNotes": "v0.1.19 — Übungsbericht im Einsatzbericht-Format\n\n• Der Übungsbericht hat jetzt den vollen Einsatzbericht-Charakter: pro Fahrzeug wer welche Funktion hatte (Kommandant, Kraftfahrer, Mannschaft) inkl. Atemschutz, Geräte pro Fahrzeug, Übungschronik und je-Fahrzeug-Anhangblätter — grün als ÜBUNG gekennzeichnet, mit Thema und Übungsleiter.\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.18.",
+  "publishedAt": "2026-06-03T19:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

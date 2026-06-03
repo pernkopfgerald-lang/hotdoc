@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.19",
+    date: "2026-06-03",
+    title: "Übungsbericht im Einsatzbericht-Format",
+    bullets: [
+      "Der Übungsbericht hat jetzt den vollen Einsatzbericht-Charakter: pro Fahrzeug klar aufgelistet wer welche Funktion hatte (Kommandant, Kraftfahrer, Mannschaft) inkl. Atemschutz, dazu Geräte pro Fahrzeug, Übungschronik und je-Fahrzeug-Anhangblätter — grün als ÜBUNG gekennzeichnet, mit Thema und Übungsleiter im Kopf.",
+    ],
+  },
+  {
     version: "0.1.18",
     date: "2026-06-03",
     title: "Geräte-Liste aus dem Backoffice",

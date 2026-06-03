@@ -45,6 +45,21 @@ export interface BerichtDaten {
   alarmierungAuthor?: string;
   einsatzTyp: "alarm" | "manuell";
   status: string;
+  /**
+   * Übungs-Modus (2026-06-03): wenn true, wird derselbe Renderer wie fuer den
+   * Einsatzbericht verwendet, aber GRUEN als "ÜBUNG" gekennzeichnet, der Titel
+   * lautet "Übungsbericht" und die Einsatz-spezifischen Bloecke (syBOS-Statistik,
+   * Verrechnung, Pflichtbereich/Einsatzzone/ueberoertliche Hilfe, Einsatzauftrag-
+   * via, Anrufer) werden ausgeblendet. Die generischen Bloecke (Mannschaft,
+   * Geraete, Chronik, Fahrzeug-Anhangblaetter, Fotos) bleiben.
+   */
+  istUebung?: boolean;
+  /** Übungs-Thema (nur Übung). Wird im Kopf neben dem Titel angezeigt. */
+  uebungThema?: string;
+  /** Übungsleiter-Name (nur Übung). Fallback auf `einsatzleiter`. */
+  uebungsleiter?: string;
+  /** Übungs-Typ/-Kategorie (nur Übung), z. B. "Atemschutz". */
+  uebungsTyp?: string;
   einsatzende?: string;
   /**
    * Einsatzleiter-Name (v0.1.15). Quelle: Fahrzeugbericht mit
@@ -163,6 +178,7 @@ export interface BerichtDaten {
 const ALARMQUELLEN = ["WAS", "Funk", "Telefon", "Bote", "Behoerde"] as const;
 
 export function renderHauptberichtHtml(d: BerichtDaten): string {
+  const isUebung = d.istUebung === true;
   const isManuell = d.einsatzTyp === "manuell";
   const datum = formatDate(d.alarmierungZeit);
   const datumZeit = `${datum} · ${formatTime(d.alarmierungZeit)}`;
@@ -171,7 +187,11 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   // Brand-konsistente Farbe fuer ausgefuellte Werte (dunkelblau) — matcht
   // die Tablet-UX wo eingegebene Felder ebenfalls dunkelblau dargestellt
   // werden. Trennt User-Daten visuell vom Papier-Raster.
-  const FILLED = "#1e3a8a";
+  // Übung (2026-06-03): bei einer Übung wird die Akzentfarbe GRUEN, damit der
+  // Empfaenger sofort sieht, dass das KEIN Brand-/Einsatzbericht ist.
+  const FILLED = isUebung ? "#15803d" : "#1e3a8a";
+  const titel = isUebung ? "Übungsbericht" : "Einsatzbericht";
+  const quelleLabel = isUebung ? "ÜBUNG" : isManuell ? "MANUELL" : "BlaulichtSMS";
 
   // Hilfsfunktion: Wert dunkelblau rendern wenn vorhanden, sonst Leerzeile
   const v = (val: string | undefined | null, fallback = "—"): string =>
@@ -198,7 +218,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>Einsatzbericht ${escape(d.einsatzId)}</title>
+  <title>${titel} ${escape(d.einsatzId)}</title>
   <style>
     @page { size: A4 portrait; margin: 12mm; }
     * { box-sizing: border-box; }
@@ -292,16 +312,38 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   <div class="hd">
     <div class="hd-l">${renderBrandLogo()}</div>
     <div class="hd-r">
-      <div class="hd-title">Einsatzbericht</div>
+      ${isUebung ? `<div style="display:inline-block;background:${FILLED};color:#fff;font-size:10pt;font-weight:800;letter-spacing:0.14em;padding:2pt 8pt;border-radius:2pt;margin-bottom:2pt">ÜBUNG</div>` : ""}
+      <div class="hd-title" style="${isUebung ? `color:${FILLED}` : ""}">${titel}</div>
       <div style="font-family:'Courier New',monospace;font-size:9pt;font-weight:600;margin-top:2pt;">
-        ${escape(d.einsatzId)} · ${isManuell ? "MANUELL" : "BlaulichtSMS"}
+        ${escape(d.einsatzId)} · ${quelleLabel}
       </div>
     </div>
   </div>
 
+  ${
+    isUebung
+      ? `<table class="bx">
+    <tr>
+      <td class="lbl" style="width:64%">Übungsthema</td>
+      <td class="lbl">Übungsleiter</td>
+    </tr>
+    <tr>
+      <td class="val big">${v(d.uebungThema ?? d.einsatzart)}</td>
+      <td class="val big">${v(d.uebungsleiter ?? d.einsatzleiter)}</td>
+    </tr>
+    ${d.uebungsTyp ? `<tr>
+      <td class="lbl" colspan="2">Übungstyp</td>
+    </tr>
+    <tr>
+      <td class="val" colspan="2">${v(d.uebungsTyp)}</td>
+    </tr>` : ""}
+  </table>`
+      : ""
+  }
+
   <table class="bx">
     <tr>
-      <td class="lbl" style="width:64%">Einsatzort</td>
+      <td class="lbl" style="width:64%">${isUebung ? "Übungsort" : "Einsatzort"}</td>
       <td class="lbl">Datum und Uhrzeit</td>
     </tr>
     <tr>
@@ -310,7 +352,10 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </tr>
   </table>
 
-  <table class="bx cb-row">
+  ${
+    isUebung
+      ? ""
+      : `<table class="bx cb-row">
     <tr>
       <td style="width:25%">Pflichtbereich
         <span class="cb">${triBox(d.pflichtbereich === true, "JA")}</span>
@@ -342,10 +387,11 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${d.anruferTel ? `· Tel: ${v(d.anruferTel)}` : ""}
       </td>
     </tr>
-  </table>
+  </table>`
+  }
 
   <table class="bx cb-row">
-    <tr><td class="lbl" colspan="7">Eingesetzte Fahrzeuge</td></tr>
+    <tr><td class="lbl" colspan="7">${isUebung ? "Beteiligte Fahrzeuge" : "Eingesetzte Fahrzeuge"}</td></tr>
     <tr>
       ${FAHRZEUGE_REIHE.map(
         (f) => {
@@ -356,7 +402,10 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </tr>
   </table>
 
-  <table class="bx">
+  ${
+    isUebung
+      ? ""
+      : `<table class="bx">
     <tr>
       <td class="lbl" style="width:30%">Einsatzart</td>
       <td class="val big">${v(d.einsatzart ?? d.einsatzartFreitext)}</td>
@@ -365,9 +414,26 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td class="lbl">Andere Einsätze</td>
       <td class="val">${v(d.einsatzartFreitext)}</td>
     </tr>` : ""}
-  </table>
+  </table>`
+  }
 
-  <table class="bx" style="margin-top:1mm">
+  ${
+    isUebung
+      ? `<table class="bx" style="margin-top:1mm">
+    <tr><td class="lbl">Beteiligte Stellen</td></tr>
+    <tr>
+      <td class="val">
+        ${
+          d.beteiligteStellen && d.beteiligteStellen.length > 0
+            ? d.beteiligteStellen
+                .map((s) => `<span style="color:${FILLED};font-weight:600">${boxFilled(true)} ${escape(s)}</span><br>`)
+                .join("")
+            : `<span style="color:#888">keine angegeben</span>`
+        }
+      </td>
+    </tr>
+  </table>`
+      : `<table class="bx" style="margin-top:1mm">
     <tr>
       <td class="lbl" style="width:32%">Lage unter Kontrolle</td>
       <td class="lbl" style="width:32%">Brand AUS</td>
@@ -394,13 +460,14 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td class="lbl">Alarmstufe 3 · Uhrzeit · Anforderer</td>
       <td class="val">${vTime(d.zeitmarken?.alst3?.zeit)} · ${v(d.zeitmarken?.alst3?.anforderer)}</td>
     </tr>
-  </table>
+  </table>`
+  }
 
   <table class="bx">
     <tr>
       <td class="lbl" colspan="2">Sonstige anwesende Feuerwehren</td>
       <td class="lbl">Mannschaft</td>
-      <td class="lbl">Verrechenbar / Öl</td>
+      ${isUebung ? "" : `<td class="lbl">Verrechenbar / Öl</td>`}
     </tr>
     <tr>
       <td class="val" colspan="2" style="vertical-align:top">
@@ -414,29 +481,33 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${d.sonstigeFreitext ? `<div style="margin-top:2pt;color:${FILLED}">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
       </td>
       <td class="val" style="vertical-align:top">
-        Eingesetzt: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
+        ${isUebung ? "Teilnehmer" : "Eingesetzt"}: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
         Bereitschaft: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.bereitschaft ?? 0}</span><br>
         Sonstige: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.sonstige ?? 0}</span><br>
         AS-Trupps: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTrupps ?? 0}</span>
       </td>
-      <td class="val" style="vertical-align:top">
+      ${
+        isUebung
+          ? ""
+          : `<td class="val" style="vertical-align:top">
         Verrechenbar: <span class="cb">${boxFilled(d.verrechenbar === true)} JA</span> · <span class="cb">${boxFilled(d.verrechenbar === false)} NEIN</span><br>
         Ölbindemittel: ${
           d.oelbindemittelSaecke && d.oelbindemittelSaecke > 0
             ? `<strong style="color:${FILLED}">${boxFilled(true)} ${d.oelbindemittelSaecke} Sack</strong>`
             : `${boxFilled(false)} 0 Sack`
         }
-      </td>
+      </td>`
+      }
     </tr>
   </table>
 
   <table class="bx">
-    <tr><td class="lbl">Meldung von der Einsatzleitung (Einsatzchronik)</td></tr>
+    <tr><td class="lbl">${isUebung ? "Übungschronik / Tätigkeitsbericht" : "Meldung von der Einsatzleitung (Einsatzchronik)"}</td></tr>
     <tr><td>${renderMeldungEinsatzleitungInhalt(d)}</td></tr>
   </table>
 
-  ${renderTechnischeStatistikBlock(d)}
-  ${renderBrandStatistikBlock(d)}
+  ${isUebung ? "" : renderTechnischeStatistikBlock(d)}
+  ${isUebung ? "" : renderBrandStatistikBlock(d)}
 
   ${
     d.reaktivierungen && d.reaktivierungen.length > 0
@@ -451,11 +522,16 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 
   <table class="bx" style="margin-top:1mm">
     <tr>
-      <td class="lbl" style="width:50%">Einsatzleiter</td>
-      <td class="lbl">Einsatzende</td>
+      <td class="lbl" style="width:50%">${isUebung ? "Übungsleiter" : "Einsatzleiter"}</td>
+      <td class="lbl">${isUebung ? "Übungsende" : "Einsatzende"}</td>
     </tr>
     <tr>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${d.einsatzleiter ? `<span style="color:${FILLED};font-weight:600">${escape(d.einsatzleiter)}</span>` : ""}</td>
+      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${
+        (() => {
+          const leiter = isUebung ? (d.uebungsleiter ?? d.einsatzleiter) : d.einsatzleiter;
+          return leiter ? `<span style="color:${FILLED};font-weight:600">${escape(leiter)}</span>` : "";
+        })()
+      }</td>
       <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : ""}</td>
     </tr>
     <tr>
