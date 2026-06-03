@@ -56,10 +56,8 @@ export function BerichtDetail({ id, onChange }: Props) {
   }
 
   async function onReaktivieren() {
-    if (grund.trim().length < 10) {
-      setErr("Reaktivierungs-Grund muss mind. 10 Zeichen enthalten.");
-      return;
-    }
+    // Grund ist optional (User-Wunsch): wer etwas einträgt, gut — wer nicht,
+    // hat auch seine Gründe. Kein Mindestlängen-Zwang mehr.
     setBusy(true);
     try {
       await reaktivieren(id, grund.trim());
@@ -75,10 +73,7 @@ export function BerichtDetail({ id, onChange }: Props) {
   }
 
   async function onLoeschen() {
-    if (deleteGrund.trim().length < 10) {
-      setErr("Loesch-Grund muss mind. 10 Zeichen enthalten.");
-      return;
-    }
+    // Grund optional (User-Wunsch) — kein Mindestlängen-Zwang.
     setBusy(true);
     try {
       await loeschenEinsatz(id, deleteGrund.trim());
@@ -316,7 +311,7 @@ export function BerichtDetail({ id, onChange }: Props) {
               abgeschlossen. Eine Reaktivierung wird mit Audit-Trail dokumentiert.
             </p>
             <div className="field" style={{ marginTop: 14 }}>
-              <label className="caption">Grund (min. 10 Zeichen)</label>
+              <label className="caption">Grund (optional)</label>
               <textarea
                 value={grund}
                 onChange={(e) => setGrund(e.target.value)}
@@ -337,7 +332,7 @@ export function BerichtDetail({ id, onChange }: Props) {
               <button
                 type="button"
                 onClick={onReaktivieren}
-                disabled={busy || grund.trim().length < 10}
+                disabled={busy}
                 className="cta"
                 style={{
                   width: "auto",
@@ -379,7 +374,7 @@ export function BerichtDetail({ id, onChange }: Props) {
               Berichte ist danach NICHT mehr abrufbar. Diese Aktion ist nicht rueckgaengig zu machen.
             </p>
             <div className="field" style={{ marginTop: 14 }}>
-              <label className="caption">Grund (min. 10 Zeichen, fuer Audit)</label>
+              <label className="caption">Grund (optional, fuer Audit)</label>
               <textarea
                 value={deleteGrund}
                 onChange={(e) => setDeleteGrund(e.target.value)}
@@ -404,7 +399,7 @@ export function BerichtDetail({ id, onChange }: Props) {
               <button
                 type="button"
                 onClick={onLoeschen}
-                disabled={busy || deleteGrund.trim().length < 10}
+                disabled={busy}
                 className="cta"
                 style={{
                   width: "auto",

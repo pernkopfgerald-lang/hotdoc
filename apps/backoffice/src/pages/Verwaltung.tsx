@@ -216,6 +216,72 @@ export function Verwaltung({ auth, onLogout }: Props) {
     onLogout();
   }
 
+  // Menü-Gruppierung: die 18 Einzel-Tabs waren zu viele und mussten horizontal
+  // gescrollt werden. Jetzt 5 thematische Ober-Gruppen + eine Unterzeile mit
+  // den Tabs der aktiven Gruppe — klarer strukturiert, kein endloses Scrollen.
+  // Der aktive Leaf-Tab bestimmt die aktive Gruppe.
+  const GROUPS: Array<{
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    tabs: Array<{ key: Tab; label: string; icon: React.ReactNode }>;
+  }> = [
+    {
+      key: "einsaetze",
+      label: "Einsätze",
+      icon: <FileText size={16} />,
+      tabs: [
+        { key: "berichte", label: "Berichte", icon: <FileText size={15} /> },
+        { key: "florian", label: "Florian Eberstalzell", icon: <Activity size={15} /> },
+        { key: "archiv", label: "Archiv", icon: <Archive size={15} /> },
+      ],
+    },
+    {
+      key: "auswertung",
+      label: "Auswertung",
+      icon: <BarChart3 size={16} />,
+      tabs: [
+        { key: "statistik", label: "Statistik", icon: <BarChart3 size={15} /> },
+        { key: "aktivitaet", label: "Aktivität", icon: <History size={15} /> },
+        { key: "schnittstellen", label: "Schnittstellen", icon: <Signal size={15} /> },
+      ],
+    },
+    {
+      key: "stammdaten-grp",
+      label: "Stammdaten",
+      icon: <Users size={16} />,
+      tabs: [
+        { key: "personal", label: "Personal", icon: <Users size={15} /> },
+        { key: "geraete", label: "Geräte", icon: <Wrench size={15} /> },
+        { key: "nummerierung", label: "Nummerierung", icon: <Hash size={15} /> },
+        { key: "stammdaten", label: "Stammdaten", icon: <Settings size={15} /> },
+      ],
+    },
+    {
+      key: "listen",
+      label: "Listen & Stichworte",
+      icon: <BookOpen size={16} />,
+      tabs: [
+        { key: "einsatzstichworte", label: "Einsatzstichworte", icon: <BookOpen size={15} /> },
+        { key: "auftragstypen", label: "Auftrag-Typen", icon: <Truck size={15} /> },
+        { key: "beteiligte-stellen", label: "Beteiligte Stellen", icon: <Siren size={15} /> },
+        { key: "sonstige-ff", label: "Sonstige FF", icon: <Flame size={15} /> },
+        { key: "gefaehrliche-stoffe", label: "Gefährliche Stoffe", icon: <AlertTriangle size={15} /> },
+      ],
+    },
+    {
+      key: "system",
+      label: "System",
+      icon: <Settings size={16} />,
+      tabs: [
+        { key: "devices", label: "Registrierte Geräte", icon: <Smartphone size={15} /> },
+        { key: "app-version", label: "App-Version", icon: <Download size={15} /> },
+        { key: "about", label: "Über", icon: <Info size={15} /> },
+      ],
+    },
+  ];
+  const activeGroup = GROUPS.find((g) => g.tabs.some((t) => t.key === tab)) ?? GROUPS[0]!;
+
   return (
     <div style={{ minHeight: "100vh" }}>
       <header
@@ -249,76 +315,71 @@ export function Verwaltung({ auth, onLogout }: Props) {
         </button>
       </header>
 
+      {/* Ober-Gruppen (Reiter-Mappen). Klick auf eine Gruppe öffnet ihren
+          ersten Tab — die aktive Gruppe ergibt sich aus dem aktiven Tab. */}
+      <nav
+        style={{
+          display: "flex",
+          gap: 4,
+          padding: "8px 24px 0",
+          background: "var(--surface)",
+          overflowX: "auto",
+        }}
+      >
+        {GROUPS.map((g) => {
+          const active = g.key === activeGroup.key;
+          return (
+            <button
+              key={g.key}
+              type="button"
+              onClick={() => {
+                if (!active) setTab(g.tabs[0]!.key);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "9px 16px",
+                borderRadius: "10px 10px 0 0",
+                border: 0,
+                background: active ? "var(--surface-2)" : "transparent",
+                color: active ? "var(--fg)" : "var(--fg-2)",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                fontFamily: "inherit",
+                minHeight: 42,
+              }}
+            >
+              {g.icon}
+              {g.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Unterzeile: die Tabs der aktiven Gruppe. */}
       <nav
         style={{
           display: "flex",
           gap: 2,
           padding: "0 24px",
           borderBottom: "1px solid var(--border)",
-          background: "var(--surface)",
+          background: "var(--surface-2)",
           overflowX: "auto",
         }}
       >
-        <TabButton active={tab === "berichte"} onClick={() => setTab("berichte")} icon={<FileText size={16} />}>
-          Berichte
-        </TabButton>
-        {/* Florianstation-Tab — Hauptbericht-Editor mit Auto-Save (PUT /api/einsaetze/:id)
-            und Live-Spalte mit echten Fahrzeugberichten aus /api/einsaetze/:id/fahrzeugberichte.
-            AS-Anzeige zeigt nur Anzahl der am Fz verfuegbaren AS-Traeger, keine
-            Ueberwachung (Audit T-05). Phantom-Mock-Liste entfernt (T-01). */}
-        <TabButton active={tab === "florian"} onClick={() => setTab("florian")} icon={<Activity size={16} />}>
-          Florian Eberstalzell
-        </TabButton>
-        <TabButton active={tab === "archiv"} onClick={() => setTab("archiv")} icon={<Archive size={16} />}>
-          Archiv
-        </TabButton>
-        <TabButton active={tab === "statistik"} onClick={() => setTab("statistik")} icon={<BarChart3 size={16} />}>
-          Statistik
-        </TabButton>
-        <TabButton active={tab === "aktivitaet"} onClick={() => setTab("aktivitaet")} icon={<History size={16} />}>
-          Aktivität
-        </TabButton>
-        <TabButton active={tab === "schnittstellen"} onClick={() => setTab("schnittstellen")} icon={<Signal size={16} />}>
-          Schnittstellen
-        </TabButton>
-        <TabButton active={tab === "einsatzstichworte"} onClick={() => setTab("einsatzstichworte")} icon={<BookOpen size={16} />}>
-          Einsatzstichworte
-        </TabButton>
-        <TabButton active={tab === "nummerierung"} onClick={() => setTab("nummerierung")} icon={<Hash size={16} />}>
-          Nummerierung
-        </TabButton>
-        <TabButton active={tab === "personal"} onClick={() => setTab("personal")} icon={<Users size={16} />}>
-          Personal
-        </TabButton>
-        <TabButton active={tab === "geraete"} onClick={() => setTab("geraete")} icon={<Wrench size={16} />}>
-          Geräte
-        </TabButton>
-        <TabButton active={tab === "auftragstypen"} onClick={() => setTab("auftragstypen")} icon={<Truck size={16} />}>
-          Auftrag-Typen
-        </TabButton>
-        <TabButton active={tab === "beteiligte-stellen"} onClick={() => setTab("beteiligte-stellen")} icon={<Siren size={16} />}>
-          Beteiligte Stellen
-        </TabButton>
-        <TabButton active={tab === "sonstige-ff"} onClick={() => setTab("sonstige-ff")} icon={<Flame size={16} />}>
-          Sonstige FF
-        </TabButton>
-        {/* Issue 16 (Follow-up Einsatz-Test 2026-06-02): Tab fuer die
-            gefaehrliche-Stoffe-Liste der syBOS-Technisch-Statistik. */}
-        <TabButton active={tab === "gefaehrliche-stoffe"} onClick={() => setTab("gefaehrliche-stoffe")} icon={<AlertTriangle size={16} />}>
-          Gefährliche Stoffe
-        </TabButton>
-        <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")} icon={<Settings size={16} />}>
-          Stammdaten
-        </TabButton>
-        <TabButton active={tab === "devices"} onClick={() => setTab("devices")} icon={<Smartphone size={16} />}>
-          Registrierte Geräte
-        </TabButton>
-        <TabButton active={tab === "app-version"} onClick={() => setTab("app-version")} icon={<Download size={16} />}>
-          App-Version
-        </TabButton>
-        <TabButton active={tab === "about"} onClick={() => setTab("about")} icon={<Info size={16} />}>
-          Über
-        </TabButton>
+        {activeGroup.tabs.map((t) => (
+          <TabButton
+            key={t.key}
+            active={tab === t.key}
+            onClick={() => setTab(t.key)}
+            icon={t.icon}
+          >
+            {t.label}
+          </TabButton>
+        ))}
       </nav>
 
       <main

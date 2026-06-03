@@ -673,7 +673,10 @@ einsaetzeRouter.post(
 
 // ─── POST /api/einsaetze/:id/reaktivieren ─── FR-14 ─────────
 const ReaktivierenBodySchema = z.object({
-  grund: z.string().min(10, "Reaktivierungs-Grund mind. 10 Zeichen"),
+  // Grund optional (User-Wunsch): wer etwas einträgt, gut — wer nicht, hat
+  // auch seine Gründe. Kein Mindestlängen-Zwang. Audit-Event wird trotzdem
+  // geschrieben (mit leerem Grund, falls keiner angegeben).
+  grund: z.string().optional(),
 });
 
 einsaetzeRouter.post(
@@ -751,7 +754,9 @@ einsaetzeRouter.post(
 //     nachweisen (Compliance), aber kein normaler Read findet es mehr.
 //   - Cascade-Loeschung aller fzgber:<einsatzId>:* via bulk-delete
 const DeleteEinsatzBodySchema = z.object({
-  grund: z.string().min(10, "Loesch-Grund mind. 10 Zeichen"),
+  // Grund optional (User-Wunsch) — Audit-Event/Tombstone wird trotzdem
+  // geschrieben, nur ohne Mindestlängen-Zwang.
+  grund: z.string().optional(),
 });
 
 einsaetzeRouter.delete(

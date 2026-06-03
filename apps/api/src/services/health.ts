@@ -128,6 +128,27 @@ async function checkBlaulichtSms(): Promise<HealthItem> {
   };
 }
 
+/**
+ * Ausgangs-IP des API-Servers (Egress) — die IP, mit der dieser Server bei
+ * syBOS anklopft. syBOS hat eine IP-Whitelist; bei "Falsche IP Adresse" muss
+ * GENAU diese IP dort eingetragen werden. fly.io vergibt dynamische Egress-IPs,
+ * deshalb hier zur Laufzeit ermittelt + 10 min gecacht (ipify ist gratis).
+ */
+let egressIpCache: { ip: string; at: number } | null = null;
+async function getEgressIp(): Promise<string | null> {
+  const now = Date.now();
+  if (egressIpCache && now - egressIpCache.at < 10 * 60_000) return egressIpCache.ip;
+  try {
+    const r = await fetch("https://api.ipify.org", { signal: AbortSignal.timeout(4000) });
+    if (!r.ok) return egressIpCache?.ip ?? null;
+    const ip = (await r.text()).trim();
+    if (ip) egressIpCache = { ip, at: now };
+    return ip || (egressIpCache?.ip ?? null);
+  } catch {
+    return egressIpCache?.ip ?? null;
+  }
+}
+
 async function checkSyBos(): Promise<HealthItem> {
   const sub = "Personal & Material · tägl. 04:00";
   if (!hasSyBos()) {
@@ -139,6 +160,10 @@ async function checkSyBos(): Promise<HealthItem> {
       detail: "SYBOS_API_URL / SYBOS_TOKEN nicht gesetzt — keine Stammdaten-Synchronisation aktiv.",
     };
   }
+  const egress = await getEgressIp();
+  const egressHint = egress
+    ? ` · Server-Egress-IP (in syBOS unter „Server-IPs" whitelisten): ${egress}`
+    : "";
   const s = getSyBosState();
   if (!s.lastSyncAt) {
     return {
@@ -146,7 +171,8 @@ async function checkSyBos(): Promise<HealthItem> {
       name: "syBOS",
       sub,
       state: "warn",
-      detail: "Credentials gesetzt, aber noch kein Sync gelaufen. Trigger manuell im Personal-Tab.",
+      detail: `Credentials gesetzt, aber noch kein Sync gelaufen. Trigger manuell im Personal-Tab.${egressHint}`,
+      ...(egress ? { metrics: { egressIp: egress } } : {}),
     };
   }
   const ageH = (Date.now() - new Date(s.lastSyncAt).getTime()) / 1000 / 3600;
@@ -158,11 +184,12 @@ async function checkSyBos(): Promise<HealthItem> {
     state: s.lastOk ? (stale ? "warn" : "ok") : "error",
     detail: s.lastOk
       ? `${s.personalCount} Personen · ${s.materialCount} Material · ${s.abteilungenCount} Abteilungen · letzter Sync vor ${formatAge(ageH)}`
-      : `Letzter Sync fehlgeschlagen: ${s.lastError ?? "unbekannt"}`,
+      : `Letzter Sync fehlgeschlagen: ${s.lastError ?? "unbekannt"}${egressHint}`,
     metrics: {
       ageHours: Number(ageH.toFixed(2)),
       personalCount: s.personalCount,
       materialCount: s.materialCount,
+      ...(egress ? { egressIp: egress } : {}),
     },
   };
 }
