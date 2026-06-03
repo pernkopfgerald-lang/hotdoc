@@ -205,6 +205,10 @@ export function MapCard({
     const doInvalidate = (): void => {
       try {
         map.invalidateSize();
+        // #156 (v0.1.15): redraw() erzwingt vollständiges Kachel-Neuladen für
+        // die aktuelle Größe — invalidateSize alleine pannt nur (versetzte Blöcke).
+        tileLayersRef.current.base?.redraw();
+        tileLayersRef.current.overlay?.redraw();
       } catch {
         // unmounted — egal
       }
@@ -382,12 +386,26 @@ export function MapCard({
     map.flyToBounds(bounds, { padding: [40, 40], duration: 0.6, maxZoom: 17 });
   }
 
-  // Leaflet braucht ein invalidateSize() nach Größenänderung der Karte
+  // Leaflet braucht ein invalidateSize() nach Größenänderung der Karte.
+  // #156 (v0.1.15): invalidateSize alleine pannt nur — beim Vollbild-Toggle
+  // müssen die Kacheln für die neue Fläche per redraw() nachgeladen werden.
+  // Zweiter Tick bei 320ms fängt langsame Layout-/Transition-Fälle ab.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const t = setTimeout(() => map.invalidateSize(), 60);
-    return () => clearTimeout(t);
+    const refresh = (): void => {
+      try {
+        map.invalidateSize();
+        tileLayersRef.current.base?.redraw();
+        tileLayersRef.current.overlay?.redraw();
+      } catch { /* unmounted */ }
+    };
+    const t1 = setTimeout(refresh, 60);
+    const t2 = setTimeout(refresh, 320);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [fullscreen]);
 
   // ESC-Taste schließt Vollbild

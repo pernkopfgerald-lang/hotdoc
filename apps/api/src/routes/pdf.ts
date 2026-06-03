@@ -313,6 +313,10 @@ async function buildHauptberichtHtml(
 
   // Fahrzeug-Anhang-Daten mit Personen-Namen aufgeloest
   const fahrzeugberichteOut: NonNullable<BerichtDaten["fahrzeugberichte"]> = [];
+  // Einsatzleiter (v0.1.15): Wird aus dem Fahrzeugbericht abgeleitet, dessen
+  // Kdt als Einsatzleiter markiert ist (kdtIstEinsatzleiter). Fallback weiter
+  // unten: einsatzleiterPersonId am Einsatz-Doc.
+  let einsatzleiterName: string | undefined;
   for (const fz of fzgBerichte) {
     const fid = (fz.fahrzeugId as string) ?? "?";
     const m = (fz.mannschaft as Array<{
@@ -338,6 +342,12 @@ async function buildHauptberichtHtml(
     const kdtId = fz.fahrzeugKdtPersonId as number | undefined;
     const fahrerName = fahrerId ? await loadPerson(fahrerId) : null;
     const kdtName = kdtId ? await loadPerson(kdtId) : null;
+    // v0.1.15: Ist der Kdt dieses Fahrzeugs als Einsatzleiter markiert, wird
+    // sein Name für die Einsatzleiter-Box im PDF gemerkt. Erster Treffer
+    // gewinnt (es sollte ohnehin nur einen geben).
+    if (fz.kdtIstEinsatzleiter === true && kdtName && !einsatzleiterName) {
+      einsatzleiterName = `${kdtName.nachname ?? ""} ${kdtName.vorname ?? ""}`.trim();
+    }
     fahrzeugberichteOut.push({
       fahrzeugId: fid,
       funkrufname: FAHRZEUG_FUNKRUF[fid] ?? fid,
@@ -388,6 +398,18 @@ async function buildHauptberichtHtml(
           0,
         );
 
+  // v0.1.15 Fallback: kein Fahrzeug-Kdt als EL markiert, aber am Einsatz-Doc
+  // ist ein einsatzleiterPersonId hinterlegt (z. B. von der Florianstation).
+  if (!einsatzleiterName) {
+    const elPersonId = doc.einsatzleiterPersonId as number | undefined;
+    if (typeof elPersonId === "number") {
+      const elPerson = await loadPerson(elPersonId);
+      if (elPerson) {
+        einsatzleiterName = `${elPerson.nachname ?? ""} ${elPerson.vorname ?? ""}`.trim();
+      }
+    }
+  }
+
   const data: BerichtDaten = {
     einsatzId: id,
     berichtsNummer: deriveBerichtNrFromId(
@@ -404,6 +426,7 @@ async function buildHauptberichtHtml(
     einsatzTyp: einsatzTyp === "manuell" ? "manuell" : "alarm",
     status: String(doc.status ?? ""),
     einsatzende: doc.einsatzende as string | undefined,
+    ...(einsatzleiterName ? { einsatzleiter: einsatzleiterName } : {}),
     meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
     oelbindemittelSaecke: oelbindemittelAggregiert,
     reaktivierungen,

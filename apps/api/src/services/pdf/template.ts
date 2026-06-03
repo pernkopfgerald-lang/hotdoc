@@ -46,6 +46,12 @@ export interface BerichtDaten {
   einsatzTyp: "alarm" | "manuell";
   status: string;
   einsatzende?: string;
+  /**
+   * Einsatzleiter-Name (v0.1.15). Quelle: Fahrzeugbericht mit
+   * kdtIstEinsatzleiter===true → dessen Kdt; Fallback einsatzleiterPersonId
+   * am Einsatz-Doc. Wird unten in der Einsatzleiter-Box gerendert.
+   */
+  einsatzleiter?: string;
   meldungEinsatzleitung?: string;
   oelbindemittelSaecke?: number;
   reaktivierungen?: Array<{ am: string; grund: string }>;
@@ -449,7 +455,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td class="lbl">Einsatzende</td>
     </tr>
     <tr>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888"></td>
+      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${d.einsatzleiter ? `<span style="color:${FILLED};font-weight:600">${escape(d.einsatzleiter)}</span>` : ""}</td>
       <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : ""}</td>
     </tr>
     <tr>

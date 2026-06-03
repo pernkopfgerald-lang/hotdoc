@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.15",
+    date: "2026-06-03",
+    title: "Einsatzleiter im PDF & Karte komplett",
+    bullets: [
+      "Einsatzbericht-PDF: Das Feld 'Einsatzleiter' wird jetzt automatisch ausgefüllt — der als Einsatzleiter markierte Fahrzeug-Kommandant (Haken im Bericht) steht jetzt unten im Vordruck.",
+      "Karte: Beim Aufklappen/Vollbild werden jetzt ALLE Kacheln sauber nachgeladen (vorher blieben Teile leer) — die Kartenebenen werden nach dem Größenwechsel neu gezeichnet.",
+    ],
+  },
+  {
     version: "0.1.14",
     date: "2026-06-03",
     title: "Chronik kompakt, Adresse-Karte-Match & Texteingabe",

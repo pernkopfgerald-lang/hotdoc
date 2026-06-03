@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.14",
-  "apkUrl": "/hotdoc-v0.1.14-release.apk",
-  "releaseNotes": "v0.1.11 — Hotfix\n\n• Behebt einen Absturz beim Öffnen der Florian-Zentrale (Recovery-Screen) — Chronik-Einträge ohne Text (z. B. reine Foto-Einträge) führten zum Fehler.\n• Jedes Fahrzeug kann einen vorzeitig abgeschlossenen Bericht jetzt direkt im eigenen Archiv reaktivieren (vorher nur über die Florianstation).\n\n— Enthält alle Neuerungen aus v0.1.10 (Foto-Chronik, syBOS-Statistik, Autobahn-Alarme, Dark-Mode-Fix, Akku-Schonung).",
-  "publishedAt": "2026-06-03T13:00:00+00:00",
+  "currentVersion": "0.1.15",
+  "apkUrl": "/hotdoc-v0.1.15-release.apk",
+  "releaseNotes": "v0.1.15 — Einsatzleiter im PDF & Karte komplett\n\n• Einsatzbericht-PDF: Das Feld 'Einsatzleiter' wird jetzt automatisch ausgefüllt — der als Einsatzleiter markierte Fahrzeug-Kommandant steht jetzt unten im Vordruck.\n• Karte: Beim Aufklappen/Vollbild werden jetzt ALLE Kacheln sauber nachgeladen (vorher blieben Teile leer).\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.14.",
+  "publishedAt": "2026-06-03T15:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

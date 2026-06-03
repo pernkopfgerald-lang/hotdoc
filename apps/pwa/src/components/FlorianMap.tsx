@@ -223,6 +223,12 @@ export function FlorianMap({
     const doInvalidate = (): void => {
       try {
         map.invalidateSize();
+        // #156 (v0.1.15): invalidateSize PANNT nur — die Kacheln werden nicht
+        // zwingend für die neue Größe nachgeladen (→ versetzte/fehlende Blöcke).
+        // tileLayer.redraw() erzwingt ein vollständiges, sauberes Neu-Rendern
+        // aller Kacheln für die aktuelle Größe/Position.
+        tileLayersRef.current.base?.redraw();
+        tileLayersRef.current.overlay?.redraw();
       } catch {
         // unmounted — ignore
       }
@@ -366,8 +372,23 @@ export function FlorianMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const t = setTimeout(() => map.invalidateSize(), 60);
-    return () => clearTimeout(t);
+    // #156 (v0.1.15): Beim Vollbild-Toggle ändert sich die Container-Größe
+    // schlagartig. invalidateSize alleine pannt nur — Kacheln für die neue
+    // (größere) Fläche fehlen. redraw() lädt sie nach. Zweiter Tick bei 320ms
+    // fängt langsame Layout-/Transition-Fälle ab.
+    const refresh = (): void => {
+      try {
+        map.invalidateSize();
+        tileLayersRef.current.base?.redraw();
+        tileLayersRef.current.overlay?.redraw();
+      } catch { /* unmounted */ }
+    };
+    const t1 = setTimeout(refresh, 60);
+    const t2 = setTimeout(refresh, 320);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [fullscreen]);
 
   useEffect(() => {
