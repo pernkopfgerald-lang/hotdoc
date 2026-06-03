@@ -641,6 +641,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const [fotoBusy, setFotoBusy] = useState(false);
   // #172 (Test 2026-06-03): GPS-Adresse-Übernahme-Status für den Einsatzort-Button.
   const [gpsAdrBusy, setGpsAdrBusy] = useState(false);
+  // Chronik-Texteingabe (Diktat vorerst ersetzt).
+  const [chronikInput, setChronikInput] = useState("");
 
   /**
    * #172: Aktuelle GPS-Position als Einsatzadresse übernehmen — der Kdt steht
@@ -675,9 +677,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     } catch {
       // Timeout/Fehler → GPS-String-Fallback (bereits gesetzt).
     } finally {
+      // #1: GPS-Position auch als Karten-/Einsatz-Koordinate setzen, damit die
+      // Lagekarte + KM-Berechnung sofort zur neuen Adresse passen.
       patchActive((cur) => ({
         ...cur,
-        alarm: { ...cur.alarm, einsatzort: adresse },
+        alarm: {
+          ...cur.alarm,
+          einsatzort: adresse,
+          koordinaten: { lat: fix.lat, lng: fix.lng },
+        },
+        einsatzPos: { lat: fix.lat, lng: fix.lng },
       }));
       setGpsAdrBusy(false);
     }
@@ -1008,14 +1017,21 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     const handle = setTimeout(() => {
       apiCall(`/api/einsaetze/${encodeURIComponent(active.id)}`, {
         method: "PUT",
-        body: { einsatzort: active.alarm.einsatzort },
+        // #1: Koordinaten mitschicken (vom GPS-Button gesetzt), damit die
+        // Florianstation-Lagekarte ebenfalls zur korrigierten Adresse passt.
+        body: {
+          einsatzort: active.alarm.einsatzort,
+          ...(active.alarm.koordinaten
+            ? { koordinaten: active.alarm.koordinaten }
+            : {}),
+        },
       }).catch((err) => {
         console.warn("[einsatz-sync] einsatzort konnte nicht synchronisiert werden:", err);
       });
     }, 1500);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, active?.abgeschlossen, active?.alarm.einsatzort]);
+  }, [active?.id, active?.abgeschlossen, active?.alarm.einsatzort, active?.alarm.koordinaten]);
 
   // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
   // Pausiert wenn Bericht abgeschlossen (kein Schreibschutz-Bypass nötig).
@@ -1136,6 +1152,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     } finally {
       setFotoBusy(false);
     }
+  }
+
+  // #Test 2026-06-03: Chronik-Eintrag per Texteingabe (Diktat vorerst raus).
+  // Spiegelt den Speech-Pfad von onDictateResult: lokal anhängen + broadcasten.
+  function addChronikText(textRaw: string) {
+    const text = textRaw.trim();
+    if (!text || !active || active.abgeschlossen) return;
+    const id = `txt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const zeitstempel = new Date().toISOString();
+    const entry = {
+      id,
+      zeitstempel,
+      funkrufname: fahrzeug.funkrufname,
+      fahrzeugId,
+      source: "fahrzeug" as const,
+      text,
+    };
+    patchActive((e) => ({ ...e, chronik: [...e.chronik, entry] }));
+    void broadcastChronikEntry(activeId, entry);
   }
 
   function onDictateResult(result: DictateResult) {
@@ -2068,8 +2103,63 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   }
                 }}
               />
-              <DictateButton onResult={onDictateResult} />
-              {/* Foto-Funktion (2026-06-03): Kamera-Button unter dem Diktat —
+              {/* Test 2026-06-03: Diktat VORERST deaktiviert (kommt evtl. wieder)
+                  → hinter {false && …} geparkt, damit die Whisper-/Speech-Logik
+                  + onDictateResult erhalten bleiben (nur Flag umlegen zum
+                  Reaktivieren). Stattdessen Texteingabe mit Browser-Autokorrektur. */}
+              {false && <DictateButton onResult={onDictateResult} />}
+              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "stretch" }}>
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  value={chronikInput}
+                  onChange={(e) => setChronikInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addChronikText(chronikInput);
+                      setChronikInput("");
+                    }
+                  }}
+                  placeholder="Chronik-Eintrag … (z. B. Am Einsatzort eingetroffen)"
+                  disabled={!!active.abgeschlossen}
+                  spellCheck
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  lang="de-AT"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    addChronikText(chronikInput);
+                    setChronikInput("");
+                  }}
+                  disabled={!!active.abgeschlossen || !chronikInput.trim()}
+                  aria-label="Chronik-Eintrag hinzufügen"
+                  title="Eintrag hinzufügen (Enter)"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 56,
+                    minHeight: 44,
+                    borderRadius: "var(--radius-s)",
+                    border: "1px solid var(--blue-border)",
+                    background: "var(--info)",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 20,
+                    cursor:
+                      active.abgeschlossen || !chronikInput.trim()
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity: active.abgeschlossen || !chronikInput.trim() ? 0.5 : 1,
+                  }}
+                >
+                  +
+                </button>
+              </div>
+              {/* Foto-Funktion (2026-06-03): Kamera-Button —
                   Foto wird komprimiert, lokal gesichert + offline-fähig
                   hochgeladen und als Chronik-Eintrag mit Thumbnail angezeigt. */}
               <FotoButton onCapture={onFotoCapture} busy={fotoBusy} />

@@ -829,7 +829,36 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       const lage = hhmmToIso(editor.lageUnterKontrolleHHMM, refIso);
       const brand = hhmmToIso(editor.brandAusHHMM, refIso);
 
+      // #1 (Test 2026-06-03): Wenn der EL den Einsatzort korrigiert, die neue
+      // Adresse forward-geocoden und die Koordinaten mitschreiben — sonst
+      // bleibt die Lagekarte (nutzt koordinaten) auf der alten Position
+      // ("kein Match mit der Karte"). Best-effort, blockt den Save nicht.
+      let neueKoordinaten: { lat: number; lng: number } | null = null;
+      const ortTrim = editor.einsatzort.trim();
+      if (
+        ortTrim &&
+        ortTrim !== (aktiverEinsatz?.einsatzort ?? "") &&
+        !/^GPS\s/i.test(ortTrim)
+      ) {
+        try {
+          const ctl = new AbortController();
+          const to = setTimeout(() => ctl.abort(), 3000);
+          const r = await apiCall<{ items?: Array<{ lat: number; lng: number }> }>(
+            `/api/geocode?q=${encodeURIComponent(ortTrim)}`,
+            { signal: ctl.signal },
+          );
+          clearTimeout(to);
+          const first = r.items?.[0];
+          if (first && typeof first.lat === "number" && typeof first.lng === "number") {
+            neueKoordinaten = { lat: first.lat, lng: first.lng };
+          }
+        } catch {
+          // Geocode-Timeout/Fehler → Adresse trotzdem speichern, Karte bleibt.
+        }
+      }
+
       const body: Record<string, unknown> = {
+        ...(neueKoordinaten ? { koordinaten: neueKoordinaten } : {}),
         // #157: Florian darf den Einsatzort korrigieren (Auto-Übernahme aus
         // BlaulichtSMS liegt manchmal daneben). Nur senden wenn nicht leer
         // — sonst löscht ein versehentlicher Patch die Adresse.

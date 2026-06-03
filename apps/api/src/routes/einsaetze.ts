@@ -887,6 +887,10 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "anrufer",
   "anruferTel",
   "einsatzauftragVia",
+  // #1 (Test 2026-06-03): Koordinaten editierbar — wenn der EL (Florian) oder
+  // der Fahrzeug-Kdt (GPS-Knopf) die Einsatzadresse korrigiert, wird die neue
+  // Position mitgeschickt, damit die Lagekarte zur Adresse passt.
+  "koordinaten",
   "vidi", // wildcard prefix — siehe Loop unten
   "fahrzeugPositionen",
   "chronik",

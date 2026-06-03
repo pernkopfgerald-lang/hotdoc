@@ -21,6 +21,17 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.14",
+    date: "2026-06-03",
+    title: "Chronik kompakt, Adresse-Karte-Match & Texteingabe",
+    bullets: [
+      "Einsatzchronik im PDF jetzt platzsparend: ein Eintrag = eine Zeile (HH:MM Fahrzeug: Meldung), Fotos klein direkt dabei.",
+      "Die separate Chronik-Anhang-Seite entfällt — die Chronik steht jetzt detailliert auf der Hauptseite (der große Foto-Anhang 9x12 bleibt).",
+      "Einsatzort korrigieren bewegt jetzt auch die Lagekarte (Adresse wird geocoded, Karte springt zur neuen Position) — in Florian und am Fahrzeug-Tablet.",
+      "Einsatzchronik-Eintrag per Texteingabe mit Autokorrektur (Diktat vorerst pausiert).",
+    ],
+  },
+  {
     version: "0.1.13",
     date: "2026-06-03",
     title: "Übung-Feinschliff, Karte stabil & GPS-Adresse",

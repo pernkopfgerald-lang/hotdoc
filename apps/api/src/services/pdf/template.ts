@@ -270,10 +270,6 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     /* Anhang */
     .att-h { font-size: 14pt; font-weight: 700; margin: 0 0 4mm; color: ${FILLED}; }
     .att-sub { font-size: 9pt; color: #555; margin-bottom: 4mm; }
-    .chronik-tbl, .fzg-tbl { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
-    .chronik-tbl td { border-bottom: 0.5pt solid #ddd; padding: 3pt 4pt; vertical-align: top; }
-    .chronik-tbl .ts { width: 22mm; font-family: "Courier New", monospace; color: #555; }
-    .chronik-tbl .src { width: 28mm; color: ${FILLED}; font-weight: 600; }
     .fzg-detail { margin-bottom: 6mm; padding: 4pt; border: 0.5pt solid #888; }
     .fzg-detail h3 { font-size: 11pt; margin: 0 0 2mm; color: ${FILLED}; }
     .fzg-detail .row { display: flex; gap: 6mm; font-size: 8.5pt; margin-bottom: 1.5mm; }
@@ -469,11 +465,10 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   <div class="ft">
     HotDoc · generiert ${formatDateTime(new Date().toISOString())}
     ${d.fahrzeugberichte && d.fahrzeugberichte.length > 0 ? `· ${d.fahrzeugberichte.length} Fahrzeugbericht(e) anbei` : ""}
-    ${d.chronik && d.chronik.length > 0 ? `· Chronik (${d.chronik.length}) anbei` : ""}
+    ${d.fotos && d.fotos.length > 0 ? `· ${d.fotos.length} Foto(s) anbei` : ""}
   </div>
 </div>
 
-${renderChronikSeite(d)}
 ${renderFahrzeugberichtSeiten(d)}
 ${renderFotoAnhang(d)}
 
@@ -486,13 +481,17 @@ ${renderFotoAnhang(d)}
  * wird mit der Einsatzchronik gefuellt. User-Klarstellung:
  * "Meldung von der Einsatzleitung ist unsere Einsatzchronik".
  *
- * Format: kompakte Zeile pro Eintrag — `HH:mm · Quelle · Text`.
- * Sortiert chronologisch. Plus optional vorhandener `meldungEinsatzleitung`-
- * Freitext (Bestandsfeld) als Praeambel, damit alte Berichte nichts
- * verlieren. Wenn die Chronik gross ist, behaelt der separate
- * Chronik-Anhang (renderChronikSeite) seine Funktion als
- * komplettes Zeitprotokoll inkl. Fotos — die Box hier ist der
- * Schnell-Ueberblick auf Seite 1.
+ * Format (Einsatz-Test 2026-06-03): maximal platzsparend, EIN Eintrag =
+ * EINE Zeile — `HH:MM <Quelle>: <Text>` eng gesetzt (8.5pt, line-height
+ * ~1.25, keine Leerzeilen, keine Trennlinien). Sortiert chronologisch.
+ * Bei Foto-Eintraegen folgt unter der Zeile ein kleines Thumbnail
+ * (~2,5×1,9 cm, 4:3) — verknuepft ueber fotoId. Optional vorhandener
+ * `meldungEinsatzleitung`-Freitext (Bestandsfeld) als kurze einzeilige
+ * Praeambel, damit alte Berichte nichts verlieren.
+ *
+ * Die separate Chronik-Anhang-Seite wurde entfernt — die Chronik wird
+ * komplett hier auf Seite 1 gefuehrt. Der grosse Foto-Anhang
+ * (9×12 cm, 4 pro A4) bleibt erhalten (renderFotoAnhang).
  */
 function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
   const FILLED = "#1e3a8a";
@@ -504,80 +503,44 @@ function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
   }
 
   // Praeambel: das alte meldungEinsatzleitung-Freitext-Feld (falls befuellt)
-  // bleibt sichtbar — Bestands-Berichte sollen nichts verlieren.
+  // bleibt sichtbar — als kurze einzeilige Vorbemerkung ueber der Chronik.
   const praeambel = altFreitext
-    ? `<div style="color:${FILLED};font-weight:500;margin-bottom:3pt;white-space:pre-wrap">${escape(altFreitext)}</div>`
+    ? `<div style="color:${FILLED};font-weight:500;margin-bottom:2pt;white-space:pre-wrap">${escape(altFreitext)}</div>`
     : "";
 
   if (chronik.length === 0) {
     return `<div class="freitext">${praeambel}</div>`;
   }
 
-  // Chronologisch sortieren — wie auch im Chronik-Anhang.
+  // Foto-Funktion (2026-06-03): fotoId → dataUrl für Inline-Thumbnails.
+  const fotoMap = new Map((d.fotos ?? []).map((f) => [f.fotoId, f.dataUrl]));
+
+  // Chronologisch sortieren.
   chronik.sort(
     (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
   );
 
+  // EIN Eintrag = EINE Zeile: `HH:MM Quelle: Text`. Eng gesetzt,
+  // keine Leerzeilen/Trennlinien dazwischen. Foto-Eintraege bekommen
+  // unter der Zeile ein kleines 2,5×1,9-cm-Thumbnail (4:3).
   const zeilen = chronik
     .map((c) => {
       const zeit = formatTime(c.zeitstempel);
       const quelle = c.funkrufname || c.source || "—";
       const text = stripAuftragsPrefix(c.text ?? "");
-      return `<div style="margin-bottom:1.5pt;line-height:1.35">
-        <span style="font-family:'Courier New',monospace;color:#555">${escape(zeit)}</span>
-         · <span style="color:${FILLED};font-weight:600">${escape(quelle)}</span>
-         · <span>${escape(text)}</span>
-      </div>`;
+      const foto = c.fotoId ? fotoMap.get(c.fotoId) : undefined;
+      const thumb = foto
+        ? `<div style="margin:1pt 0 1.5pt"><img src="${foto}" alt="Foto" style="width:25mm;height:19mm;object-fit:cover;border:0.4pt solid #999" /></div>`
+        : "";
+      return `<div style="line-height:1.25;margin:0">` +
+        `<span style="font-family:'Courier New',monospace;color:#555">${escape(zeit)}</span> ` +
+        `<span style="color:${FILLED};font-weight:600">${escape(quelle)}:</span> ` +
+        `<span>${escape(text)}</span>` +
+        `</div>${thumb}`;
     })
     .join("");
 
-  return `<div class="freitext" style="font-weight:500">${praeambel}${zeilen}</div>`;
-}
-
-/** Eigene Seite mit der vollstaendigen Einsatzchronik. */
-function renderChronikSeite(d: BerichtDaten): string {
-  if (!d.chronik || d.chronik.length === 0) return "";
-  // Foto-Funktion (2026-06-03): fotoId → dataUrl für Inline-Thumbnails.
-  const fotoMap = new Map((d.fotos ?? []).map((f) => [f.fotoId, f.dataUrl]));
-  return /* html */ `
-<div class="page">
-  <div class="hd">
-    <div class="hd-l">${renderBrandLogo()}</div>
-    <div class="hd-r">
-      <div class="hd-sub-title">Einsatzchronik</div>
-      <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;margin-top:2pt;color:#555">
-        ${escape(d.einsatzId)} · ${d.chronik.length} Einträge
-      </div>
-    </div>
-  </div>
-  <table class="chronik-tbl">
-    <thead>
-      <tr style="background:#f0f0f0">
-        <td class="ts" style="font-weight:700">Zeit</td>
-        <td class="src" style="font-weight:700;color:#000">Quelle</td>
-        <td style="font-weight:700">Eintrag</td>
-      </tr>
-    </thead>
-    <tbody>
-      ${d.chronik
-        .slice()
-        .sort((a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime())
-        .map((c) => {
-          const foto = c.fotoId ? fotoMap.get(c.fotoId) : undefined;
-          // Foto-Funktion: 4×3-cm-Thumbnail direkt unter dem Eintragstext.
-          const thumb = foto
-            ? `<div style="margin-top:2pt"><img src="${foto}" alt="Foto" style="width:40mm;height:30mm;object-fit:cover;border:0.4pt solid #999" /></div>`
-            : "";
-          return `<tr>
-            <td class="ts">${formatTime(c.zeitstempel)}</td>
-            <td class="src">${escape(c.funkrufname)}</td>
-            <td>${escape(stripAuftragsPrefix(c.text))}${thumb}</td>
-          </tr>`;
-        })
-        .join("")}
-    </tbody>
-  </table>
-</div>`;
+  return `<div class="freitext" style="font-weight:500;font-size:8.5pt;line-height:1.25">${praeambel}${zeilen}</div>`;
 }
 
 /**
