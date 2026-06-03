@@ -14,6 +14,10 @@ import { getBrandLogoDataUrl } from "./brand.js";
 
 export interface LotsendienstDaten {
   einsatzId: string;
+  /** Berichts-Nr im Schema T26-007 (Issue 24, Einsatz-Test 2026-06-02). Optional. */
+  berichtsNummer?: string;
+  /** Quelle des Berichts (z. B. "Lotsendienst manuell"). Optional. */
+  einsatzQuelle?: string;
   einsatzort: string;
   alarmierungZeit: string;
   einsatzende?: string;
@@ -222,7 +226,14 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
         <div class="hd-sub">FF Eberstalzell · Bericht für Verrechnung</div>
       </div>
     </div>
-    <div class="hd-id">${escape(d.einsatzId)}</div>
+    <div class="hd-id" style="text-align:right">
+      ${
+        d.berichtsNummer
+          ? `<div style="font-family:Arial,sans-serif;font-size:11pt;font-weight:700;color:#0f172a;margin-bottom:1mm">Berichts-Nr ${escape(d.berichtsNummer)}</div>`
+          : ""
+      }
+      <div>${escape(d.einsatzId)}${d.einsatzQuelle ? ` · ${escape(d.einsatzQuelle)}` : ""}</div>
+    </div>
   </div>
 
   <div class="typ-banner">
@@ -352,7 +363,7 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
 
   <div class="ft">
     <span>HotDoc · FF Eberstalzell · Lotsendienst-Bericht</span>
-    <span>${new Date().toLocaleString("de-AT")}</span>
+    <span>${new Date().toLocaleString("de-AT", { timeZone: "Europe/Vienna" })}</span>
   </div>
 
 </div>

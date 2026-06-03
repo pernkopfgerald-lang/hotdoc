@@ -127,7 +127,10 @@ function EinsatzTab({
           stark abgesetzter Endstatus ist (selten gezeigt, Funktionaer soll
           ihn klar sehen). */}
       <div className="flex flex-col leading-tight">
-        <span className="max-w-[180px] truncate text-[13px] font-semibold tracking-tight">
+        {/* Issue 11 (Einsatz-Test 2026-06-02): Tab-Label auf Mobile auf
+            80px gekuerzt damit 3-4 Tabs nebeneinander passen. Desktop
+            bleibt 180px. */}
+        <span className="max-w-[80px] sm:max-w-[180px] truncate text-[13px] font-semibold tracking-tight">
           {tab.einsatzart}
         </span>
         {closed ? (

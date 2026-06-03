@@ -13,6 +13,12 @@ import {
  *  - "speech": direkt verwendbarer Text aus Web-Speech (kein Server-Upload nötig)
  *  - "audio":  Audio-Blob aus MediaRecorder (Fallback wenn Web-Speech nicht
  *              verfügbar ist — z. B. iOS-Safari oder Firefox)
+ *
+ * Issue 5 (Einsatz-Test 2026-06-02): Der DictateButton selbst rendert kein
+ * Text-Eingabefeld — er liefert nur das Transkript an den Caller (BerichtPage),
+ * welcher es in die Chronik schreibt. Die Spellcheck-Korrektur des Transkripts
+ * passiert dann in der ChronikTimeline-Inline-Edit (textarea mit spellCheck +
+ * lang="de-AT") — siehe Issue 6.
  */
 export type DictateResult =
   | { kind: "speech"; text: string; durationMs: number; confidence: number }
@@ -146,7 +152,8 @@ export function DictateButton({ onResult, minDurationMs = 400 }: Props) {
   const disabled = status === "denied" || status === "unavail";
 
   // UI-Text — engine-abhängig damit der User weiß was passiert.
-  const engineLabel = engineRef.current === "speech" ? "live · gratis" : "Audio · Whisper";
+  // OPT-4 (Audit 2026-06-03): Klarsprache statt "Whisper" (Modellname).
+  const engineLabel = engineRef.current === "speech" ? "live · gratis" : "Audio · Aufnahme";
   const t1 = recording
     ? "Diktiere · jetzt sprechen"
     : status === "requesting"

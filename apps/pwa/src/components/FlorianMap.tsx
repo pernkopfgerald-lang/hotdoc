@@ -3,6 +3,7 @@ import "leaflet/dist/leaflet.css";
 import {
   Crosshair,
   ExternalLink,
+  Layers,
   Maximize,
   Maximize2,
   Minimize2,
@@ -10,7 +11,71 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { FLORIAN_POSITION } from "@hotdoc/shared";
+import { FLORIAN_POSITION, MAP_TILES, type MapTileChoice } from "@hotdoc/shared";
+
+// Issue 25 (Einsatz-Test 2026-06-02): localStorage-Key fuer die User-
+// Auswahl des Layers. Wird beim Mount geladen + bei Klick gesetzt.
+// Default = "karte" (Strassenkarte).
+const TILE_CHOICE_KEY = "hotdoc.maptile.choice";
+
+function loadTileChoice(): MapTileChoice {
+  try {
+    const raw = localStorage.getItem(TILE_CHOICE_KEY);
+    if (raw === "karte" || raw === "foto" || raw === "hybrid") return raw;
+  } catch {
+    // localStorage unavailable (Private-Mode, …) — Default
+  }
+  return "karte";
+}
+
+function saveTileChoice(choice: MapTileChoice): void {
+  try {
+    localStorage.setItem(TILE_CHOICE_KEY, choice);
+  } catch {
+    // localStorage unavailable — kein Drama, nur Default beim Reload.
+  }
+}
+
+/**
+ * Issue 25 (Einsatz-Test 2026-06-02): TileLayer ableiten — bei "hybrid"
+ * werden zwei Layer addiert (Foto-Basis + Beschriftungs-Overlay), sonst
+ * nur ein Layer. Caller muss die alten Layer vorher abraeumen.
+ */
+function applyTileLayer(
+  map: L.Map,
+  choice: MapTileChoice,
+  layersRef: { base: L.TileLayer | null; overlay: L.TileLayer | null },
+): void {
+  if (layersRef.base) {
+    layersRef.base.remove();
+    layersRef.base = null;
+  }
+  if (layersRef.overlay) {
+    layersRef.overlay.remove();
+    layersRef.overlay = null;
+  }
+  if (choice === "hybrid") {
+    const cfg = MAP_TILES.hybrid;
+    const fotoCfg = MAP_TILES.foto;
+    layersRef.base = L.tileLayer(fotoCfg.url, {
+      subdomains: fotoCfg.subdomains as unknown as string[],
+      maxZoom: cfg.maxZoom,
+      attribution: cfg.attribution,
+    }).addTo(map);
+    layersRef.overlay = L.tileLayer(cfg.overlayUrl, {
+      subdomains: cfg.subdomains as unknown as string[],
+      maxZoom: cfg.maxZoom,
+      attribution: cfg.attribution,
+    }).addTo(map);
+  } else {
+    const cfg = MAP_TILES[choice];
+    layersRef.base = L.tileLayer(cfg.url, {
+      subdomains: cfg.subdomains as unknown as string[],
+      maxZoom: cfg.maxZoom,
+      attribution: cfg.attribution,
+    }).addTo(map);
+  }
+}
 
 export interface FahrzeugPos {
   fahrzeugId: string;
@@ -95,6 +160,16 @@ export function FlorianMap({
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const einsatzMarkerRef = useRef<L.Marker | null>(null);
+  // Issue 25 (Einsatz-Test 2026-06-02): Tile-Layer-Refs (Base + optional
+  // Overlay fuer Hybrid). Werden bei Layer-Switch ausgetauscht.
+  const tileLayersRef = useRef<{
+    base: L.TileLayer | null;
+    overlay: L.TileLayer | null;
+  }>({ base: null, overlay: null });
+  const [tileChoice, setTileChoice] = useState<MapTileChoice>(loadTileChoice);
+  // Issue 25: Auto-Follow-Pause — User-Pan/Zoom deaktiviert das automatische
+  // Fit-Bounds bis Layer-Switch oder Remount.
+  const autoFollowRef = useRef(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   // Controlled-via-Parent ODER intern — beide Pfade funktionieren.
@@ -115,18 +190,63 @@ export function FlorianMap({
       preferCanvas: true,
     }).setView([center.lat, center.lng], zoom);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap",
-    }).addTo(map);
+    // Issue 25 (Einsatz-Test 2026-06-02): basemap.at-Tiles statt OSM.
+    // Bessere Aufloesung in Oesterreich + Foto/Hybrid-Layer verfuegbar.
+    applyTileLayer(map, tileChoice, tileLayersRef.current);
+
+    // Auto-Follow pausieren wenn der User selbst pannt/zoomt — das
+    // anschliessende auto-fit-bounds koennte sonst ungewollt zurueckspringen.
+    map.on("dragstart", () => {
+      autoFollowRef.current = false;
+    });
+    map.on("zoomstart", (ev) => {
+      // Nur bei echtem User-Zoom (nicht bei programmatischem flyTo). Leaflet
+      // markiert programmatische Zooms an originalEvent === undefined.
+      const ie = ev as unknown as { originalEvent?: Event };
+      if (ie.originalEvent) autoFollowRef.current = false;
+    });
 
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
+      tileLayersRef.current = { base: null, overlay: null };
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Issue 25 (Einsatz-Test 2026-06-02): Tile-Layer austauschen wenn der
+  // User auf einen anderen Button klickt. Layer-Switch setzt auto-follow
+  // wieder aktiv damit das naechste fit-bounds greift.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    applyTileLayer(map, tileChoice, tileLayersRef.current);
+    autoFollowRef.current = true;
+  }, [tileChoice]);
+
+  // Issue 25 (Einsatz-Test 2026-06-02): Auto-Fit-Bounds wenn Einsatzort +
+  // Fahrzeuge da sind — gibt der Mannschaft beim Mount einen Ueberblick
+  // ohne Klick. Pausiert nach User-Pan/Zoom (autoFollowRef=false), springt
+  // wieder an nach Layer-Switch oder Remount.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !autoFollowRef.current) return;
+    const points: LatLngExpression[] = [];
+    if (einsatzort) points.push([einsatzort.lat, einsatzort.lng]);
+    for (const f of fahrzeuge) points.push([f.lat, f.lng]);
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      map.setView(points[0] as L.LatLngTuple, Math.max(map.getZoom(), 14), {
+        animate: true,
+      });
+      return;
+    }
+    const bounds: LatLngBoundsExpression = L.latLngBounds(
+      points.map((p) => p as L.LatLngTuple),
+    );
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17, animate: true });
+  }, [einsatzort?.lat, einsatzort?.lng, fahrzeuge.length, tileChoice]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -299,6 +419,11 @@ export function FlorianMap({
           })
         : { position: "relative" as const };
 
+  function handleTileChange(next: MapTileChoice): void {
+    setTileChoice(next);
+    saveTileChoice(next);
+  }
+
   return (
     <div style={wrapperStyle}>
       {fullscreen ? (
@@ -311,7 +436,9 @@ export function FlorianMap({
           }}
         >
           <strong style={{ fontSize: 15 }}>Karte · Live-Positionen</strong>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch Karte/Foto/Hybrid */}
+            <TileLayerSwitch choice={tileChoice} onChange={handleTileChange} />
             <ZoomButtons
               onGesamt={zoomGesamt}
               onLagebild={zoomLagebild}
@@ -358,6 +485,9 @@ export function FlorianMap({
               maxWidth: "calc(100% - 16px)",
             }}
           >
+            {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch oberhalb der
+                Zoom-Buttons — User-Wahl wird via localStorage gemerkt. */}
+            <TileLayerSwitch choice={tileChoice} onChange={handleTileChange} />
             <ZoomButtons
               onGesamt={zoomGesamt}
               onLagebild={zoomLagebild}
@@ -557,6 +687,78 @@ export function FlorianMap({
 
         <Legend />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Issue 25 (Einsatz-Test 2026-06-02): Segmented-Button-Gruppe fuer den
+ * Tile-Layer-Switch (Karte / Foto / Hybrid). Aktiver Layer wird durch
+ * gefuelltes Background-Tint hervorgehoben. Persistierung via localStorage
+ * (siehe handleTileChange).
+ */
+function TileLayerSwitch({
+  choice,
+  onChange,
+}: {
+  choice: MapTileChoice;
+  onChange: (next: MapTileChoice) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Karten-Layer waehlen"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 0,
+        background: "color-mix(in srgb, var(--surface) 88%, transparent)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 8,
+        padding: 2,
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      <Layers
+        size={11}
+        strokeWidth={2}
+        style={{
+          marginLeft: 4,
+          marginRight: 2,
+          color: "var(--fg-3)",
+          flexShrink: 0,
+        }}
+        aria-hidden
+      />
+      {(["karte", "foto", "hybrid"] as const).map((opt) => {
+        const active = choice === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            aria-pressed={active}
+            title={`Layer · ${MAP_TILES[opt].label}`}
+            style={{
+              padding: "3px 8px",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: active ? "var(--info)" : "var(--fg-2)",
+              background: active ? "var(--info-tint)" : "transparent",
+              border: 0,
+              borderRadius: 6,
+              cursor: "pointer",
+              minHeight: 0,
+              transition: "color 120ms ease, background 120ms ease",
+            }}
+          >
+            {MAP_TILES[opt].label}
+          </button>
+        );
+      })}
     </div>
   );
 }

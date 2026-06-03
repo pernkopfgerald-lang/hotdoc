@@ -108,3 +108,55 @@ export function parseBerichtNummer(n: string): {
     laufendeNummer: parseInt(num!, 10),
   };
 }
+
+/**
+ * Best-effort Berichts-Nr-Ableitung aus einer Einsatz-Doc-ID. Verwendet
+ * den `berichtNummer`-String wenn er bereits am Doc steht. Sonst wird
+ * eine deterministische Pseudo-Nummer aus der `einsatz:<suffix>`-ID
+ * + Einsatzart + Jahr abgeleitet — fuer PDF-Header bis der echte
+ * Counter-Service (Spec §12.3, B26-001/T26-001) live ist.
+ *
+ * Beispiele:
+ *   einsatz:lotsendienst-abc123 + "Lotsendienst" + 2026  → T26-XYZ
+ *   einsatz:b-2-1739123456789  + "Brand Sonstiges" + 2026 → B26-XYZ
+ *
+ * Stable: derselbe Input liefert immer dieselbe Pseudo-Nummer. Damit
+ * der gleiche Einsatz im PDF + Topbar + Archiv konsistent dieselbe
+ * Berichts-Nr zeigt, auch wenn der Counter noch nicht produziert.
+ */
+export function deriveBerichtNrFromId(
+  einsatzId: string,
+  einsatzart: string | undefined,
+  alarmierungZeit: string | undefined,
+): string {
+  // ID-Suffix nach "einsatz:" — kann Buchstaben/Zahlen/Bindestriche
+  // enthalten (BlaulichtSMS-AlarmId, manuell-<uuid>, lotsendienst-<uuid>).
+  const suffix = einsatzId.replace(/^einsatz:/, "");
+
+  // Wenn der Suffix selbst schon dem Schema entspricht (z. B. wenn ein
+  // zukuenftiger Counter die ID direkt schreibt), durchreichen.
+  if (/^[BT]\d{2}-\d{3,}$/.test(suffix)) return suffix;
+
+  const prefix = kategorieFuer(einsatzart) === "brand" ? "B" : "T";
+  let jahr = new Date().getFullYear();
+  if (alarmierungZeit) {
+    const d = new Date(alarmierungZeit);
+    if (!Number.isNaN(d.getTime())) jahr = d.getFullYear();
+  }
+  const yy = String(jahr).slice(-2);
+
+  // Numerisches Tail aus dem Suffix nehmen — die meisten BlaulichtSMS-Ids
+  // und Timestamp-Ids enden auf Zahlen.
+  const numTail = suffix.replace(/[^0-9]/g, "").slice(-4);
+  if (numTail.length >= 3) {
+    const n = parseInt(numTail.slice(-4), 10);
+    return `${prefix}${yy}-${String(n % 1000).padStart(3, "0")}`;
+  }
+
+  // Fallback: simple djb2-Hash auf Suffix, modulo 1000.
+  let h = 5381;
+  for (let i = 0; i < suffix.length; i++) {
+    h = ((h << 5) + h + suffix.charCodeAt(i)) >>> 0;
+  }
+  return `${prefix}${yy}-${String(h % 1000).padStart(3, "0")}`;
+}

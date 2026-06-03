@@ -71,6 +71,22 @@ export default defineConfig({
               expiration: { maxEntries: 5000, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },
+          // Issue 25 (Einsatz-Test 2026-06-02): basemap.at-Tiles vorhalten.
+          // CacheFirst damit der Tablet-Browser im Funkloch (Sturm-Einsatz
+          // ohne LTE, schwacher Empfang im Tal) die zuletzt geladenen Tiles
+          // weiter zeigt. 7 Tage Lebensdauer + 500 Eintraege (~ 5 Layers
+          // bei ~100 Tiles je Einsatzort).
+          {
+            urlPattern: /^https:\/\/maps\d*\.wien\.gv\.at\/basemap\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "basemap-at-tiles",
+              expiration: {
+                maxEntries: 500,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
+              },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
             handler: "CacheFirst",

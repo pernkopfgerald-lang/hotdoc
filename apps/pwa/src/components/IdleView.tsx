@@ -22,6 +22,9 @@ interface Props {
     | { kind: "idle" }
     | { kind: "uploading" }
     | { kind: "ok"; einsatzId: string; at: string }
+    // BLOCKER-2b+3 (Audit 2026-06-03): lokal + Offline-Outbox gesichert,
+    // Upload wird automatisch nachgereicht sobald Netz da ist.
+    | { kind: "queued" }
     | { kind: "error"; msg: string };
   /** Manueller Retry — nur sichtbar wenn syncState=error. */
   onRetryUpload?: () => void;
@@ -246,12 +249,42 @@ export function IdleView({
         </div>
       ) : null}
 
-      {/* ─── Quick-Actions ─── 4 große Touch-Cards ──── */}
+      {/* BLOCKER-2b+3 (Audit 2026-06-03): Bericht ist lokal + in der Offline-
+          Outbox gesichert, wird automatisch nachgereicht. Ehrliche Anzeige
+          statt falschem "übertragen". */}
+      {syncState && syncState.kind === "queued" ? (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            padding: "8px 14px",
+            borderRadius: "var(--radius-s)",
+            background: "var(--amber-soft)",
+            border: "1px solid var(--amber-border)",
+            color: "var(--amber)",
+            fontSize: 11.5,
+            fontWeight: 600,
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "var(--tracking-caps)",
+            textTransform: "uppercase",
+          }}
+        >
+          <CheckCircle2 size={13} />
+          Bericht lokal gesichert — wird gesendet sobald Netz
+        </div>
+      ) : null}
+
+      {/* ─── Quick-Actions ─── 2×2 große Touch-Cards ────
+          Tablet-Wunsch (2026-06-03): festes 2×2-Raster statt 1×4-Reihe, jede
+          Kachel doppelt so groß → leichter mit Handschuh zu treffen. */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 12,
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gap: 16,
         }}
       >
         <QuickActionCard
@@ -314,8 +347,9 @@ function QuickActionCard({
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
-        gap: 8,
-        padding: "18px 18px 20px",
+        gap: 12,
+        // Tablet-Wunsch (2026-06-03): doppelt so große Kacheln.
+        padding: "28px 26px 30px",
         borderRadius: "var(--radius-l)",
         border: "1px solid var(--glass-border)",
         background: "var(--glass-2)",
@@ -327,7 +361,7 @@ function QuickActionCard({
         transition:
           "transform 180ms var(--ease-smooth), box-shadow 180ms var(--ease-smooth), border-color 180ms var(--ease-smooth)",
         color: "var(--fg)",
-        minHeight: 120,
+        minHeight: 184,
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-2px)";
@@ -344,18 +378,18 @@ function QuickActionCard({
         style={{
           display: "grid",
           placeItems: "center",
-          width: 44,
-          height: 44,
-          borderRadius: 12,
+          width: 60,
+          height: 60,
+          borderRadius: 16,
           background: `color-mix(in srgb, ${color} 16%, transparent)`,
           color,
         }}
       >
-        <Icon size={22} strokeWidth={2.2} />
+        <Icon size={30} strokeWidth={2.2} />
       </span>
       <span
         style={{
-          fontSize: 16,
+          fontSize: 21,
           fontWeight: 700,
           letterSpacing: "var(--tracking-tight)",
         }}
@@ -365,7 +399,7 @@ function QuickActionCard({
       <span
         style={{
           fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
+          fontSize: 12,
           fontWeight: 600,
           letterSpacing: "var(--tracking-caps)",
           textTransform: "uppercase",

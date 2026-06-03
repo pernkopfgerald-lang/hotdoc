@@ -83,6 +83,75 @@ export function saveReportState(
 export function clearReportStates(fahrzeugId: FahrzeugId): void {
   try {
     localStorage.removeItem(keyFor(fahrzeugId));
+    // BLOCKER-1: auch alle Arbeits-Drafts dieses Fahrzeugs miträumen.
+    clearAllDrafts(fahrzeugId);
+  } catch {
+    // egal
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// BLOCKER-1 (Audit 2026-06-03): Arbeits-Draft des kompletten Fahrzeugbericht-
+// Zustands. Bisher lebte der gesamte Arbeitsstand (Mannschaft, Atemschutz-
+// Zeiten, Öl, Geräte, Aufträge, Chronik) NUR im flüchtigen React-RAM —
+// Reload/OOM-Kill im Funkloch = Totalverlust ohne Warnung. Wir spiegeln den
+// Stand debounced nach localStorage und laden ihn beim Mount als First-Hit
+// (vor dem Backend-Hydrate). `gearSelected` muss als Array serialisiert werden
+// (ein Set überlebt JSON.stringify nicht) — das macht der Aufrufer.
+//
+// Bewusst typ-agnostisch (`unknown`), damit report-state.ts NICHT vom
+// EinsatzInstance-Typ in BerichtPage abhängt (kein Zirkular-Import). Die
+// Set↔Array-Konvertierung + Typ-Casting liegt beim Aufrufer.
+// ──────────────────────────────────────────────────────────────────────────
+
+const DRAFT_PREFIX = "hotdoc.draft.";
+
+function draftKey(fahrzeugId: FahrzeugId, einsatzId: string): string {
+  return `${DRAFT_PREFIX}${fahrzeugId}.${einsatzId}`;
+}
+
+/** Speichert den Arbeitsstand eines Einsatzes. `draft` muss bereits
+ *  JSON-serialisierbar sein (gearSelected als Array, kein Set). */
+export function saveDraft(fahrzeugId: FahrzeugId, einsatzId: string, draft: unknown): void {
+  try {
+    localStorage.setItem(draftKey(fahrzeugId, einsatzId), JSON.stringify(draft));
+  } catch {
+    // Quota/Private-Mode → silent fail. Der Live-Sync/Outbox ist der zweite Schutz.
+  }
+}
+
+/** Lädt den Arbeitsstand eines Einsatzes (oder null wenn keiner da ist). */
+export function loadDraft(fahrzeugId: FahrzeugId, einsatzId: string): Record<string, unknown> | null {
+  try {
+    const raw = localStorage.getItem(draftKey(fahrzeugId, einsatzId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Löscht den Draft eines Einsatzes (z. B. nach erfolgreichem Abschluss). */
+export function clearDraft(fahrzeugId: FahrzeugId, einsatzId: string): void {
+  try {
+    localStorage.removeItem(draftKey(fahrzeugId, einsatzId));
+  } catch {
+    // egal
+  }
+}
+
+/** Löscht ALLE Drafts dieses Fahrzeugs — bei Setup-Reset. */
+export function clearAllDrafts(fahrzeugId: FahrzeugId): void {
+  try {
+    const prefix = `${DRAFT_PREFIX}${fahrzeugId}.`;
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) toRemove.push(k);
+    }
+    for (const k of toRemove) localStorage.removeItem(k);
   } catch {
     // egal
   }

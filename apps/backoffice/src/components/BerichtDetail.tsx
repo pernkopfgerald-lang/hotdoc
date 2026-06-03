@@ -1,6 +1,12 @@
-import { AlertTriangle, CheckCircle2, Lock, Unlock } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Lock, Trash2, Unlock } from "lucide-react";
 import { useEffect, useState } from "react";
-import { abschluss, getEinsatz, reaktivieren, type EinsatzListItem } from "../api/einsaetze";
+import {
+  abschluss,
+  getEinsatz,
+  loeschenEinsatz,
+  reaktivieren,
+  type EinsatzListItem,
+} from "../api/einsaetze";
 
 interface Props {
   id: string;
@@ -13,6 +19,9 @@ export function BerichtDetail({ id, onChange }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [reaktivModal, setReaktivModal] = useState(false);
   const [grund, setGrund] = useState("");
+  // Issue 2 (Einsatz-Test 2026-06-02): Loesch-Modal mit Pflicht-Grund.
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deleteGrund, setDeleteGrund] = useState("");
 
   useEffect(() => {
     void load();
@@ -57,6 +66,25 @@ export function BerichtDetail({ id, onChange }: Props) {
       setReaktivModal(false);
       setGrund("");
       await load();
+      onChange();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onLoeschen() {
+    if (deleteGrund.trim().length < 10) {
+      setErr("Loesch-Grund muss mind. 10 Zeichen enthalten.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await loeschenEinsatz(id, deleteGrund.trim());
+      setDeleteModal(false);
+      setDeleteGrund("");
+      // Doc ist weg → onChange triggert die Listenansicht, kein load().
       onChange();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -243,6 +271,27 @@ export function BerichtDetail({ id, onChange }: Props) {
             <Unlock size={16} /> Reaktivieren …
           </button>
         )}
+        {/* Issue 2 (Einsatz-Test 2026-06-02): Loesch-Button.
+            Bewusst sekundaer gestaltet (rot, ohne Schatten) damit er nicht
+            zufaellig statt "Abschliessen" geklickt wird. */}
+        <button
+          type="button"
+          onClick={() => setDeleteModal(true)}
+          disabled={busy}
+          className="cta"
+          style={{
+            width: "auto",
+            padding: "12px 18px",
+            fontSize: 14,
+            background: "transparent",
+            color: "var(--red)",
+            border: "1px solid var(--red-border)",
+            marginLeft: "auto",
+          }}
+          title="Endgueltig loeschen (inkl. aller Fahrzeugberichte)"
+        >
+          <Trash2 size={16} /> Löschen …
+        </button>
       </footer>
 
       {reaktivModal && (
@@ -298,6 +347,73 @@ export function BerichtDetail({ id, onChange }: Props) {
                 }}
               >
                 Reaktivieren
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Issue 2 (Einsatz-Test 2026-06-02): Loesch-Bestaetigung. Bewusst
+          mit zwei Schritten: Klick auf "Loeschen" → Modal mit Pflicht-
+          Grund → "Endgueltig loeschen". Der Trash-Icon-Button verhindert
+          versehentliches Loeschen, der Grund ist Audit-Pflicht. */}
+      {deleteModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(0, 0, 0, 0.55)",
+            padding: 16,
+          }}
+        >
+          <div className="card" style={{ width: "100%", maxWidth: 480, borderColor: "var(--red-border)" }}>
+            <h4 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--red)" }}>
+              Einsatz endgueltig loeschen?
+            </h4>
+            <p style={{ marginTop: 6, fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
+              Der Einsatz <strong>{doc._id}</strong> und ALLE Fahrzeugberichte werden in der Datenbank
+              als geloescht markiert. Der Audit-Trail behaelt den Grund + Username, der Inhalt der
+              Berichte ist danach NICHT mehr abrufbar. Diese Aktion ist nicht rueckgaengig zu machen.
+            </p>
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="caption">Grund (min. 10 Zeichen, fuer Audit)</label>
+              <textarea
+                value={deleteGrund}
+                onChange={(e) => setDeleteGrund(e.target.value)}
+                rows={3}
+                className="input"
+                style={{ resize: "vertical" }}
+                placeholder="z. B. Test-Eintrag aus Sprint 2026-06"
+              />
+            </div>
+            <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteModal(false);
+                  setDeleteGrund("");
+                }}
+                className="themetoggle"
+                style={{ width: "auto", padding: "0 14px" }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={onLoeschen}
+                disabled={busy || deleteGrund.trim().length < 10}
+                className="cta"
+                style={{
+                  width: "auto",
+                  padding: "10px 16px",
+                  fontSize: 14,
+                  background: "linear-gradient(180deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)",
+                }}
+              >
+                Endgueltig loeschen
               </button>
             </div>
           </div>

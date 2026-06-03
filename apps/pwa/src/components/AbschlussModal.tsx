@@ -44,7 +44,10 @@ export function AbschlussModal({
 
   return (
     <div
-      className="fixed inset-0 z-[2000] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"
+      // Issue 11 (Einsatz-Test 2026-06-02): Backdrop-Padding auf Mobile
+      // reduziert (p-3 statt p-4) damit das Modal in 360px-Viewports nicht
+      // ueber den Rand klebt.
+      className="fixed inset-0 z-[2000] grid place-items-center bg-black/75 p-3 sm:p-4 backdrop-blur-sm"
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
@@ -76,7 +79,10 @@ export function AbschlussModal({
           }}
         />
 
-        <header className="flex items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: "var(--border-strong)" }}>
+        {/* Issue 11 (Einsatz-Test 2026-06-02): Header-Padding auf Mobile
+            geschrumpft damit der "Bericht abschließen"-Title nicht
+            umgebrochen wird (passt sonst nicht in 360px). */}
+        <header className="flex items-start justify-between gap-3 border-b px-3 sm:px-4 py-3" style={{ borderColor: "var(--border-strong)" }}>
           <div className="flex items-center gap-2.5">
             <span
               className="grid h-9 w-9 place-items-center rounded-md text-white"

@@ -52,3 +52,36 @@ export async function apiCall<T>(path: string, options: RequestOptions = {}): Pr
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
+
+/**
+ * Issue 13 (Einsatz-Test 2026-06-02): Bearer-authentifizierter Download
+ * fuer Binary-Endpoints (PDF). `window.open` schickt keine Auth-Header und
+ * faellt deshalb am Backend mit 403 raus. Stattdessen: fetch mit Bearer
+ * → Blob → object-URL → window.open. Object-URLs werden nach 60 s
+ * revoked damit wir den Speicher nicht voller PDFs leaken.
+ *
+ * @returns die object-URL, falls der Aufrufer sie zusaetzlich braucht
+ *   (z. B. fuer einen sichtbaren Link). Wirft ApiError bei HTTP-Fehler.
+ */
+export async function fetchAndOpenBlob(path: string, signal?: AbortSignal): Promise<string> {
+  const token = getToken();
+  const res = await fetch(path, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new ApiError(text || res.statusText, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  // Auto-revoke nach 60s damit der Browser den Speicher freigeben darf.
+  // 60s reichen damit der neue Tab das PDF geladen hat — neue Chrome-
+  // Versionen halten Blob-URLs lebensfaehig fuer den geoeffneten Tab.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return url;
+}

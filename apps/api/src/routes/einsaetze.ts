@@ -367,9 +367,25 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async
 // werden koennen. Die Florianstation hat ohnehin die einsatzleiter-
 // Rolle und kann das jederzeit zusaetzlich. Der abschlussOverride-
 // Hinweis im PDF zeigt offene Fahrzeugberichte transparent.
+//
+// Issue 8 (Einsatz-Test 2026-06-02): Body-Felder verrechenbar + rechnungsadresse
+// werden cascadiert auf alle Fahrzeugberichte uebernommen damit der
+// Verrechnungs-Stand konsistent bleibt.
+const AbschlussBodySchema = z.object({
+  abschlussOverrideHinweis: z.string().optional(),
+  verrechenbar: z.boolean().optional(),
+  rechnungsadresse: z.string().optional(),
+});
 einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), (async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const session = req.session!;
+  const bodyParsed = AbschlussBodySchema.safeParse(req.body ?? {});
+  if (!bodyParsed.success) {
+    res.status(400).json({ error: "invalid_body", details: bodyParsed.error.flatten() });
+    return;
+  }
+  const { verrechenbar, rechnungsadresse, abschlussOverrideHinweis: overrideHinweisFromBody } =
+    bodyParsed.data;
   const doc = await getEinsatzOr404(id, res);
   if (!doc) return;
   if (doc.status === "abgeschlossen") {
@@ -399,14 +415,47 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
         .map((f) => (f as { fahrzeugId?: string }).fahrzeugId ?? "?")
         .join(", ")}). Datenstand entspricht dem Zwischenstand zum Abschluss-Zeitpunkt.`
     : undefined;
+  // Issue 22 (Einsatz-Test 2026-06-02): Ölbindemittel-Säcke aus allen
+  // Fahrzeugberichten aggregieren und ans Einsatz-Doc schreiben. Vorher
+  // stand im Hauptbericht 0 Säcke, obwohl die Fahrzeuge in Summe 3 Säcke
+  // verbraucht hatten. PDF-Renderer hat den Aggregations-Wert nicht.
+  // Wir setzen oelbindemittel.gesamtSaecke beim Abschluss damit der Wert
+  // dauerhaft persistiert ist (auch fuer spaetere Re-Renders).
+  const oelGesamtSaecke = fzgDocs.reduce((sum, f) => {
+    const n = (f as { oelbindemittelSaecke?: unknown }).oelbindemittelSaecke;
+    return sum + (typeof n === "number" && n > 0 ? n : 0);
+  }, 0);
+  const oelbindemittelAggregiert = {
+    verwendet: oelGesamtSaecke > 0,
+    gesamtSaecke: oelGesamtSaecke,
+  };
+  // Issue 8: Verrechnung-Cascade. Wenn `verrechenbar` aus dem Body kommt,
+  // setzen wir ihn auf das Einsatz-Doc + auf alle Fahrzeugberichte (siehe
+  // Cascade-Loop unten). Optional auch die Rechnungsadresse.
+  const existingVerrechnung =
+    (doc as { verrechnung?: { verrechenbar?: boolean; rechnungsadresse?: string } })
+      .verrechnung ?? {};
+  const verrechnungUpdated =
+    verrechenbar !== undefined || rechnungsadresse !== undefined
+      ? {
+          ...existingVerrechnung,
+          ...(verrechenbar !== undefined ? { verrechenbar } : {}),
+          ...(rechnungsadresse !== undefined ? { rechnungsadresse } : {}),
+        }
+      : existingVerrechnung;
+  // Override-Hinweis kommt entweder aus Body (Override-Flow) oder aus
+  // der automatischen "offene Fahrzeugberichte"-Detection (siehe oben).
+  const finalOverrideHinweis = overrideHinweisFromBody ?? abschlussOverrideHinweis;
   const updated = {
     ...doc,
     status: "abgeschlossen",
     schreibschutz: true,
     einsatzende: new Date().toISOString(),
     bearbeiterPersonId: doc.bearbeiterPersonId,
+    oelbindemittel: oelbindemittelAggregiert,
+    verrechnung: verrechnungUpdated,
     geaendertAm: new Date().toISOString(),
-    ...(abschlussOverrideHinweis ? { abschlussOverrideHinweis } : {}),
+    ...(finalOverrideHinweis ? { abschlussOverrideHinweis: finalOverrideHinweis } : {}),
   };
   const result = await db.insert(updated);
   logger.info({ id, by: session.username }, "Einsatz abgeschlossen");
@@ -417,6 +466,34 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   // sonst auf dem Fahrzeug-Tablet ewig hängen ("Geist-Tab"). Wir markieren
   // die als auto-abgeschlossen damit das PDF die Information trägt:
   // "Vom EL beim Hauptauftrag-Abschluss automatisch geschlossen".
+  //
+  // Issue 8 (Einsatz-Test 2026-06-02): Verrechnung wird ZUSAETZLICH auf
+  // ALLE Fahrzeugberichte gespiegelt (auch die schon abgeschlossenen),
+  // nicht nur die offenen. So bleibt der Verrechnungs-Stand konsistent.
+  if (verrechenbar !== undefined || rechnungsadresse !== undefined) {
+    const verrechnungCascadeNow = new Date().toISOString();
+    const allFzgWithVerrechnung = fzgDocs.map((f) => ({
+      ...(f as Record<string, unknown>),
+      verrechnung: {
+        ...((f as { verrechnung?: object }).verrechnung ?? {}),
+        ...(verrechenbar !== undefined ? { verrechenbar } : {}),
+        ...(rechnungsadresse !== undefined ? { rechnungsadresse } : {}),
+      },
+      geaendertAm: verrechnungCascadeNow,
+    }));
+    try {
+      await bulkUpdateWithRetry(allFzgWithVerrechnung, logger);
+      logger.info(
+        { id, cascadeCount: allFzgWithVerrechnung.length, verrechenbar, rechnungsadresse },
+        "Verrechnungs-Cascade auf alle Fahrzeugberichte",
+      );
+    } catch (err) {
+      logger.warn(
+        { err, id },
+        "Verrechnungs-Cascade fehlgeschlagen — Hauptauftrag bleibt geschlossen",
+      );
+    }
+  }
   if (offeneFzgber.length > 0) {
     const cascadeNow = new Date().toISOString();
     const cascadeDocs = offeneFzgber.map((f) => ({
@@ -601,9 +678,14 @@ const ReaktivierenBodySchema = z.object({
 
 einsaetzeRouter.post(
   "/api/einsaetze/:id/reaktivieren",
-  // einsatzleiter (Florianstation) darf auch reaktivieren — frueher
-  // war "funktionaer" Pflicht, der EL hatte keinen Zugriff.
-  requireAuth("einsatzleiter"),
+  // Issue 10 (Einsatz-Test 2026-06-02): Mannschaft darf auch reaktivieren
+  // damit das Fahrzeug-Tablet einen unabsichtlich abgeschlossenen Bericht
+  // selbst wieder oeffnen kann. Vorher musste die Florianstation gerufen
+  // werden ("PIN 1234"), was im Live-Einsatz unpraktisch war.
+  // Der Audit-Trail (Pflicht-Begruendung min. 10 Zeichen + Audit-Event)
+  // bleibt unveraendert, sodass die Reaktivierung weiterhin nachvollziehbar
+  // ist.
+  requireAuth("mannschaft"),
   (async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const parsed = ReaktivierenBodySchema.safeParse(req.body);
@@ -654,6 +736,116 @@ einsaetzeRouter.post(
   }) as RequestHandler,
 );
 
+// ─── DELETE /api/einsaetze/:id ─── Issue 2 (Einsatz-Test 2026-06-02) ───
+// Endgueltiges Loeschen eines Einsatzes + Cascade auf alle
+// Fahrzeugberichte. Anwendungsfall: Test-Eintraege aus dem realen
+// Test-Sprint, fehlerhafte Doppel-Anlagen, oder ein Einsatz der
+// versehentlich angelegt wurde.
+//
+// Sicherheits-Modell:
+//   - Pflicht-Begruendung (min. 10 Zeichen) damit der Audit-Trail nachvoll-
+//     ziehbar bleibt
+//   - Rolle "einsatzleiter" damit nicht jedes Fahrzeug-Tablet loeschen kann
+//   - CouchDB soft-Delete via `_deleted: true` + `geaendertAm`, das Doc
+//     bleibt mit Tombstone in der Datenbank — der Audit-Service kann es
+//     nachweisen (Compliance), aber kein normaler Read findet es mehr.
+//   - Cascade-Loeschung aller fzgber:<einsatzId>:* via bulk-delete
+const DeleteEinsatzBodySchema = z.object({
+  grund: z.string().min(10, "Loesch-Grund mind. 10 Zeichen"),
+});
+
+einsaetzeRouter.delete(
+  "/api/einsaetze/:id",
+  requireAuth("einsatzleiter"),
+  (async (req, res) => {
+    const id = decodeURIComponent(String(req.params.id));
+    const parsed = DeleteEinsatzBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
+      return;
+    }
+    const session = req.session!;
+    const doc = await getEinsatzOr404(id, res);
+    if (!doc) return;
+
+    // Cascade-Loeschung aller Fahrzeugberichte. Wir holen sie zuerst,
+    // markieren mit _deleted=true und schicken im bulk insert.
+    const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
+    const fzgList = await db.list({
+      startkey: fzgPrefix,
+      endkey: `${fzgPrefix}￰`,
+      include_docs: true,
+    });
+    const fzgDocs = fzgList.rows
+      .map((r) => r.doc)
+      .filter((d): d is NonNullable<typeof d> => !!d);
+
+    const cascadeIds = fzgDocs.map((f) => (f as { _id?: string })._id ?? "?");
+
+    // Bulk-Delete: alle Fahrzeugberichte + Einsatz selbst in einer
+    // bulk_docs-Operation. So bleibt das Loeschen atomar im
+    // Concurrency-Sinne (gleiche Update-Sequence).
+    const bulkDocs: Array<Record<string, unknown>> = [
+      ...fzgDocs.map((f) => ({ ...(f as Record<string, unknown>), _deleted: true })),
+      { ...doc, _deleted: true },
+    ];
+    // RISIKO-6 (Audit 2026-06-03): Frueher wurde db.bulk hier ohne Auswertung
+    // des Rueckgabe-Arrays aufgerufen. Bei einem Per-Doc-Konflikt (1 von N
+    // fzgber hatte eine stale _rev) blieb dieses Doc als verwaister
+    // Orphan zurueck, die Response meldete trotzdem `ok`. Wir nutzen jetzt
+    // bulkUpdateWithRetry: das wertet pro Doc den CouchDB-Status aus, holt bei
+    // `error: "conflict"` die frische _rev per db.get und versucht den
+    // Tombstone-Insert (_deleted:true bleibt im sourceDoc → valider
+    // CouchDB-Delete) genau 1x erneut. IDs die auch nach dem Retry
+    // fehlschlagen landen transparent in `failed` und damit in der Response
+    // (`cascade_failed`) + im Audit-Event, statt still verschluckt zu werden.
+    let failed: string[];
+    try {
+      ({ failed } = await bulkUpdateWithRetry(bulkDocs, logger));
+    } catch (err) {
+      logger.error(
+        { err, id, count: bulkDocs.length },
+        "Loeschen des Einsatzes fehlgeschlagen — Tombstones nicht gesetzt",
+      );
+      res.status(500).json({ error: "delete_failed", message: String(err) });
+      return;
+    }
+
+    logger.warn(
+      {
+        id,
+        by: session.username,
+        grund: parsed.data.grund,
+        fzgCount: cascadeIds.length,
+        ...(failed.length > 0 ? { cascade_failed: failed } : {}),
+      },
+      failed.length > 0
+        ? "Einsatz geloescht — aber einzelne Cascade-Docs blieben nach Retry als Orphan zurueck"
+        : "Einsatz GELOESCHT — Cascade auf Fahrzeugberichte",
+    );
+    await writeAuditEvent({
+      type: "einsatz-delete",
+      actorUsername: session.username,
+      actorRolle: session.rolle,
+      einsatzId: id,
+      ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+      details: {
+        grund: parsed.data.grund,
+        cascade_fzgber: cascadeIds,
+        ...(failed.length > 0 ? { cascade_failed: failed } : {}),
+      },
+    });
+    res.json({
+      ok: true,
+      id,
+      deleted: true,
+      cascade_fzgber: cascadeIds.length,
+      ...(failed.length > 0 ? { cascade_failed: failed } : {}),
+    });
+  }) as RequestHandler,
+);
+
 // ─── PUT /api/einsaetze/:id ─── Allg. Update (mit Schreibschutz-Check) ─
 /**
  * Allowlist der Felder die ueber das generische PUT bearbeitbar sind.
@@ -698,9 +890,21 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "vidi", // wildcard prefix — siehe Loop unten
   "fahrzeugPositionen",
   "chronik",
+  // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Block.
+  "technischeStatistik",
+  // Issue 17 (Einsatz-Test 2026-06-02): syBOS Brand-Statistik-Block (vom
+  // BrandAbschlussWizard via PUT geschrieben kurz vor dem /abschluss-Call).
+  "brandStatistik",
 ]);
 
-einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("einsatzleiter"), (async (req, res) => {
+// Issue 7 (Einsatz-Test 2026-06-02): von einsatzleiter auf mannschaft
+// gelockert damit das Fahrzeug-Tablet die Einsatzadresse korrigieren kann
+// (z. B. wenn BlaulichtSMS-Geocoder daneben liegt). Die Field-Allowlist
+// (PUT_EINSATZ_ALLOWED_FIELDS) und der Schreibschutz-Check sind die
+// eigentlichen Schutzmechanismen; die Rolle filtert nur ob ueberhaupt
+// jemand schreiben darf (jeder Aufgaben-Mitarbeiter ja, nur Read-only
+// Backoffice-User nein).
+einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), (async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const current = await getEinsatzOr404(id, res);
   if (!current) return;
@@ -732,7 +936,54 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("einsatzleiter"), (async (
     res.status(400).json({ error: "schema_invalid", details: validated.error.flatten() });
     return;
   }
-  const result = await db.insert(merged);
+  // RISIKO-4 (Audit 2026-06-03): Dieses generische PUT war der EINZIGE
+  // Schreibpfad ohne 409-Conflict-Retry → Lost-Update bei parallelen
+  // Florian-Editor-Autosaves. Wir kapseln den Insert in denselben
+  // Retry-on-409-Mechanismus wie der Fahrzeugbericht-PUT (siehe
+  // "PUT fzgber: 409 Conflict" weiter unten). Bei 409 holen wir die frische
+  // _rev per db.get(id), re-mergen current-Server-Stand + safeBody (safeBody
+  // ist die User-Aenderung, fresh der frische Server-Stand → korrekt) und
+  // validieren erneut, bevor wir genau 1x neu inserten. Die
+  // Allowlist-Filterung (safeBody) + Schema-Validierung bleiben so auch im
+  // Retry-Pfad erhalten. Schlaegt der Retry erneut mit 409 fehl → 409
+  // conflict_retry_failed an den Client.
+  let result: Awaited<ReturnType<typeof db.insert>>;
+  try {
+    result = await db.insert(merged);
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    logger.info({ id }, "PUT einsatz: 409 Conflict — Retry mit frischer _rev");
+    const fresh = await getEinsatzOr404(id, res);
+    if (!fresh) return;
+    const retryMerged = {
+      ...fresh,
+      ...safeBody,
+      _id: fresh._id,
+      _rev: fresh._rev,
+      type: "einsatz",
+      geaendertAm: new Date().toISOString(),
+    };
+    const retryValidated = EinsatzSchema.safeParse(retryMerged);
+    if (!retryValidated.success) {
+      res
+        .status(400)
+        .json({ error: "schema_invalid", details: retryValidated.error.flatten() });
+      return;
+    }
+    try {
+      result = await db.insert(retryMerged);
+    } catch (retryErr) {
+      if ((retryErr as { statusCode?: number }).statusCode === 409) {
+        logger.warn({ id }, "PUT einsatz: Retry erneut 409 — conflict_retry_failed");
+        res.status(409).json({
+          error: "conflict_retry_failed",
+          hint: "Einsatz wurde zwischenzeitlich von anderer Seite geaendert. Bitte erneut laden und nochmal speichern.",
+        });
+        return;
+      }
+      throw retryErr;
+    }
+  }
   // Audit-Trail: wenn sich die Fahrzeug-Zuweisung geaendert hat → eigenes
   // Event schreiben. Sicherheits-relevant: aendert die Sichtbarkeit eines
   // Einsatzes auf den Fahrzeug-Tablets.
@@ -883,6 +1134,8 @@ const ChronikEintragBodySchema = z.object({
   text: z.string().min(1).max(2000),
   pending: z.boolean().optional(),
   transkriptStatus: z.enum(["pending", "verfuegbar", "fehlgeschlagen"]).optional(),
+  // Foto-Funktion (2026-06-03): Referenz aufs foto:-Doc (falls Foto-Eintrag).
+  fotoId: z.string().optional(),
 });
 
 einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), (async (req, res) => {
@@ -936,6 +1189,96 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), (async (req, r
   );
   res.json({ ok: true, rev: result.rev, total: chronik.length + 1 });
 }) as RequestHandler);
+
+// ─── PUT /api/einsaetze/:id/chronik/:entryId ─────────────────
+// Issue 6 (Einsatz-Test 2026-06-02): Chronik-Eintraege editierbar.
+// Bei Web-Speech-Diktat verschluckt der Browser-Recognizer manchmal
+// Wortteile ("Floriane Berstalzell" statt "Florian Eberstalzell") oder
+// erkennt Fahrzeug-Abk. falsch ("Tee-El-Eff" statt "TLF"). Der Kdt soll
+// am Tablet direkt korrigieren koennen, ohne den ganzen Eintrag neu
+// diktieren zu muessen. Florianstation darf alle Eintraege bearbeiten
+// (zentrales Lektorat). Audit-Event "chronik-edit" + editiertAm/editiertVon
+// im Eintrag selbst machen den Vorgang nachvollziehbar.
+const ChronikEditBodySchema = z.object({
+  text: z.string().min(1).max(2000),
+});
+einsaetzeRouter.put(
+  "/api/einsaetze/:id/chronik/:entryId",
+  requireAuth("mannschaft"),
+  (async (req, res) => {
+    const id = decodeURIComponent(String(req.params.id));
+    const entryId = decodeURIComponent(String(req.params.entryId));
+    const parsed = ChronikEditBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res
+        .status(400)
+        .json({ error: "invalid_body", details: parsed.error.flatten() });
+      return;
+    }
+    const session = req.session!;
+    const doc = await getEinsatzOr404(id, res);
+    if (!doc) return;
+    if (doc.schreibschutz === true) {
+      // 423 Locked — selber Code wie POST /chronik damit das Frontend
+      // einheitlich reagiert (Reaktivierung-Hinweis im Toast).
+      res.status(423).json({
+        error: "schreibschutz_aktiv",
+        hint: "Bericht ist abgeschlossen - bitte zuerst reaktivieren",
+      });
+      return;
+    }
+    const chronik = ((doc.chronik as unknown[] | undefined) ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const idx = chronik.findIndex(
+      (e) => (e as { id?: string }).id === entryId,
+    );
+    if (idx < 0) {
+      res.status(404).json({ error: "entry_not_found" });
+      return;
+    }
+    const now = new Date().toISOString();
+    const updatedEntry = {
+      ...chronik[idx],
+      text: parsed.data.text,
+      editiertAm: now,
+      editiertVon: session.username,
+    };
+    const nextChronik = [...chronik];
+    nextChronik[idx] = updatedEntry;
+    const updated = {
+      ...doc,
+      chronik: nextChronik,
+      geaendertAm: now,
+    } as Record<string, unknown>;
+    // F-36-Parallele: PUT-Konflikt-Retry via bulkUpdateWithRetry. Bei
+    // 8s-Polling + Florianstation + bis zu 4 Fahrzeugen ist ein Conflict
+    // realistisch wenn zwei Editoren gleichzeitig denselben Einsatz
+    // schreiben. bulkUpdateWithRetry holt frische _rev und retried einmal.
+    const { ok, failed } = await bulkUpdateWithRetry([updated], logger);
+    if (failed.length > 0 || ok === 0) {
+      res.status(409).json({
+        error: "conflict_retry_failed",
+        hint: "Eintrag wurde zwischenzeitlich geaendert. Bitte erneut versuchen.",
+      });
+      return;
+    }
+    logger.info(
+      { id, entryId, by: session.username },
+      "Chronik-Eintrag editiert",
+    );
+    await writeAuditEvent({
+      type: "chronik-edit",
+      actorUsername: session.username,
+      actorRolle: session.rolle,
+      einsatzId: id,
+      ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+      details: { entryId },
+    });
+    res.json({ ok: true, id, entryId, total: nextChronik.length });
+  }) as RequestHandler,
+);
 
 // ─── GET /api/einsaetze/:id/chronik ───────────────────────────
 // Liefert nur die chronik-Sub-Liste. Tablets pollen das alle 8s und

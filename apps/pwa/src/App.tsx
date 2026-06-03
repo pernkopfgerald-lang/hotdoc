@@ -6,6 +6,7 @@ import { db, getFahrzeugConfig } from "./db/pouch";
 import { apiCall, ApiError, getTabletToken, TOKEN_KEY } from "./lib/api";
 import { registerDevice } from "./lib/device-register";
 import { flushOutbox } from "./lib/einsatz-outbox";
+import { flushRequestOutbox } from "./lib/request-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { clearReportStates } from "./lib/report-state";
 import { BerichtPage } from "./pages/BerichtPage";
@@ -164,6 +165,12 @@ export function App() {
     const tick = (): void => {
       void flushOutbox().catch((err) => {
         console.warn("[outbox] flush failed", err);
+      });
+      // BLOCKER-2b+3 (Audit 2026-06-03): auch die generische Request-Outbox
+      // flushen (gepufferte Fahrzeugbericht-Abschlüsse + Einsatz-Abschlüsse,
+      // die im Funkloch nicht durchkamen).
+      void flushRequestOutbox().catch((err) => {
+        console.warn("[request-outbox] flush failed", err);
       });
     };
     tick();

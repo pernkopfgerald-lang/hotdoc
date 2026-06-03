@@ -25,6 +25,9 @@ interface Props {
     | { kind: "idle" }
     | { kind: "uploading" }
     | { kind: "ok"; einsatzId: string; at: string }
+    // BLOCKER-2b+3 (Audit 2026-06-03): Bericht ist lokal + in der Offline-Outbox
+    // gesichert, der Upload wird automatisch nachgereicht sobald Netz da ist.
+    | { kind: "queued" }
     | { kind: "error"; msg: string };
   /** Manueller Retry für den Upload (nur sichtbar wenn syncState=error). */
   onRetryUpload?: () => void;
@@ -126,13 +129,17 @@ export function AbgeschlossenView({
                 ? "var(--emerald-border)"
                 : syncState.kind === "error"
                   ? "var(--red-border)"
-                  : "var(--border-strong)",
+                  : syncState.kind === "queued"
+                    ? "var(--amber-border)"
+                    : "var(--border-strong)",
             background:
               syncState.kind === "ok"
                 ? "var(--ok-tint)"
                 : syncState.kind === "error"
                   ? "var(--red-tint)"
-                  : "var(--surface-2)",
+                  : syncState.kind === "queued"
+                    ? "var(--amber-soft)"
+                    : "var(--surface-2)",
           }}
         >
           {syncState.kind === "uploading" ? (
@@ -147,6 +154,15 @@ export function AbgeschlossenView({
               <UploadCloud size={14} style={{ color: "var(--emerald)" }} />
               <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--emerald)" }}>
                 Im Backend gespeichert · {syncState.at}
+              </span>
+            </>
+          ) : syncState.kind === "queued" ? (
+            // BLOCKER-2b+3: ehrliche Meldung — der Bericht ist sicher (lokal +
+            // Outbox), aber noch nicht im Backend. Kein "gespeichert"-Trugschluss.
+            <>
+              <UploadCloud size={14} style={{ color: "var(--amber)" }} />
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--amber)" }}>
+                Lokal gesichert — wird automatisch an Florian gesendet sobald Netz
               </span>
             </>
           ) : (

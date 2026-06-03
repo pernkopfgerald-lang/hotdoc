@@ -17,6 +17,10 @@ import { einsaetzeRouter } from "./routes/einsaetze.js";
 import { geocodeRouter } from "./routes/geocode.js";
 import { geocodingRouter } from "./routes/geocoding.js";
 import { healthRouter } from "./routes/health.js";
+// Issue 17 (Einsatz-Test 2026-06-02): Objekt-Datenbank fuer Brand-Wiederholungs-Einsaetze.
+import { objekteRouter } from "./routes/objekte.js";
+// Foto-Funktion (2026-06-03): Einsatz-Fotos (Chronik).
+import { fotosRouter } from "./routes/fotos.js";
 import { pdfRouter } from "./routes/pdf.js";
 import { positionsRouter } from "./routes/positions.js";
 import { routingRouter } from "./routes/routing.js";
@@ -34,6 +38,25 @@ import { startPhantomCleanupCron } from "./workers/phantom-fzgber-cleanup.js";
 import { startSyBosSyncCron } from "./workers/sybos-sync.js";
 
 async function main(): Promise<void> {
+  // BLOCKER-4 (Audit 2026-06-03): Prozess-Überlebens-Garantie.
+  // Mission-Critical-Prämisse: Ein einzelner unbehandelter Fehler in einem
+  // async-Express-Handler darf NICHT den ganzen API-Prozess killen — sonst
+  // sind alle 5 Fahrzeug-Tablets gleichzeitig offline (Node beendet sich bei
+  // unhandledRejection je nach Flag mit Exit-Code). Wir loggen den Fehler und
+  // lassen den Prozess WEITERLAUFEN: ein hängender Einzel-Request (vom
+  // Client-seitigen apiCall-Timeout abgefangen) ist weit weniger schlimm als
+  // ein toter Server. fly.io startet bei echtem Heap-Schaden via /healthz-
+  // Check ohnehin neu — bis dahin bedient der Prozess alle anderen Requests.
+  process.on("unhandledRejection", (reason) => {
+    logger.error(
+      { reason: reason instanceof Error ? { message: reason.message, stack: reason.stack } : reason },
+      "unhandledRejection — Prozess bleibt am Leben (Mission-Critical)",
+    );
+  });
+  process.on("uncaughtException", (err) => {
+    logger.error({ err }, "uncaughtException — Prozess bleibt am Leben (Mission-Critical)");
+  });
+
   const app = express();
 
   // — Middleware —
@@ -45,7 +68,11 @@ async function main(): Promise<void> {
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({ origin: true, credentials: true }));
   app.use(compression());
-  app.use(express.json({ limit: "2mb" }));
+  // Foto-Funktion (2026-06-03): Limit von 2mb auf 6mb angehoben. Ein client-
+  // komprimiertes Einsatz-Foto ist als Base64-Data-URL ~0,5–1,5 MB; 6 MB gibt
+  // Puffer für Mehrfach-Felder + nicht optimal komprimierte Bilder. Unkritisch,
+  // da die API nur im FF-LAN/Tailscale erreichbar ist (kein offenes Internet).
+  app.use(express.json({ limit: "6mb" }));
 
   // pino-http mit PII-Filter — Authorization-Header, PINs, Passwörter werden
   // im Logger redaktiert. Wichtig für DSGVO-Konformität: Logs landen in fly's
@@ -97,6 +124,10 @@ async function main(): Promise<void> {
   app.use(adminRouter);
   app.use(configRouter);
   app.use(einsaetzeRouter);
+  // Issue 17 (Einsatz-Test 2026-06-02): Objekt-Datenbank-Routes.
+  app.use(objekteRouter);
+  // Foto-Funktion (2026-06-03): Einsatz-Foto-Upload/-Liste.
+  app.use(fotosRouter);
   app.use(pdfRouter);
   app.use(audioRouter);
   app.use(geocodeRouter);
@@ -105,6 +136,29 @@ async function main(): Promise<void> {
   app.use(routingRouter);
   app.use(devicesRouter);
   app.use(devRouter);
+
+  // BLOCKER-4 (Audit 2026-06-03): Globaler Error-Handler — MUSS nach allen
+  // Routen stehen und GENAU 4 Argumente haben (Express erkennt Error-Handler
+  // an der Arität). Fängt synchron geworfene Fehler + alles was via next(err)
+  // kommt und sendet eine saubere 500, statt den Request hängen zu lassen.
+  // (Reine async-Handler-Rejections ohne next() landen NICHT hier — die deckt
+  // der process.on("unhandledRejection")-Handler oben ab; eine npm-Dependency
+  // wie express-async-errors wäre dafür nötig, ist aber lt. CLAUDE.md §1 ohne
+  // Freigabe tabu.)
+  app.use(
+    (
+      err: unknown,
+      req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction,
+    ) => {
+      logger.error({ err, url: req.url, method: req.method }, "Unhandled route error");
+      if (res.headersSent) return;
+      const sc = (err as { statusCode?: number })?.statusCode;
+      const code = typeof sc === "number" && sc >= 400 && sc < 600 ? sc : 500;
+      res.status(code).json({ error: "internal_error" });
+    },
+  );
 
   // — DB-Bootstrap —
   try {

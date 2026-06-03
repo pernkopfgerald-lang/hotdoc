@@ -12,6 +12,8 @@ import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { StatusBanner } from "../components/StatusBanner";
 import { DictateButton, type DictateResult } from "../components/DictateButton";
+import { FotoButton } from "../components/FotoButton";
+import { captureFoto, getLocalFotoDataUrl } from "../lib/foto";
 import { CloseTabConfirmModal } from "../components/CloseTabConfirmModal";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { FxToggle } from "../components/FxToggle";
@@ -35,10 +37,17 @@ const VorschauModal = lazy(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
-import { apiCall } from "../lib/api";
+import { apiCall, ApiError } from "../lib/api";
+import { enqueueRequest } from "../lib/request-outbox";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
-import { loadReportStates, saveReportState } from "../lib/report-state";
+import {
+  clearDraft,
+  loadDraft,
+  loadReportStates,
+  saveDraft,
+  saveReportState,
+} from "../lib/report-state";
 import { describeFailure, transcribeAudio } from "../lib/transcribe";
 import { FAHRZEUGE, FLORIAN_POSITION, type FahrzeugId } from "@hotdoc/shared";
 
@@ -85,6 +94,13 @@ interface EinsatzInstance {
   /** Manueller KM-Override durch den Fahrzeugkdt. null = Auto-Wert aus
    *  GraphHopper-Route × 2 (oder Luftlinie × 1.3 × 2 als Fallback). */
   kmManualOverride: number | null;
+  /**
+   * Issue 12 (Einsatz-Test 2026-06-02): Markiert, ob der Fahrzeug-Kdt
+   * dieses Berichts auch der Einsatzleiter des gesamten Einsatzes ist.
+   * Default leer / false; bei Solo-Einsatz oder KDO automatisch vorbelegt.
+   * Wird an /fahrzeugbericht/:fzgId PUT als `kdtIstEinsatzleiter` mitgegeben.
+   */
+  kdtIstEinsatzleiter: boolean;
 }
 
 interface Props {
@@ -97,6 +113,51 @@ interface Props {
   onResetSetup: () => void;
   /** Single-Device-Logout nach erfolgreichem QR-Handoff. */
   onHandoffLogout: () => void;
+}
+
+/**
+ * BLOCKER-1 (Audit 2026-06-03): Übernimmt die Arbeitsfelder eines persistierten
+ * localStorage-Drafts in einen frisch aus der API gebauten EinsatzInstance.
+ * Defensiv: nur Felder mit korrektem Typ werden übernommen — ein korrupter oder
+ * versionsfremder Draft kann den Boot nie brechen. `gearSelected` kommt als
+ * Array aus dem JSON und wird wieder zum Set. Bei Mannschafts-Slot-Anzahl-
+ * Abweichung (z. B. Fahrzeug-Konfig zwischen Draft-Save und -Load geändert)
+ * wird die Mannschaft NICHT übernommen — Sicherheit vor Vollständigkeit; der
+ * Backend-Hydrate fängt es dann auf.
+ */
+function mergeDraftIntoInstance(
+  fresh: EinsatzInstance,
+  draft: Record<string, unknown>,
+): EinsatzInstance {
+  const merged: EinsatzInstance = { ...fresh };
+  if (draft.fahrer && typeof draft.fahrer === "object") {
+    merged.fahrer = draft.fahrer as PickPerson;
+  }
+  if (draft.kdt && typeof draft.kdt === "object") {
+    merged.kdt = draft.kdt as PickPerson;
+  }
+  if (
+    Array.isArray(draft.mannschaft) &&
+    draft.mannschaft.length === fresh.mannschaft.length
+  ) {
+    merged.mannschaft = draft.mannschaft as MannschaftSlotData[];
+  }
+  if (Array.isArray(draft.gearSelected)) {
+    merged.gearSelected = new Set(draft.gearSelected as string[]);
+  }
+  if (typeof draft.oelSaecke === "number") merged.oelSaecke = draft.oelSaecke;
+  if (Array.isArray(draft.auftraege)) merged.auftraege = draft.auftraege as Auftrag[];
+  if (Array.isArray(draft.chronik)) merged.chronik = draft.chronik as ChronikEintrag[];
+  if (typeof draft.uhrzeitBisHHMM === "string") {
+    merged.uhrzeitBisHHMM = draft.uhrzeitBisHHMM;
+  }
+  if (typeof draft.kmManualOverride === "number") {
+    merged.kmManualOverride = draft.kmManualOverride;
+  }
+  if (typeof draft.kdtIstEinsatzleiter === "boolean") {
+    merged.kdtIstEinsatzleiter = draft.kdtIstEinsatzleiter;
+  }
+  return merged;
 }
 
 /**
@@ -237,6 +298,26 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     }
   }, [einsaetze, fahrzeugId]);
 
+  // BLOCKER-1 (Audit 2026-06-03): Arbeits-Draft des kompletten Bericht-Zustands
+  // debounced (700 ms) nach localStorage spiegeln. Damit überlebt der gesamte
+  // Stand (Mannschaft, Atemschutz-Zeiten, Öl, Geräte, Aufträge, Chronik,
+  // editierte Adresse) einen Reload oder Android-OOM-Kill im Funkloch — der
+  // gefährlichste Datenverlust-Fall. Set → Array serialisieren (Set überlebt
+  // JSON.stringify nicht). Abgeschlossene Einsätze brauchen keinen Draft mehr
+  // → Draft löschen (der Abschluss-Stand liegt in report-state + Outbox).
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      for (const e of einsaetze) {
+        if (e.abgeschlossen) {
+          clearDraft(fahrzeugId, e.id);
+          continue;
+        }
+        saveDraft(fahrzeugId, e.id, { ...e, gearSelected: [...e.gearSelected] });
+      }
+    }, 700);
+    return () => clearTimeout(handle);
+  }, [einsaetze, fahrzeugId]);
+
   // Backend-Polling (alle 30 s) — drei Aufgaben in einem Lauf:
   //   1. Frischer abgeschlossen-Stand aus Backend übernehmen (z. B. nach
   //      Florianstation-Reaktivierung oder Tablet-Gerätewechsel).
@@ -280,7 +361,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       if (api.stichwort) {
         alarm.stichwort = api.stichwort as NonNullable<AlarmDaten["stichwort"]>;
       }
-      return {
+      const fresh: EinsatzInstance = {
         id: api._id,
         alarm,
         einsatzPos: api.koordinaten ?? HOME_POS,
@@ -298,7 +379,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         abgeschlossen: persisted,
         uhrzeitBisHHMM: "",
         kmManualOverride: null,
+        // Issue 12 (Einsatz-Test 2026-06-02): KDO-Kdt ist Auto-Default-EL.
+        // Wenn der Einsatz von einem KDO-Tablet aus betreut wird, ist der
+        // Kdt fast immer auch der EL. Andere Fahrzeuge starten mit false
+        // und der Funktionaer kann den Toggle aktivieren wenn er der EL ist.
+        kdtIstEinsatzleiter: fahrzeugId === "kdo",
       };
+
+      // BLOCKER-1 (Audit 2026-06-03): lokalen Arbeits-Draft als First-Hit
+      // einspielen — VOR dem Backend-Hydrate. Greift nur bei nicht-
+      // abgeschlossenen Einsätzen. Dadurch hat der Instance sofort
+      // hasLocalData=true → der Backend-Hydrate-Effekt überspringt ihn
+      // (kein Konflikt). Bei Tablet-Wechsel (kein Draft vorhanden) bleibt
+      // der Backend-Hydrate die Quelle. So überlebt der komplette Arbeits-
+      // stand einen Reload/OOM-Kill im Funkloch.
+      if (!persisted) {
+        const draft = loadDraft(fahrzeugId, api._id);
+        if (draft) return mergeDraftIntoInstance(fresh, draft);
+      }
+      return fresh;
     };
 
     const runPoll = async () => {
@@ -491,6 +590,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   // sobald der User auch nur einen Slot tippt, blockiert das die Hydrierung
   // (sonst würde der laufende Live-Sync gegen den User kämpfen).
   const hydratedIdsRef = useRef<Set<string>>(new Set());
+  // OPT-6b (Audit 2026-06-03): Doppel-Submit-Guard für den Abschluss-Button.
+  const abschlussInFlightRef = useRef(false);
+  // Foto-Funktion (2026-06-03): Busy-Flag während Komprimierung/Speichern.
+  const [fotoBusy, setFotoBusy] = useState(false);
   useEffect(() => {
     if (personen.length === 0 || einsaetze.length === 0) return;
     let cancelled = false;
@@ -802,6 +905,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     active?.auftraege,
   ]);
 
+  // Issue 7 (Einsatz-Test 2026-06-02): Einsatz-Meta-Sync (Adresse).
+  // Wenn der Fahrzeugkdt die Adresse korrigiert, geht der neue Wert mit
+  // 1,5 s Debounce per PUT /api/einsaetze/:id ans Backend — damit die
+  // Florianstation und alle anderen Fahrzeug-Tablets die korrigierte
+  // Adresse beim naechsten Poll sehen.
+  useEffect(() => {
+    if (!active || active.abgeschlossen) return;
+    const handle = setTimeout(() => {
+      apiCall(`/api/einsaetze/${encodeURIComponent(active.id)}`, {
+        method: "PUT",
+        body: { einsatzort: active.alarm.einsatzort },
+      }).catch((err) => {
+        console.warn("[einsatz-sync] einsatzort konnte nicht synchronisiert werden:", err);
+      });
+    }, 1500);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, active?.abgeschlossen, active?.alarm.einsatzort]);
+
   // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
   // Pausiert wenn Bericht abgeschlossen (kein Schreibschutz-Bypass nötig).
   useEffect(() => {
@@ -886,6 +1008,40 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
    *  - kind="audio" (iOS-Safari/Firefox): Audio-Blob hochladen an Whisper-API.
    *    Bei nicht-konfigurierter API erscheint ein klarer Hinweis-Text im Eintrag.
    */
+  // Foto-Funktion (2026-06-03): Foto aus der Kamera in die Chronik aufnehmen.
+  // Komprimieren + lokal speichern + Offline-Outbox-Upload (lib/foto.ts), dann
+  // als Chronik-Eintrag mit fotoId. Die Beschreibung kann der Kdt nachträglich
+  // über den Chronik-Edit-Stift (Issue 6) ergänzen — KISS, kein Extra-Dialog.
+  async function onFotoCapture(file: File) {
+    if (!active) return;
+    setFotoBusy(true);
+    try {
+      const res = await captureFoto({
+        einsatzId: activeId,
+        fahrzeugId,
+        funkrufname: fahrzeug.funkrufname,
+        file,
+      });
+      const id = `foto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const eintrag = {
+        id,
+        zeitstempel: res.aufgenommenAm,
+        funkrufname: fahrzeug.funkrufname,
+        fahrzeugId,
+        source: "fahrzeug" as const,
+        text: "Foto",
+        fotoId: res.fotoId,
+      };
+      patchActive((e) => ({ ...e, chronik: [...e.chronik, eintrag] }));
+      void broadcastChronikEntry(activeId, eintrag);
+    } catch (err) {
+      console.warn("[foto] Aufnahme fehlgeschlagen:", err);
+      alert("Foto konnte nicht verarbeitet werden. Bitte erneut versuchen.");
+    } finally {
+      setFotoBusy(false);
+    }
+  }
+
   function onDictateResult(result: DictateResult) {
     const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const zeitstempel = new Date().toISOString();
@@ -895,6 +1051,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       // ─── Pfad A: Web-Speech-API direktes Transkript ───
       const text = result.text.trim();
       const finalText = text || `🎤 Audio · ${dauer} · (keine Sprache erkannt)`;
+      // Issue 6 (Einsatz-Test 2026-06-02): fahrzeugId lokal mitfuehren
+      // damit der Edit-Button in der Chronik den Eintrag als "eigen"
+      // erkennt (canEdit-Predikat in der ChronikTimeline).
       patchActive((e) => ({
         ...e,
         chronik: [
@@ -903,6 +1062,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             id,
             zeitstempel,
             funkrufname: fahrzeug.funkrufname,
+            fahrzeugId,
             source: "fahrzeug",
             text: finalText,
           },
@@ -921,6 +1081,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
 
     // ─── Pfad B: Audio-Blob → Whisper-Backend (iOS-Safari / Firefox) ───
     const pendingText = `🎤 Audio · ${dauer} · transkribiere …`;
+    // Issue 6 (Einsatz-Test 2026-06-02): fahrzeugId mitfuehren — siehe oben.
     patchActive((e) => ({
       ...e,
       chronik: [
@@ -929,6 +1090,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           id,
           zeitstempel,
           funkrufname: fahrzeug.funkrufname,
+          fahrzeugId,
           source: "fahrzeug",
           pending: true,
           text: pendingText,
@@ -978,9 +1140,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       ...e,
       auftraege: [...e.auftraege, { id, text, zeitstempel }],
     }));
-    // Auch in der Chronik vermerken — andere Fahrzeuge sehen "Auftrag begonnen: X"
+    // Auch in der Chronik vermerken — andere Fahrzeuge sehen den Auftrag-Text
+    // direkt, ohne "Auftrag begonnen:"-Prefix (Issue 23 / Einsatz-Test 2026-06-02).
+    // Der Prefix war im Live-Einsatz redundant, weil der Quellen-Tag "Fahrzeug"
+    // schon klar zeigt wer den Auftrag eingetragen hat.
     const chronikId = `chr-auf-${id}`;
-    const chronikText = `Auftrag begonnen: ${text}`;
+    const chronikText = text;
+    // Issue 6 (Einsatz-Test 2026-06-02): fahrzeugId fuer Edit-Permission.
     patchActive((e) => ({
       ...e,
       chronik: [
@@ -989,6 +1155,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           id: chronikId,
           zeitstempel,
           funkrufname: fahrzeug.funkrufname,
+          fahrzeugId,
           source: "fahrzeug",
           text: chronikText,
         },
@@ -1060,6 +1227,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     | { kind: "idle" }
     | { kind: "uploading" }
     | { kind: "ok"; einsatzId: string; at: string }
+    | { kind: "queued" }
     | { kind: "error"; msg: string }
   >({ kind: "idle" });
 
@@ -1075,22 +1243,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     kmGefahren: number,
   ): Promise<void> {
     setUploadState({ kind: "uploading" });
-    try {
-      // Aktiven Einsatz im Backend suchen
-      const list = await apiCall<{ items: Array<{ _id: string; alarmId?: string }> }>(
-        "/api/einsaetze?status=aktiv",
-      );
-      const matchByAlarmId = list.items.find((d) => d.alarmId === einsatz.alarm.alarmId);
-      const firstActive = list.items[0];
-      const target = matchByAlarmId ?? firstActive;
-      if (!target) {
-        setUploadState({
-          kind: "error",
-          msg: "Kein aktiver Einsatz im Backend gefunden — Bericht nur lokal gespeichert.",
-        });
-        return;
-      }
-      const einsatzId = target._id;
+    // BLOCKER-2b+3 (Audit 2026-06-03): einsatz.id IST bereits die Backend-Doc-ID
+    // (aus buildEinsatzFromApi: id = api._id). Der frühere GET /api/einsaetze
+    // ?status=aktiv-Lookup war redundant UND ein zusätzlicher Offline-Fehler-
+    // punkt (failt im Funkloch, bevor wir überhaupt PUTten konnten). Weg damit.
+    {
+      const einsatzId = einsatz.id;
       const now = new Date().toISOString();
       // Wenn der Kdt die "Uhrzeit bis" schon manuell gesetzt hat,
       // respektieren wir das — der Abschluss soll seine Eingabe nicht
@@ -1128,19 +1286,46 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         status: "abgeschlossen" as const,
       };
 
-      await apiCall(
-        `/api/einsaetze/${encodeURIComponent(einsatzId)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
-        { method: "PUT", body },
-      );
-      setUploadState({ kind: "ok", einsatzId, at: new Date().toLocaleTimeString("de-AT") });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setUploadState({ kind: "error", msg });
+      const putPath = `/api/einsaetze/${encodeURIComponent(einsatzId)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`;
+      try {
+        await apiCall(putPath, { method: "PUT", body });
+        setUploadState({ kind: "ok", einsatzId, at: new Date().toLocaleTimeString("de-AT") });
+      } catch (e) {
+        // BLOCKER-2b+3 (Audit 2026-06-03): Netz-/Timeout-/5xx-Fehler → in die
+        // Offline-Outbox legen, der 30-s-Worker reicht es automatisch nach.
+        // Der Stand liegt zusätzlich im localStorage-Draft (BLOCKER-1). Nur bei
+        // echtem Client-/Schema-Fehler (Retry sinnlos) zeigen wir einen Fehler.
+        const clientErr = e instanceof ApiError && [400, 404, 409, 422].includes(e.status);
+        if (clientErr) {
+          setUploadState({ kind: "error", msg: e instanceof Error ? e.message : String(e) });
+        } else {
+          await enqueueRequest(
+            1,
+            `fzgber:${einsatzId}:${fahrzeugId}`,
+            "PUT",
+            putPath,
+            body as Record<string, unknown>,
+          ).catch(() => {
+            /* PouchDB-Fehler → der localStorage-Draft bleibt als letzter Schutz */
+          });
+          setUploadState({ kind: "queued" });
+        }
+      }
     }
   }
 
   function abschliessen(alsoCloseEinsatz: boolean) {
     if (!active) return;
+    // OPT-6b (Audit 2026-06-03): Doppel-Submit-Guard. Ohne ihn könnte ein
+    // schnelles Doppel-Tap auf "Abschließen" zwei uploadFahrzeugbericht- +
+    // zwei /abschluss-POSTs auslösen (Backend ist zwar idempotent, aber
+    // unnötige Doppel-Requests). Ref-Guard blockt für 3 s; danach ist ein
+    // legitimer erneuter Versuch (z. B. nach Fehler) wieder möglich.
+    if (abschlussInFlightRef.current) return;
+    abschlussInFlightRef.current = true;
+    setTimeout(() => {
+      abschlussInFlightRef.current = false;
+    }, 3000);
     const km = computeKm();
     const einsatzId = active.id;
     patchActive((e) => ({
@@ -1157,11 +1342,23 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     // schliesst der Fahrzeug-Abschluss auch gleich den Einsatz selbst.
     // Backend erlaubt das seit dem requireAuth("mannschaft")-Switch.
     if (alsoCloseEinsatz) {
-      void apiCall(`/api/einsaetze/${encodeURIComponent(einsatzId)}/abschluss`, {
-        method: "POST",
-        body: {},
-      }).catch((err) => {
-        console.warn("[abschluss] Einsatz-Abschluss fehlgeschlagen:", err);
+      const abschlussPath = `/api/einsaetze/${encodeURIComponent(einsatzId)}/abschluss`;
+      void apiCall(abschlussPath, { method: "POST", body: {} }).catch((err) => {
+        // BLOCKER-2b+3 (Audit 2026-06-03): Im Funkloch nicht verlieren — in die
+        // Offline-Outbox mit Priorität 2 (läuft NACH dem fzgber-PUT aus Prio 1,
+        // sonst greift der schreibschutz-Check und der PUT würde abgelehnt).
+        // Echte Client-Fehler (z. B. 409 already_closed) nicht queuen.
+        const clientErr =
+          err instanceof ApiError && [400, 404, 409, 422].includes(err.status);
+        if (!clientErr) {
+          void enqueueRequest(2, `abschluss:${einsatzId}`, "POST", abschlussPath, {}).catch(
+            () => {
+              /* PouchDB-Fehler → nächster Versuch beim nächsten manuellen Abschluss */
+            },
+          );
+        } else {
+          console.warn("[abschluss] Einsatz-Abschluss endgültig fehlgeschlagen:", err);
+        }
       });
     }
   }
@@ -1196,6 +1393,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         ...(einsatz.kdt?.syBosId
           ? { fahrzeugKdtPersonId: einsatz.kdt.syBosId }
           : {}),
+        // Issue 12 (Einsatz-Test 2026-06-02): EL-Marker mitschicken damit
+        // die Florianstation den Stand aggregieren kann.
+        kdtIstEinsatzleiter: einsatz.kdtIstEinsatzleiter,
         mannschaft: einsatz.mannschaft
           .map((m, idx) =>
             m.person
@@ -1414,6 +1614,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   </div>
                 </div>
               </div>
+              {/* Issue 7 (Einsatz-Test 2026-06-02): Adresse editierbar.
+                  BlaulichtSMS-Geocoder liegt manchmal daneben (insb. bei
+                  Autobahn-km-Eintraegen). Der Fahrzeugkdt muss am Tablet
+                  korrigieren koennen — Zentrale ggf. nicht erreichbar.
+                  Sync laeuft via 1.5s-Debounce nach PUT /api/einsaetze/:id. */}
               <div className="field" style={{ marginTop: 14 }}>
                 <label
                   className="caption"
@@ -1433,12 +1638,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                       borderRadius: "var(--radius-pill)",
                       border: "1px solid var(--glass-border)",
                     }}
-                    title="Adresse wird in der Florianstation editiert — hier nur Anzeige."
+                    title="Korrekturen werden auch in die Florianstation gespiegelt."
                   >
-                    wird in Florian Eberstalzell editiert
+                    auch hier editierbar
                   </span>
                 </label>
-                <input className="input filled" value={active.alarm.einsatzort} readOnly />
+                <input
+                  className="input"
+                  value={active.alarm.einsatzort}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    patchActive((cur) => ({
+                      ...cur,
+                      alarm: { ...cur.alarm, einsatzort: next },
+                    }));
+                  }}
+                  placeholder="Adresse eintragen (z. B. Hauptstraße 12, 4653 Eberstalzell)"
+                  spellCheck
+                  lang="de-AT"
+                />
               </div>
               {/* Strecke / Kilometer — Auto-Berechnung Feuerwehrhaus ↔ Einsatzort × 2 */}
               <div className="grid-2" style={{ marginTop: 14, gap: 14 }}>
@@ -1614,6 +1832,37 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   onClear={() => patchActive((e) => ({ ...e, kdt: null }))}
                 />
               </div>
+              {/* Issue 12 (Einsatz-Test 2026-06-02): Toggle "Kdt ist EL".
+                  Nur sichtbar wenn ein Kdt gewaehlt wurde. Die Florianstation
+                  aggregiert ueber alle Fahrzeugberichte und warnt, wenn 0
+                  oder >1 EL gesetzt sind. */}
+              {active.kdt ? (
+                <label
+                  style={{
+                    marginTop: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 12px",
+                    background: active.kdtIstEinsatzleiter ? "var(--info-tint)" : "var(--surface-2)",
+                    border: `1px solid ${active.kdtIstEinsatzleiter ? "var(--info-border)" : "var(--border)"}`,
+                    borderRadius: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={active.kdtIstEinsatzleiter}
+                    onChange={(e) =>
+                      patchActive((cur) => ({ ...cur, kdtIstEinsatzleiter: e.target.checked }))
+                    }
+                    style={{ accentColor: "var(--info)" }}
+                  />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
+                    {active.kdt.nachname} {active.kdt.vorname} ist Einsatzleiter
+                  </span>
+                </label>
+              ) : null}
             </section>
 
             <section className="card">
@@ -1665,6 +1914,65 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               onRemove={removeAuftrag}
             />
 
+            {/* Issue 9 (Einsatz-Test 2026-06-02): Chronik kommt VOR der Karte —
+                im Live-Einsatz brauchen Mannschaft und Kdt. den Chronik-Eintrag
+                schneller als die Lagekarte. Karte ist Sekundaer-Info. */}
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">
+                  <Clipboard size={20} />
+                  Einsatzchronik
+                </div>
+                {/* OPT-4 (Audit 2026-06-03): Klarsprache statt "Whisper". */}
+                <span className="card-meta">Spracherkennung · offline</span>
+              </div>
+              {/* Issue 6 (Einsatz-Test 2026-06-02): Chronik-Eintraege koennen
+                  nachtraeglich vom Fahrzeugkdt korrigiert werden — aber nur
+                  EIGENE Eintraege (fahrzeugId === eigene), nicht die der
+                  Florianstation oder anderer Fahrzeuge. Bei abgeschlossenem
+                  Bericht ist Edit komplett gesperrt (Schreibschutz). */}
+              <ChronikTimeline
+                eintraege={active.chronik}
+                loadFoto={getLocalFotoDataUrl}
+                canEdit={(entry) =>
+                  !active.abgeschlossen && entry.fahrzeugId === fahrzeugId
+                }
+                onSaveEdit={async (entryId, newText) => {
+                  try {
+                    await apiCall(
+                      `/api/einsaetze/${encodeURIComponent(activeId)}/chronik/${encodeURIComponent(entryId)}`,
+                      { method: "PUT", body: { text: newText } },
+                    );
+                    // Optimistic patch — neue _rev kommt beim naechsten
+                    // 8s-Poll. fetchChronikDiff erkennt dann via entry.id
+                    // dass der Eintrag schon lokal ist (Idempotenz).
+                    const now = new Date().toISOString();
+                    patchActive((e) => ({
+                      ...e,
+                      chronik: e.chronik.map((c) =>
+                        c.id === entryId
+                          ? {
+                              ...c,
+                              text: newText,
+                              editiertAm: now,
+                              editiertVon: fahrzeug.funkrufname,
+                            }
+                          : c,
+                      ),
+                    }));
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                }}
+              />
+              <DictateButton onResult={onDictateResult} />
+              {/* Foto-Funktion (2026-06-03): Kamera-Button unter dem Diktat —
+                  Foto wird komprimiert, lokal gesichert + offline-fähig
+                  hochgeladen und als Chronik-Eintrag mit Thumbnail angezeigt. */}
+              <FotoButton onCapture={onFotoCapture} busy={fotoBusy} />
+            </section>
+
             <SectionHead title="Anfahrt & Position-Sharing" />
             <MapCard
               selfPos={selfPos}
@@ -1675,18 +1983,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               showLoeschwasser={false}
               {...(route ? { route } : {})}
             />
-
-            <section className="card">
-              <div className="card-head">
-                <div className="card-title">
-                  <Clipboard size={20} />
-                  Einsatzchronik
-                </div>
-                <span className="card-meta">Whisper · offline</span>
-              </div>
-              <ChronikTimeline eintraege={active.chronik} />
-              <DictateButton onResult={onDictateResult} />
-            </section>
 
             <div className="cta-wrap">
               <div className="cta-secondary">

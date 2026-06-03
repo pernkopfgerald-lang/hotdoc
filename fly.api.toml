@@ -18,6 +18,11 @@ kill_timeout    = 10
 [env]
   NODE_ENV = "production"
   PORT     = "3000"
+  # Issue 3 (Einsatz-Test 2026-06-02): Container-Zeitzone auf Europe/Vienna
+  # damit Logs + Default-Date-Format konsistent mit den FF-Zeiten sind.
+  # Die PDF-Renderer + Frontend-Stellen setzen `timeZone` explizit fuer
+  # `toLocaleString` — diese ENV-Variable ist die zweite Verteidigungs-Linie.
+  TZ        = "Europe/Vienna"
   COUCH_URL = "http://hotdoc-db.internal:5984"
   COUCH_DB  = "hotdoc"
   AUDIO_RETENTION_DAYS = "30"

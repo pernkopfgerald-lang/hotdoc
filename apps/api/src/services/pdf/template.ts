@@ -27,6 +27,10 @@ import { renderFahrzeugberichtPageHtml } from "./fahrzeugbericht.js";
 
 export interface BerichtDaten {
   einsatzId: string;
+  /** Berichts-Nr (Issue 24, Einsatz-Test 2026-06-02). Optional. */
+  berichtsNummer?: string;
+  /** Quelle des Berichts (BlaulichtSMS / Manuell / Übung / Lotsendienst). */
+  einsatzQuelle?: string;
   einsatzart?: string;
   einsatzartFreitext?: string;
   einsatzort: string;
@@ -70,6 +74,19 @@ export interface BerichtDaten {
     funkrufname: string;
     text: string;
     source: string;
+    /** Foto-Funktion (2026-06-03): Referenz aufs Foto (falls Foto-Eintrag). */
+    fotoId?: string;
+  }>;
+  /**
+   * Foto-Funktion (2026-06-03): Einsatz-Fotos. Inline als 4×3-cm-Thumbnail in
+   * der Chronik (verknüpft über fotoId), groß im Anhang (9×12 cm, 4 pro A4).
+   */
+  fotos?: Array<{
+    fotoId: string;
+    dataUrl: string;
+    beschreibung?: string;
+    aufgenommenAm: string;
+    aufgenommenVon?: string;
   }>;
   /** Fahrzeug-Berichte fuer Anhang-Seiten. */
   fahrzeugberichte?: Array<{
@@ -87,6 +104,39 @@ export interface BerichtDaten {
   }>;
   /** Wenn beim Abschluss noch Fahrzeugberichte offen waren — Hinweis-Banner. */
   abschlussOverrideHinweis?: string;
+  // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Block. Optional.
+  technischeStatistik?: {
+    personenRettung?: {
+      anzahlPersonen?: number;
+      tot?: number;
+      verletzt?: number;
+      unverletzt?: number;
+    };
+    tierRettung?: { gross?: number; klein?: number };
+    ursache?: string;
+    hauptTaetigkeit?: string;
+    weitereTaetigkeiten?: string[];
+    gefaehrlicheStoffe?: string[];
+  };
+  // Issue 17 (Einsatz-Test 2026-06-02): syBOS Brand-Statistik-Block. Optional.
+  brandStatistik?: {
+    entdeckung?: string[];
+    ausmass?: string;
+    klassen?: string[];
+    kategorie?: string;
+    objektart1?: string;
+    objektart2?: string;
+    bauart?: string;
+    lagen?: string[];
+    verlauf?: string;
+    personenRettung?: {
+      anzahlPersonen?: number;
+      tot?: number;
+      verletzt?: number;
+      unverletzt?: number;
+    };
+    tierRettung?: { gross?: number; klein?: number };
+  };
 }
 
 const EINSATZARTEN_MATRIX: ReadonlyArray<readonly string[]> = [
@@ -375,6 +425,9 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     <tr><td><div class="freitext">${escape(d.meldungEinsatzleitung ?? "")}</div></td></tr>
   </table>
 
+  ${renderTechnischeStatistikBlock(d)}
+  ${renderBrandStatistikBlock(d)}
+
   ${
     d.reaktivierungen && d.reaktivierungen.length > 0
       ? `<div class="audit">
@@ -414,6 +467,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 
 ${renderChronikSeite(d)}
 ${renderFahrzeugberichtSeiten(d)}
+${renderFotoAnhang(d)}
 
 </body>
 </html>`;
@@ -422,6 +476,8 @@ ${renderFahrzeugberichtSeiten(d)}
 /** Eigene Seite mit der vollstaendigen Einsatzchronik. */
 function renderChronikSeite(d: BerichtDaten): string {
   if (!d.chronik || d.chronik.length === 0) return "";
+  // Foto-Funktion (2026-06-03): fotoId → dataUrl für Inline-Thumbnails.
+  const fotoMap = new Map((d.fotos ?? []).map((f) => [f.fotoId, f.dataUrl]));
   return /* html */ `
 <div class="page">
   <div class="hd">
@@ -445,17 +501,65 @@ function renderChronikSeite(d: BerichtDaten): string {
       ${d.chronik
         .slice()
         .sort((a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime())
-        .map(
-          (c) => `<tr>
+        .map((c) => {
+          const foto = c.fotoId ? fotoMap.get(c.fotoId) : undefined;
+          // Foto-Funktion: 4×3-cm-Thumbnail direkt unter dem Eintragstext.
+          const thumb = foto
+            ? `<div style="margin-top:2pt"><img src="${foto}" alt="Foto" style="width:40mm;height:30mm;object-fit:cover;border:0.4pt solid #999" /></div>`
+            : "";
+          return `<tr>
             <td class="ts">${formatTime(c.zeitstempel)}</td>
             <td class="src">${escape(c.funkrufname)}</td>
-            <td>${escape(c.text)}</td>
-          </tr>`,
-        )
+            <td>${escape(stripAuftragsPrefix(c.text))}${thumb}</td>
+          </tr>`;
+        })
         .join("")}
     </tbody>
   </table>
 </div>`;
+}
+
+/**
+ * Foto-Funktion (2026-06-03): Foto-Anhang-Seiten. Alle Einsatz-Fotos groß
+ * (9×12 cm), 4 pro A4-Blatt im 2×2-Raster, mit Zeit + Beschreibung als
+ * Bildunterschrift. Leerer String wenn keine Fotos vorhanden.
+ */
+function renderFotoAnhang(d: BerichtDaten): string {
+  const fotos = (d.fotos ?? []).slice().sort(
+    (a, b) => new Date(a.aufgenommenAm).getTime() - new Date(b.aufgenommenAm).getTime(),
+  );
+  if (fotos.length === 0) return "";
+  // In 4er-Gruppen (2×2 pro Seite) aufteilen.
+  const seiten: (typeof fotos)[] = [];
+  for (let i = 0; i < fotos.length; i += 4) seiten.push(fotos.slice(i, i + 4));
+  return seiten
+    .map(
+      (gruppe, seiteIdx) => /* html */ `
+<div class="page">
+  <div class="hd">
+    <div class="hd-l">${renderBrandLogo()}</div>
+    <div class="hd-r">
+      <div class="hd-sub-title">Foto-Anhang${seiten.length > 1 ? ` (${seiteIdx + 1}/${seiten.length})` : ""}</div>
+      <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;margin-top:2pt;color:#555">
+        ${escape(d.einsatzId)} · ${fotos.length} Foto(s)
+      </div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:4mm">
+    ${gruppe
+      .map(
+        (f) => `<div style="display:flex;flex-direction:column;gap:2mm">
+          <img src="${f.dataUrl}" alt="Einsatz-Foto" style="width:90mm;height:120mm;object-fit:contain;border:0.5pt solid #999;background:#f4f4f4" />
+          <div style="font-size:8.5pt;color:#333;line-height:1.3">
+            <strong>${formatTime(f.aufgenommenAm)}</strong>${f.aufgenommenVon ? ` · ${escape(f.aufgenommenVon)}` : ""}${f.beschreibung ? `<br/>${escape(f.beschreibung)}` : ""}
+          </div>
+        </div>`,
+      )
+      .join("")}
+  </div>
+</div>`,
+    )
+    .join("");
 }
 
 /**
@@ -474,6 +578,8 @@ function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
   ${renderFahrzeugberichtPageHtml(
     {
       einsatzId: d.einsatzId,
+      ...(d.berichtsNummer ? { berichtsNummer: d.berichtsNummer } : {}),
+      ...(d.einsatzQuelle ? { einsatzQuelle: d.einsatzQuelle } : {}),
       fahrzeugId: f.abk,
       abk: f.abk,
       funkrufname: f.funkrufname,
@@ -573,6 +679,117 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
+/**
+ * Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-PDF-Block.
+ * Wird nur gerendert wenn `technischeStatistik` am Doc steht. Layout:
+ * 2-spaltige Tabelle mit den Werten — der Sachbearbeiter kann sie direkt
+ * in die syBOS-Maske abtippen ohne den Einsatzleiter nochmal zu fragen.
+ */
+function renderTechnischeStatistikBlock(d: BerichtDaten): string {
+  const ts = d.technischeStatistik;
+  if (!ts) return "";
+  const FILLED = "#1e3a8a";
+  const v = (val: string | undefined): string =>
+    val && val.trim()
+      ? `<span style="color:${FILLED};font-weight:600">${escape(val)}</span>`
+      : `<span style="color:#888">—</span>`;
+  const vNum = (n: number | undefined): string =>
+    typeof n === "number" && n > 0
+      ? `<span style="color:${FILLED};font-weight:700">${n}</span>`
+      : `<span style="color:#888">0</span>`;
+  const vList = (arr: string[] | undefined): string => {
+    if (!arr || arr.length === 0) return `<span style="color:#888">—</span>`;
+    return arr
+      .map((s) => `<span style="color:${FILLED};font-weight:600">${escape(s)}</span>`)
+      .join(", ");
+  };
+  return /* html */ `
+  <table class="bx" style="margin-top:2mm">
+    <tr><td class="lbl" colspan="2">syBOS Technisch-Statistik (Übertrag in syBOS-Maske)</td></tr>
+    <tr>
+      <td class="lbl" style="width:25%">Personenrettung</td>
+      <td class="val">
+        Anzahl: ${vNum(ts.personenRettung?.anzahlPersonen)} ·
+        Tot: ${vNum(ts.personenRettung?.tot)} ·
+        Verletzt: ${vNum(ts.personenRettung?.verletzt)} ·
+        Unverletzt: ${vNum(ts.personenRettung?.unverletzt)}
+      </td>
+    </tr>
+    <tr>
+      <td class="lbl">Tierrettung</td>
+      <td class="val">
+        Groß: ${vNum(ts.tierRettung?.gross)} ·
+        Klein: ${vNum(ts.tierRettung?.klein)}
+      </td>
+    </tr>
+    <tr><td class="lbl">Ursache</td><td class="val">${v(ts.ursache)}</td></tr>
+    <tr><td class="lbl">Haupt-Tätigkeit</td><td class="val">${v(ts.hauptTaetigkeit)}</td></tr>
+    <tr><td class="lbl">Weitere Tätigkeiten</td><td class="val">${vList(ts.weitereTaetigkeiten)}</td></tr>
+    <tr><td class="lbl">Gefährliche Stoffe</td><td class="val">${vList(ts.gefaehrlicheStoffe)}</td></tr>
+  </table>`;
+}
+
+/**
+ * Issue 17 (Einsatz-Test 2026-06-02): syBOS Brand-Statistik-PDF-Block.
+ * Wird nur gerendert wenn `brandStatistik` am Doc steht (= BrandAbschluss-
+ * Wizard wurde vor dem /abschluss-Call durchlaufen). Layout: 2-spaltige
+ * Tabelle. Personen-/Tierrettung-Zeile spiegelt das Schema aus der
+ * Technisch-Statistik, weil syBOS dort identisch fragt.
+ */
+function renderBrandStatistikBlock(d: BerichtDaten): string {
+  const bs = d.brandStatistik;
+  if (!bs) return "";
+  const FILLED = "#1e3a8a";
+  const v = (val: string | undefined): string =>
+    val && val.trim()
+      ? `<span style="color:${FILLED};font-weight:600">${escape(val)}</span>`
+      : `<span style="color:#888">—</span>`;
+  const vNum = (n: number | undefined): string =>
+    typeof n === "number" && n > 0
+      ? `<span style="color:${FILLED};font-weight:700">${n}</span>`
+      : `<span style="color:#888">0</span>`;
+  const vList = (arr: string[] | undefined): string => {
+    if (!arr || arr.length === 0) return `<span style="color:#888">—</span>`;
+    return arr
+      .map((s) => `<span style="color:${FILLED};font-weight:600">${escape(s)}</span>`)
+      .join(", ");
+  };
+  return /* html */ `
+  <table class="bx" style="margin-top:2mm">
+    <tr><td class="lbl" colspan="2">syBOS Brand-Statistik (Übertrag in syBOS-Maske)</td></tr>
+    <tr><td class="lbl" style="width:25%">Entdeckung</td><td class="val">${vList(bs.entdeckung)}</td></tr>
+    <tr><td class="lbl">Ausmaß</td><td class="val">${v(bs.ausmass)}</td></tr>
+    <tr><td class="lbl">Brand-Klassen</td><td class="val">${vList(bs.klassen)}</td></tr>
+    <tr>
+      <td class="lbl">Objekt</td>
+      <td class="val">
+        Kategorie: ${v(bs.kategorie)}
+        ${bs.objektart1 ? ` · Objektart 1: ${v(bs.objektart1)}` : ""}
+        ${bs.objektart2 ? ` · Objektart 2: ${v(bs.objektart2)}` : ""}
+      </td>
+    </tr>
+    <tr><td class="lbl">Bauart</td><td class="val">${v(bs.bauart)}</td></tr>
+    <tr><td class="lbl">Lage</td><td class="val">${vList(bs.lagen)}</td></tr>
+    <tr><td class="lbl">Verlauf</td><td class="val">${v(bs.verlauf)}</td></tr>
+    <tr>
+      <td class="lbl">Personenrettung</td>
+      <td class="val">
+        Anzahl: ${vNum(bs.personenRettung?.anzahlPersonen)} ·
+        Tot: ${vNum(bs.personenRettung?.tot)} ·
+        Verletzt: ${vNum(bs.personenRettung?.verletzt)} ·
+        Unverletzt: ${vNum(bs.personenRettung?.unverletzt)}
+      </td>
+    </tr>
+    <tr>
+      <td class="lbl">Tierrettung</td>
+      <td class="val">
+        Groß: ${vNum(bs.tierRettung?.gross)} ·
+        Klein: ${vNum(bs.tierRettung?.klein)}
+      </td>
+    </tr>
+  </table>`;
+}
+
 function box(checked: boolean): string {
   return checked ? "☒" : "☐";
 }
@@ -583,6 +800,16 @@ function escape(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Backwards-Compat: alte Chronik-Eintraege haben einen "Auftrag begonnen: "-
+ * Prefix, neue nicht mehr (Issue 23). Beim Rendern strippen wir den Prefix
+ * damit das PDF konsistent aussieht — egal ob ein Eintrag aus pre-v0.1.10
+ * stammt oder neuer ist.
+ */
+function stripAuftragsPrefix(text: string): string {
+  return text.replace(/^Auftrag begonnen:\s*/i, "");
 }
 
 function pad(n: number): string {

@@ -4,6 +4,7 @@ import {
   Crosshair,
   Droplets,
   ExternalLink,
+  Layers,
   Maximize,
   Maximize2,
   Minimize2,
@@ -11,6 +12,66 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { MAP_TILES, haversineKm, type MapTileChoice } from "@hotdoc/shared";
+
+// Issue 25 (Einsatz-Test 2026-06-02): Geteilter localStorage-Key zwischen
+// FlorianMap und MapCard, damit der Funktionaer einmal auswaehlt und auf
+// allen Karten konsistent angezeigt wird.
+const TILE_CHOICE_KEY = "hotdoc.maptile.choice";
+
+function loadTileChoice(): MapTileChoice {
+  try {
+    const raw = localStorage.getItem(TILE_CHOICE_KEY);
+    if (raw === "karte" || raw === "foto" || raw === "hybrid") return raw;
+  } catch {
+    // localStorage unavailable
+  }
+  return "karte";
+}
+
+function saveTileChoice(choice: MapTileChoice): void {
+  try {
+    localStorage.setItem(TILE_CHOICE_KEY, choice);
+  } catch {
+    // localStorage unavailable
+  }
+}
+
+function applyMapCardTileLayer(
+  map: L.Map,
+  choice: MapTileChoice,
+  layersRef: { base: L.TileLayer | null; overlay: L.TileLayer | null },
+): void {
+  if (layersRef.base) {
+    layersRef.base.remove();
+    layersRef.base = null;
+  }
+  if (layersRef.overlay) {
+    layersRef.overlay.remove();
+    layersRef.overlay = null;
+  }
+  if (choice === "hybrid") {
+    const cfg = MAP_TILES.hybrid;
+    const fotoCfg = MAP_TILES.foto;
+    layersRef.base = L.tileLayer(fotoCfg.url, {
+      subdomains: fotoCfg.subdomains as unknown as string[],
+      maxZoom: cfg.maxZoom,
+      attribution: cfg.attribution,
+    }).addTo(map);
+    layersRef.overlay = L.tileLayer(cfg.overlayUrl, {
+      subdomains: cfg.subdomains as unknown as string[],
+      maxZoom: cfg.maxZoom,
+      attribution: cfg.attribution,
+    }).addTo(map);
+  } else {
+    const cfg = MAP_TILES[choice];
+    layersRef.base = L.tileLayer(cfg.url, {
+      subdomains: cfg.subdomains as unknown as string[],
+      maxZoom: cfg.maxZoom,
+      attribution: cfg.attribution,
+    }).addTo(map);
+  }
+}
 
 export interface MapPosition {
   fahrzeugId: string;
@@ -79,6 +140,12 @@ export function MapCard({
   const hydrantLayerRef = useRef<L.LayerGroup | null>(null);
   const routeRef = useRef<L.Polyline | null>(null);
   const autoFollowRef = useRef(true);
+  // Issue 25 (Einsatz-Test 2026-06-02): Tile-Layer-Refs + User-Choice.
+  const tileLayersRef = useRef<{
+    base: L.TileLayer | null;
+    overlay: L.TileLayer | null;
+  }>({ base: null, overlay: null });
+  const [tileChoice, setTileChoice] = useState<MapTileChoice>(loadTileChoice);
   const [waterOn, setWaterOn] = useState(true);
   const [distance, setDistance] = useState<number>(0);
   const [fullscreen, setFullscreen] = useState(false);
@@ -92,10 +159,9 @@ export function MapCard({
       preferCanvas: true,
     }).setView([selfPos.lat, selfPos.lng], SELF_ZOOM);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap",
-    }).addTo(map);
+    // Issue 25 (Einsatz-Test 2026-06-02): basemap.at-Tiles statt OSM —
+    // bessere Aufloesung in Oesterreich, Foto-Layer fuer Lageeinschaetzung.
+    applyMapCardTileLayer(map, tileChoice, tileLayersRef.current);
 
     // Einsatzort
     L.marker([einsatzPos.lat, einsatzPos.lng], {
@@ -123,9 +189,20 @@ export function MapCard({
     return () => {
       map.remove();
       mapRef.current = null;
+      tileLayersRef.current = { base: null, overlay: null };
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Issue 25 (Einsatz-Test 2026-06-02): Layer austauschen bei User-Switch.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    applyMapCardTileLayer(map, tileChoice, tileLayersRef.current);
+    // Auto-Follow neu aktivieren — der User wollte explizit umschalten,
+    // also Karte wieder am eigenen Fahrzeug ausrichten.
+    autoFollowRef.current = true;
+  }, [tileChoice]);
 
   // Periodischer Tick (60 s) damit Stale-Anzeigen rerender und
   // "offline seit 11 min" auf "12 min" wechselt ohne neue fleet-Daten.
@@ -361,6 +438,24 @@ export function MapCard({
       >
         <div ref={elRef} className="bg-surface-2" style={{ height: mapHeight, width: "100%" }} />
 
+        {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch top-right. */}
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 401,
+          }}
+        >
+          <MapCardTileLayerSwitch
+            choice={tileChoice}
+            onChange={(next) => {
+              setTileChoice(next);
+              saveTileChoice(next);
+            }}
+          />
+        </div>
+
         <button
           type="button"
           aria-label="Auf eigene Position zentrieren"
@@ -419,7 +514,8 @@ export function MapCard({
               marginBottom: 4,
             }}
           >
-            Turn-by-Turn · GraphHopper
+            {/* OPT-4 (Audit 2026-06-03): Klarsprache statt "Turn-by-Turn · GraphHopper". */}
+            Abbiegehinweise
           </div>
           {route.instructions.map((ins, idx) => (
             <div
@@ -506,6 +602,84 @@ export function MapCard({
         ) : null}
       </div>
     </section>
+  );
+}
+
+/**
+ * Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch wie in FlorianMap —
+ * gleicher localStorage-Key, gleiche Visuals damit der Funktionaer ueberall
+ * dasselbe sieht.
+ */
+function MapCardTileLayerSwitch({
+  choice,
+  onChange,
+}: {
+  choice: MapTileChoice;
+  onChange: (next: MapTileChoice) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Karten-Layer waehlen"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 0,
+        background: "color-mix(in srgb, var(--surface) 88%, transparent)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 8,
+        padding: 2,
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      <Layers
+        size={11}
+        strokeWidth={2}
+        style={{
+          marginLeft: 4,
+          marginRight: 2,
+          color: "var(--fg-3)",
+          flexShrink: 0,
+        }}
+        aria-hidden
+      />
+      {(["karte", "foto", "hybrid"] as const).map((opt) => {
+        const active = choice === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            aria-pressed={active}
+            title={`Layer · ${MAP_TILES[opt].label}`}
+            style={{
+              // OPT-2 (Audit 2026-06-03): Touch-Target von ~17px auf 40px Höhe +
+              // mehr horizontales Padding + 2px gap zwischen den Optionen.
+              // Beim Anfahren mit Handschuh muss der Layer-Wechsel treffbar sein,
+              // ohne den Nachbar-Layer versehentlich zu erwischen.
+              padding: "0 12px",
+              minHeight: 40,
+              marginLeft: 2,
+              display: "inline-flex",
+              alignItems: "center",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: active ? "var(--info)" : "var(--fg-2)",
+              background: active ? "var(--info-tint)" : "transparent",
+              border: 0,
+              borderRadius: 6,
+              cursor: "pointer",
+              transition: "color 120ms ease, background 120ms ease",
+            }}
+          >
+            {MAP_TILES[opt].label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -602,16 +776,8 @@ function hydrantIcon(typ: "H" | "S" | "T"): L.DivIcon {
   });
 }
 
-function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371;
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const x = Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
+// OPT-1 (Audit 2026-06-03): lokale haversineKm-Kopie entfernt, jetzt aus
+// @hotdoc/shared importiert (eine Implementierung statt drei).
 
 /** GraphHopper-Sign-Code → Pfeil-Glyph. Siehe docs.graphhopper.com. */
 function signGlyph(sign: number): string {

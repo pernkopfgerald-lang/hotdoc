@@ -29,6 +29,13 @@ export type AuditEventType =
   | "einsatz-abschluss"
   | "einsatz-reaktivierung"
   | "einsatz-zuweisung-geaendert"
+  | "einsatz-delete"
+  // Issue 6 (Einsatz-Test 2026-06-02): Chronik-Eintraege koennen vom
+  // Fahrzeug-Tablet (eigene) und der Florianstation (alle) nachtraeglich
+  // korrigiert werden — z. B. wenn die Web-Speech-Transkription "Florian
+  // Eberstalzell" als "Floriane Berstalzell" verstanden hat. Audit-Trail
+  // ist Pflicht damit der Vorgang nachvollziehbar bleibt.
+  | "chronik-edit"
   | "config-changed";
 
 export interface AuditEvent {

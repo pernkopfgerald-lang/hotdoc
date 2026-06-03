@@ -9,7 +9,7 @@ import {
   type AppVersionConfig,
 } from "../api/devices";
 import { useCallback, useEffect, useState } from "react";
-import { apiCall, clearToken } from "../api/client";
+import { apiCall, clearToken, fetchAndOpenBlob } from "../api/client";
 import {
   getConfig,
   putConfig,
@@ -205,6 +205,7 @@ type Tab =
   | "auftragstypen"
   | "beteiligte-stellen"
   | "sonstige-ff"
+  | "gefaehrliche-stoffe"
   | "stammdaten"
   | "tablet-inventar"
   | "devices"
@@ -305,12 +306,22 @@ export function Verwaltung({ auth, onLogout }: Props) {
         <TabButton active={tab === "sonstige-ff"} onClick={() => setTab("sonstige-ff")} icon={<Flame size={16} />}>
           Sonstige FF
         </TabButton>
+        {/* Issue 16 (Follow-up Einsatz-Test 2026-06-02): Tab fuer die
+            gefaehrliche-Stoffe-Liste der syBOS-Technisch-Statistik. */}
+        <TabButton active={tab === "gefaehrliche-stoffe"} onClick={() => setTab("gefaehrliche-stoffe")} icon={<AlertTriangle size={16} />}>
+          Gefährliche Stoffe
+        </TabButton>
         <TabButton active={tab === "stammdaten"} onClick={() => setTab("stammdaten")} icon={<Settings size={16} />}>
           Stammdaten
         </TabButton>
-        <TabButton active={tab === "tablet-inventar"} onClick={() => setTab("tablet-inventar")} icon={<Smartphone size={16} />}>
-          Tablet-Inventar
-        </TabButton>
+        {/* Issue 15 (Einsatz-Test 2026-06-02): "Tablet-Inventar"-Tab ausgeblendet —
+            redundant mit "Registrierte Geräte" und im Live-Einsatz nie verwendet.
+            false-Guard statt Löschung, falls wir den Tab spaeter doch reaktivieren wollen. */}
+        {false && (
+          <TabButton active={tab === "tablet-inventar"} onClick={() => setTab("tablet-inventar")} icon={<Smartphone size={16} />}>
+            Tablet-Inventar
+          </TabButton>
+        )}
         <TabButton active={tab === "devices"} onClick={() => setTab("devices")} icon={<Smartphone size={16} />}>
           Registrierte Geräte
         </TabButton>
@@ -359,6 +370,18 @@ export function Verwaltung({ auth, onLogout }: Props) {
             icon={<Flame size={20} />}
             description="Liste der ueblichen Nachbar-Feuerwehren. Im Editor von Florian Eberstalzell als Schnellauswahl-Chips verfügbar (Sturm, BMA-Übergreifend, Personenrettung-Mitarbeit …)."
             placeholder="Neue FF …"
+          />
+        )}
+        {/* Issue 16 (Follow-up Einsatz-Test 2026-06-02): Gefährliche-Stoffe-
+            Liste pflegbar. Erscheint im Florian-Editor (Technisch-Statistik)
+            als Chip-Mehrfachauswahl. */}
+        {tab === "gefaehrliche-stoffe" && (
+          <StringListPanel
+            configKey="gefaehrliche-stoffe"
+            title="Gefährliche Stoffe (global)"
+            icon={<AlertTriangle size={20} />}
+            description="Liste der gefährlichen Stoffe für die syBOS-Technisch-Statistik (z. B. Diesel, Benzin, Säuren, Gase). Erscheint im Florian-Editor bei technischen Einsätzen als anhakbare Chips. Frei erweiterbar — auch der Einsatzleiter kann im Editor eigene Stoffe per Freitext ergänzen."
+            placeholder="Neuen Stoff …"
           />
         )}
         {tab === "stammdaten" && <StammdatenPanel />}
@@ -763,7 +786,7 @@ function StringListPanel({
   description,
   placeholder,
 }: {
-  configKey: Extract<ConfigKey, "beteiligte-stellen" | "sonstige-ff">;
+  configKey: Extract<ConfigKey, "beteiligte-stellen" | "sonstige-ff" | "gefaehrliche-stoffe">;
   title: string;
   icon: React.ReactNode;
   description: string;
@@ -1052,13 +1075,17 @@ function ArchivPanel() {
                     type="button"
                     className="icon-btn"
                     title="PDF-Bericht herunterladen"
-                    onClick={() =>
-                      window.open(
+                    onClick={() => {
+                      // Issue 13 (Einsatz-Test 2026-06-02): window.open ohne
+                      // Bearer-Token → 403 vom Backend. Stattdessen Blob-Fetch.
+                      void fetchAndOpenBlob(
                         `/api/einsaetze/${encodeURIComponent(it._id)}/pdf`,
-                        "_blank",
-                        "noopener,noreferrer",
-                      )
-                    }
+                      ).catch((err: unknown) => {
+                        alert(
+                          `PDF-Download fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`,
+                        );
+                      });
+                    }}
                   >
                     <FileText size={13} />
                   </button>

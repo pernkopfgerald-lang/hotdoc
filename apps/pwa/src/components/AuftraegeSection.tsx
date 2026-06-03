@@ -89,6 +89,9 @@ export function AuftraegeSection({ auftraege, verfuegbareTypen, onAdd, onRemove 
       </div>
 
       <div className="freeform">
+        {/* Issue 5 (Einsatz-Test 2026-06-02): Browser-Spellcheck mit
+            de-AT damit das Tablet "Verkehrsabsicherung" usw. korrekt
+            erkennt und Tippfehler markiert. */}
         <input
           type="text"
           className="input"
@@ -96,6 +99,8 @@ export function AuftraegeSection({ auftraege, verfuegbareTypen, onAdd, onRemove 
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder="Eigener Auftrag …"
+          spellCheck
+          lang="de-AT"
         />
         <button
           type="button"

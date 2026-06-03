@@ -40,6 +40,19 @@ export interface FahrzeugberichtDaten {
   abk: string;
   funkrufname: string;
   einsatzort: string;
+  /**
+   * Berichts-Nr im Schema B26-007 / T26-007 (Issue 24, Einsatz-Test 2026-06-02).
+   * Wird im Header rechts oben angezeigt damit der Sachbearbeiter den Bericht
+   * eindeutig identifizieren kann. Optional weil Bestandsberichte vor v0.1.10
+   * den Wert nicht haben.
+   */
+  berichtsNummer?: string;
+  /**
+   * Quelle des Einsatzes (BlaulichtSMS, manuell, Lotsendienst, Übung).
+   * Wird in der Mono-Zeile unterm Berichts-Nr-Header gezeigt damit die
+   * Provenienz im Papier-PDF nachvollziehbar bleibt.
+   */
+  einsatzQuelle?: string;
   /** ISO-Timestamp Alarmierung / Beginn. */
   alarmierungZeit: string;
   /** Wenn gesetzt: aus zeit.bis gepflegt — entweder manuell oder beim Abschluss. */
@@ -121,7 +134,18 @@ export function renderFahrzeugberichtPageHtml(
         ${logo ? `<img src="${logo}" alt="FF Eberstalzell" style="height:18mm;width:auto" />` : ""}
         <strong style="font-weight:700;font-size:18pt;text-decoration:underline;text-underline-offset:3pt;letter-spacing:-0.01em">FF Eberstalzell</strong>
       </div>
-      <strong style="font-weight:700;font-size:22pt;letter-spacing:-0.01em">Fahrzeugbericht</strong>
+      <!-- Issue 24 (Einsatz-Test 2026-06-02): Berichts-Nr + Funkrufname +
+           Mono-Zeile mit Einsatz-ID rechts oben damit der Bericht eindeutig
+           identifizierbar ist (vorher nur "Fahrzeugbericht"-Headline). -->
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1pt">
+        <strong style="font-weight:700;font-size:22pt;letter-spacing:-0.01em">Fahrzeugbericht</strong>
+        ${
+          d.berichtsNummer
+            ? `<div style="font-size:11pt;font-weight:700;margin-top:1pt;color:#000">Berichts-Nr ${escape(d.berichtsNummer)} · ${escape(d.funkrufname)}</div>`
+            : `<div style="font-size:11pt;font-weight:700;margin-top:1pt;color:#000">${escape(d.funkrufname)}</div>`
+        }
+        <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;color:#555;margin-top:1pt">${escape(d.einsatzId)}${d.einsatzQuelle ? ` · ${escape(d.einsatzQuelle)}` : ""}</div>
+      </div>
     </div>
 
     ${

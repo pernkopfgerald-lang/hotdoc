@@ -100,23 +100,11 @@ export function useGeolocation(): GeoState {
   return state;
 }
 
-/**
- * Great-circle-Distanz zwischen zwei Koordinaten in Kilometern.
- * Haversine-Formel, gut genug bis ~0.5% Fehler.
- */
-export function haversineKm(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
-  const R = 6371;
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const x = Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
+// OPT-1 (Audit 2026-06-03): haversineKm war 3× dupliziert (hier, in
+// MapCard.tsx und in @hotdoc/shared/florian.ts). Konsolidiert auf die
+// shared-Implementierung — die ist robuster (Math.min(1, sqrt)-Clamp gegen
+// NaN). Re-Export hier hält bestehende Importe `from "../lib/geo"` stabil.
+export { haversineKm } from "@hotdoc/shared";
 
 export function statusLabel(s: GeoStatus): string {
   switch (s) {

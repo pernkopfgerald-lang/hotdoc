@@ -7,7 +7,12 @@ export type ConfigKey =
   | "stammdaten"
   | "tablet-inventar"
   | "beteiligte-stellen"
-  | "sonstige-ff";
+  | "sonstige-ff"
+  // Issue 16 (Follow-up Einsatz-Test 2026-06-02): Liste der gefaehrlichen
+  // Stoffe fuer die syBOS-Technisch-Statistik. Im Backoffice ueber den
+  // gleichen StringListPanel-Editor wie beteiligte-stellen/sonstige-ff
+  // pflegbar; erscheint im Florian-Editor als Chip-Mehrfachauswahl.
+  | "gefaehrliche-stoffe";
 
 export interface StringListData {
   items: string[];

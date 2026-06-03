@@ -66,9 +66,18 @@ function buildFormFromDoc(doc: Record<string, unknown>): FormState {
     beteiligteStellen: Array.isArray(doc.beteiligteStellen)
       ? (doc.beteiligteStellen as string[])
       : [],
-    sonstigeAnwesendeFF: Array.isArray(doc.sonstigeAnwesendeFF)
-      ? (doc.sonstigeAnwesendeFF as string[])
-      : [],
+    // sonstigeAnwesendeFF im Schema = { aktive: string[], sonstigeFreitext?: string }
+    // Wir flatten fuer die UI auf ein simples string[] (Chip-Toggle), kapseln das
+    // dann beim PUT wieder in das Object-Format. Backwards-Compat: alte Daten
+    // koennten ein nacktes Array sein → akzeptieren.
+    sonstigeAnwesendeFF: (() => {
+      const v = doc.sonstigeAnwesendeFF;
+      if (Array.isArray(v)) return v as string[];
+      if (v && typeof v === "object" && Array.isArray((v as { aktive?: unknown }).aktive)) {
+        return (v as { aktive: string[] }).aktive;
+      }
+      return [];
+    })(),
     lageUnterKontrolle:
       typeof doc.zeitmarken === "object" && doc.zeitmarken
         ? toTime((doc.zeitmarken as Record<string, unknown>).lageUnterKontrolle)
@@ -189,7 +198,9 @@ export function Florianstation() {
         einsatzartFreitext: form.einsatzartFreitext || undefined,
         alarmiertDurch: form.alarmiertDurch || undefined,
         beteiligteStellen: form.beteiligteStellen,
-        sonstigeAnwesendeFF: form.sonstigeAnwesendeFF,
+        // Schema erwartet { aktive: string[] }, NICHT ein nacktes Array.
+        // Vorher: Backoffice schickte string[] → 400 schema_invalid.
+        sonstigeAnwesendeFF: { aktive: form.sonstigeAnwesendeFF },
         meldungEinsatzleitung: form.meldungEinsatzleitung || undefined,
         zeitmarken: {
           lageUnterKontrolle: fromTime(form.lageUnterKontrolle),

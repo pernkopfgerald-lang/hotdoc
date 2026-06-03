@@ -113,7 +113,9 @@ export function CloseTabConfirmModal({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 16,
+        // Issue 11 (Einsatz-Test 2026-06-02): 12px statt 16px damit der
+        // Dialog auf 360px-Geraeten nicht ueber den Rand klebt.
+        padding: 12,
       }}
       onClick={(e) => e.stopPropagation()}
       role="dialog"

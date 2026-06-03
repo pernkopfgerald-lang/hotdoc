@@ -31,6 +31,19 @@ export interface FahrzeugConfig {
   kannAnhaengerMitnehmen?: ReadonlyArray<"HR-Anhaenger" | "PKW-Anhaenger">;
   /** Standard-Geräte-Liste — wird in Phase 1 lokal gepflegt, in Phase 3+ aus syBOS gesynct. */
   geraeteIds: ReadonlyArray<string>;
+  /**
+   * Issue 18 (Einsatz-Test 2026-06-02): KFZ-Kennzeichen erscheinen im
+   * Fahrzeugbericht-PDF-Header (rechts oben, unter dem Funkrufnamen). Optional
+   * im Backoffice unter "Stammdaten · Fahrzeuge" pflegbar. Bestandsberichte
+   * vor v0.1.10 bleiben kompatibel weil das Feld optional ist.
+   */
+  kfzKennzeichen?: string;
+  /**
+   * Issue 18 (Einsatz-Test 2026-06-02): syBOS-Fahrzeug-ID fuer den syBOS-
+   * Export bzw. fuer Materialzuordnung (Anhaenger, Gabelstapler etc.). Wird
+   * gepflegt vom Funktionaer im Backoffice; Default leer fuer Bestand.
+   */
+  syBosId?: string;
 }
 
 export const FAHRZEUGE: Record<FahrzeugId, FahrzeugConfig> = {
@@ -47,7 +60,9 @@ export const FAHRZEUGE: Record<FahrzeugId, FahrzeugConfig> = {
     bezeichnung: "TLF-A 4000",
     funkrufname: "Tank Eberstalzell",
     abk: "TANK",
-    besatzung: { typ: "1+7", gesamtSitzplaetze: 8, mannschaftsplaetzeZusaetzlich: 6 },
+    // Korrektur nach Einsatz-Test 2026-06-02: TLF-A 4000 hat real 1+8 Sitzplätze
+    // (1 Kdt + 1 Fahrer + 7 Mannschaft), nicht 1+7 wie zuvor konfiguriert.
+    besatzung: { typ: "1+8", gesamtSitzplaetze: 9, mannschaftsplaetzeZusaetzlich: 7 },
     geraeteIds: [],
   },
   "lfa-b": {
@@ -55,7 +70,9 @@ export const FAHRZEUGE: Record<FahrzeugId, FahrzeugConfig> = {
     bezeichnung: "LFA-B",
     funkrufname: "Pumpe Eberstalzell",
     abk: "PUMPE",
-    besatzung: { typ: "1+7", gesamtSitzplaetze: 8, mannschaftsplaetzeZusaetzlich: 6 },
+    // Korrektur nach Einsatz-Test 2026-06-02: LFA-B hat real 1+8 Sitzplätze
+    // (1 Kdt + 1 Fahrer + 7 Mannschaft), nicht 1+7 wie zuvor konfiguriert.
+    besatzung: { typ: "1+8", gesamtSitzplaetze: 9, mannschaftsplaetzeZusaetzlich: 7 },
     geraeteIds: [],
   },
   mtf: {

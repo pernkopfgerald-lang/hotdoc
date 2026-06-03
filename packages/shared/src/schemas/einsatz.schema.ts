@@ -6,13 +6,20 @@ import { EINSATZARTEN } from "../constants/einsatzarten.js";
  * Siehe Spec Datenmodell 5.1 und Anhang B.
  */
 
+// RISIKO-1 (Audit 2026-06-03): Alle z.string().datetime() in dieser Datei
+// tragen jetzt { offset: true }. Grund: TZ=Europe/Vienna im Container → ein
+// Sommerzeit-alarmDate von BlaulichtSMS kann einen +02:00-Offset tragen, den
+// das strikte datetime() (nur UTC "Z") mit 400 schema_invalid ablehnt und so
+// jeden Florian-Editor-Autosave + jede Adresskorrektur blockiert. { offset:
+// true } macht die Validierung nur toleranter (akzeptiert UTC Z UND Offset),
+// bricht keine Bestandsdaten.
 const KoordinateSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
 });
 
 const ZeitmarkeSchema = z.object({
-  uhrzeit: z.string().datetime().optional(),
+  uhrzeit: z.string().datetime({ offset: true }).optional(),
   anforderer: z.string().optional(),
 });
 
@@ -20,7 +27,7 @@ const FahrzeugPositionSchema = z.object({
   fahrzeugId: z.string(),
   lat: z.number(),
   lng: z.number(),
-  timestamp: z.string().datetime(),
+  timestamp: z.string().datetime({ offset: true }),
   accuracyM: z.number().optional(),
 });
 
@@ -49,19 +56,30 @@ export const ChronikEintragSchema = z
       .enum(["pending", "verfuegbar", "manuell-korrigiert", "fehlgeschlagen"])
       .optional(),
     tags: z.array(z.string()).optional(),
+    // Issue 6 (Einsatz-Test 2026-06-02): Edit-Marker — gesetzt vom
+    // PUT /api/einsaetze/:id/chronik/:entryId-Endpoint. PDF-Renderer
+    // kann sie spaeter ausgrauen (z.B. kursiv "(editiert HH:MM)").
+    editiertAm: z.string().optional(),
+    editiertVon: z.string().optional(),
+    // Foto-Funktion (2026-06-03): Wenn der Eintrag ein Foto trägt, steht hier
+    // die ID des separaten foto:-Docs (das den komprimierten Bild-Body hält).
+    // Bewusst NUR die Referenz im Chronik-Eintrag — das große dataUrl liegt im
+    // foto:-Doc, damit der 8-s-Chronik-Broadcast nicht megabyteweise Bilddaten
+    // über das (Funkloch-)Netz schiebt.
+    fotoId: z.string().optional(),
   })
   .passthrough();
 
 export const ReaktivierungSchema = z.object({
   vonBenutzerId: z.string(),
-  am: z.string().datetime(),
+  am: z.string().datetime({ offset: true }),
   grund: z.string().min(10, "Reaktivierungs-Grund mind. 10 Zeichen"),
   vonStatus: z.literal("abgeschlossen"),
 });
 
 export const ManuellAnlageSchema = z.object({
   vonBenutzerId: z.string(),
-  am: z.string().datetime(),
+  am: z.string().datetime({ offset: true }),
   grund: z.string().optional(),
 });
 
@@ -119,7 +137,7 @@ export const EinsatzSchema = z.object({
   einsatzortPostleitzahl: z.string().optional(),
   einsatzortOrt: z.string().optional(),
   koordinaten: KoordinateSchema.optional(),
-  alarmierungZeit: z.string().datetime(),
+  alarmierungZeit: z.string().datetime({ offset: true }),
   alarmierungAudio: z.string().optional(),
   alarmierungAuthor: z.string().optional(),
   alarmierungText: z.string().optional(),
@@ -140,8 +158,8 @@ export const EinsatzSchema = z.object({
 
   zeitmarken: z
     .object({
-      lageUnterKontrolle: z.string().datetime().optional(),
-      brandAus: z.string().datetime().optional(),
+      lageUnterKontrolle: z.string().datetime({ offset: true }).optional(),
+      brandAus: z.string().datetime({ offset: true }).optional(),
       alst2: ZeitmarkeSchema.optional(),
       alst3: ZeitmarkeSchema.optional(),
     })
@@ -211,15 +229,78 @@ export const EinsatzSchema = z.object({
   zugewieseneFahrzeuge: z
     .array(z.enum(["kdo", "tlf-a-4000", "lfa-b", "mtf"]))
     .optional(),
-  einsatzende: z.string().datetime().optional(),
+  einsatzende: z.string().datetime({ offset: true }).optional(),
 
   /** Live-Stream im Einsatz, Audit-Trail nach Abschluss. */
   fahrzeugPositionen: z.array(FahrzeugPositionSchema).default([]),
   chronik: z.array(ChronikEintragSchema).default([]),
 
+  // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik.
+  // Optional — wird nur bei Einsatzkategorie "technisch" gefuellt.
+  // Sammelt die Werte die der Sachbearbeiter in die syBOS-Maske
+  // "Technische Statistik" uebertraegt. Ursache + Haupt-Taetigkeit
+  // bleiben absichtlich z.string() (nicht z.enum), weil der Sachbearbeiter
+  // auch Freitext-Werte braucht (syBOS akzeptiert Sonstiges).
+  technischeStatistik: z
+    .object({
+      personenRettung: z
+        .object({
+          anzahlPersonen: z.number().int().min(0).default(0),
+          tot: z.number().int().min(0).default(0),
+          verletzt: z.number().int().min(0).default(0),
+          unverletzt: z.number().int().min(0).default(0),
+        })
+        .default({}),
+      tierRettung: z
+        .object({
+          gross: z.number().int().min(0).default(0),
+          klein: z.number().int().min(0).default(0),
+        })
+        .default({}),
+      ursache: z.string().optional(),
+      hauptTaetigkeit: z.string().optional(),
+      weitereTaetigkeiten: z.array(z.string()).default([]),
+      gefaehrlicheStoffe: z.array(z.string()).default([]),
+    })
+    .optional(),
+
+  // Issue 17 (Einsatz-Test 2026-06-02): syBOS Brand-Statistik.
+  // Optional — wird nur bei Einsatzkategorie "brand" via BrandAbschlussWizard
+  // gefuellt. Personen-/Tierrettung-Shape identisch zu technischeStatistik
+  // (syBOS-Maske unterscheidet sich nicht). Beim Abschluss landet der Datenstand
+  // zusaetzlich im objekt:<hash>-Doc als Default-Vorbelegung fuer Folge-
+  // Einsaetze an der gleichen Adresse.
+  brandStatistik: z
+    .object({
+      entdeckung: z.array(z.string()).default([]),
+      ausmass: z.string().optional(),
+      klassen: z.array(z.string()).default([]),
+      kategorie: z.string().optional(),
+      objektart1: z.string().optional(),
+      objektart2: z.string().optional(),
+      bauart: z.string().optional(),
+      lagen: z.array(z.string()).default([]),
+      verlauf: z.string().optional(),
+      personenRettung: z
+        .object({
+          anzahlPersonen: z.number().int().min(0).default(0),
+          tot: z.number().int().min(0).default(0),
+          verletzt: z.number().int().min(0).default(0),
+          unverletzt: z.number().int().min(0).default(0),
+        })
+        .default({}),
+      tierRettung: z
+        .object({
+          gross: z.number().int().min(0).default(0),
+          klein: z.number().int().min(0).default(0),
+        })
+        .default({}),
+    })
+    .optional(),
+
   // — Audit-Felder —
-  erstelltAm: z.string().datetime(),
-  geaendertAm: z.string().datetime(),
+  erstelltAm: z.string().datetime({ offset: true }),
+  geaendertAm: z.string().datetime({ offset: true }),
 });
 
 export type Einsatz = z.infer<typeof EinsatzSchema>;

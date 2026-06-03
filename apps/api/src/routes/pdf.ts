@@ -8,6 +8,7 @@
  */
 
 import { Router, type RequestHandler } from "express";
+import { deriveBerichtNrFromId } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -42,6 +43,21 @@ async function loadPerson(syBosId: number): Promise<PersonDoc | null> {
   }
 }
 
+/**
+ * Mappt einsatzTyp auf ein menschen-lesbares Quellen-Label fuer den
+ * PDF-Header (Issue 24). Die Quelle hilft beim spaeteren Audit, wenn
+ * ein Bericht ueber Tage hinweg untersucht werden muss.
+ */
+function einsatzQuelleLabel(einsatzTyp: string | undefined): string {
+  switch (einsatzTyp) {
+    case "lotsendienst": return "Lotsendienst";
+    case "uebung":       return "Übung";
+    case "manuell":      return "Manuell";
+    case "alarm":
+    default:             return "BlaulichtSMS";
+  }
+}
+
 async function loadFahrzeugberichte(
   einsatzId: string,
 ): Promise<Array<Record<string, unknown>>> {
@@ -54,6 +70,34 @@ async function loadFahrzeugberichte(
   return list.rows
     .map((r) => r.doc as Record<string, unknown> | undefined)
     .filter((d): d is Record<string, unknown> => !!d && d.type === "fahrzeugbericht");
+}
+
+/**
+ * Foto-Funktion (2026-06-03): lädt alle foto:-Docs eines Einsatzes und mappt
+ * sie auf die schlanke Form, die der PDF-Renderer braucht (Inline-Thumbnail +
+ * Foto-Anhang). Fehler werden geschluckt — fehlt der Anhang, ist das PDF
+ * trotzdem gültig.
+ */
+async function loadFotos(
+  einsatzId: string,
+): Promise<NonNullable<BerichtDaten["fotos"]>> {
+  const prefix = `foto:${einsatzId.replace(/^einsatz:/, "")}:`;
+  try {
+    const list = await db.list({ startkey: prefix, endkey: `${prefix}￰`, include_docs: true });
+    return list.rows
+      .map((r) => r.doc as Record<string, unknown> | undefined)
+      .filter((d): d is Record<string, unknown> => !!d && d.type === "foto" && typeof d.dataUrl === "string")
+      .map((d) => ({
+        fotoId: String(d._id),
+        dataUrl: String(d.dataUrl),
+        ...(typeof d.beschreibung === "string" ? { beschreibung: d.beschreibung } : {}),
+        aufgenommenAm: String(d.aufgenommenAm ?? ""),
+        ...(typeof d.aufgenommenVon === "string" ? { aufgenommenVon: d.aufgenommenVon } : {}),
+      }));
+  } catch (err) {
+    logger.warn({ err, einsatzId }, "Foto-Laden für PDF fehlgeschlagen — Anhang entfällt");
+    return [];
+  }
 }
 
 const FAHRZEUG_ABK: Record<string, string> = {
@@ -175,6 +219,12 @@ async function buildLotsendienstHtml(
 
   const data: LotsendienstDaten = {
     einsatzId: id,
+    berichtsNummer: deriveBerichtNrFromId(
+      id,
+      doc.einsatzart as string | undefined,
+      doc.alarmierungZeit as string | undefined,
+    ),
+    einsatzQuelle: "Lotsendienst",
     einsatzort: String(doc.einsatzort ?? "—"),
     alarmierungZeit: String(doc.alarmierungZeit ?? ""),
     ...(doc.einsatzende ? { einsatzende: String(doc.einsatzende) } : {}),
@@ -247,13 +297,20 @@ async function buildHauptberichtHtml(
       funkrufname?: string;
       text?: string;
       source?: string;
+      fotoId?: string;
     }> | undefined) ?? []
   ).map((c) => ({
     zeitstempel: c.zeitstempel ?? "",
     funkrufname: c.funkrufname ?? "—",
     text: c.text ?? "",
     source: c.source ?? "—",
+    // Foto-Funktion (2026-06-03): fotoId durchreichen für Inline-Thumbnail.
+    ...(c.fotoId ? { fotoId: c.fotoId } : {}),
   }));
+
+  // Foto-Funktion (2026-06-03): alle foto:-Docs des Einsatzes laden (für
+  // Inline-Thumbnails in der Chronik + Foto-Anhang-Seiten 9×12 cm).
+  const fotos = await loadFotos(id);
 
   // Fahrzeug-Anhang-Daten mit Personen-Namen aufgeloest
   const fahrzeugberichteOut: NonNullable<BerichtDaten["fahrzeugberichte"]> = [];
@@ -318,8 +375,28 @@ async function buildHauptberichtHtml(
       }
     | undefined;
 
+  // Issue 22 (Einsatz-Test 2026-06-02): Ölbindemittel-Säcke werden beim
+  // Abschluss aggregiert ans Einsatz-Doc geschrieben. Fallback fuer noch
+  // aktive Einsaetze ODER fuer Bestandsberichte vor v0.1.10, wo der Wert
+  // im Einsatz-Doc noch 0 ist: live aus den Fahrzeugberichten summieren.
+  const oelbindemittelDoc =
+    (doc.oelbindemittel as { gesamtSaecke?: number } | undefined)?.gesamtSaecke ?? 0;
+  const oelbindemittelAggregiert =
+    oelbindemittelDoc > 0
+      ? oelbindemittelDoc
+      : fzgBerichte.reduce(
+          (sum, fz) => sum + Number((fz.oelbindemittelSaecke as number | undefined) ?? 0),
+          0,
+        );
+
   const data: BerichtDaten = {
     einsatzId: id,
+    berichtsNummer: deriveBerichtNrFromId(
+      id,
+      doc.einsatzart as string | undefined,
+      doc.alarmierungZeit as string | undefined,
+    ),
+    einsatzQuelle: einsatzQuelleLabel(doc.einsatzTyp as string | undefined),
     einsatzart: doc.einsatzart as string | undefined,
     einsatzartFreitext: doc.einsatzartFreitext as string | undefined,
     einsatzort: String(doc.einsatzort ?? "—"),
@@ -329,8 +406,7 @@ async function buildHauptberichtHtml(
     status: String(doc.status ?? ""),
     einsatzende: doc.einsatzende as string | undefined,
     meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
-    oelbindemittelSaecke:
-      (doc.oelbindemittel as { gesamtSaecke?: number } | undefined)?.gesamtSaecke ?? 0,
+    oelbindemittelSaecke: oelbindemittelAggregiert,
     reaktivierungen,
     pflichtbereich: (doc.pflichtbereich as boolean | null | undefined) ?? null,
     einsatzzoneEzell: (doc.einsatzzoneEzell as boolean | null | undefined) ?? null,
@@ -373,7 +449,18 @@ async function buildHauptberichtHtml(
     eingesetzteFahrzeuge,
     chronik,
     fahrzeugberichte: fahrzeugberichteOut,
+    // Foto-Funktion (2026-06-03): Fotos für Inline-Thumbnail + Anhang-Seiten.
+    ...(fotos.length > 0 ? { fotos } : {}),
     ...(abschlussHinweis ? { abschlussOverrideHinweis: abschlussHinweis } : {}),
+    // Issue 16/17 (Einsatz-Test 2026-06-02): syBOS-Statistik-Bloecke durch-
+    // reichen. Wenn das Doc keinen entsprechenden Block hat, bleibt das
+    // PDF-Template-Helper still und rendert nichts.
+    ...(doc.technischeStatistik
+      ? { technischeStatistik: doc.technischeStatistik as BerichtDaten["technischeStatistik"] }
+      : {}),
+    ...(doc.brandStatistik
+      ? { brandStatistik: doc.brandStatistik as BerichtDaten["brandStatistik"] }
+      : {}),
   };
 
   return renderHauptberichtHtml(data);
@@ -450,6 +537,12 @@ async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promis
 
   const data: UebungDaten = {
     einsatzId: id,
+    berichtsNummer: deriveBerichtNrFromId(
+      id,
+      doc.einsatzart as string | undefined,
+      doc.alarmierungZeit as string | undefined,
+    ),
+    einsatzQuelle: "Übung",
     uebungThema: String(doc.uebungThema ?? doc.einsatzart ?? "Übung"),
     ...(doc.uebungsTyp ? { uebungsTyp: doc.uebungsTyp as UebungsTyp } : {}),
     ...(doc.uebungsleiter ? { uebungsleiter: String(doc.uebungsleiter) } : {}),
@@ -549,6 +642,12 @@ pdfRouter.get(
 
       const data: FahrzeugberichtDaten = {
         einsatzId,
+        berichtsNummer: deriveBerichtNrFromId(
+          einsatzId,
+          einsatz.einsatzart as string | undefined,
+          einsatz.alarmierungZeit as string | undefined,
+        ),
+        einsatzQuelle: einsatzQuelleLabel(einsatz.einsatzTyp as string | undefined),
         fahrzeugId,
         abk: fahrzeugAbk(fahrzeugId),
         funkrufname: FAHRZEUG_FUNKRUF[fahrzeugId] ?? fahrzeugId,

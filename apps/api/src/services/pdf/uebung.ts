@@ -25,6 +25,10 @@ export type UebungsTyp =
 
 export interface UebungDaten {
   einsatzId: string;
+  /** Berichts-Nr im Schema T26-007 (Issue 24, Einsatz-Test 2026-06-02). Optional. */
+  berichtsNummer?: string;
+  /** Quelle des Berichts (z. B. "Übung manuell"). Optional. */
+  einsatzQuelle?: string;
   uebungThema: string;
   uebungsTyp?: UebungsTyp;
   uebungsleiter?: string;
@@ -225,7 +229,14 @@ export function renderUebungHtml(d: UebungDaten): string {
         <div class="hd-sub">FF Eberstalzell · Ausbildungsnachweis</div>
       </div>
     </div>
-    <div class="hd-id">${escape(d.einsatzId)}</div>
+    <div class="hd-id" style="text-align:right">
+      ${
+        d.berichtsNummer
+          ? `<div style="font-family:Arial,sans-serif;font-size:11pt;font-weight:700;color:#0f172a;margin-bottom:1mm">Berichts-Nr ${escape(d.berichtsNummer)}</div>`
+          : ""
+      }
+      <div>${escape(d.einsatzId)}${d.einsatzQuelle ? ` · ${escape(d.einsatzQuelle)}` : ""}</div>
+    </div>
   </div>
 
   <div class="typ-banner">
@@ -339,7 +350,7 @@ export function renderUebungHtml(d: UebungDaten): string {
 
   <div class="ft">
     <span>HotDoc · FF Eberstalzell · Übungsdokumentation</span>
-    <span>${new Date().toLocaleString("de-AT")}</span>
+    <span>${new Date().toLocaleString("de-AT", { timeZone: "Europe/Vienna" })}</span>
   </div>
 
 </div>

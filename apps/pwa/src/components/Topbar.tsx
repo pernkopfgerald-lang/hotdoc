@@ -5,6 +5,29 @@ import type { GeoState } from "../lib/geo";
 import { BrandLogo } from "./BrandLogo";
 import { HilfeSheet } from "./HilfeSheet";
 
+// Issue 11 (Einsatz-Test 2026-06-02): Mobile-Breakpoint < 640px wird per
+// matchMedia gehoert damit die Topbar-Buttons "Fahrzeug wechseln" nur als
+// Icon (ohne Text-Label) erscheinen — sonst overflowt die ganze Topbar.
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 640px)").matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(max-width: 640px)");
+    const handler = (ev: MediaQueryListEvent) => setIsMobile(ev.matches);
+    // Safari < 14 hat addListener statt addEventListener
+    if (mql.addEventListener) mql.addEventListener("change", handler);
+    else mql.addListener(handler);
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener("change", handler);
+      else mql.removeListener(handler);
+    };
+  }, []);
+  return isMobile;
+}
+
 interface Props {
   funkrufname?: string;
   einsatzNr?: string;
@@ -35,6 +58,10 @@ export function Topbar({
   const [hilfeOpen, setHilfeOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
+  // Issue 11 (Einsatz-Test 2026-06-02): Mobile = < 640px. Steuert ob
+  // "Fahrzeug wechseln" mit Text-Label oder nur als Icon (44x44 Touch-
+  // Target) gerendert wird. Sonst rutscht die Topbar in den Overflow.
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     applyTheme(theme);
@@ -102,28 +129,50 @@ export function Topbar({
           }}
         >
           {onSwitchVehicle && (
+            /* Issue 11 (Einsatz-Test 2026-06-02): Auf Mobile (< 640px) wird
+               das Text-Label "Fahrzeug wechseln" ausgeblendet — nur Icon
+               mit 44x44 Touch-Target. Sonst ueberlaeuft die Topbar. */
             <button
               type="button"
               onClick={onSwitchVehicle}
               className="btn"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 10px",
-                fontSize: 12,
-                fontWeight: 500,
-                background: "transparent",
-                color: "var(--fg-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                minHeight: 0,
-              }}
+              style={
+                isMobile
+                  ? {
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 44,
+                      height: 44,
+                      padding: 0,
+                      background: "transparent",
+                      color: "var(--fg-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      minHeight: 0,
+                    }
+                  : {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      background: "transparent",
+                      color: "var(--fg-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      minHeight: 0,
+                    }
+              }
               aria-label="Fahrzeug wechseln"
               title="Fahrzeug wechseln"
             >
-              <ArrowLeftRight size={13} strokeWidth={2.2} />
-              Fahrzeug wechseln
+              <ArrowLeftRight
+                size={isMobile ? 18 : 13}
+                strokeWidth={2.2}
+              />
+              {isMobile ? null : "Fahrzeug wechseln"}
             </button>
           )}
           {onHandoff && (

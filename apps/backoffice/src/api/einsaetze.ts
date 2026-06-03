@@ -52,6 +52,21 @@ export async function reaktivieren(id: string, grund: string): Promise<{ ok: boo
   });
 }
 
+/**
+ * Issue 2 (Einsatz-Test 2026-06-02): Einsatz endgueltig loeschen +
+ * Fahrzeugberichte cascadiert mit-loeschen. Backend setzt CouchDB-Tombstone
+ * (`_deleted: true`) und schreibt ein Audit-Event mit Pflicht-Begruendung.
+ */
+export async function loeschenEinsatz(
+  id: string,
+  grund: string,
+): Promise<{ ok: boolean; deleted: boolean; cascade_fzgber: number }> {
+  return apiCall(`/api/einsaetze/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: { grund },
+  });
+}
+
 export interface ManuellAnlageInput {
   einsatzTyp?: "manuell" | "lotsendienst" | "uebung";
   einsatzort: string;

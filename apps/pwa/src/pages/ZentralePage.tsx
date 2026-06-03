@@ -45,7 +45,14 @@ import {
   FLORIAN_POSITION,
   SONSTIGE_FF as DEFAULT_SONSTIGE_FF,
   type FahrzeugId,
+  // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Listen.
+  kategorieFuer,
+  URSACHE_TECHNISCH,
+  HAUPT_TAETIGKEIT_TECHNISCH,
+  WEITERE_TAETIGKEITEN_TECHNISCH,
 } from "@hotdoc/shared";
+// Issue 17 (Einsatz-Test 2026-06-02): Brand-Abschluss-Wizard fuer syBOS-Statistik.
+import { BrandAbschlussWizard, type BrandStatistik } from "../components/BrandAbschlussWizard";
 
 const HOME_POS = FLORIAN_POSITION;
 
@@ -99,6 +106,39 @@ interface EinsatzApiDoc {
   bearbeiterPersonId?: number;
   reservePersonIds?: number[];
   zugewieseneFahrzeuge?: Array<"kdo" | "tlf-a-4000" | "lfa-b" | "mtf">;
+  // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Block.
+  technischeStatistik?: {
+    personenRettung?: {
+      anzahlPersonen?: number;
+      tot?: number;
+      verletzt?: number;
+      unverletzt?: number;
+    };
+    tierRettung?: { gross?: number; klein?: number };
+    ursache?: string;
+    hauptTaetigkeit?: string;
+    weitereTaetigkeiten?: string[];
+    gefaehrlicheStoffe?: string[];
+  };
+  // Issue 17 (Einsatz-Test 2026-06-02): syBOS Brand-Statistik-Block.
+  brandStatistik?: {
+    entdeckung?: string[];
+    ausmass?: string;
+    klassen?: string[];
+    kategorie?: string;
+    objektart1?: string;
+    objektart2?: string;
+    bauart?: string;
+    lagen?: string[];
+    verlauf?: string;
+    personenRettung?: {
+      anzahlPersonen?: number;
+      tot?: number;
+      verletzt?: number;
+      unverletzt?: number;
+    };
+    tierRettung?: { gross?: number; klein?: number };
+  };
 }
 
 /**
@@ -130,6 +170,20 @@ interface EditorState {
   /** Florianstation-Disposition: welche Fahrzeuge bearbeiten diesen Einsatz?
    *  Leer → alle Fahrzeuge-Tablets sehen den Einsatz (Default bei BlaulichtSMS-Alarm). */
   zugewieseneFahrzeuge: Array<"kdo" | "tlf-a-4000" | "lfa-b" | "mtf">;
+  // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Editor.
+  // Nur befuellt wenn kategorieFuer(einsatzart) === "technisch". Wird beim
+  // Save 1:1 in body.technischeStatistik gemappt.
+  tsPersonAnzahl: number;
+  tsPersonTot: number;
+  tsPersonVerletzt: number;
+  tsPersonUnverletzt: number;
+  tsTierGross: number;
+  tsTierKlein: number;
+  tsUrsache: string;
+  tsUrsacheFreitext: string;
+  tsHauptTaetigkeit: string;
+  tsWeitereTaetigkeiten: string[];
+  tsGefaehrlicheStoffe: string[];
 }
 
 const EMPTY_EDITOR: EditorState = {
@@ -151,6 +205,18 @@ const EMPTY_EDITOR: EditorState = {
   bearbeiterPersonId: null,
   reservePersonIds: [],
   zugewieseneFahrzeuge: [],
+  // Issue 16 (Einsatz-Test 2026-06-02): Technisch-Statistik-Defaults.
+  tsPersonAnzahl: 0,
+  tsPersonTot: 0,
+  tsPersonVerletzt: 0,
+  tsPersonUnverletzt: 0,
+  tsTierGross: 0,
+  tsTierKlein: 0,
+  tsUrsache: "",
+  tsUrsacheFreitext: "",
+  tsHauptTaetigkeit: "",
+  tsWeitereTaetigkeiten: [],
+  tsGefaehrlicheStoffe: [],
 };
 
 /**
@@ -222,6 +288,31 @@ function hhmmToIso(hhmm: string, refDateIso: string): string | undefined {
 }
 
 /**
+ * OPT-5 (Audit 2026-06-03): Eine Stelle der Wahrheit für die Abschluss-Pfad-
+ * Entscheidung. Früher lebte die verschachtelte Bedingungs-Matrix (blockiert /
+ * Brand-Wizard / Confirm) verstreut im JSX (disabled-Prop + onClick + style),
+ * was einen zukünftigen Edit fehleranfällig machte. Diese reine Funktion bildet
+ * das bestehende Verhalten 1:1 ab und ist isoliert testbar.
+ *
+ *   "blocked" → Button disabled (Schreibschutz / kein Einsatz / busy / offene Fzgber)
+ *   "wizard"  → Brand-Einsatz ohne Statistik → erst Brand-Wizard
+ *   "confirm" → direkt ins Abschluss-Bestätigungs-Modal
+ */
+type AbschlussPfad = "blocked" | "wizard" | "confirm";
+function entscheideAbschlussPfad(p: {
+  schreibschutz: boolean;
+  hatEinsatzId: boolean;
+  busy: boolean;
+  blockiert: boolean;
+  istBrand: boolean;
+  hatBrandStatistik: boolean;
+}): AbschlussPfad {
+  if (p.schreibschutz || !p.hatEinsatzId || p.busy || p.blockiert) return "blocked";
+  if (p.istBrand && !p.hatBrandStatistik) return "wizard";
+  return "confirm";
+}
+
+/**
  * Florianstation / Einsatzzentrale — Hauptbericht-Layout (Anhang B des
  * Spec). Aggregiert Fahrzeugberichte aus dem Einsatz, zeigt Status
  * pro Fahrzeug und übernimmt die Übergabe an den Bearbeiter (PDF +
@@ -281,6 +372,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [sonstigeFfAll, setSonstigeFfAll] = useState<string[]>(
     () => [...DEFAULT_SONSTIGE_FF],
   );
+  // Issue 16 (Einsatz-Test 2026-06-02): Funktionaer-gepflegte Liste fuer
+  // "Gefaehrliche Stoffe". Default leer — wird via /api/config/gefaehrliche-
+  // stoffe gefuellt. Wenn das Backend keine Liste hat, kann der User nur
+  // ueber das Freitext-Feld neue Eintraege hinzufuegen.
+  const [gefaehrlicheStoffeAll, setGefaehrlicheStoffeAll] = useState<string[]>([]);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -303,6 +399,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         }
       } catch {
         // Default-Liste bleibt aktiv.
+      }
+      try {
+        // Issue 16: Gefaehrliche-Stoffe-Liste vom Backend.
+        const r3 = await apiCall<{ data?: { items?: string[] } }>(
+          "/api/config/gefaehrliche-stoffe",
+        );
+        if (!cancelled && Array.isArray(r3.data?.items)) {
+          setGefaehrlicheStoffeAll(r3.data!.items.map(String));
+        }
+      } catch {
+        // Leer-Liste bleibt aktiv — User-Freitext bleibt moeglich.
       }
     })();
     return () => {
@@ -374,6 +481,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  Grund wandert ins Audit-Log und auf das PDF. */
   const [abschlussOverrideOpen, setAbschlussOverrideOpen] = useState(false);
   const [abschlussOverrideGrund, setAbschlussOverrideGrund] = useState("");
+  /** Issue 8 (Einsatz-Test 2026-06-02): Verrechnungs-Stand beim Abschluss
+   *  setzen. Wird vom Backend auf alle Fahrzeugberichte cascadiert. */
+  const [abschlussVerrechenbar, setAbschlussVerrechenbar] = useState(false);
+  const [abschlussRechnungsadresse, setAbschlussRechnungsadresse] = useState("");
+  /** Issue 17 (Einsatz-Test 2026-06-02): Brand-Abschluss-Wizard.
+   *  Wird VOR handleAbschluss() bei kategorieFuer(einsatzart)==="brand"
+   *  geoeffnet. Cancel mid-flow schreibt NICHTS — der User kann den
+   *  klassischen Abschluss-Confirm sofort danach trotzdem benutzen. */
+  const [brandWizardOpen, setBrandWizardOpen] = useState(false);
   /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   const [archivOpenFlorian, setArchivOpenFlorian] = useState(false);
@@ -602,6 +718,37 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       zugewieseneFahrzeuge: Array.isArray(aktiverEinsatz.zugewieseneFahrzeuge)
         ? aktiverEinsatz.zugewieseneFahrzeuge
         : [],
+      // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik aus Doc seeden.
+      // Wenn `ursache` nicht in URSACHE_TECHNISCH liegt, faellt der Wert in
+      // tsUrsacheFreitext, damit der User ihn weiter editieren kann.
+      tsPersonAnzahl:
+        aktiverEinsatz.technischeStatistik?.personenRettung?.anzahlPersonen ?? 0,
+      tsPersonTot: aktiverEinsatz.technischeStatistik?.personenRettung?.tot ?? 0,
+      tsPersonVerletzt:
+        aktiverEinsatz.technischeStatistik?.personenRettung?.verletzt ?? 0,
+      tsPersonUnverletzt:
+        aktiverEinsatz.technischeStatistik?.personenRettung?.unverletzt ?? 0,
+      tsTierGross: aktiverEinsatz.technischeStatistik?.tierRettung?.gross ?? 0,
+      tsTierKlein: aktiverEinsatz.technischeStatistik?.tierRettung?.klein ?? 0,
+      tsUrsache:
+        aktiverEinsatz.technischeStatistik?.ursache &&
+        (URSACHE_TECHNISCH as readonly string[]).includes(
+          aktiverEinsatz.technischeStatistik.ursache,
+        )
+          ? aktiverEinsatz.technischeStatistik.ursache
+          : "",
+      tsUrsacheFreitext:
+        aktiverEinsatz.technischeStatistik?.ursache &&
+        !(URSACHE_TECHNISCH as readonly string[]).includes(
+          aktiverEinsatz.technischeStatistik.ursache,
+        )
+          ? aktiverEinsatz.technischeStatistik.ursache
+          : "",
+      tsHauptTaetigkeit: aktiverEinsatz.technischeStatistik?.hauptTaetigkeit ?? "",
+      tsWeitereTaetigkeiten:
+        aktiverEinsatz.technischeStatistik?.weitereTaetigkeiten ?? [],
+      tsGefaehrlicheStoffe:
+        aktiverEinsatz.technischeStatistik?.gefaehrlicheStoffe ?? [],
     });
   }, [aktiverEinsatz, editorDirty]);
 
@@ -654,6 +801,35 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       }
       body.reservePersonIds = editor.reservePersonIds;
       body.zugewieseneFahrzeuge = editor.zugewieseneFahrzeuge;
+
+      // Issue 16 (Einsatz-Test 2026-06-02): Technisch-Statistik nur bei
+      // Einsatzkategorie "technisch" speichern. Bei "brand" landet der
+      // entsprechende Block via BrandAbschlussWizard. Wir loeschen den
+      // Block bei reinen technischen Einsaetzen NIE — der Sachbearbeiter
+      // editiert die Werte ueber mehrere Saves hinweg.
+      const istTechnisch =
+        kategorieFuer(aktiverEinsatz?.einsatzart) === "technisch";
+      if (istTechnisch) {
+        const ursacheFinal =
+          editor.tsUrsacheFreitext.trim() || editor.tsUrsache || undefined;
+        const ts: Record<string, unknown> = {
+          personenRettung: {
+            anzahlPersonen: Math.max(0, Math.floor(editor.tsPersonAnzahl)),
+            tot: Math.max(0, Math.floor(editor.tsPersonTot)),
+            verletzt: Math.max(0, Math.floor(editor.tsPersonVerletzt)),
+            unverletzt: Math.max(0, Math.floor(editor.tsPersonUnverletzt)),
+          },
+          tierRettung: {
+            gross: Math.max(0, Math.floor(editor.tsTierGross)),
+            klein: Math.max(0, Math.floor(editor.tsTierKlein)),
+          },
+          weitereTaetigkeiten: editor.tsWeitereTaetigkeiten,
+          gefaehrlicheStoffe: editor.tsGefaehrlicheStoffe,
+        };
+        if (ursacheFinal) ts.ursache = ursacheFinal;
+        if (editor.tsHauptTaetigkeit) ts.hauptTaetigkeit = editor.tsHauptTaetigkeit;
+        body.technischeStatistik = ts;
+      }
 
       await apiCall(`/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`, {
         method: "PUT",
@@ -713,12 +889,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       // kann ihn in den Audit-Trail/PDF uebernehmen. Der bestehende
       // Endpoint akzeptiert leeren Body, zusaetzliche Felder werden
       // ignoriert wenn das Backend sie noch nicht kennt.
-      const body = overrideGrund
-        ? { abschlussOverrideHinweis: overrideGrund }
-        : undefined;
+      //
+      // Issue 8 (Einsatz-Test 2026-06-02): verrechenbar + rechnungsadresse
+      // beim Abschluss mitschicken damit das Backend sie auf alle
+      // Fahrzeugberichte cascadiert.
+      const body: Record<string, unknown> = {};
+      if (overrideGrund) body.abschlussOverrideHinweis = overrideGrund;
+      if (abschlussVerrechenbar) {
+        body.verrechenbar = true;
+        if (abschlussRechnungsadresse.trim()) {
+          body.rechnungsadresse = abschlussRechnungsadresse.trim();
+        }
+      }
       await apiCall<{ ok: true; id: string; rev: string }>(
         `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/abschluss`,
-        body ? { method: "POST", body } : { method: "POST" },
+        Object.keys(body).length > 0 ? { method: "POST", body } : { method: "POST" },
       );
       // Doc neu laden — der Schreibschutz-Status soll sofort sichtbar werden.
       try {
@@ -761,6 +946,75 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       }
     } finally {
       setAbschlussBusy(false);
+    }
+  }
+
+  /**
+   * Issue 17 (Einsatz-Test 2026-06-02): Brand-Wizard-Complete-Handler.
+   * Schreibt brandStatistik via PUT auf das Einsatz-Doc, danach via PUT
+   * auf das objekt:<hash>-Doc (Cache fuer Wiederholungs-Einsaetze), dann
+   * oeffnet das normale Abschluss-Confirm. Wenn der PUT auf das Einsatz-Doc
+   * fehlschlaegt, brechen wir mit Toast ab — der Wizard kann reopened werden.
+   * Fehler beim objekt:<hash>-PUT werden NICHT escaliert: der Cache ist
+   * eine reine Quality-of-Life-Feature, kein Pflicht-Datenpfad.
+   */
+  async function handleBrandWizardComplete(bs: BrandStatistik): Promise<void> {
+    if (!aktiverEinsatzId) {
+      setBrandWizardOpen(false);
+      setAbschlussErr("Kein aktiver Einsatz ausgewählt.");
+      return;
+    }
+    try {
+      // 1. Brand-Statistik aufs Einsatz-Doc
+      await apiCall<{ ok: true; rev: string }>(
+        `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
+        { method: "PUT", body: { brandStatistik: bs } },
+      );
+      // 2. Objekt-Cache pflegen — Hash via Lookup-Endpoint holen (Server
+      // hat die kanonische Implementierung von normalizeAdresse). Nur
+      // wenn eine Adresse am Einsatz ist.
+      const adresse = (aktiverEinsatz?.einsatzort ?? "").trim();
+      if (adresse.length >= 5) {
+        try {
+          const lookup = await apiCall<{ ok: true; hash: string }>(
+            `/api/objekte/lookup?adresse=${encodeURIComponent(adresse)}`,
+          );
+          if (lookup.hash) {
+            await apiCall<{ ok: true; rev: string }>(
+              `/api/objekte/${encodeURIComponent(lookup.hash)}`,
+              {
+                method: "PUT",
+                body: { adresse, data: bs },
+              },
+            );
+          }
+        } catch {
+          // Nicht-kritisch — Cache ist Bonus, der Einsatz-Save ist die
+          // Pflicht-Persistenz. User-flow soll weiterlaufen.
+        }
+      }
+      // 3. Lokal Einsatz-Doc refreshen damit der naechste Abschluss-Confirm
+      // den brand-Statistik-Stand kennt (falls der User abbricht).
+      try {
+        const reloaded = await apiCall<EinsatzApiDoc>(
+          `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
+        );
+        setAktiveEinsaetze((prev) =>
+          prev.map((e) => (e._id === reloaded._id ? reloaded : e)),
+        );
+      } catch {
+        // egal
+      }
+      setBrandWizardOpen(false);
+      // Nach erfolgreichem Wizard direkt das normale Abschluss-Confirm
+      // anzeigen (User sieht Sanity-Check + verrechenbar-Felder).
+      setAbschlussErr(null);
+      setAbschlussOk(null);
+      setAbschlussConfirmOpen(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAbschlussErr(`Brand-Statistik speichern fehlgeschlagen: ${msg}`);
+      // Wizard offen lassen — User kann nochmal probieren oder cancel
     }
   }
 
@@ -1515,6 +1769,344 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
+        {/* Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik.
+            Nur sichtbar bei Kategorie "technisch" — bei Brand-Einsaetzen
+            uebernimmt der BrandAbschlussWizard (Issue 17) die Statistik-
+            Erfassung beim Abschluss. Default-Closed weil viele Einsaetze
+            nur kurze syBOS-Eintraege brauchen und der Sachbearbeiter sich
+            die Bloecke nur bei Bedarf aufklappt. */}
+        {kategorieFuer(aktiverEinsatz?.einsatzart) === "technisch" && (
+          <>
+            <SectionHead
+              title="syBOS Technisch-Statistik"
+              collapsible
+              defaultClosed
+              storageKey="ts-tech-statistik"
+            />
+            <section className="card">
+              <div className="card-head">
+                <div className="card-title">Personen- & Tierrettung · Ursache</div>
+                <span className="card-meta">Übertrag in syBOS-Maske · alle Felder optional</span>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label className="caption">Personenrettung</label>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4, 1fr)",
+                    gap: 10,
+                  }}
+                >
+                  <div className="field">
+                    <label className="caption" style={{ fontSize: 11 }}>Anzahl</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input num"
+                      value={editor.tsPersonAnzahl}
+                      disabled={schreibschutz}
+                      onChange={(e) =>
+                        patchEditor({
+                          tsPersonAnzahl: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="caption" style={{ fontSize: 11 }}>Tot</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input num"
+                      value={editor.tsPersonTot}
+                      disabled={schreibschutz}
+                      onChange={(e) =>
+                        patchEditor({
+                          tsPersonTot: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="caption" style={{ fontSize: 11 }}>Verletzt</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input num"
+                      value={editor.tsPersonVerletzt}
+                      disabled={schreibschutz}
+                      onChange={(e) =>
+                        patchEditor({
+                          tsPersonVerletzt: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="caption" style={{ fontSize: 11 }}>Unverletzt</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input num"
+                      value={editor.tsPersonUnverletzt}
+                      disabled={schreibschutz}
+                      onChange={(e) =>
+                        patchEditor({
+                          tsPersonUnverletzt: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label className="caption">Tierrettung</label>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gap: 10,
+                  }}
+                >
+                  <div className="field">
+                    <label className="caption" style={{ fontSize: 11 }}>Groß</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input num"
+                      value={editor.tsTierGross}
+                      disabled={schreibschutz}
+                      onChange={(e) =>
+                        patchEditor({
+                          tsTierGross: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="caption" style={{ fontSize: 11 }}>Klein</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input num"
+                      value={editor.tsTierKlein}
+                      disabled={schreibschutz}
+                      onChange={(e) =>
+                        patchEditor({
+                          tsTierKlein: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="field" style={{ marginBottom: 14 }}>
+                <label className="caption">Ursache</label>
+                <select
+                  className="input"
+                  value={editor.tsUrsache}
+                  disabled={schreibschutz}
+                  onChange={(e) =>
+                    patchEditor({ tsUrsache: e.target.value, tsUrsacheFreitext: "" })
+                  }
+                >
+                  <option value="">— bitte wählen —</option>
+                  {URSACHE_TECHNISCH.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+                <input
+                  className="input"
+                  style={{ marginTop: 6 }}
+                  placeholder="oder Freitext (überschreibt Auswahl)"
+                  value={editor.tsUrsacheFreitext}
+                  disabled={schreibschutz}
+                  onChange={(e) =>
+                    patchEditor({ tsUrsacheFreitext: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="field" style={{ marginBottom: 14 }}>
+                <label className="caption">Haupt-Tätigkeit</label>
+                <select
+                  className="input"
+                  value={editor.tsHauptTaetigkeit}
+                  disabled={schreibschutz}
+                  onChange={(e) =>
+                    patchEditor({ tsHauptTaetigkeit: e.target.value })
+                  }
+                >
+                  <option value="">— bitte wählen —</option>
+                  {HAUPT_TAETIGKEIT_TECHNISCH.map((h) => (
+                    <option key={h} value={h}>{h}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field" style={{ marginBottom: 14 }}>
+                <label className="caption">Weitere Tätigkeiten</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {WEITERE_TAETIGKEITEN_TECHNISCH.map((w) => {
+                    const on = editor.tsWeitereTaetigkeiten.includes(w);
+                    return (
+                      <button
+                        type="button"
+                        key={w}
+                        disabled={schreibschutz}
+                        aria-pressed={on}
+                        onClick={() =>
+                          patchEditor({
+                            tsWeitereTaetigkeiten: toggleArrayItem(
+                              editor.tsWeitereTaetigkeiten,
+                              w,
+                            ),
+                          })
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
+                          background: on ? "var(--accent)" : "transparent",
+                          color: on ? "#fff" : "var(--fg)",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: schreibschutz ? "not-allowed" : "pointer",
+                          opacity: schreibschutz ? 0.55 : 1,
+                          minHeight: 32,
+                        }}
+                      >
+                        {w}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="caption">Gefährliche Stoffe</label>
+                {gefaehrlicheStoffeAll.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    {gefaehrlicheStoffeAll.map((g) => {
+                      const on = editor.tsGefaehrlicheStoffe.includes(g);
+                      return (
+                        <button
+                          type="button"
+                          key={g}
+                          disabled={schreibschutz}
+                          aria-pressed={on}
+                          onClick={() =>
+                            patchEditor({
+                              tsGefaehrlicheStoffe: toggleArrayItem(
+                                editor.tsGefaehrlicheStoffe,
+                                g,
+                              ),
+                            })
+                          }
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 999,
+                            border: `1px solid ${on ? "var(--warn)" : "var(--border-strong)"}`,
+                            background: on ? "var(--warn)" : "transparent",
+                            color: on ? "#fff" : "var(--fg)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: schreibschutz ? "not-allowed" : "pointer",
+                            opacity: schreibschutz ? 0.55 : 1,
+                            minHeight: 32,
+                          }}
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p
+                    style={{
+                      margin: "0 0 8px",
+                      fontSize: 11,
+                      color: "var(--fg-3)",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    (Liste leer — Funktionär pflegt sie im Backoffice unter „Gefährliche Stoffe".
+                    Bis dahin Freitext-Add unten verwenden.)
+                  </p>
+                )}
+                {/* Frei-Eintrag fuer ad-hoc Stoffe die noch nicht in der Liste sind. */}
+                <FreitextAddRow
+                  placeholder="z. B. Diesel, Heizöl, …"
+                  disabled={schreibschutz}
+                  onAdd={(t) => {
+                    const trim = t.trim();
+                    if (!trim) return;
+                    if (editor.tsGefaehrlicheStoffe.includes(trim)) return;
+                    patchEditor({
+                      tsGefaehrlicheStoffe: [...editor.tsGefaehrlicheStoffe, trim],
+                    });
+                  }}
+                />
+                {editor.tsGefaehrlicheStoffe.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {editor.tsGefaehrlicheStoffe.map((g) => (
+                      <span
+                        key={`sel-${g}`}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          background: "var(--warn-tint)",
+                          color: "var(--warn)",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        {g}
+                        {!schreibschutz && (
+                          <button
+                            type="button"
+                            aria-label={`${g} entfernen`}
+                            onClick={() =>
+                              patchEditor({
+                                tsGefaehrlicheStoffe:
+                                  editor.tsGefaehrlicheStoffe.filter((x) => x !== g),
+                              })
+                            }
+                            style={{
+                              background: "transparent",
+                              border: 0,
+                              color: "inherit",
+                              cursor: "pointer",
+                              padding: 0,
+                              fontSize: 13,
+                              lineHeight: 1,
+                              minHeight: 0,
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
         {/* Feld "Freitext Einsatzleiter" wurde entfernt (User-Wunsch) — die
             Meldung der Einsatzleitung kommt jetzt direkt in das Chronik-Feld
             unten, das umbenannt wurde auf "Einsatzbericht / Chronologie".
@@ -2042,7 +2634,40 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 : "kein aktiver Einsatz"}
             </span>
           </div>
-          <ChronikTimeline eintraege={chronik} />
+          {/* Issue 6 (Einsatz-Test 2026-06-02): Florianstation darf ALLE
+              Eintraege bearbeiten (zentrale Korrekturstelle — Funktionaer
+              tippt am PC schneller als der Kdt am Tablet). Sperre: nur
+              wenn der Einsatz nicht abgeschlossen ist (Schreibschutz
+              kommt sonst vom Backend mit 423 zurueck). */}
+          <ChronikTimeline
+            eintraege={chronik}
+            canEdit={() => !aktiverEinsatz?.schreibschutz}
+            onSaveEdit={async (entryId, newText) => {
+              if (!aktiverEinsatzId) return false;
+              try {
+                await apiCall(
+                  `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/chronik/${encodeURIComponent(entryId)}`,
+                  { method: "PUT", body: { text: newText } },
+                );
+                const now = new Date().toISOString();
+                setChronik((prev) =>
+                  prev.map((c) =>
+                    c.id === entryId
+                      ? {
+                          ...c,
+                          text: newText,
+                          editiertAm: now,
+                          editiertVon: "Florian Eberstalzell",
+                        }
+                      : c,
+                  ),
+                );
+                return true;
+              } catch {
+                return false;
+              }
+            }}
+          />
           <FlorianChronikInput
             einsatzId={aktiverEinsatzId}
             onAdded={(eintrag) =>
@@ -2167,6 +2792,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             const offene = beteiligte.filter((f) => f.status === "im_einsatz");
             const wartende = fahrzeugStatus.filter((f) => f.status === "wartend");
             const blockiert = !istManuellerTyp && offene.length > 0;
+            // OPT-5 (Audit 2026-06-03): EINE Pfad-Entscheidung, von disabled +
+            // onClick gemeinsam genutzt.
+            const abschlussPfad = entscheideAbschlussPfad({
+              schreibschutz,
+              hatEinsatzId: !!aktiverEinsatzId,
+              busy: abschlussBusy,
+              blockiert,
+              istBrand: kategorieFuer(aktiverEinsatz?.einsatzart) === "brand",
+              hatBrandStatistik: !!aktiverEinsatz?.brandStatistik,
+            });
+            const abschlussBlocked = abschlussPfad === "blocked";
             const offeneNamen = offene
               .map((f) => FAHRZEUGE[f.id].bezeichnung)
               .join(" · ");
@@ -2181,15 +2817,20 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   onClick={() => {
                     setAbschlussErr(null);
                     setAbschlussOk(null);
-                    setAbschlussConfirmOpen(true);
+                    // OPT-5 (Audit 2026-06-03): Pfad-Wahl aus entscheideAbschlussPfad.
+                    // Issue 17: Bei Brand-Einsaetzen erst den syBOS-Statistik-Wizard,
+                    // dann das Confirm (handleBrandWizardComplete öffnet es danach).
+                    if (abschlussPfad === "wizard") {
+                      setBrandWizardOpen(true);
+                      return;
+                    }
+                    if (abschlussPfad === "confirm") {
+                      setAbschlussConfirmOpen(true);
+                    }
                   }}
-                  disabled={
-                    schreibschutz || !aktiverEinsatzId || abschlussBusy || blockiert
-                  }
+                  disabled={abschlussBlocked}
                   style={
-                    schreibschutz || !aktiverEinsatzId || abschlussBusy || blockiert
-                      ? { opacity: 0.55, cursor: "not-allowed" }
-                      : undefined
+                    abschlussBlocked ? { opacity: 0.55, cursor: "not-allowed" } : undefined
                   }
                 >
                   <CheckCircle2 size={22} />
@@ -2540,6 +3181,41 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               </div>
             </div>
 
+            {/* Issue 8 (Einsatz-Test 2026-06-02): Verrechnungs-Toggle. */}
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: abschlussVerrechenbar ? "var(--info-tint)" : "var(--surface-2)",
+                border: `1px solid ${abschlussVerrechenbar ? "var(--info-border)" : "var(--border)"}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={abschlussVerrechenbar}
+                  onChange={(e) => setAbschlussVerrechenbar(e.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: "var(--info)" }}
+                />
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>
+                  Einsatz ist verrechenbar
+                </span>
+              </label>
+              {abschlussVerrechenbar ? (
+                <input
+                  type="text"
+                  className="input"
+                  value={abschlussRechnungsadresse}
+                  onChange={(e) => setAbschlussRechnungsadresse(e.target.value)}
+                  placeholder="Rechnungsadresse (optional)"
+                  style={{ fontSize: 13 }}
+                />
+              ) : null}
+            </div>
+
             {abschlussErr ? (
               <div
                 role="alert"
@@ -2764,6 +3440,26 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         onClose={() => setAboutOpen(false)}
         onResetSetup={onResetSetup}
       />
+
+      {/* Issue 17 (Einsatz-Test 2026-06-02): Brand-Abschluss-Wizard.
+          Lookup-Adresse = einsatzort (Server normalisiert + hashed). Initial
+          = bestehende brandStatistik (z. B. wenn der User schon einmal
+          durchgelaufen ist und nochmal aufruft). Cancel-Pfad schreibt nichts. */}
+      <BrandAbschlussWizard
+        open={brandWizardOpen}
+        {...(aktiverEinsatz?.einsatzort
+          ? { lookupAdresse: aktiverEinsatz.einsatzort }
+          : {})}
+        initial={
+          aktiverEinsatz?.brandStatistik
+            ? (aktiverEinsatz.brandStatistik as Partial<BrandStatistik>)
+            : null
+        }
+        onCancel={() => setBrandWizardOpen(false)}
+        onComplete={(bs) => {
+          void handleBrandWizardComplete(bs);
+        }}
+      />
     </div>
   );
 }
@@ -2858,6 +3554,65 @@ function SectionHead({
       </span>
       <span className="line" />
     </button>
+  );
+}
+
+/**
+ * Issue 16 (Einsatz-Test 2026-06-02): Kleines Inline-Input-Plus-Button-Pair
+ * fuer ad-hoc Chips (z. B. Gefaehrliche Stoffe die noch nicht in der
+ * Funktionaer-Liste sind). Enter im Input triggert ebenfalls onAdd.
+ */
+function FreitextAddRow({
+  placeholder,
+  disabled,
+  onAdd,
+}: {
+  placeholder: string;
+  disabled: boolean;
+  onAdd: (text: string) => void;
+}) {
+  const [text, setText] = useState("");
+  function commit() {
+    if (!text.trim() || disabled) return;
+    onAdd(text);
+    setText("");
+  }
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      <input
+        className="input"
+        placeholder={placeholder}
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        style={{ flex: 1 }}
+      />
+      <button
+        type="button"
+        onClick={commit}
+        disabled={disabled || !text.trim()}
+        style={{
+          padding: "8px 14px",
+          background: "var(--accent)",
+          border: 0,
+          color: "#fff",
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
+          opacity: disabled || !text.trim() ? 0.55 : 1,
+          minHeight: 38,
+        }}
+      >
+        +
+      </button>
+    </div>
   );
 }
 
@@ -3035,6 +3790,8 @@ function FlorianChronikInput({
         </div>
       ) : null}
       <div className="freeform">
+        {/* Issue 5 (Einsatz-Test 2026-06-02): Browser-Spellcheck de-AT
+            damit Tippfehler im Live-Eintrag sofort sichtbar sind. */}
         <input
           className="input"
           type="text"
@@ -3043,6 +3800,8 @@ function FlorianChronikInput({
           onKeyDown={(e) => e.key === "Enter" && void submit()}
           placeholder="Eintrag von Florian Eberstalzell · z. B. Nachalarmierung BFKDT angefordert …"
           disabled={!einsatzId}
+          spellCheck
+          lang="de-AT"
         />
         <button
           type="button"

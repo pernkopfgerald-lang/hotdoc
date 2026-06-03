@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildAtemschutzSet, mapMaterial, mapPerson } from "./mapper.js";
 import type { SyBosMaterialRaw, SyBosPersonRaw, SyBosPersUeberpruefungRaw } from "./client.js";
+// Issue 19 (Einsatz-Test 2026-06-02): Tests fuer Autobahn-km-Pattern
+import { findAutobahnKm } from "@hotdoc/shared";
+import { parseAutobahnPattern } from "../../workers/blaulichtsms-poller.js";
 
 describe("buildAtemschutzSet", () => {
   it("nimmt nur Personen mit gültiger Atemschutz-Prüfung", () => {
@@ -137,5 +140,113 @@ describe("mapMaterial", () => {
 
   it("liefert null bei ungültiger ID", () => {
     expect(mapMaterial({ ID: "abc", Bezeichnung: "Test" })).toBeNull();
+  });
+});
+
+// Issue 19 (Einsatz-Test 2026-06-02): Autobahn-km-Pattern-Erkennung im
+// BlaulichtSMS-Alarmtext. Die Regex muss die gaengigsten Disponenten-
+// Schreibweisen erkennen, sonst landet der Geocoder-Fallback auf einer
+// zufaelligen Stelle der Autobahn.
+describe("parseAutobahnPattern", () => {
+  it("erkennt 'A1 FR Salzburg km 201'", () => {
+    const r = parseAutobahnPattern("A1 FR Salzburg km 201");
+    expect(r).toEqual({ autobahn: "A1", fahrtrichtung: "Salzburg", km: 201 });
+  });
+
+  it("erkennt 'A1 Richtung Wien bei Km 195'", () => {
+    const r = parseAutobahnPattern("A1 Richtung Wien bei Km 195");
+    expect(r).toEqual({ autobahn: "A1", fahrtrichtung: "Wien", km: 195 });
+  });
+
+  it("erkennt 'A8 Fahrtr. Suben km 12'", () => {
+    const r = parseAutobahnPattern("A8 Fahrtr. Suben km 12");
+    expect(r).toEqual({ autobahn: "A8", fahrtrichtung: "Suben", km: 12 });
+  });
+
+  it("erkennt 'A 25 km 8 in Richtung Linz' (km vor Fahrtrichtung)", () => {
+    const r = parseAutobahnPattern("A 25 km 8 in Richtung Linz");
+    expect(r).toEqual({ autobahn: "A25", fahrtrichtung: "Linz", km: 8 });
+  });
+
+  it("erkennt Alarmtext mit Zusatztext: 'A1 FR Salzburg bei km 201 — PKW-Brand'", () => {
+    const r = parseAutobahnPattern("A1 FR Salzburg bei km 201 — PKW-Brand");
+    expect(r).toEqual({ autobahn: "A1", fahrtrichtung: "Salzburg", km: 201 });
+  });
+
+  it("liefert null fuer 'Wohnhaus Hauptstraße 12'", () => {
+    expect(parseAutobahnPattern("Wohnhaus Hauptstraße 12")).toBeNull();
+  });
+
+  it("liefert null fuer leeren String", () => {
+    expect(parseAutobahnPattern("")).toBeNull();
+  });
+
+  it("liefert null fuer Text ohne Autobahn-Praefix", () => {
+    expect(parseAutobahnPattern("PKW-Brand Richtung Wien km 100")).toBeNull();
+  });
+});
+
+// Issue 19 (Einsatz-Test 2026-06-02): Lookup in der OSM-km-Marker-Tabelle
+// inkl. linearer Interpolation zwischen Stuetzpunkten. Direkte Treffer
+// muessen mm-genau die Tabellenkoordinaten liefern, interpolierte Werte
+// muessen zwischen den Stuetzpunkten liegen.
+describe("findAutobahnKm", () => {
+  it("findet exakten Treffer 'A1 Salzburg km 201' (FF-Haus)", () => {
+    const r = findAutobahnKm("A1", "Salzburg", 201);
+    expect(r).not.toBeNull();
+    if (!r) throw new Error("r null");
+    expect(r.lat).toBeCloseTo(48.0408, 4);
+    expect(r.lng).toBeCloseTo(13.9920, 4);
+  });
+
+  it("interpoliert zwischen km 195 und km 199 (km 197 muss in der Mitte liegen)", () => {
+    const a = findAutobahnKm("A1", "Wien", 195);
+    const b = findAutobahnKm("A1", "Wien", 199);
+    const mid = findAutobahnKm("A1", "Wien", 197);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(mid).not.toBeNull();
+    if (!a || !b || !mid) throw new Error("null");
+    // km 197 liegt zwischen 195 und 199, daher zwischen a und b
+    expect(mid.lat).toBeGreaterThan(Math.min(a.lat, b.lat));
+    expect(mid.lat).toBeLessThan(Math.max(a.lat, b.lat));
+    expect(mid.lng).toBeGreaterThan(Math.min(a.lng, b.lng));
+    expect(mid.lng).toBeLessThan(Math.max(a.lng, b.lng));
+    // bei km 197 = (195 + 199) / 2, also t=0.5, lat/lng exakt mittig
+    expect(mid.lat).toBeCloseTo((a.lat + b.lat) / 2, 4);
+    expect(mid.lng).toBeCloseTo((a.lng + b.lng) / 2, 4);
+  });
+
+  it("interpoliert mit Schreibweise 'FR Salzburg'", () => {
+    const r = findAutobahnKm("A1", "FR Salzburg", 201);
+    expect(r).not.toBeNull();
+    if (!r) throw new Error("r null");
+    expect(r.lat).toBeCloseTo(48.0408, 4);
+  });
+
+  it("akzeptiert 'A 1' (mit Leerzeichen)", () => {
+    const r = findAutobahnKm("A 1", "Salzburg", 201);
+    expect(r).not.toBeNull();
+  });
+
+  it("liefert null fuer unbekannte Autobahn 'A9'", () => {
+    expect(findAutobahnKm("A9", "Wien", 100)).toBeNull();
+  });
+
+  it("liefert null fuer unbekannte Fahrtrichtung", () => {
+    expect(findAutobahnKm("A1", "Innsbruck", 200)).toBeNull();
+  });
+
+  it("liefert null fuer km ausserhalb des abgedeckten Bereichs", () => {
+    expect(findAutobahnKm("A1", "Wien", 50)).toBeNull();
+    expect(findAutobahnKm("A1", "Wien", 999)).toBeNull();
+  });
+
+  it("erkennt A8 km 0 (Abzweig Sattledt)", () => {
+    const r = findAutobahnKm("A8", "Suben", 0);
+    expect(r).not.toBeNull();
+    if (!r) throw new Error("r null");
+    // A8 km 0 muss in der Naehe der A1 km 199 liegen (gleicher Knoten)
+    expect(r.lat).toBeCloseTo(48.0445, 3);
   });
 });

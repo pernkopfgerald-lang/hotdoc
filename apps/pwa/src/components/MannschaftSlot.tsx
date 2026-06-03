@@ -1,5 +1,6 @@
 import { AS_DEFAULT, AS_MAX, AS_MIN, AS_STEP, clampAsDauer } from "@hotdoc/shared";
 import { Minus, Plus, X } from "lucide-react";
+import { useStammdaten } from "../lib/stammdaten";
 import type { PickPerson } from "./PersonPickerModal";
 import { avatarColor, initials } from "./PersonButton";
 
@@ -26,6 +27,12 @@ interface Props {
  */
 export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onClearPerson }: Props) {
   const filled = !!data.person;
+  // Issue 14 (Einsatz-Test 2026-06-02): Stepper-Schrittweite aus Backoffice
+  // respektieren. Default 5 min, kann via Stammdaten auf 1/2/15 etc. gestellt
+  // werden. Wenn der Hook noch keine Daten hat, faellt er auf AS_STEP zurueck.
+  const stammdaten = useStammdaten();
+  const step = stammdaten.atemschutz.schritteMin > 0 ? stammdaten.atemschutz.schritteMin : AS_STEP;
+  const maxDauer = stammdaten.atemschutz.maxDauerMin > 0 ? stammdaten.atemschutz.maxDauerMin : AS_MAX;
 
   if (!filled) {
     // D-13: Die ganze Row ist klickbar (role="button" + onClick + Enter/Space).
@@ -82,10 +89,10 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
         {data.atemschutzAktiv ? (
           <AsTimer
             minutes={data.atemschutzDauerMin}
-            onMinus={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin - AS_STEP))}
-            onPlus={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin + AS_STEP))}
+            onMinus={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin - step))}
+            onPlus={() => onChangeAs(clampAsDauer(data.atemschutzDauerMin + step))}
             minusDisabled={data.atemschutzDauerMin <= AS_MIN}
-            plusDisabled={data.atemschutzDauerMin >= AS_MAX}
+            plusDisabled={data.atemschutzDauerMin >= maxDauer}
           />
         ) : (
           <button
@@ -142,6 +149,23 @@ function AsTimer({
   minusDisabled: boolean;
   plusDisabled: boolean;
 }) {
+  // BLOCKER-5 (Audit 2026-06-03): Touch-Target ≥44px. Die Atemschutz-Dauer ist
+  // sicherheitskritisch und muss vom Kdt mit Einsatzhandschuh im wackelnden
+  // Fahrzeug nachgeführt werden — die alten 24×24px-Buttons waren unter
+  // Handschuhen praktisch nicht treffbar (Fehltap auf das Slot-leeren-X
+  // daneben). Klickfläche jetzt 44×44px, Icon optisch etwas größer (15px).
+  const stepBtnStyle: React.CSSProperties = {
+    background: "transparent",
+    border: 0,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "var(--as)",
+  };
   return (
     <span className="as-timer">
       <span className="tag">AS</span>
@@ -152,18 +176,9 @@ function AsTimer({
         onClick={onMinus}
         disabled={minusDisabled}
         className="icon-btn"
-        style={{
-          background: "transparent",
-          border: 0,
-          width: 24,
-          height: 24,
-          minHeight: 24,
-          color: "var(--as)",
-          marginLeft: 2,
-          opacity: minusDisabled ? 0.3 : 1,
-        }}
+        style={{ ...stepBtnStyle, opacity: minusDisabled ? 0.3 : 1 }}
       >
-        <Minus size={11} strokeWidth={3} />
+        <Minus size={15} strokeWidth={3} />
       </button>
       <button
         type="button"
@@ -171,17 +186,9 @@ function AsTimer({
         onClick={onPlus}
         disabled={plusDisabled}
         className="icon-btn"
-        style={{
-          background: "transparent",
-          border: 0,
-          width: 24,
-          height: 24,
-          minHeight: 24,
-          color: "var(--as)",
-          opacity: plusDisabled ? 0.3 : 1,
-        }}
+        style={{ ...stepBtnStyle, opacity: plusDisabled ? 0.3 : 1 }}
       >
-        <Plus size={11} strokeWidth={3} />
+        <Plus size={15} strokeWidth={3} />
       </button>
     </span>
   );

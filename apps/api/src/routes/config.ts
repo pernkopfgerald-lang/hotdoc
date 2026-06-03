@@ -34,6 +34,10 @@ const KEYS = [
   "beteiligte-stellen",
   "sonstige-ff",
   "app-version",
+  // Issue 16 (Einsatz-Test 2026-06-02): Funktionaer-gepflegte Liste fuer
+  // die Chip-Auswahl "Gefaehrliche Stoffe" im Florian-Editor (technische
+  // Statistik). Kein Secret — die normalen Lese-/Schreib-Rollen gelten.
+  "gefaehrliche-stoffe",
 ] as const;
 type ConfigKey = (typeof KEYS)[number];
 
@@ -253,6 +257,12 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
     releaseNotes:
       "v0.1.7 — Florianstation-Upgrade + Fahrzeugbericht-Vordruck\n\n• Florianstation Lagekarte: Klick auf Status-Card lässt Marker pulsieren + Mannschafts-Details (Fahrer/Kdt/Besatzung) klappen unter der Card auf.\n• Drei Zoom-Tasten an beiden Karten: Lagebild (200m), Gesamt (alle Fahrzeuge), Zentrieren.\n• Pop-Out-Fenster für 2. Bildschirm via /florian-map.\n• Florian-Position korrigiert: echte Solarstraße 1 statt 5 km zu weit nördlich — wirkt auch auf KM-Berechnung.\n• Fahrzeugbericht-PDF (Anhang + standalone) im Original-Vordruck-Layout mit FF-Wappen + 4 Tabellen.\n• Neuer Bericht öffnet sich automatisch (war Bug).\n• 'Meldung Einsatzleitung'-Feld entfernt — Text kommt direkt in 'Einsatzbericht / Chronologie'.\n• GPS → Adresse via Reverse-Geocoding (Photon).\n• Pflichtbereich + Einsatzzone automatisch bei Eberstalzell-GPS.",
     minSupported: "0.1.0",
+  },
+  // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
+  // den Florian-Editor "Technische Statistik". Default leer — der Funktionaer
+  // pflegt sie ueber das Backoffice (StringListPanel).
+  "gefaehrliche-stoffe": {
+    items: [] as string[],
   },
 };
 

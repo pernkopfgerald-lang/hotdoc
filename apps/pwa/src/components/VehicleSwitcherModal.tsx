@@ -1,4 +1,5 @@
-import { Radio, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Radio, X } from "lucide-react";
+import { useState } from "react";
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
 
 interface Props {
@@ -12,14 +13,96 @@ interface Props {
  * Erlaubt das Umschalten auf ein anderes Fahrzeug ohne Setup-Reset.
  * Persistiert die Auswahl in PouchDB (fahrzeug:self-Doc) und lädt
  * die Seite neu, damit alle Komponenten den neuen Funkrufnamen sehen.
+ *
+ * RISIKO-2 (Audit 2026-06-03): Der Wechsel ist zweistufig. Früher löste ein
+ * Tap auf ein Fahrzeug SOFORT den Wechsel aus (Page-Reload) und verwarf die
+ * laufende Erfassung — die Warnung stand nur als 10px-Graustufentext unter
+ * den Buttons, die ein gestresster Funktionär nicht liest. Jetzt: Tap →
+ * expliziter Bestätigungs-Screen mit großem rotem "Wechseln"-Button.
  */
 export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props) {
+  const [pendingId, setPendingId] = useState<FahrzeugId | null>(null);
   if (!open) return null;
+
+  function handleClose(): void {
+    setPendingId(null);
+    onClose();
+  }
+
+  // ─── Stufe 2: Bestätigung ───
+  if (pendingId) {
+    const ziel = FAHRZEUGE[pendingId];
+    return (
+      <div
+        className="fixed inset-0 z-[2000] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"
+        onPointerDown={(e) => {
+          // Backdrop-Klick bricht NUR die Bestätigung ab (zurück zur Liste),
+          // verwirft aber nichts — kein versehentlicher Wechsel.
+          if (e.target === e.currentTarget) setPendingId(null);
+        }}
+      >
+        <div
+          className="w-full max-w-md overflow-hidden rounded-l border"
+          style={{
+            borderColor: "var(--red-border)",
+            background: "var(--card-gradient)",
+            boxShadow: "0 30px 80px -30px var(--red-glow), var(--shadow-card)",
+          }}
+        >
+          <div className="flex flex-col gap-3 p-5">
+            <div className="flex items-center gap-2.5">
+              <span
+                className="grid h-10 w-10 place-items-center rounded-md text-white"
+                style={{
+                  background:
+                    "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)",
+                }}
+              >
+                <AlertTriangle size={18} />
+              </span>
+              <h2 className="font-condensed text-[18px] font-bold tracking-tight text-text-1">
+                Auf {ziel.funkrufname} wechseln?
+              </h2>
+            </div>
+            <p className="text-[14px] leading-relaxed text-text-2">
+              Die <strong>laufende Erfassung dieses Tablets</strong> (Mannschaft,
+              Geräte, Aufträge) wird verworfen, soweit sie noch nicht an Florian
+              übermittelt wurde. Wirklich wechseln?
+            </p>
+            <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setPendingId(null)}
+                className="flex-1 rounded-m border px-3 py-3 text-sm font-semibold text-text-1"
+                style={{ borderColor: "var(--border-strong)", background: "var(--surface-2)", minHeight: 48 }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelect(pendingId)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-m px-3 py-3 text-sm font-bold uppercase tracking-[0.06em] text-white"
+                style={{
+                  background: "linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%)",
+                  border: "1px solid color-mix(in srgb, var(--red-strong) 60%, #000)",
+                  minHeight: 48,
+                }}
+              >
+                <ArrowLeftRight size={16} /> Wechseln
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Stufe 1: Fahrzeug-Auswahl ───
   return (
     <div
       className="fixed inset-0 z-[2000] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
       onPointerDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleClose();
       }}
     >
       <div
@@ -56,7 +139,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="grid h-9 w-9 place-items-center rounded-full border border-border bg-surface-2 text-text-2 transition hover:border-border-strong hover:text-text-1"
             aria-label="Schließen"
           >
@@ -72,7 +155,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
               <li key={id}>
                 <button
                   type="button"
-                  onClick={() => onSelect(id)}
+                  onClick={() => setPendingId(id)}
                   disabled={active}
                   className="flex w-full items-center gap-3 rounded-m border px-3.5 py-2.5 text-left transition disabled:cursor-default"
                   style={{

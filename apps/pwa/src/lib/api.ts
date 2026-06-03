@@ -81,11 +81,41 @@ export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
     },
   };
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
-  if (opts.signal) init.signal = opts.signal;
 
-  const res = await fetch(resolveApiUrl(path), init);
+  // BLOCKER-2a (Audit 2026-06-03): Default-Timeout von 12 s. Ohne das hängt
+  // jeder fetch im Funkloch bis zum OS-TCP-Timeout (30-120 s) — der Spinner
+  // dreht ewig und hängende Sockets stapeln sich (verstärkt OOM-Kill auf dem
+  // Tablet). Wir nutzen einen klassischen AbortController + setTimeout statt
+  // AbortSignal.timeout(), weil ältere Android-System-WebViews letzteres nicht
+  // kennen. Ein optional vom Caller übergebenes Signal wird mit-verdrahtet.
+  const ctrl = new AbortController();
+  const TIMEOUT_MS = 12_000;
+  const timeoutHandle = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  if (opts.signal) {
+    if (opts.signal.aborted) ctrl.abort();
+    else opts.signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+  }
+  init.signal = ctrl.signal;
+
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(resolveApiUrl(path), init);
+    text = res.status === 204 ? "" : await res.text();
+  } catch (err) {
+    // Timeout oder Caller-Abbruch → klarer ApiError statt nackter DOMException.
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("timeout", 0, null);
+    }
+    // Netz-Fehler (offline, DNS, Connection refused) → als ApiError(status 0)
+    // normalisieren, damit Outbox/Sync-Layer einheitlich darauf reagieren
+    // (status 0 ist NICHT droppable → wird retry'ed, nicht verworfen).
+    throw new ApiError(err instanceof Error ? err.message : "network_error", 0, null);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+
   if (res.status === 204) return undefined as T;
-  const text = await res.text();
   const body: unknown = text ? safeJson(text) : null;
 
   // Auto-Logout bei 401 wenn wir einen Token gesendet haben — der Token

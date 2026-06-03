@@ -74,6 +74,45 @@ button,
   min-height: 44px;
 }
 
+/* OPT-3 (Audit 2026-06-03): .btn / .btn-primary waren bisher NICHT als
+   CSS-Klassen definiert — sie wurden in Topbar, BerichtPage-Pop-Up und
+   ArchivTabletModal benutzt und funktionierten nur durch zufällige
+   inline-minHeight-Overrides + die globale button-Regel. Das war fragil
+   (ein .btn ohne inline-Style wäre zu klein/unstyled gewesen). Jetzt echte,
+   stress-taugliche Definitionen mit garantiertem 44px-Touch-Target. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.btn:hover {
+  border-color: var(--fg-3);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%);
+  border-color: color-mix(in srgb, var(--red-strong) 60%, #000);
+  color: #fff;
+  font-weight: 700;
+}
+.btn-primary:hover {
+  border-color: var(--red-strong);
+}
+
 :focus-visible {
   outline: none;
   box-shadow:

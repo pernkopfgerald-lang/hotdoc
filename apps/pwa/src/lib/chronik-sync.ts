@@ -26,6 +26,8 @@ interface PostBody {
   source: ChronikEintrag["source"];
   text: string;
   pending?: boolean;
+  // Foto-Funktion (2026-06-03): Referenz auf das foto:-Doc (falls Foto-Eintrag).
+  fotoId?: string;
 }
 
 interface PostResponse {
@@ -86,6 +88,16 @@ export async function broadcastChronikEntry(
  * Holt aktuelle Chronik vom Server und liefert neue Einträge zurück,
  * die im übergebenen Set noch fehlen. Side-effect: queued-out broadcasts
  * werden mit der gleichen Gelegenheit re-posted.
+ *
+ * BEWUSSTE DESIGN-ENTSCHEIDUNG (Einsatz-Test 2026-06-02, v0.1.10):
+ * Der Diff filtert NUR nach unbekannten entry.id — ein nachträglich
+ * EDITIERTER Eintrag (Issue 6, gleiche id, neuer Text) wird auf anderen
+ * Tablets NICHT live ersetzt, erst nach Reload/Refetch. Das ist Absicht:
+ * Edits sind selten (Tippfehler-Korrektur durch Florian/Ursprungsfahrzeug),
+ * die editierende Stelle sieht die Änderung sofort (optimistic patch), und
+ * ein Timestamp-Merge würde diesen Sync-Hot-Path (läuft auf allen Tablets
+ * alle 8s im Live-Einsatz) anfassen — das Risiko ist den Nutzen nicht wert.
+ * NICHT "fixen" ohne explizite Freigabe. Siehe Plan-Diskussion Option A/B/C.
  */
 export async function fetchChronikDiff(
   einsatzId: string,
