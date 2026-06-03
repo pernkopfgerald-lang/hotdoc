@@ -439,6 +439,9 @@ function pad(n: number): string {
  * Prefix, neue nicht mehr (Issue 23). Beim Rendern strippen wir den Prefix
  * damit alte Daten und neue Daten konsistent angezeigt werden.
  */
-function stripAuftragsPrefix(text: string): string {
-  return text.replace(/^Auftrag begonnen:\s*/i, "");
+function stripAuftragsPrefix(text: string | null | undefined): string {
+  // Defensiv: Foto-/Legacy-Einträge können ohne `text` ankommen. Ein
+  // fehlendes Feld darf NIE den ganzen Render (und via ErrorBoundary die
+  // ganze App) crashen — daher Null-Guard vor .replace.
+  return (text ?? "").replace(/^Auftrag begonnen:\s*/i, "");
 }

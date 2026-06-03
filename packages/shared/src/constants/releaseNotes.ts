@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.11",
+    date: "2026-06-03",
+    title: "Hotfix: Florian-Login-Absturz + Reaktivieren im Fahrzeug-Archiv",
+    bullets: [
+      "Behebt einen Absturz beim Öffnen der Florian-Zentrale (Recovery-Screen) — Chronik-Einträge ohne Text (z. B. reine Foto-Einträge) führten zum Fehler.",
+      "Jedes Fahrzeug kann einen vorzeitig abgeschlossenen Bericht jetzt direkt im eigenen Archiv reaktivieren (vorher nur über die Florianstation).",
+    ],
+  },
+  {
     version: "0.1.10",
     date: "2026-06-03",
     title: "Einsatz-Test-Härtung, Foto-Chronik & Nacht-Tauglichkeit",

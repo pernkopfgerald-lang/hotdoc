@@ -1156,7 +1156,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const istManuellerTyp = einsatzTyp !== "alarm";
 
   const tabs: EinsatzTabSummary[] = aktiveEinsaetze.map((eDoc) => {
-    const id = eDoc._id.replace(/^einsatz:/, "");
+    const id = (eDoc._id ?? "").replace(/^einsatz:/, "");
     const art = eDoc.einsatzart ?? eDoc.einsatzartFreitext ?? eDoc.alarmierungText ?? "Einsatz";
     const ort = eDoc.einsatzort ?? "";
     return {

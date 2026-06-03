@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { apiCall, getTabletToken } from "../lib/api";
+import { apiCall, ApiError, getTabletToken } from "../lib/api";
 
 interface ArchivItem {
   _id: string;
@@ -354,6 +354,12 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
               const typ = TYP_LABEL[i.einsatzTyp ?? "alarm"];
               const Icon = typ.icon;
               const title = i.einsatzart || i.einsatzartFreitext || "Einsatz";
+              // Reaktivieren-Ziel ist IMMER die Einsatz-Doc-ID. Im Fahrzeug-
+              // Modus ist item._id ein "fzgber:…" — dort die mitgelieferte
+              // einsatzId nehmen; im Florian-Modus ist _id bereits der Einsatz.
+              // Issue 10: Mannschaft darf reaktivieren → Button auch im
+              // Fahrzeug-Archiv (vorzeitig abgeschlossener Bericht wieder auf).
+              const reaktivId = fahrzeugId ? i.einsatzId : i._id;
               return (
                 <div
                   key={i._id}
@@ -440,12 +446,12 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                       ) : null}
                     </div>
                   </div>
-                  {!fahrzeugId && (
+                  {reaktivId && (
                     <button
                       type="button"
                       className="icon-btn"
                       onClick={() =>
-                        setReaktivOpen({ id: i._id, title })
+                        setReaktivOpen({ id: reaktivId, title })
                       }
                       aria-label="Bericht reaktivieren"
                       title="Bericht reaktivieren"
@@ -581,9 +587,17 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                     // reaktivierten Einsatz beim naechsten Poll.
                     onClose();
                   } catch (e) {
-                    setReaktivErr(
-                      e instanceof Error ? e.message : "Reaktivierung fehlgeschlagen",
-                    );
+                    if (e instanceof ApiError && e.status === 409) {
+                      // not_closed: Einsatz läuft bereits (nur der Fahrzeug-
+                      // bericht war abgeschlossen) oder wurde schon reaktiviert.
+                      setReaktivErr(
+                        "Der Einsatz ist nicht (mehr) abgeschlossen — er läuft bereits oder wurde schon reaktiviert. Öffne ihn über den Einsatz-Tab.",
+                      );
+                    } else {
+                      setReaktivErr(
+                        e instanceof Error ? e.message : "Reaktivierung fehlgeschlagen",
+                      );
+                    }
                   } finally {
                     setReaktivBusy(false);
                   }
