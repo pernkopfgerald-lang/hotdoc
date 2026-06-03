@@ -10,7 +10,7 @@
  * Empfänger sofort sieht dass das KEIN Brandeinsatz-Bericht ist.
  */
 
-import { getBrandLogoDataUrl } from "./brand.js";
+import { escape, pad, formatDate, formatTime, calcDauerMin, renderBrandLogo } from "./_format.js";
 
 export interface LotsendienstDaten {
   einsatzId: string;
@@ -220,7 +220,7 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
 
   <div class="hd">
     <div class="hd-left">
-      ${renderLogo()}
+      ${renderBrandLogo()}
       <div class="hd-title-block">
         <div class="hd-title">Lotsendienst</div>
         <div class="hd-sub">FF Eberstalzell · Bericht für Verrechnung</div>
@@ -371,59 +371,6 @@ export function renderLotsendienstHtml(d: LotsendienstDaten): string {
 </html>`;
 }
 
-/**
- * Rendert das offizielle FF-Eberstalzell-Logo als img-Tag mit Base64-
- * Data-URL. Wenn die Logo-Datei nicht gefunden wird (z. B. lokaler
- * Build ohne assets-Verzeichnis), rendern wir leer statt eines Fake-
- * Logos — wir sollen NIE eine Annäherung anzeigen.
- */
-function renderLogo(): string {
-  const dataUrl = getBrandLogoDataUrl();
-  if (!dataUrl) return "";
-  return `<img class="hd-logo" src="${dataUrl}" alt="FF Eberstalzell" />`;
-}
-
-function escape(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
-  } catch {
-    return iso;
-  }
-}
-
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return iso;
-  }
-}
-
 function formatKm(km: number): string {
   return km.toFixed(1).replace(".", ",");
-}
-
-function calcDauerMin(vonIso: string, bisIso: string): number {
-  try {
-    const von = new Date(vonIso).getTime();
-    const bis = new Date(bisIso).getTime();
-    if (Number.isNaN(von) || Number.isNaN(bis)) return 0;
-    return Math.max(0, Math.floor((bis - von) / 60_000));
-  } catch {
-    return 0;
-  }
 }

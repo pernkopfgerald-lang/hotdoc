@@ -272,7 +272,7 @@ export function IdleView({
             textTransform: "uppercase",
           }}
         >
-          <CheckCircle2 size={13} />
+          <UploadCloud size={13} />
           Bericht lokal gesichert — wird gesendet sobald Netz
         </div>
       ) : null}

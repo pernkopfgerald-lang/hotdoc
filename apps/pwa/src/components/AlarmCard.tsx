@@ -38,7 +38,8 @@ export function AlarmCard({ alarm, onPlayAudio }: Props) {
                 Aktiver Alarm
               </span>
               <span className="alarm-tag muted">
-                · {alarm.alarmierungAuthor} · Stufe 2
+                · {alarm.alarmierungAuthor}
+                {alarm.stichwort ? ` · ${alarm.stichwort}` : ""}
               </span>
             </div>
             <div className="alarm-title">{alarm.einsatzart}</div>

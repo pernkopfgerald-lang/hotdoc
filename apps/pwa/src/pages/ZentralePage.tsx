@@ -37,6 +37,7 @@ import { PersonPickerModal, type PickPerson } from "../components/PersonPickerMo
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { apiCall, getTabletToken } from "../lib/api";
+import { pollingPaused } from "../lib/visibility";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { useGeolocation } from "../lib/geo";
 import {
@@ -551,7 +552,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     void load();
     // Polling alle 10 s (statt 30 s) — damit Multi-Tablet-Updates schneller
     // sichtbar sind. Backend-API ist billig (couchdb _all_docs mit prefix).
-    const t = setInterval(() => void load(), 10_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: kein Einsatz-Poll im Standby
+      void load();
+    }, 10_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -585,7 +589,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       }
     };
     void load();
-    const t = setInterval(() => void load(), 15_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: keine Fahrzeugbericht-Polls im Standby
+      void load();
+    }, 15_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -618,7 +625,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       }
     };
     void tick();
-    const t = setInterval(tick, 3000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: kein Positions-Poll im Standby
+      void tick();
+    }, 3000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -1201,7 +1211,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       });
     };
     void tick();
-    const t = setInterval(() => void tick(), 8_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: keine Chronik-Sync im Standby
+      void tick();
+    }, 8_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -1263,7 +1276,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               <div className="alarm-left">
                 <div
                   className="alarm-icon"
-                  style={{ background: "var(--ok)", animation: "pulse-soft 2.4s ease-in-out infinite" }}
+                  style={{ background: "var(--ok)", animation: "glow-pulse 2.4s ease-in-out infinite" }}
                 >
                   <Activity size={30} color="#fff" strokeWidth={2} />
                 </div>

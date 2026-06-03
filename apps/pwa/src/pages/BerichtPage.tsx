@@ -38,6 +38,7 @@ const VorschauModal = lazy(() =>
 );
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import { apiCall, ApiError } from "../lib/api";
+import { pollingPaused } from "../lib/visibility";
 import { enqueueRequest } from "../lib/request-outbox";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { haversineKm, useGeolocation } from "../lib/geo";
@@ -575,7 +576,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     // Wechsel quasi-live sieht, langsam genug damit keine Backend-Last
     // entsteht (5 Tablets × 12 Polls/min = 60 Calls/min auf einen
     // CouchDB-_all_docs-Endpoint mit prefix-Limit — vernachlaessigbar).
-    const t = setInterval(() => void runPoll(), 5_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: kein Status-Poll im Standby
+      void runPoll();
+    }, 5_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -725,6 +729,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   }, [geo.fix]);
   useEffect(() => {
     const id = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: kein GPS-Push im Standby
       const fix = geoFixRef.current;
       if (!fix) return;
       const body: Record<string, number> = {
@@ -850,7 +855,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       }
     };
     void tick();
-    const t = setInterval(tick, 3000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: kein Fleet-Poll im Standby
+      void tick();
+    }, 3000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -946,7 +954,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       });
     };
     void tick();
-    const t = setInterval(() => void tick(), 8_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: keine Chronik-Sync im Standby
+      void tick();
+    }, 8_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -1620,29 +1631,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   korrigieren koennen — Zentrale ggf. nicht erreichbar.
                   Sync laeuft via 1.5s-Debounce nach PUT /api/einsaetze/:id. */}
               <div className="field" style={{ marginTop: 14 }}>
-                <label
-                  className="caption"
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <span>Einsatzort</span>
-                  <span
-                    style={{
-                      fontSize: "var(--font-xs)",
-                      fontFamily: "var(--font-sans)",
-                      fontWeight: 600,
-                      letterSpacing: 0,
-                      textTransform: "none",
-                      color: "var(--fg-3)",
-                      background: "var(--glass-3)",
-                      padding: "2px 8px",
-                      borderRadius: "var(--radius-pill)",
-                      border: "1px solid var(--glass-border)",
-                    }}
-                    title="Korrekturen werden auch in die Florianstation gespiegelt."
-                  >
-                    auch hier editierbar
-                  </span>
-                </label>
+                <label className="caption">Einsatzort</label>
                 <input
                   className="input"
                   value={active.alarm.einsatzort}
@@ -1658,26 +1647,68 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   lang="de-AT"
                 />
               </div>
-              {/* Strecke / Kilometer — Auto-Berechnung Feuerwehrhaus ↔ Einsatzort × 2 */}
-              <div className="grid-2" style={{ marginTop: 14, gap: 14 }}>
-                <div className="field">
-                  <label className="caption">
-                    Strecke (Hin+Rück) · Auto
-                  </label>
-                  <div className="input-row filled">
-                    <input
-                      value={`${computeKmAuto().toFixed(1).replace(".", ",")} km`}
-                      readOnly
-                      className="num"
-                      style={{ color: "var(--fg-3)", fontWeight: 500 }}
-                    />
-                    {/* U-10: Klarsprache statt Tech-Jargon — "Route" wenn
-                        GraphHopper geliefert hat, sonst "Luftlinie". */}
+              {/* Strecke / Kilometer — EIN Feld (Audit KISS B-03): der
+                  Auto-Wert (Feuerwehrhaus ↔ Einsatzort × 2) steht als
+                  Platzhalter; der Fzg-Kdt tippt NUR, wenn die tatsächlich
+                  gefahrene Strecke abweicht. Vorher zwei Felder (Auto +
+                  manuell), die der müde Kdt erst zueinander in Beziehung
+                  setzen musste. */}
+              <div className="field" style={{ marginTop: 14 }}>
+                <label className="caption">Gefahrene Strecke (Hin + Rück)</label>
+                <div
+                  className={`input-row${
+                    typeof active.kmManualOverride === "number" ? " filled" : ""
+                  }`}
+                >
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="9999"
+                    inputMode="decimal"
+                    value={
+                      typeof active.kmManualOverride === "number"
+                        ? String(active.kmManualOverride)
+                        : ""
+                    }
+                    placeholder={`${computeKmAuto().toFixed(1).replace(".", ",")} km · Auto`}
+                    onChange={(e) => {
+                      const v = e.target.value.trim();
+                      patchActive((x) => ({
+                        ...x,
+                        kmManualOverride:
+                          v === "" || Number.isNaN(Number(v))
+                            ? null
+                            : Math.max(0, Math.min(9999, Number(v))),
+                      }));
+                    }}
+                    disabled={!!active.abgeschlossen}
+                    className="num"
+                  />
+                  {typeof active.kmManualOverride === "number" ? (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label="Auf Auto-Wert zurücksetzen"
+                      title={`Auf Auto-Wert zurücksetzen (${computeKmAuto()
+                        .toFixed(1)
+                        .replace(".", ",")} km)`}
+                      disabled={!!active.abgeschlossen}
+                      onClick={() =>
+                        patchActive((x) => ({ ...x, kmManualOverride: null }))
+                      }
+                      style={{ width: 30, height: 30, minHeight: 30 }}
+                    >
+                      <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                    </button>
+                  ) : (
+                    // U-10: Klarsprache — "Route" wenn GraphHopper lieferte,
+                    // sonst "Luftlinie".
                     <div
                       className="chev"
                       title={
                         route && route.distanceM > 0
-                          ? "Ueber Strassen-Route berechnet (GraphHopper)"
+                          ? "Über Straßen-Route berechnet (GraphHopper)"
                           : "Luftlinie × 1,3 — Routing-Server noch nicht da"
                       }
                       style={{
@@ -1695,61 +1726,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     >
                       {route && route.distanceM > 0 ? "Route" : "Luftlinie"}
                     </div>
-                  </div>
+                  )}
                 </div>
-                <div className="field">
-                  <label className="caption">
-                    Tatsächlich gefahren · Eingabe Fzg-Kdt
-                  </label>
-                  <div
-                    className={`input-row${
-                      typeof active.kmManualOverride === "number" ? " filled" : ""
-                    }`}
-                  >
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="9999"
-                      value={
-                        typeof active.kmManualOverride === "number"
-                          ? String(active.kmManualOverride)
-                          : ""
-                      }
-                      placeholder={`${computeKmAuto().toFixed(1).replace(".", ",")} (übernehmen)`}
-                      onChange={(e) => {
-                        const v = e.target.value.trim();
-                        patchActive((x) => ({
-                          ...x,
-                          kmManualOverride:
-                            v === "" || Number.isNaN(Number(v))
-                              ? null
-                              : Math.max(0, Math.min(9999, Number(v))),
-                        }));
-                      }}
-                      disabled={!!active.abgeschlossen}
-                      className="num"
-                    />
-                    {typeof active.kmManualOverride === "number" ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        aria-label="Auf Auto-Wert zurücksetzen"
-                        title="Auf Auto-Wert zurücksetzen"
-                        disabled={!!active.abgeschlossen}
-                        onClick={() =>
-                          patchActive((x) => ({ ...x, kmManualOverride: null }))
-                        }
-                        style={{ width: 30, height: 30, minHeight: 30 }}
-                      >
-                        <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
-                      </button>
-                    ) : (
-                      <div className="chev">
-                        <span style={{ fontSize: 11 }}>km</span>
-                      </div>
-                    )}
-                  </div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 11,
+                    color: "var(--fg-3)",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Auto-Wert wird übernommen — nur tippen wenn die tatsächlich
+                  gefahrene Strecke abweicht.
                 </div>
               </div>
             </section>

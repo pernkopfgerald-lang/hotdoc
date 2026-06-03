@@ -30,7 +30,6 @@ const KEYS = [
   "geraete",
   "stammdaten",
   "tablet-pins",
-  "tablet-inventar",
   "beteiligte-stellen",
   "sonstige-ff",
   "app-version",
@@ -46,7 +45,7 @@ type ConfigKey = (typeof KEYS)[number];
  * Funktionäre lesen — eine Mannschafts-Session vom Fahrzeug-Tablet
  * darf NICHT die PINs aller anderen Fahrzeuge enumerieren.
  */
-const RESTRICTED_KEYS = new Set<ConfigKey>(["tablet-pins", "tablet-inventar"]);
+const RESTRICTED_KEYS = new Set<ConfigKey>(["tablet-pins"]);
 
 interface ConfigDoc {
   _id: string;
@@ -159,64 +158,6 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
       zentrale: "1234",
     },
     geaendertVon: "system-default",
-  },
-  // Hardware-Inventar pro Fahrzeug-Tablet. Wird vom Funktionär gepflegt
-  // — die App selbst kann IMEI/SIM-Nr nicht auslesen (Android verbietet
-  // das für PWAs). Sinn: Diebstahl-/Verlust-Sperrung über A1/Magenta,
-  // Inventur, Versicherungs-Nachweis.
-  "tablet-inventar": {
-    byFahrzeug: {
-      kdo: {
-        modell: "",
-        imei: "",
-        simTelNr: "",
-        macWlan: "",
-        macBluetooth: "",
-        inventarNr: "",
-        anschaffungsDatum: "",
-        notiz: "",
-      },
-      "tlf-a-4000": {
-        modell: "",
-        imei: "",
-        simTelNr: "",
-        macWlan: "",
-        macBluetooth: "",
-        inventarNr: "",
-        anschaffungsDatum: "",
-        notiz: "",
-      },
-      "lfa-b": {
-        modell: "",
-        imei: "",
-        simTelNr: "",
-        macWlan: "",
-        macBluetooth: "",
-        inventarNr: "",
-        anschaffungsDatum: "",
-        notiz: "",
-      },
-      mtf: {
-        modell: "",
-        imei: "",
-        simTelNr: "",
-        macWlan: "",
-        macBluetooth: "",
-        inventarNr: "",
-        anschaffungsDatum: "",
-        notiz: "",
-      },
-      zentrale: {
-        modell: "",
-        imei: "",
-        simTelNr: "",
-        macWlan: "",
-        macBluetooth: "",
-        inventarNr: "",
-        anschaffungsDatum: "",
-        notiz: "",
-      },
-    },
   },
   // Liste der ueblicherweise mit-anwesenden Stellen. Funktionaer kann sie
   // im Backoffice pflegen — neue Eintraege werden auf der Florianstation

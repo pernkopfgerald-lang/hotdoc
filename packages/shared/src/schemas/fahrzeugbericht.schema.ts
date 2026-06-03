@@ -29,12 +29,6 @@ export const GeraetUseageSchema = z.object({
   bemerkung: z.string().optional(),
 });
 
-export const FotoRefSchema = z.object({
-  blobId: z.string(),
-  beschreibung: z.string().optional(),
-  aufgenommenAm: z.string().datetime({ offset: true }),
-});
-
 export const GpsPunktSchema = z.object({
   lat: z.number(),
   lng: z.number(),
@@ -103,8 +97,6 @@ export const FahrzeugberichtSchema = z.object({
   oelbindemittelSaecke: z.number().int().min(0).max(99).default(0),
 
   taetigkeitsbericht: z.string().default(""),
-
-  fotos: z.array(FotoRefSchema).default([]),
 
   status: z.enum(["in_arbeit", "abgeschlossen"]).default("in_arbeit"),
 

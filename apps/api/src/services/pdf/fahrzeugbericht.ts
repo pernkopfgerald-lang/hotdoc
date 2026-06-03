@@ -24,7 +24,7 @@
  * Varianten konsistent das Original-Layout zeigen.
  */
 
-import { getBrandLogoDataUrl } from "./brand.js";
+import { escape, formatDate, formatTime, brandLogoDataUrl } from "./_format.js";
 
 const FAHRZEUG_LABELS: Record<string, string> = {
   kdo: "KDO",
@@ -113,7 +113,7 @@ export function renderFahrzeugberichtPageHtml(
     mannschaftPadded.push(d.mannschaft[i] ?? null);
   }
 
-  const logo = renderBrandLogo();
+  const logo = brandLogoDataUrl();
   const tdLbl =
     'style="border:0.8pt solid #000;padding:5pt 8pt;vertical-align:middle;width:38mm;font-weight:700;font-size:12pt;font-family:Arial,sans-serif"';
   const tdVal =
@@ -362,43 +362,6 @@ export function renderFahrzeugberichtHtml(d: FahrzeugberichtDaten): string {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
-
-function escape(s: string | undefined | null): string {
-  if (s == null) return "";
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function formatDate(iso: string): string {
-  try {
-    const dt = new Date(iso);
-    if (Number.isNaN(dt.getTime())) return "";
-    return `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}.${dt.getFullYear()}`;
-  } catch {
-    return "";
-  }
-}
-
-function formatTime(iso: string): string {
-  try {
-    const dt = new Date(iso);
-    if (Number.isNaN(dt.getTime())) return "";
-    return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-  } catch {
-    return "";
-  }
-}
-
-function renderBrandLogo(): string {
-  return getBrandLogoDataUrl();
-}
 
 /** Mapper-Helper fuer pdf.ts: FahrzeugId → Anzeige-Abk. */
 export function fahrzeugAbk(fahrzeugId: string): string {

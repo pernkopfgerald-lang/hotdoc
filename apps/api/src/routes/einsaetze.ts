@@ -1057,7 +1057,6 @@ einsaetzeRouter.put(
         geraete: [],
         oelbindemittelSaecke: 0,
         taetigkeitsbericht: "",
-        fotos: [],
         status: "in_arbeit" as const,
         erstelltAm: now,
       }),

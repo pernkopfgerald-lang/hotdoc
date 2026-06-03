@@ -22,7 +22,13 @@
  * embedded (über `getBrandLogoDataUrl()`). Keine SVG-Annäherung mehr.
  */
 
-import { getBrandLogoDataUrl } from "./brand.js";
+import {
+  escape,
+  formatDate,
+  formatTime,
+  formatDateTime,
+  renderBrandLogo,
+} from "./_format.js";
 import { renderFahrzeugberichtPageHtml } from "./fahrzeugbericht.js";
 
 export interface BerichtDaten {
@@ -174,7 +180,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     // schnellen Ueberfliegen klar ist was selektiert ist.
     if (val === true) return `${boxFilled(true)} <strong style="color:${FILLED}">${label}</strong>`;
     if (val === false) return `${boxFilled(false)} ${label}`;
-    return `${box(false)} ${label}`;
+    return `${boxFilled(false)} ${label}`;
   };
 
   const eingesetzeFzgSet = new Set(
@@ -316,6 +322,12 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         <span class="cb">${boxFilled(d.alarmierungAuthor === "BWST")} BWST</span>
         <span class="cb">${boxFilled(d.alarmierungAuthor === "LWZ")} LWZ</span>
         ${d.alarmierungAuthor && d.alarmierungAuthor !== "BWST" && d.alarmierungAuthor !== "LWZ" ? `<span class="cb">${boxFilled(true)} <strong style="color:${FILLED}">${escape(d.alarmierungAuthor)}</strong></span>` : ""}
+      </td>
+    </tr>
+    <tr>
+      <td colspan="3">Überörtliche Hilfe
+        <span class="cb">${triBox(d.ueberOertlicheHilfe === true, "JA")}</span>
+        <span class="cb">${triBox(d.ueberOertlicheHilfe === false, "NEIN")}</span>
       </td>
     </tr>
     <tr>
@@ -790,18 +802,6 @@ function renderBrandStatistikBlock(d: BerichtDaten): string {
   </table>`;
 }
 
-function box(checked: boolean): string {
-  return checked ? "☒" : "☐";
-}
-
-function escape(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /**
  * Backwards-Compat: alte Chronik-Eintraege haben einen "Auftrag begonnen: "-
  * Prefix, neue nicht mehr (Issue 23). Beim Rendern strippen wir den Prefix
@@ -810,45 +810,4 @@ function escape(s: string): string {
  */
 function stripAuftragsPrefix(text: string): string {
   return text.replace(/^Auftrag begonnen:\s*/i, "");
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
-  } catch {
-    return iso;
-  }
-}
-
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return iso;
-  }
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    return `${formatDate(iso)} ${formatTime(iso)}`;
-  } catch {
-    return iso;
-  }
-}
-
-/**
- * Rendert das offizielle FF-Eberstalzell-Logo als img-Tag mit Base64-
- * Data-URL. Bei fehlender Logo-Datei rendern wir leer — niemals eine
- * Fake-Annäherung.
- */
-function renderBrandLogo(): string {
-  const dataUrl = getBrandLogoDataUrl();
-  if (!dataUrl) return "";
-  return `<img class="hd-logo" src="${dataUrl}" alt="FF Eberstalzell" />`;
 }

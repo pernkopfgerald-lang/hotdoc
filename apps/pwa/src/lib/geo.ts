@@ -58,29 +58,56 @@ export function useGeolocation(): GeoState {
       return;
     }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const fix: GeoFix = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracyM: pos.coords.accuracy,
-          speedKmh: pos.coords.speed != null ? pos.coords.speed * 3.6 : null,
-          headingDeg: pos.coords.heading ?? null,
-          ts: pos.timestamp,
-        };
-        fixRef.current = fix;
-        setState({ fix, status: "live", ageSec: 0, errorMessage: null });
-      },
-      (err) => {
-        // PERMISSION_DENIED = 1 · POSITION_UNAVAILABLE = 2 · TIMEOUT = 3
-        const status: GeoStatus = err.code === 1 ? "denied" : err.code === 2 ? "unavail" : "stale";
-        setState((prev) => ({ ...prev, status, errorMessage: err.message || statusLabel(status) }));
-      },
-      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
-    );
+    const onPos = (pos: GeolocationPosition): void => {
+      const fix: GeoFix = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracyM: pos.coords.accuracy,
+        speedKmh: pos.coords.speed != null ? pos.coords.speed * 3.6 : null,
+        headingDeg: pos.coords.heading ?? null,
+        ts: pos.timestamp,
+      };
+      fixRef.current = fix;
+      setState({ fix, status: "live", ageSec: 0, errorMessage: null });
+    };
+    const onErr = (err: GeolocationPositionError): void => {
+      // PERMISSION_DENIED = 1 · POSITION_UNAVAILABLE = 2 · TIMEOUT = 3
+      const status: GeoStatus = err.code === 1 ? "denied" : err.code === 2 ? "unavail" : "stale";
+      setState((prev) => ({ ...prev, status, errorMessage: err.message || statusLabel(status) }));
+    };
+
+    // Akku-Gate (Audit 2026-06-03, KISS&SEXY R-1): High-Accuracy-GPS ist
+    // der grösste Standby-Stromfresser. Im Hintergrund/Standby
+    // (document.hidden) stoppen wir den Watch und starten ihn beim
+    // Wieder-Sichtbar neu — der Browser liefert dann sofort einen frischen
+    // Fix (maximumAge 5s). Während des aktiven Einsatzes (Screen an) bleibt
+    // das Tracking exakt wie bisher.
+    let watchId: number | null = null;
+    const startWatch = (): void => {
+      if (watchId !== null) return;
+      watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+        enableHighAccuracy: true,
+        maximumAge: 5_000,
+        timeout: 20_000,
+      });
+    };
+    const stopWatch = (): void => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+    };
+    const onVisChange = (): void => {
+      if (document.hidden) stopWatch();
+      else startWatch();
+    };
+
+    if (!document.hidden) startWatch();
+    document.addEventListener("visibilitychange", onVisChange);
 
     // Stale-Detector: alle 5s prüfen ob letzter Fix > STALE_MS her ist
     const staleTimer = setInterval(() => {
+      if (document.hidden) return; // im Standby keine UI-Updates nötig
       const f = fixRef.current;
       if (!f) return;
       const age = Date.now() - f.ts;
@@ -92,7 +119,8 @@ export function useGeolocation(): GeoState {
     }, 5_000);
 
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      stopWatch();
+      document.removeEventListener("visibilitychange", onVisChange);
       clearInterval(staleTimer);
     };
   }, []);

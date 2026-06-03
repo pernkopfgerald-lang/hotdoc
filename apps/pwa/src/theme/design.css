@@ -177,10 +177,10 @@
 .input-row.filled input,
 .input-row.filled,
 textarea.input:not(:placeholder-shown) {
-  color: #1e3a8a;
+  color: var(--input-value);
   font-weight: 600;
 }
-select.input { color: #1e3a8a; font-weight: 600; }
+select.input { color: var(--input-value); font-weight: 600; }
 select.input option { color: var(--fg); font-weight: 500; }
 .input-row:focus-within {
   border-color: var(--info);

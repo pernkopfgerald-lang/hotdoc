@@ -21,6 +21,24 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.10",
+    date: "2026-06-03",
+    title: "Einsatz-Test-Härtung, Foto-Chronik & Nacht-Tauglichkeit",
+    bullets: [
+      "syBOS-Statistik im Florian-Editor: technische Statistik (Ursache, Tätigkeiten, Personen-/Tierrettung) und Brand-Statistik mit Objekt-Datenbank + geführtem Brand-Abschluss-Wizard — Werte landen direkt im Einsatzbericht",
+      "Foto in der Einsatzchronik: direkt am Tablet fotografieren, funktioniert auch offline (wird gesendet sobald Netz). Im Bericht klein (4×3 cm) plus großer Foto-Anhang hinten (9×12 cm, 4 Fotos pro Seite)",
+      "Autobahn-Alarme: A1/A8/A25-Kilometermarker werden korrekt verortet statt am falschen Ort (z. B. Salzburg-Stadt) zu landen",
+      "Einsatzadresse am Fahrzeug-Tablet korrigierbar — wenn der BlaulichtSMS-Geocoder daneben liegt, ändert der Kdt direkt und es spiegelt zur Florianstation",
+      "Abschluss: 'Verrechenbar?'-Markierung (kaskadiert auf alle Fahrzeugberichte) + Einsatzleiter-Kennzeichnung beim Fahrzeug-Kdt",
+      "Nacht-Tauglichkeit: getippte/gewählte Werte sind im Dunkel-Modus jetzt klar lesbar (vorher dunkelblau auf fast-schwarz)",
+      "Akku-Schonung: alle Live-Abfragen und das GPS pausieren, sobald das Tablet im Standby ist — und laufen beim Aufwecken sofort weiter",
+      "Tablet-Bedienung: Schnellaktionen als große 2×2-Kacheln, ein einziges Kilometer-Feld (Auto-Wert vorausgefüllt) statt zwei, Atemschutz-Stepper mit größeren Tasten",
+      "Robustheit: Offline-Ausgangskorb (kein verlorener Bericht im Funkloch), automatischer Entwurf bei Tablet-Neustart, klarere Fehlermeldungen statt weißem Bildschirm",
+      "Neues Hilfe-Sheet im Florian-Header mit Suche und 8 Themen-Kategorien",
+      "Schnellere, schlankere App durch Aufräumen unter der Haube",
+    ],
+  },
+  {
     version: "0.1.7",
     date: "2026-05-31",
     title: "Florianstation-Upgrade + Fahrzeugbericht-Vordruck",

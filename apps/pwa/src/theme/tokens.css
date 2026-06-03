@@ -68,6 +68,11 @@
   --text-2:           var(--fg-2);
   --text-3:           var(--fg-3);
 
+  /* Eingabe-Wert-Farbe — vom User getippte/gewaehlte Werte heben sich
+     vom (schwarzen) Label ab. Theme-aware: Light dunkelblau auf weiss,
+     Dark hellblau auf dunklem Glas (sonst Kontrast 1.7:1 = unlesbar). */
+  --input-value:      #1e3a8a;
+
   /* FF-Brand
      --brand-red ist der konstante Brand-Token fuer Logo/FF-Header/
      Markenanwendung — bleibt in JEDEM Theme auf #C8102E. Der
@@ -256,6 +261,10 @@
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
   --text-3:           var(--fg-3);
+
+  /* Eingabe-Werte im Dark-Mode hellblau (Kontrast ~7:1 auf dunklem Glas)
+     statt dem hartkodierten #1e3a8a (1.7:1 = nachts unsichtbar). */
+  --input-value:      #8FB8FF;
 
   /* --brand-red bleibt #C8102E auch im Dark-Mode — Brand-Konstante.
      --red dagegen ist semantisch (Status/CTA) und wird heller. */

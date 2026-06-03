@@ -11,7 +11,7 @@
  * nicht zu verwechseln ist mit einem Brand-Einsatzbericht.
  */
 
-import { getBrandLogoDataUrl } from "./brand.js";
+import { escape, pad, formatDate, formatTime, calcDauerMin, renderBrandLogo } from "./_format.js";
 
 export type UebungsTyp =
   | "Atemschutz"
@@ -223,7 +223,7 @@ export function renderUebungHtml(d: UebungDaten): string {
 
   <div class="hd">
     <div class="hd-left">
-      ${renderLogo()}
+      ${renderBrandLogo()}
       <div class="hd-title-block">
         <div class="hd-title">Übungsdokumentation</div>
         <div class="hd-sub">FF Eberstalzell · Ausbildungsnachweis</div>
@@ -358,54 +358,7 @@ export function renderUebungHtml(d: UebungDaten): string {
 </html>`;
 }
 
-function renderLogo(): string {
-  const dataUrl = getBrandLogoDataUrl();
-  if (!dataUrl) return "";
-  return `<img class="hd-logo" src="${dataUrl}" alt="FF Eberstalzell" />`;
-}
-
-function escape(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
-  } catch {
-    return iso;
-  }
-}
-
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return iso;
-  }
-}
-
 function formatHours(h: number): string {
   if (h === 0) return "0";
   return h.toFixed(1).replace(".", ",");
-}
-
-function calcDauerMin(vonIso: string, bisIso: string): number {
-  try {
-    const von = new Date(vonIso).getTime();
-    const bis = new Date(bisIso).getTime();
-    if (Number.isNaN(von) || Number.isNaN(bis)) return 0;
-    return Math.max(0, Math.floor((bis - von) / 60_000));
-  } catch {
-    return 0;
-  }
 }

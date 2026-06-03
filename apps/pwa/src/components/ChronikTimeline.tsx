@@ -1,5 +1,5 @@
 import { Pencil, X, Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 export interface ChronikEintrag {
   id: string;
@@ -54,7 +54,12 @@ interface Props {
  * werden (Pencil-Icon rechts an jedem Eintrag fuer den editiert-werden-
  * darf-Eintrag). Edit-Mode oeffnet ein Textarea + Save/Cancel.
  */
-export function ChronikTimeline({ eintraege, canEdit, onSaveEdit, loadFoto }: Props) {
+export const ChronikTimeline = memo(function ChronikTimeline({
+  eintraege,
+  canEdit,
+  onSaveEdit,
+  loadFoto,
+}: Props) {
   // Foto-Funktion (2026-06-03): geladene Bild-Data-URLs cachen (fotoId → dataUrl
   // | null = lokal nicht vorhanden). Lightbox zeigt ein angetipptes Foto groß.
   const [fotoCache, setFotoCache] = useState<Record<string, string | null>>({});
@@ -415,7 +420,7 @@ export function ChronikTimeline({ eintraege, canEdit, onSaveEdit, loadFoto }: Pr
       ) : null}
     </div>
   );
-}
+});
 
 function formatTime(iso: string): string {
   try {

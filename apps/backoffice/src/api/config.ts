@@ -5,7 +5,6 @@ export type ConfigKey =
   | "einsatzstichworte"
   | "geraete"
   | "stammdaten"
-  | "tablet-inventar"
   | "beteiligte-stellen"
   | "sonstige-ff"
   // Issue 16 (Follow-up Einsatz-Test 2026-06-02): Liste der gefaehrlichen
@@ -61,24 +60,6 @@ export interface StammdatenData {
    * Erlaubte Werte: 1 / 4 / 12 / 24 / 48. 0 = nie. Default 24.
    */
   handoffAutoReleaseHours?: number;
-}
-
-/** Hardware-Inventar pro Tablet — vom Funktionär manuell gepflegt. */
-export interface TabletInventarItem {
-  modell: string;
-  imei: string;
-  simTelNr: string;
-  macWlan: string;
-  macBluetooth: string;
-  inventarNr: string;
-  /** ISO-Datum YYYY-MM-DD oder leer. */
-  anschaffungsDatum: string;
-  notiz: string;
-}
-
-export interface TabletInventarData {
-  byFahrzeug: Record<string, TabletInventarItem>;
-  geaendertVon?: string;
 }
 
 export async function getConfig<T>(key: ConfigKey): Promise<ConfigEnvelope<T>> {

@@ -140,6 +140,10 @@ export function MapCard({
   const hydrantLayerRef = useRef<L.LayerGroup | null>(null);
   const routeRef = useRef<L.Polyline | null>(null);
   const autoFollowRef = useRef(true);
+  // S-1 (Audit KISS): letzte Position, auf die auto-gefolgt wurde. Verhindert,
+  // dass die 1,2-s-Pan-Animation bei jedem 3-s-Fleet-Tick neu feuert, obwohl
+  // sich die eigene Position kaum bewegt hat (GPU-/Akku-Churn auf dem Tablet).
+  const lastFollowRef = useRef<{ lat: number; lng: number } | null>(null);
   // Issue 25 (Einsatz-Test 2026-06-02): Tile-Layer-Refs + User-Choice.
   const tileLayersRef = useRef<{
     base: L.TileLayer | null;
@@ -265,9 +269,16 @@ export function MapCard({
         });
       }
     }
-    // Auto-Follow auf Self
+    // Auto-Follow auf Self — aber nur neu pannen, wenn sich die eigene
+    // Position seit dem letzten Follow spürbar (> 15 m) bewegt hat. Sonst
+    // feuerte die 1,2-s-Animation bei jedem 3-s-Fleet-Tick erneut (S-1).
     if (autoFollowRef.current) {
-      map.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true, duration: 1.2 });
+      const last = lastFollowRef.current;
+      const movedKm = last ? haversineKm(last, selfPos) : Infinity;
+      if (movedKm > 0.015) {
+        lastFollowRef.current = { lat: selfPos.lat, lng: selfPos.lng };
+        map.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true, duration: 1.2 });
+      }
     }
     // Distanz: echte Strecken-Distanz wenn GraphHopper-Route vorhanden, sonst Luftlinie
     if (route && route.distanceM > 0) {
@@ -299,6 +310,7 @@ export function MapCard({
 
   function recenter() {
     autoFollowRef.current = true;
+    lastFollowRef.current = { lat: selfPos.lat, lng: selfPos.lng };
     mapRef.current?.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true });
   }
 
@@ -310,6 +322,7 @@ export function MapCard({
    */
   function zoomDetail() {
     autoFollowRef.current = true;
+    lastFollowRef.current = { lat: selfPos.lat, lng: selfPos.lng };
     mapRef.current?.flyTo([selfPos.lat, selfPos.lng], SELF_ZOOM, {
       duration: 0.6,
     });
@@ -721,7 +734,7 @@ function einsatzIcon(): L.DivIcon {
   return L.divIcon({
     className: "einsatz-marker",
     html: `
-      <svg viewBox="0 0 36 48" width="36" height="48" style="filter:drop-shadow(0 4px 8px rgba(220,38,38,0.45));animation:bounce 1.6s ease-in-out infinite">
+      <svg viewBox="0 0 36 48" width="36" height="48" style="filter:drop-shadow(0 4px 8px rgba(220,38,38,0.45))">
         <path d="M18 0 C8 0 2 8 2 16 C2 28 18 48 18 48 C18 48 34 28 34 16 C34 8 28 0 18 0 Z" fill="#dc2626" stroke="#fff" stroke-width="2"/>
         <path d="M18 8 C13 12 13 17 16 19 C14 18 13.5 16 14.5 14 M18 8 C23 12 23 17 20 19 C22 18 22.5 16 21.5 14 M16 21 H20 V25 H16 Z" fill="#fff"/>
       </svg>`,
