@@ -16,7 +16,7 @@ let browserPromise: Promise<Browser> | null = null;
  * faengt nur eingefrorene Chromium-Tabs (z.B. nach OOM oder networkidle0-
  * Hang wegen ladener Asset-URL).
  */
-const RENDER_TIMEOUT_MS = 30_000;
+const RENDER_TIMEOUT_MS = 60_000;
 
 async function getBrowser(): Promise<Browser> {
   if (browserPromise) return browserPromise;
@@ -50,9 +50,24 @@ async function getBrowser(): Promise<Browser> {
 export async function renderPdf(html: string): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
+  // Externe Requests abbrechen — der Bericht ist self-contained (Base64-Logo
+  // + Base64-Fotos, Inline-CSS, System-Fonts). Das verhindert den dokumentierten
+  // Hang beim Warten auf eine nicht erreichbare Asset-URL (ein Foto-Bericht hing
+  // sonst bis zum Render-Timeout → HTTP 500). data:/blob:/about: bleiben erlaubt.
+  await page.setRequestInterception(true);
+  page.on("request", (req) => {
+    const u = req.url();
+    if (u.startsWith("data:") || u.startsWith("blob:") || u.startsWith("about:")) {
+      void req.continue();
+    } else {
+      void req.abort();
+    }
+  });
   let timedOut = false;
   const renderPromise = (async (): Promise<Buffer> => {
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // "load" statt "networkidle0": wir warten auf das Laden der (eingebetteten)
+    // Ressourcen, nicht auf 500 ms Netz-Ruhe — Letzteres ist unnoetig fragil.
+    await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
