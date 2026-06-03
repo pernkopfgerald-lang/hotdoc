@@ -42,7 +42,11 @@ async function call<T>(endpoint: string, options: QueryOptions = {}): Promise<T>
   }
   const base = env.SYBOS_API_URL!.replace(/\/$/, "");
   const url = new URL(`${base}/API/${endpoint}`);
-  url.searchParams.set("token", env.SYBOS_TOKEN!);
+  // .trim() defensiv: ein beim `flyctl secrets set` versehentlich
+  // mitkopiertes Leerzeichen/Newline würde sonst URL-kodiert mitgeschickt
+  // und syBOS quittiert mit 401. Ein echter syBOS-Token hat nie Whitespace.
+  const token = env.SYBOS_TOKEN!.trim();
+  url.searchParams.set("token", token);
   url.searchParams.set("json", "1");
   for (const [k, v] of Object.entries(options.params ?? {})) {
     if (v !== undefined) url.searchParams.set(k, String(v));
@@ -58,7 +62,32 @@ async function call<T>(endpoint: string, options: QueryOptions = {}): Promise<T>
       signal: controller.signal,
     });
     if (!res.ok) {
-      throw new SyBosError(`HTTP ${res.status} ${res.statusText}`, res.status, endpoint);
+      // syBOS gibt bei 401/403 i. d. R. einen erklärenden Text zurück
+      // ("Token ungültig" vs. "IP nicht freigegeben" o. ä.). Den reichen
+      // wir durch — sonst rätselt man bei "HTTP 401" über die Ursache.
+      // WICHTIG: Token aus dem Body entfernen, falls die PHP-Seite die
+      // Query-Parameter zurückspiegelt (sonst Secret-Leak ins Log/UI).
+      let reason = "";
+      try {
+        const body = (await res.text()).trim();
+        if (body) {
+          reason = body
+            .split(token).join("***")
+            .replace(/token=[^&\s"']*/gi, "token=***")
+            .slice(0, 200);
+        }
+      } catch {
+        /* Body nicht lesbar — egal, Status reicht */
+      }
+      const hint =
+        res.status === 401 || res.status === 403
+          ? " — Ursache meist: Token abgelaufen/falsch ODER fly-Server-IP nicht in der syBOS-IP-Whitelist."
+          : "";
+      throw new SyBosError(
+        `HTTP ${res.status} ${res.statusText}${reason ? ` · syBOS: ${reason}` : ""}${hint}`,
+        res.status,
+        endpoint,
+      );
     }
     const text = await res.text();
     if (!text.trim()) {
