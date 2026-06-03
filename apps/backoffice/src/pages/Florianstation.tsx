@@ -119,6 +119,35 @@ export function Florianstation() {
   // Rechte Spalte: echte Fahrzeugberichte des ausgewaehlten Einsatzes
   const [fzgBerichte, setFzgBerichte] = useState<FahrzeugberichtItem[]>([]);
 
+  // Issue #159 (v0.1.12): Sonstige-FF-Liste vom Backend laden statt aus
+  // dem hartkodierten SONSTIGE_FF-Constant zu rendern. Der Funktionaer
+  // pflegt die echte Nachbarwehren-Liste (TMB Sattledt, Kran Sattledt,
+  // FF Lambach, ...) im Backoffice unter Stammdaten -> "Sonstige FF".
+  // Fallback: solange das Backend noch nicht geantwortet hat, zeigen wir
+  // die hartkodierte Constant aus @hotdoc/shared an — so wird die UI nie
+  // leer und beim Offline-Modus passiert auch nichts kaputtes.
+  const [sonstigeFfAll, setSonstigeFfAll] = useState<string[]>(
+    SONSTIGE_FF as unknown as string[],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await apiCall<{ data?: { items?: string[] } }>(
+          "/api/config/sonstige-ff",
+        );
+        if (!cancelled && Array.isArray(r.data?.items)) {
+          setSonstigeFfAll(r.data!.items.map(String));
+        }
+      } catch {
+        // Fallback bleibt aktiv — kein Toast / Fehler hier, Offline ist OK.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const reload = useCallback(async () => {
     setBusy(true);
     try {
@@ -486,7 +515,7 @@ export function Florianstation() {
 
             <Field label="Sonstige Feuerwehren" full>
               <div className="chips" style={{ paddingTop: 4 }}>
-                {SONSTIGE_FF.map((s) => (
+                {sonstigeFfAll.map((s) => (
                   <Toggle
                     key={s}
                     label={s}

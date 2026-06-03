@@ -30,6 +30,7 @@ import {
   renderBrandLogo,
 } from "./_format.js";
 import { renderFahrzeugberichtPageHtml } from "./fahrzeugbericht.js";
+import { normalizeChronikEntry } from "./chronik-adapter.js";
 
 export interface BerichtDaten {
   einsatzId: string;
@@ -145,15 +146,14 @@ export interface BerichtDaten {
   };
 }
 
-const EINSATZARTEN_MATRIX: ReadonlyArray<readonly string[]> = [
-  ["Brand Sonstiges", "Brand Gewerbe", "Brand Landwirtschaft", "Brand Wohnhaus"],
-  ["BMA", "Brandverdacht", "Brand Kamin", "Brand Abfall"],
-  ["Brand KFZ", "Flurbrand", "Brandwache n. Brand", "Personenrettung"],
-  ["Überflutung", "Pumparbeiten", "Sturm", "Ölspur"],
-  ["Lift", "Tierrettung", "Türöffnung", "Wasserschaden"],
-  ["Straßenreinigung", "Lotsendienst", "Kanalspülen", "Brandsicherheitsdienst"],
-  ["VU Eingekl. Per.", "VU Aufräumarbeiten", "Höhenrettungseins.", "Bienen / Wespen"],
-];
+// Issue #169 (v0.1.12): Der frühere große Einsatzart-Block mit 28
+// Vordruck-Checkboxen wurde ersetzt durch eine einfache Wert-Zeile
+// (siehe renderHauptberichtHtml). Grund: die Match-Logik gegen den
+// fix definierten Vordruck-Katalog war brüchig — wenn der User eine
+// Einsatzart wählte, die nicht 1:1 dem Matrix-Eintrag entsprach
+// (z. B. Tippvariante oder Stichwort aus syBOS), bekam der Sachbearbeiter
+// im PDF eine komplett leere Einsatzart-Matrix. Eine einzige Wert-Zeile
+// ist robust und einsparsamer.
 const ALARMQUELLEN = ["WAS", "Funk", "Telefon", "Bote", "Behoerde"] as const;
 
 export function renderHauptberichtHtml(d: BerichtDaten): string {
@@ -354,19 +354,15 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     </tr>
   </table>
 
-  <table class="bx matrix">
-    <tr><td class="lbl" colspan="4">Einsatzart</td></tr>
-    ${EINSATZARTEN_MATRIX.map(
-      (row) => `<tr>${row
-        .map((art) => {
-          const selected = d.einsatzart === art;
-          return `<td class="col">${boxFilled(selected)} <span class="${selected ? "check-on" : ""}">${art}</span></td>`;
-        })
-        .join("")}</tr>`,
-    ).join("")}
+  <table class="bx">
     <tr>
-      <td colspan="4">Andere Einsätze: ${v(d.einsatzartFreitext)}</td>
+      <td class="lbl" style="width:30%">Einsatzart</td>
+      <td class="val big">${v(d.einsatzart ?? d.einsatzartFreitext)}</td>
     </tr>
+    ${d.einsatzart && d.einsatzartFreitext ? `<tr>
+      <td class="lbl">Andere Einsätze</td>
+      <td class="val">${v(d.einsatzartFreitext)}</td>
+    </tr>` : ""}
   </table>
 
   <table class="bx" style="margin-top:1mm">
@@ -433,8 +429,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   </table>
 
   <table class="bx">
-    <tr><td class="lbl">Meldung von der Einsatzleitung</td></tr>
-    <tr><td><div class="freitext">${escape(d.meldungEinsatzleitung ?? "")}</div></td></tr>
+    <tr><td class="lbl">Meldung von der Einsatzleitung (Einsatzchronik)</td></tr>
+    <tr><td>${renderMeldungEinsatzleitungInhalt(d)}</td></tr>
   </table>
 
   ${renderTechnischeStatistikBlock(d)}
@@ -483,6 +479,59 @@ ${renderFotoAnhang(d)}
 
 </body>
 </html>`;
+}
+
+/**
+ * Issue #170 (v0.1.12): Inhalt der "Meldung von der Einsatzleitung"-Box
+ * wird mit der Einsatzchronik gefuellt. User-Klarstellung:
+ * "Meldung von der Einsatzleitung ist unsere Einsatzchronik".
+ *
+ * Format: kompakte Zeile pro Eintrag — `HH:mm · Quelle · Text`.
+ * Sortiert chronologisch. Plus optional vorhandener `meldungEinsatzleitung`-
+ * Freitext (Bestandsfeld) als Praeambel, damit alte Berichte nichts
+ * verlieren. Wenn die Chronik gross ist, behaelt der separate
+ * Chronik-Anhang (renderChronikSeite) seine Funktion als
+ * komplettes Zeitprotokoll inkl. Fotos — die Box hier ist der
+ * Schnell-Ueberblick auf Seite 1.
+ */
+function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
+  const FILLED = "#1e3a8a";
+  const altFreitext = (d.meldungEinsatzleitung ?? "").trim();
+  const chronik = (d.chronik ?? []).slice();
+
+  if (chronik.length === 0 && !altFreitext) {
+    return `<div class="freitext" style="color:#888"></div>`;
+  }
+
+  // Praeambel: das alte meldungEinsatzleitung-Freitext-Feld (falls befuellt)
+  // bleibt sichtbar — Bestands-Berichte sollen nichts verlieren.
+  const praeambel = altFreitext
+    ? `<div style="color:${FILLED};font-weight:500;margin-bottom:3pt;white-space:pre-wrap">${escape(altFreitext)}</div>`
+    : "";
+
+  if (chronik.length === 0) {
+    return `<div class="freitext">${praeambel}</div>`;
+  }
+
+  // Chronologisch sortieren — wie auch im Chronik-Anhang.
+  chronik.sort(
+    (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
+  );
+
+  const zeilen = chronik
+    .map((c) => {
+      const zeit = formatTime(c.zeitstempel);
+      const quelle = c.funkrufname || c.source || "—";
+      const text = stripAuftragsPrefix(c.text ?? "");
+      return `<div style="margin-bottom:1.5pt;line-height:1.35">
+        <span style="font-family:'Courier New',monospace;color:#555">${escape(zeit)}</span>
+         · <span style="color:${FILLED};font-weight:600">${escape(quelle)}</span>
+         · <span>${escape(text)}</span>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="freitext" style="font-weight:500">${praeambel}${zeilen}</div>`;
 }
 
 /** Eigene Seite mit der vollstaendigen Einsatzchronik. */

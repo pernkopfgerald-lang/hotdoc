@@ -25,7 +25,8 @@ function loadTileChoice(): MapTileChoice {
   } catch {
     // localStorage unavailable (Private-Mode, …) — Default
   }
-  return "karte";
+  // Default HYBRID (Test 2026-06-03) — User-Wunsch: Foto-Sicht mit Beschriftung.
+  return "hybrid";
 }
 
 function saveTileChoice(choice: MapTileChoice): void {
@@ -207,7 +208,28 @@ export function FlorianMap({
     });
 
     mapRef.current = map;
+
+    // #156 (Test 2026-06-03): ResizeObserver triggert invalidateSize bei jeder
+    // Container-Größen-Änderung — fixt das "Karte baut nicht sauber"-Problem
+    // (Leaflet rendert auf finale Größe).
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && elRef.current) {
+      ro = new ResizeObserver(() => {
+        try {
+          map.invalidateSize();
+        } catch {
+          // unmounted — ignore
+        }
+      });
+      ro.observe(elRef.current);
+    }
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 400);
+
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      ro?.disconnect();
       map.remove();
       mapRef.current = null;
       tileLayersRef.current = { base: null, overlay: null };

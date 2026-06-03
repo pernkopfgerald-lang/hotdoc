@@ -19,6 +19,7 @@ import {
   renderSpickzettelHtml,
   type BerichtDaten,
 } from "../services/pdf/template.js";
+import { normalizeChronikEntry } from "../services/pdf/chronik-adapter.js";
 import { renderUebungHtml, type UebungDaten, type UebungsTyp } from "../services/pdf/uebung.js";
 import {
   renderFahrzeugberichtHtml,
@@ -290,23 +291,21 @@ async function buildHauptberichtHtml(
     };
   });
 
-  // Chronik aus dem Einsatz-Doc
-  const chronik = (
-    (doc.chronik as Array<{
-      zeitstempel?: string;
-      funkrufname?: string;
-      text?: string;
-      source?: string;
-      fotoId?: string;
-    }> | undefined) ?? []
-  ).map((c) => ({
-    zeitstempel: c.zeitstempel ?? "",
-    funkrufname: c.funkrufname ?? "—",
-    text: c.text ?? "",
-    source: c.source ?? "—",
-    // Foto-Funktion (2026-06-03): fotoId durchreichen für Inline-Thumbnail.
-    ...(c.fotoId ? { fotoId: c.fotoId } : {}),
-  }));
+  // Chronik aus dem Einsatz-Doc — Issue #173 (v0.1.12): normalisieren auf
+  // ein einheitliches Schema, damit der Renderer alte (transkript/typ) und
+  // neue (text/source/funkrufname) Eintraege gleich behandeln kann.
+  const chronikRoh = (doc.chronik as unknown[] | undefined) ?? [];
+  const chronik = chronikRoh.map((entry) => {
+    const n = normalizeChronikEntry(entry);
+    return {
+      zeitstempel: n.zeitstempel,
+      funkrufname: n.funkrufname ?? n.fahrzeugId ?? "—",
+      text: n.text,
+      source: n.source,
+      // Foto-Funktion (2026-06-03): fotoId durchreichen für Inline-Thumbnail.
+      ...(n.fotoId ? { fotoId: n.fotoId } : {}),
+    };
+  });
 
   // Foto-Funktion (2026-06-03): alle foto:-Docs des Einsatzes laden (für
   // Inline-Thumbnails in der Chronik + Foto-Anhang-Seiten 9×12 cm).
@@ -429,15 +428,34 @@ async function buildHauptberichtHtml(
         : {}),
     },
     beteiligteStellen: Array.isArray(doc.beteiligteStellen)
-      ? (doc.beteiligteStellen as string[])
+      ? (doc.beteiligteStellen as string[]).filter(
+          (s) => typeof s === "string" && s.trim().length > 0,
+        )
       : [],
-    sonstigeAnwesendeFF: Array.isArray(
-      (doc.sonstigeAnwesendeFF as { aktive?: string[] } | undefined)?.aktive,
-    )
-      ? ((doc.sonstigeAnwesendeFF as { aktive: string[] }).aktive)
-      : [],
+    // Issue #168 (v0.1.12): `sonstigeAnwesendeFF` kann in zwei Schemas
+    // vorliegen:
+    //   - ALT (pre-v0.1.10): nacktes string[]
+    //   - NEU (ab v0.1.10):  { aktive: string[], sonstigeFreitext?: string }
+    // Vorher: nur das NEU-Schema wurde berücksichtigt — bei ALT-Daten
+    // landete im PDF ein leeres Array obwohl das Doc Werte enthielt.
+    sonstigeAnwesendeFF: (() => {
+      const raw = doc.sonstigeAnwesendeFF;
+      if (Array.isArray(raw)) {
+        return (raw as unknown[])
+          .map((s) => String(s))
+          .filter((s) => s.trim().length > 0);
+      }
+      if (raw && typeof raw === "object" && Array.isArray((raw as { aktive?: unknown }).aktive)) {
+        return ((raw as { aktive: unknown[] }).aktive)
+          .map((s) => String(s))
+          .filter((s) => s.trim().length > 0);
+      }
+      return [];
+    })(),
     sonstigeFreitext:
-      (doc.sonstigeAnwesendeFF as { sonstigeFreitext?: string } | undefined)?.sonstigeFreitext,
+      doc.sonstigeAnwesendeFF && typeof doc.sonstigeAnwesendeFF === "object" && !Array.isArray(doc.sonstigeAnwesendeFF)
+        ? (doc.sonstigeAnwesendeFF as { sonstigeFreitext?: string }).sonstigeFreitext
+        : undefined,
     verrechenbar:
       (doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar,
     mannschaft: {
@@ -633,12 +651,10 @@ pdfRouter.get(
         for (const g of geraeteRaw) geraeteLabels.push(g.materialId);
       }
 
-      const chronikRaw = (einsatz.chronik as Array<{
-        zeitstempel?: string;
-        funkrufname?: string;
-        text?: string;
-        source?: string;
-      }> | undefined) ?? [];
+      // Issue #173 (v0.1.12): Auch fuer den Fahrzeugbericht-PDF die Roh-
+      // Chronik durch den normalisierenden Adapter ziehen, damit alte
+      // Eintraege (transkript/typ) korrekt im Anhang erscheinen.
+      const chronikRaw = (einsatz.chronik as unknown[] | undefined) ?? [];
 
       const data: FahrzeugberichtDaten = {
         einsatzId,
@@ -671,12 +687,15 @@ pdfRouter.get(
         geraete: geraeteLabels,
         oelSaecke: (fzgber.oelbindemittelSaecke as number | undefined) ?? 0,
         taetigkeitsbericht: String(fzgber.taetigkeitsbericht ?? ""),
-        chronik: chronikRaw.map((c) => ({
-          zeitstempel: c.zeitstempel ?? "",
-          funkrufname: c.funkrufname ?? "—",
-          text: c.text ?? "",
-          source: c.source ?? "—",
-        })),
+        chronik: chronikRaw.map((c) => {
+          const n = normalizeChronikEntry(c);
+          return {
+            zeitstempel: n.zeitstempel,
+            funkrufname: n.funkrufname ?? n.fahrzeugId ?? "—",
+            text: n.text,
+            source: n.source,
+          };
+        }),
         status:
           ((fzgber.status as "in_arbeit" | "abgeschlossen" | undefined) ??
             "in_arbeit"),

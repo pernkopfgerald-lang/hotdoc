@@ -265,21 +265,15 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
   }
 
   async function submit() {
-    // Adresse darf jetzt leer sein — Freilandstraße ohne Adresse ist real.
-    // Wir lassen GPS-Koordinaten als alternativen Ortsbeleg gelten und
-    // setzen "GPS …" als Einsatzort-String wenn die Adresse fehlt.
-    if (typ === "uebung" && !uebungThema.trim()) {
-      setErr("Bei einer Übung ist das Thema Pflicht.");
-      return;
-    }
-    if (typ === "lotsendienst" && !auftraggeber.trim()) {
-      setErr("Bei einem Lotsendienst ist der Auftraggeber Pflicht.");
-      return;
-    }
-    if (!einsatzort.trim() && !koord) {
-      setErr("Weder Adresse noch GPS-Position angegeben — bitte mindestens eines.");
-      return;
-    }
+    // #153 + #172 (Test 2026-06-03): Pflicht-Validierung beim ANLEGEN deutlich
+    // entschärft — die App soll sofort einen leeren Rahmen erlauben, damit das
+    // Personal sofort erfasst wird; Details (Thema, Adresse, Übungsleiter)
+    // ergänzt der Kdt am Einsatzort. Vollständigkeits-Check kommt beim ABSCHLUSS.
+    //   • Übung: Thema NICHT mehr Pflicht.
+    //   • Lotsendienst: Auftraggeber NICHT mehr Pflicht.
+    //   • Adresse: leerer Start erlaubt (war "weder Adresse noch GPS" → Fehler).
+    // Wenn Adresse + GPS leer sind, setzen wir einen Platzhalter — Backend
+    // braucht aktuell min. 3 Zeichen.
     setBusy(true);
     setErr(null);
     // Idempotency-Key — derselbe Key, falls Retry oder Outbox-Replay.
@@ -333,7 +327,11 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         }
       }
     }
-    if (!ortString) ortString = "Unbekannt";
+    // Wenn weiterhin nichts da ist (kein Eingabe, kein GPS) → Platzhalter
+    // setzen. Der Kdt ergänzt die Adresse später per GPS-Button am Tablet.
+    // Backend braucht min. 3 Zeichen.
+    if (!ortString)
+      ortString = typ === "uebung" ? "Übungsort folgt" : "Ort noch nicht erfasst";
     const body: ManuellAnlageBody = {
       einsatzTyp: typ,
       einsatzort: ortString,
@@ -802,7 +800,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         {typ === "lotsendienst" ? (
           <>
             <div className="field">
-              <label className="caption">Auftraggeber *</label>
+              <label className="caption">Auftraggeber</label>
               <input
                 className="input"
                 value={auftraggeber}
@@ -856,7 +854,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         {typ === "uebung" ? (
           <>
             <div className="field">
-              <label className="caption">Thema *</label>
+              <label className="caption">Thema · kann auch später ergänzt werden</label>
               <input
                 className="input"
                 value={uebungThema}

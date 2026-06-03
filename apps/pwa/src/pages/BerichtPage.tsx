@@ -1887,24 +1887,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               </div>
             </section>
 
-            <GearChips
-              items={gearList}
-              selected={active.gearSelected}
-              oelbindemittelSaecke={active.oelSaecke}
-              onToggle={toggleGear}
-              onOelChange={setOelSaecke}
-            />
-
-            <AuftraegeSection
-              auftraege={active.auftraege}
-              verfuegbareTypen={DEFAULT_AUFTRAG_TYPEN}
-              onAdd={addAuftrag}
-              onRemove={removeAuftrag}
-            />
-
-            {/* Issue 9 (Einsatz-Test 2026-06-02): Chronik kommt VOR der Karte —
-                im Live-Einsatz brauchen Mannschaft und Kdt. den Chronik-Eintrag
-                schneller als die Lagekarte. Karte ist Sekundaer-Info. */}
+            {/* #163 (Test 2026-06-03): Chronik direkt nach Mannschaft — vor
+                Geräte/Auftrag/Karte. Im Live-Einsatz ist der nächste Eintrag
+                wichtiger als die Gerätewahl. */}
             <section className="card">
               <div className="card-head">
                 <div className="card-title">
@@ -1960,6 +1945,21 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   hochgeladen und als Chronik-Eintrag mit Thumbnail angezeigt. */}
               <FotoButton onCapture={onFotoCapture} busy={fotoBusy} />
             </section>
+
+            <GearChips
+              items={gearList}
+              selected={active.gearSelected}
+              oelbindemittelSaecke={active.oelSaecke}
+              onToggle={toggleGear}
+              onOelChange={setOelSaecke}
+            />
+
+            <AuftraegeSection
+              auftraege={active.auftraege}
+              verfuegbareTypen={DEFAULT_AUFTRAG_TYPEN}
+              onAdd={addAuftrag}
+              onRemove={removeAuftrag}
+            />
 
             <SectionHead title="Anfahrt & Position-Sharing" />
             <MapCard

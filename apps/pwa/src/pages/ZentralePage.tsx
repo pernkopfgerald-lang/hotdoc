@@ -162,6 +162,10 @@ interface EditorState {
   sonstigeAnwesendeFF: string[];
   sonstigeFreitext: string;
   meldungEinsatzleitung: string;
+  /** #157 (Test 2026-06-03): Einsatzort in der Florian-Zentrale editierbar —
+   *  der EL muss eine falsche Auto-Adresse korrigieren können (z.B. wenn
+   *  BlaulichtSMS einen Autobahn-km-Marker daneben geocoded hat). */
+  einsatzort: string;
   verrechenbar: boolean;
   oelSaecke: number;
   /** syBOS-Person-ID des Sachbearbeiters in der Florianstation. */
@@ -201,6 +205,7 @@ const EMPTY_EDITOR: EditorState = {
   sonstigeAnwesendeFF: [],
   sonstigeFreitext: "",
   meldungEinsatzleitung: "",
+  einsatzort: "",
   verrechenbar: false,
   oelSaecke: 0,
   bearbeiterPersonId: null,
@@ -299,6 +304,39 @@ function hhmmToIso(hhmm: string, refDateIso: string): string | undefined {
  *   "wizard"  → Brand-Einsatz ohne Statistik → erst Brand-Wizard
  *   "confirm" → direkt ins Abschluss-Bestätigungs-Modal
  */
+/**
+ * #167 (Test 2026-06-03): Leitet die syBOS-Haupttätigkeit aus der gewählten
+ * Einsatzart ab — als Vorbelegung im Florian-Editor. Trifft die typischsten
+ * Fälle einer FF Eberstalzell; nicht-passende Einsatzarten geben null zurück
+ * und der Editor bleibt leer. Reine Funktion, kein Side-Effect.
+ *
+ * Die Strings rechts MÜSSEN exakt einem Eintrag in HAUPT_TAETIGKEIT_TECHNISCH
+ * entsprechen, sonst rendert das Dropdown den Wert nicht.
+ */
+function ableiteHauptTaetigkeitAusEinsatzart(einsatzart?: string): string | null {
+  const a = (einsatzart ?? "").toLowerCase();
+  if (!a) return null;
+  if (a.includes("ölspur") || a.includes("ölbind")) return "Ölspur / Ölbindung";
+  if (a.includes("verkehrsunfall") || a.startsWith("vu"))
+    return "Verkehrsunfall (Fahrzeugbergung, Eingeklemmt)";
+  if (a.includes("sturm") || a.includes("schnee")) return "Sturm/Schneeschaden";
+  if (a.includes("überflut") || a.includes("ueberflut") || a.includes("wasserschad"))
+    return "Wassergefahr (Überschwemmung, Wasserschaden)";
+  if (a.includes("türöffnung") || a.includes("tueroeffnung")) return "Türöffnung";
+  if (a.includes("pump")) return "Pumparbeiten";
+  if (a.includes("tierrett") || a.includes("tier")) return "Tierrettung allgemein";
+  if (a.includes("aufzug")) return "Aufzugsbergung";
+  if (a.includes("personenrett")) return "Personenrettung allgemein";
+  if (a.includes("höhenrett") || a.includes("hoehenrett")) return "Höhenrettung";
+  if (a.includes("verkehrsabsich") || a.includes("verkehrsregel"))
+    return "Verkehrsabsicherung";
+  if (a.includes("straßenrein") || a.includes("strassenrein"))
+    return "Beseitigung Hindernis Verkehrsraum";
+  if (a.includes("gefähr") || a.includes("gefahr"))
+    return "Gefährliche Stoffe austretend";
+  return null;
+}
+
 type AbschlussPfad = "blocked" | "wizard" | "confirm";
 function entscheideAbschlussPfad(p: {
   schreibschutz: boolean;
@@ -522,11 +560,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           "/api/einsaetze?status=aktiv",
         );
         if (cancelled) return;
-        setAktiveEinsaetze(r.items);
+        // #165 (User-Wunsch 2026-06-03): Lotsendienst-Einsätze erscheinen NIE
+        // als Hauptbericht in der Florian-Zentrale. Lotsendienst lebt
+        // ausschliesslich als Fahrzeugbericht (KDO/TLF). → vor Anzeige filtern.
+        const filtered = r.items.filter((e) => e.einsatzTyp !== "lotsendienst");
+        setAktiveEinsaetze(filtered);
         // Auto-Select: wenn aktuell ausgewaehlter Einsatz nicht mehr in der Liste
         // (z. B. abgeschlossen oder gewipt) → auf den ersten verbleibenden umschalten.
         setAktiverEinsatzId((prev) => {
-          if (prev && r.items.some((e) => e._id === prev)) return prev;
+          if (prev && filtered.some((e) => e._id === prev)) return prev;
           // Wenn der gerade neu angelegte Einsatz noch nicht in der Liste
           // ist (Backend braucht 5-10 s bis Cache-Refresh), nicht ueberschreiben.
           // Greift maximal 30 s — danach erwarten wir dass er definitiv da ist.
@@ -534,9 +576,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           if (justCreated && Date.now() - justCreated.ts < 30_000) {
             return justCreated.id;
           }
-          return r.items[0]?._id ?? null;
+          return filtered[0]?._id ?? null;
         });
-        if (r.items.length === 0) {
+        if (filtered.length === 0) {
           setFahrzeugberichte([]);
         }
       } catch {
@@ -715,6 +757,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       beteiligteStellen: aktiverEinsatz.beteiligteStellen ?? [],
       sonstigeAnwesendeFF: aktiverEinsatz.sonstigeAnwesendeFF?.aktive ?? [],
       sonstigeFreitext: aktiverEinsatz.sonstigeAnwesendeFF?.sonstigeFreitext ?? "",
+      einsatzort: aktiverEinsatz.einsatzort ?? "",
       meldungEinsatzleitung: aktiverEinsatz.meldungEinsatzleitung ?? "",
       verrechenbar: aktiverEinsatz.verrechnung?.verrechenbar ?? false,
       oelSaecke: aktiverEinsatz.oelbindemittel?.gesamtSaecke ?? 0,
@@ -754,7 +797,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         )
           ? aktiverEinsatz.technischeStatistik.ursache
           : "",
-      tsHauptTaetigkeit: aktiverEinsatz.technischeStatistik?.hauptTaetigkeit ?? "",
+      // #167 (Test 2026-06-03): Wenn keine Haupttätigkeit am Doc gespeichert
+      // ist, aus der Einsatzart ableiten. Greift nur als VORBELEGUNG —
+      // beim ersten Speichern landet der echte Wert am Doc und überschreibt
+      // den Default nicht mehr. Bewusst nur die häufigsten Treffer.
+      tsHauptTaetigkeit:
+        aktiverEinsatz.technischeStatistik?.hauptTaetigkeit ??
+        ableiteHauptTaetigkeitAusEinsatzart(aktiverEinsatz.einsatzart) ??
+        "",
       tsWeitereTaetigkeiten:
         aktiverEinsatz.technischeStatistik?.weitereTaetigkeiten ?? [],
       tsGefaehrlicheStoffe:
@@ -780,6 +830,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       const brand = hhmmToIso(editor.brandAusHHMM, refIso);
 
       const body: Record<string, unknown> = {
+        // #157: Florian darf den Einsatzort korrigieren (Auto-Übernahme aus
+        // BlaulichtSMS liegt manchmal daneben). Nur senden wenn nicht leer
+        // — sonst löscht ein versehentlicher Patch die Adresse.
+        ...(editor.einsatzort.trim() ? { einsatzort: editor.einsatzort.trim() } : {}),
         beteiligteStellen: editor.beteiligteStellen,
         sonstigeAnwesendeFF: {
           aktive: editor.sonstigeAnwesendeFF,
@@ -1343,29 +1397,80 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           <section
             className="alarm"
             style={{
-              // D-02: Statt fester Light-Hex-Gradient ein theme-awares Tint
-              // ueber --info-tint. Im Dark-Mode kommt automatisch der dunklere
-              // Blau-Tint zum Tragen.
+              // #164 (Test 2026-06-03): Theme nach Einsatz-Typ.
+              //  - Übung → GRÜN (--ok), klar von Alarm unterscheidbar.
+              //  - Alarm/manuell → BLAU (--info), wie bisher.
+              // D-02: theme-awares Tint, im Dark-Mode wird automatisch dunkler.
               background:
-                "linear-gradient(135deg, var(--surface) 0%, var(--info-tint) 55%, var(--info-strong) 100%)",
-              borderColor: "var(--blue-border)",
+                einsatzTyp === "uebung"
+                  ? "linear-gradient(135deg, var(--surface) 0%, var(--ok-tint) 55%, color-mix(in srgb, var(--ok) 16%, transparent) 100%)"
+                  : "linear-gradient(135deg, var(--surface) 0%, var(--info-tint) 55%, var(--info-strong) 100%)",
+              borderColor:
+                einsatzTyp === "uebung" ? "var(--ok-border)" : "var(--blue-border)",
             }}
           >
+            {/* #164: Übung-Banner ganz oben, damit der EL sofort sieht, dass es
+                eine Übung ist — nie ein Einsatz. */}
+            {einsatzTyp === "uebung" && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "4px 12px",
+                  borderRadius: "var(--radius-pill)",
+                  background: "var(--ok)",
+                  color: "#fff",
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: 800,
+                  fontSize: 11,
+                  letterSpacing: "var(--tracking-caps)",
+                  textTransform: "uppercase",
+                  marginBottom: 12,
+                  boxShadow: "0 4px 12px -4px rgba(4,120,87,0.45)",
+                }}
+              >
+                <GraduationCap size={14} strokeWidth={2.4} />
+                Übung
+              </div>
+            )}
             <div className="alarm-top">
               <div className="alarm-left">
-                <div className="alarm-icon" style={{ background: "var(--info)" }}>
-                  <Activity size={30} color="#fff" strokeWidth={2} />
+                <div
+                  className="alarm-icon"
+                  style={{
+                    background:
+                      einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
+                  }}
+                >
+                  {einsatzTyp === "uebung" ? (
+                    <GraduationCap size={30} color="#fff" strokeWidth={2} />
+                  ) : (
+                    <Activity size={30} color="#fff" strokeWidth={2} />
+                  )}
                 </div>
                 <div>
                   <div className="alarm-tags">
-                    <span className="alarm-tag" style={{ color: "var(--info)" }}>
+                    <span
+                      className="alarm-tag"
+                      style={{
+                        color:
+                          einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
+                      }}
+                    >
                       <span
                         className="dot"
-                        style={{ background: "var(--info)" }}
+                        style={{
+                          background:
+                            einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
+                        }}
                       />
                       Florian Eberstalzell
                     </span>
-                    <span className="alarm-tag muted">· Hauptbericht</span>
+                    <span className="alarm-tag muted">
+                      ·{" "}
+                      {einsatzTyp === "uebung" ? "Übungsbericht" : "Hauptbericht"}
+                    </span>
                   </div>
                   <div className="alarm-title">{einsatzart}</div>
                   <div className="alarm-addr">
@@ -1435,7 +1540,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
           <div className="field" style={{ marginTop: 14 }}>
             <label className="caption">Einsatzort</label>
-            <input className="input filled" value={einsatzort} readOnly />
+            <input
+              className="input"
+              value={editor.einsatzort}
+              onChange={(e) => patchEditor({ einsatzort: e.target.value })}
+              placeholder="Adresse (z. B. Hauptstraße 12, 4653 Eberstalzell)"
+              disabled={schreibschutz}
+              spellCheck
+              lang="de-AT"
+            />
           </div>
 
           <div
@@ -1793,7 +1906,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             <SectionHead
               title="syBOS Technisch-Statistik"
               collapsible
-              defaultClosed
               storageKey="ts-tech-statistik"
             />
             <section className="card">
@@ -2168,7 +2280,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         <SectionHead
           title="Sachbearbeiter & Reserve"
           collapsible
-          defaultClosed
           storageKey="reserve-bearbeiter"
         />
         <section className="card">
@@ -3201,7 +3312,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 borderRadius: 10,
                 background: abschlussVerrechenbar ? "var(--info-tint)" : "var(--surface-2)",
                 border: `1px solid ${abschlussVerrechenbar ? "var(--info-border)" : "var(--border)"}`,
-                display: "flex",
+                display:
+                  // #171 (Test 2026-06-03): Bei Übung KEINE "verrechenbar"-Abfrage —
+                  // eine Übung ist nie verrechenbar. Block einfach ausblenden.
+                  einsatzTyp === "uebung" ? "none" : "flex",
                 flexDirection: "column",
                 gap: 8,
               }}

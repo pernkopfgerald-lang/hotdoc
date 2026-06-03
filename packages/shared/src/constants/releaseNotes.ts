@@ -21,6 +21,29 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.12",
+    date: "2026-06-03",
+    title: "Test-Sprint-Fixes: PDF, Karte, Übung, Florian-Editor",
+    bullets: [
+      "PDF: Beteiligte Stellen (Polizei, ÖAMTC …) und sonstige Feuerwehren werden jetzt korrekt im Einsatzbericht angezeigt — Mapper-Bug bei alten Daten behoben.",
+      "PDF: Einsatzart steht jetzt als Wert in einer Zeile statt 28 Vordruck-Checkboxen.",
+      "PDF: Die Box „Meldung von der Einsatzleitung" zeigt jetzt die Einsatzchronik (Zeit · Quelle · Eintrag).",
+      "Karte: Lagekarte und Anfahrt-Karte bauen sauber auf (ResizeObserver), Standard-Ansicht ist jetzt HYBRID (Foto + Beschriftung).",
+      "Florian-Zentrale: Einsatzort lässt sich jetzt direkt im Editor korrigieren (vorher nur am Fahrzeug-Tablet).",
+      "Florian-Zentrale: syBOS-Statistik und Sachbearbeiter-Block sind standardmäßig aufgeklappt — werden seltener übersehen.",
+      "Florian-Zentrale: Haupttätigkeit wird aus dem Einsatzstichwort/der Einsatzart abgeleitet (Ölspur → „Ölspur / Ölbindung", VU → „Verkehrsunfall …", …).",
+      "Florian-Zentrale: Übungs-Einsätze sind klar gekennzeichnet (ÜBUNG-Banner + grüne Theme statt blau).",
+      "Lotsendienst-Einsätze tauchen nicht mehr als Hauptbericht in der Florian-Ansicht auf — leben nur als Fahrzeugbericht.",
+      "Abschluss: bei Übungen entfällt die „Verrechenbar"-Frage.",
+      "Übung anlegen: Thema, Auftraggeber und Adresse sind nicht mehr Pflicht — die Übung lässt sich sofort anlegen und Personal erfassen.",
+      "BerichtPage: Einsatzchronik direkt unter dem Mannschafts-Block (vor Geräte/Auftrag/Karte).",
+      "Backoffice: „Sonstige Feuerwehren" in der Florian-Variante kommen jetzt aus der CRUD-Liste (TMB Sattledt, FF Lambach …) statt aus hardcodierten Kürzeln.",
+      "syBOS-Listen ergänzt: „Arbeitsauftrag" (Technisch), „Täuschungsalarm" (Brand).",
+      "Robust: alte Berichte mit altem Chronik-Schema werden im PDF und in der App sauber dargestellt.",
+      "Aufräumen: Diagnose-Hilfsskript entfernt, schlankere Helfer-Funktionen.",
+    ],
+  },
+  {
     version: "0.1.11",
     date: "2026-06-03",
     title: "Hotfix: Florian-Login-Absturz + Reaktivieren im Fahrzeug-Archiv",

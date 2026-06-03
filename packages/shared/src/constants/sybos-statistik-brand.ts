@@ -17,6 +17,10 @@ export type BrandEntdeckung = (typeof BRAND_ENTDECKUNG)[number];
 export const BRAND_AUSMASS = [
   "Brand vor Eintreffen aus",
   "Brandsicherheitswache",
+  // Issue #161 (v0.1.12): Funktionaer-Feedback — "Täuschungsalarm" fehlte
+  // bisher. syBOS fuehrt Taeuschungsalarme als Brand-Statistik-Ausmaß
+  // (Brand ohne Ergebnis), nicht als eigene Entdeckungs-Quelle.
+  "Täuschungsalarm",
   "Klein (Entstehungsbrand)",
   "Mittel",
   "Groß",

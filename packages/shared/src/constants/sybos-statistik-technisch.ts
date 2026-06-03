@@ -36,6 +36,10 @@ export const HAUPT_TAETIGKEIT_TECHNISCH = [
   "Suchaktion",
   "Höhenrettung",
   "Gefährliche Stoffe austretend",
+  // Issue #161 (v0.1.12): Funktionaer-Feedback — "Arbeitsauftrag" fehlte
+  // bisher und ist in syBOS eine eigene Kategorie. Wird vom Sachbearbeiter
+  // z. B. fuer planmaessige Wartungs-/Beistandseinsaetze gebraucht.
+  "Arbeitsauftrag",
   "Sonstige Hilfeleistung",
 ] as const;
 export type HauptTaetigkeitTechnisch = (typeof HAUPT_TAETIGKEIT_TECHNISCH)[number];

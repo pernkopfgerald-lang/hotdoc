@@ -26,7 +26,9 @@ function loadTileChoice(): MapTileChoice {
   } catch {
     // localStorage unavailable
   }
-  return "karte";
+  // User-Default (Test 2026-06-03): HYBRID — Foto + Beschriftungs-Overlay.
+  // Vorher "karte" (reine Karte ohne Foto) → User wollte Foto-Sicht standardmäßig.
+  return "hybrid";
 }
 
 function saveTileChoice(choice: MapTileChoice): void {
@@ -190,7 +192,31 @@ export function MapCard({
     });
 
     mapRef.current = map;
+
+    // #156 (Test 2026-06-03): Leaflet rendert die Kacheln vor der finalen
+    // Container-Größe → "halbe Karte"-Bug. ResizeObserver triggert ein
+    // invalidateSize, sobald sich die Container-Box ändert (Erstanzeige,
+    // Sektionswechsel, Fullscreen-Toggle). Mehrfaches Feuern ist safe.
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => {
+        try {
+          map.invalidateSize();
+        } catch {
+          // unmounted in der Zwischenzeit — egal
+        }
+      });
+      ro.observe(elRef.current);
+    }
+    // Zusätzlich nach 100/400ms initial invalidaten — manche Mobile-WebViews
+    // feuern den ResizeObserver beim Erstmount nicht.
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 400);
+
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      ro?.disconnect();
       map.remove();
       mapRef.current = null;
       tileLayersRef.current = { base: null, overlay: null };
