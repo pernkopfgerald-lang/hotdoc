@@ -5,5 +5,5 @@
  * manuell hochziehen. Das Label soll dem User auf einen Blick zeigen welcher
  * Feature-Stand auf seinem Tablet läuft (für Bug-Reports + Schulung).
  */
-export const APP_VERSION = "v0.1.12";
+export const APP_VERSION = "v0.1.13";
 export const APP_BUILD = "2026-06-03";

@@ -197,25 +197,31 @@ export function MapCard({
     // Container-Größe → "halbe Karte"-Bug. ResizeObserver triggert ein
     // invalidateSize, sobald sich die Container-Box ändert (Erstanzeige,
     // Sektionswechsel, Fullscreen-Toggle). Mehrfaches Feuern ist safe.
+    // #156 (v0.1.13): ResizeObserver ENTPRELLT — invalidateSize erst wenn die
+    // Container-Größe settlet, NICHT während der Einblend-Animation
+    // (sonst versetzte Kachel-Blöcke). Plus ein Settle-Tick nach der Animation.
     let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(() => {
-        try {
-          map.invalidateSize();
-        } catch {
-          // unmounted in der Zwischenzeit — egal
-        }
-      });
+    let debTimer: ReturnType<typeof setTimeout> | null = null;
+    const doInvalidate = (): void => {
+      try {
+        map.invalidateSize();
+      } catch {
+        // unmounted — egal
+      }
+    };
+    const invalidateDebounced = (): void => {
+      if (debTimer) clearTimeout(debTimer);
+      debTimer = setTimeout(doInvalidate, 250);
+    };
+    if (typeof ResizeObserver !== "undefined" && elRef.current) {
+      ro = new ResizeObserver(invalidateDebounced);
       ro.observe(elRef.current);
     }
-    // Zusätzlich nach 100/400ms initial invalidaten — manche Mobile-WebViews
-    // feuern den ResizeObserver beim Erstmount nicht.
-    const t1 = setTimeout(() => map.invalidateSize(), 100);
-    const t2 = setTimeout(() => map.invalidateSize(), 400);
+    const tSettle = setTimeout(doInvalidate, 550);
 
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      clearTimeout(tSettle);
+      if (debTimer) clearTimeout(debTimer);
       ro?.disconnect();
       map.remove();
       mapRef.current = null;

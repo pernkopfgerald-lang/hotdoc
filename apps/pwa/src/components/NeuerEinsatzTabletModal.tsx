@@ -34,8 +34,14 @@ interface ManuellAnlageBody {
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Nach erfolgreicher Anlage wird die neue Einsatz-ID zurückgeliefert. */
-  onCreated: (einsatzId: string, typ: EinsatzTyp) => void;
+  /** Nach erfolgreicher Anlage wird die neue Einsatz-ID zurückgeliefert.
+   *  `extras` trägt die Übungs-Vorauswahl (Übungsleiter-Person + Übungstyp)
+   *  damit das Fahrzeug-Tablet sie als Kdt + Auftrag vorbelegen kann (#155/#162). */
+  onCreated: (
+    einsatzId: string,
+    typ: EinsatzTyp,
+    extras?: { uebungsleiterPerson?: PickPerson | null; uebungsTyp?: string },
+  ) => void;
   /** Initial-Typ-Auswahl (wenn der User von einer Quick-Action kommt). */
   initialTyp?: EinsatzTyp;
 }
@@ -370,8 +376,14 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       if (typ === "manuell" && einsatzart) {
         pushRecentEinsatzart(einsatzart);
       }
+      // Vorauswahl VOR resetAll sichern, damit das Fahrzeug-Tablet sie
+      // als Kdt + Auftrag vorbelegen kann (#155/#162).
+      const extras =
+        typ === "uebung"
+          ? { uebungsleiterPerson, uebungsTyp }
+          : undefined;
       resetAll();
-      onCreated(result.id, typ);
+      onCreated(result.id, typ, extras);
     } catch (e) {
       // Schema-Fehler / 4xx → kein Outbox-Eintrag, Bug zeigen
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) {

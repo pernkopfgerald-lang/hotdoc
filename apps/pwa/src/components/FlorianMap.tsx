@@ -212,23 +212,34 @@ export function FlorianMap({
     // #156 (Test 2026-06-03): ResizeObserver triggert invalidateSize bei jeder
     // Container-Größen-Änderung — fixt das "Karte baut nicht sauber"-Problem
     // (Leaflet rendert auf finale Größe).
+    // #156 (Test 2026-06-03, v0.1.13): invalidateSize NUR wenn der Container
+    // settlet — NICHT während der glass-reveal-Einblend-Animation
+    // (transform/blur). Sonst misst Leaflet die Box mehrfach falsch → versetzte
+    // Kachel-Blöcke (das beobachtete "Karte baut nicht sauber"-Muster).
+    // Daher: ResizeObserver ENTPRELLT (250 ms nach letzter Änderung) +
+    // genau ein Settle-Tick nach Ende der Einblend-Animation.
     let ro: ResizeObserver | null = null;
+    let debTimer: ReturnType<typeof setTimeout> | null = null;
+    const doInvalidate = (): void => {
+      try {
+        map.invalidateSize();
+      } catch {
+        // unmounted — ignore
+      }
+    };
+    const invalidateDebounced = (): void => {
+      if (debTimer) clearTimeout(debTimer);
+      debTimer = setTimeout(doInvalidate, 250);
+    };
     if (typeof ResizeObserver !== "undefined" && elRef.current) {
-      ro = new ResizeObserver(() => {
-        try {
-          map.invalidateSize();
-        } catch {
-          // unmounted — ignore
-        }
-      });
+      ro = new ResizeObserver(invalidateDebounced);
       ro.observe(elRef.current);
     }
-    const t1 = setTimeout(() => map.invalidateSize(), 100);
-    const t2 = setTimeout(() => map.invalidateSize(), 400);
+    const tSettle = setTimeout(doInvalidate, 550);
 
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      clearTimeout(tSettle);
+      if (debTimer) clearTimeout(debTimer);
       ro?.disconnect();
       map.remove();
       mapRef.current = null;

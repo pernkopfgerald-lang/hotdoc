@@ -1,4 +1,4 @@
-import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Save, Truck, Users } from "lucide-react";
+import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, MapPin, Save, Truck, Users } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
@@ -79,6 +79,8 @@ interface EinsatzInstance {
   alarm: AlarmDaten;
   einsatzPos: { lat: number; lng: number };
   manuell: boolean;
+  /** #164: Einsatz-Typ — steuert u.a. die grüne Übungs-Optik der AlarmCard. */
+  einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung";
   fahrer: PickPerson | null;
   kdt: PickPerson | null;
   mannschaft: MannschaftSlotData[];
@@ -234,6 +236,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   }
   const inheritPersonalRef = useRef<InheritedPersonal | null>(null);
 
+  // #155/#162 (Test 2026-06-03): Übungs-Vorauswahl puffern — wenn beim Anlegen
+  // ein Übungsleiter + Übungstyp gewählt wurde, übernimmt der erste neu
+  // erkannte Übungs-Einsatz den Übungsleiter als Kdt + den Übungstyp als
+  // Auftrag. Auto-Clear nach 30 s (analog inheritPersonalRef).
+  const pendingUebungSetupRef = useRef<{
+    uebungsleiterPerson?: PickPerson | null;
+    uebungsTyp?: string;
+  } | null>(null);
+  // #154: Sofort-Reload-Hook — onCreated triggert runPoll direkt, statt aufs
+  // 5-s-Polling zu warten (Auto-Open ohne spürbare Verzögerung).
+  const runPollRef = useRef<(() => void) | null>(null);
+
   // Refs fuer den Live-Zugriff in setInterval-Closures. Das useEffect mit
   // [fahrzeugId] bindet runPoll genau einmal — `einsaetze` und `activeId`
   // wuerden im Closure einfrieren und immer den Initial-Snapshot sehen
@@ -367,6 +381,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         alarm,
         einsatzPos: api.koordinaten ?? HOME_POS,
         manuell: api.einsatzTyp === "manuell" || api.einsatzTyp === "uebung" || api.einsatzTyp === "lotsendienst",
+        einsatzTyp:
+          api.einsatzTyp === "manuell" ||
+          api.einsatzTyp === "uebung" ||
+          api.einsatzTyp === "lotsendienst"
+            ? api.einsatzTyp
+            : "alarm",
         fahrer: null,
         kdt: null,
         mannschaft: Array.from(
@@ -445,6 +465,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               slot: i + 1,
             }));
             inheritPersonalRef.current = null;
+            hydratedIdsRef.current.add(target._id);
+          }
+          // #155/#162: Übungs-Vorauswahl auf den ersten neuen Übungs-Einsatz
+          // anwenden — Übungsleiter → Fahrzeug-Kdt, Übungstyp → erster Auftrag.
+          const uebSetup = pendingUebungSetupRef.current;
+          if (uebSetup && !firstNewId && fresh.einsatzTyp === "uebung") {
+            if (uebSetup.uebungsleiterPerson) {
+              fresh.kdt = uebSetup.uebungsleiterPerson;
+            }
+            if (uebSetup.uebungsTyp && uebSetup.uebungsTyp.trim()) {
+              fresh.auftraege = [
+                {
+                  id: `auf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  text: uebSetup.uebungsTyp.trim(),
+                  zeitstempel: new Date().toISOString(),
+                },
+              ];
+            }
+            pendingUebungSetupRef.current = null;
             hydratedIdsRef.current.add(target._id);
           }
           additions.push(fresh);
@@ -569,6 +608,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     };
 
     void runPoll();
+    // #154: runPoll für den Sofort-Reload nach Einsatz-Anlage exponieren.
+    runPollRef.current = () => void runPoll();
     // Polling alle 5 s. Vorher waren es 30 s — das war der Hauptgrund warum
     // die Disposition von der Florianstation bis zum Empfang am Fahrzeug-
     // Tablet bis zu 30 s gebraucht hat. Fuenf Sekunden ist die richtige
@@ -598,6 +639,50 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const abschlussInFlightRef = useRef(false);
   // Foto-Funktion (2026-06-03): Busy-Flag während Komprimierung/Speichern.
   const [fotoBusy, setFotoBusy] = useState(false);
+  // #172 (Test 2026-06-03): GPS-Adresse-Übernahme-Status für den Einsatzort-Button.
+  const [gpsAdrBusy, setGpsAdrBusy] = useState(false);
+
+  /**
+   * #172: Aktuelle GPS-Position als Einsatzadresse übernehmen — der Kdt steht
+   * am Einsatzort, tippt den GPS-Knopf, und wir holen per Reverse-Geocoding die
+   * echte Adresse. Fallback "GPS lat,lng" wenn der Geocoder versagt (Autobahn,
+   * freies Feld). Schreibt in active.alarm.einsatzort → der bestehende
+   * 1,5-s-Debounce-Sync (PUT) spiegelt es zur Florianstation.
+   */
+  async function uebernehmeGpsAdresse(): Promise<void> {
+    if (!active || active.abgeschlossen) return;
+    const fix = geo.fix;
+    if (!fix) {
+      // Kein GPS-Fix verfügbar — kurz dem User signalisieren (Vibration).
+      try {
+        navigator.vibrate?.(200);
+      } catch {
+        /* egal */
+      }
+      return;
+    }
+    setGpsAdrBusy(true);
+    let adresse = `GPS ${fix.lat.toFixed(5)}, ${fix.lng.toFixed(5)}`;
+    try {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 3000);
+      const geoRes = await apiCall<{ ok: true; address: string | null }>(
+        `/api/geocoding/reverse?lat=${encodeURIComponent(String(fix.lat))}&lng=${encodeURIComponent(String(fix.lng))}`,
+        { signal: ctl.signal },
+      );
+      clearTimeout(to);
+      if (geoRes.address) adresse = geoRes.address;
+    } catch {
+      // Timeout/Fehler → GPS-String-Fallback (bereits gesetzt).
+    } finally {
+      patchActive((cur) => ({
+        ...cur,
+        alarm: { ...cur.alarm, einsatzort: adresse },
+      }));
+      setGpsAdrBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (personen.length === 0 || einsaetze.length === 0) return;
     let cancelled = false;
@@ -1523,7 +1608,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           />
         ) : (
           <>
-            <AlarmCard alarm={active.alarm} />
+            <AlarmCard alarm={active.alarm} einsatzTyp={active.einsatzTyp} />
 
             <SectionHead title="Einsatzdaten" />
             <section className="card">
@@ -1632,20 +1717,64 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   Sync laeuft via 1.5s-Debounce nach PUT /api/einsaetze/:id. */}
               <div className="field" style={{ marginTop: 14 }}>
                 <label className="caption">Einsatzort</label>
-                <input
-                  className="input"
-                  value={active.alarm.einsatzort}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    patchActive((cur) => ({
-                      ...cur,
-                      alarm: { ...cur.alarm, einsatzort: next },
-                    }));
-                  }}
-                  placeholder="Adresse eintragen (z. B. Hauptstraße 12, 4653 Eberstalzell)"
-                  spellCheck
-                  lang="de-AT"
-                />
+                <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={active.alarm.einsatzort}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      patchActive((cur) => ({
+                        ...cur,
+                        alarm: { ...cur.alarm, einsatzort: next },
+                      }));
+                    }}
+                    placeholder="Adresse — oder GPS antippen wenn du am Einsatzort bist"
+                    disabled={!!active.abgeschlossen}
+                    spellCheck
+                    lang="de-AT"
+                  />
+                  {/* #172: GPS-Adresse-übernehmen — holt aktuelle Position +
+                      Reverse-Geocoding. Greift den Workflow "leer anlegen,
+                      vor Ort GPS tippen" ab. */}
+                  <button
+                    type="button"
+                    onClick={() => void uebernehmeGpsAdresse()}
+                    disabled={!!active.abgeschlossen || gpsAdrBusy || !geo.fix}
+                    title={
+                      geo.fix
+                        ? "Aktuelle GPS-Position als Adresse übernehmen"
+                        : "GPS noch nicht verfügbar"
+                    }
+                    aria-label="GPS-Adresse übernehmen"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "0 14px",
+                      minHeight: 44,
+                      borderRadius: "var(--radius-s)",
+                      border: "1px solid var(--blue-border)",
+                      background: "var(--info-tint)",
+                      color: "var(--info)",
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor:
+                        active.abgeschlossen || gpsAdrBusy || !geo.fix
+                          ? "not-allowed"
+                          : "pointer",
+                      opacity: active.abgeschlossen || !geo.fix ? 0.5 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {gpsAdrBusy ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <MapPin size={16} />
+                    )}
+                    GPS
+                  </button>
+                </div>
               </div>
               {/* Strecke / Kilometer — EIN Feld (Audit KISS B-03): der
                   Auto-Wert (Feuerwehrhaus ↔ Einsatzort × 2) steht als
@@ -2154,8 +2283,22 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         open={neuerEinsatzOpen !== null}
         initialTyp={neuerEinsatzOpen ?? "manuell"}
         onClose={() => setNeuerEinsatzOpen(null)}
-        onCreated={(einsatzId, typ) => {
+        onCreated={(einsatzId, typ, extras) => {
           setNeuerEinsatzOpen(null);
+          // #155/#162: Übungs-Vorauswahl (Übungsleiter + Übungstyp) puffern —
+          // wird beim Auftauchen des neuen Übungs-Einsatzes als Kdt + Auftrag
+          // angewendet (siehe buildEinsatzFromApi-Loop). Auto-Clear nach 30 s.
+          if (typ === "uebung" && (extras?.uebungsleiterPerson || extras?.uebungsTyp)) {
+            pendingUebungSetupRef.current = {
+              ...(extras.uebungsleiterPerson
+                ? { uebungsleiterPerson: extras.uebungsleiterPerson }
+                : {}),
+              ...(extras.uebungsTyp ? { uebungsTyp: extras.uebungsTyp } : {}),
+            };
+            setTimeout(() => {
+              pendingUebungSetupRef.current = null;
+            }, 30_000);
+          }
           // Folge-Auftrag-Personal puffern: wenn der aktuelle Einsatz noch
           // laeuft und Personal eingetragen hat, uebernehmen wir es in den
           // neuen Einsatz sobald der vom Backend zurueckkommt. Diese Logik
@@ -2193,6 +2336,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           } catch {
             // egal
           }
+          // #154: Sofort-Poll statt 5-s-Wartezeit — der neue Einsatz/die Übung
+          // taucht binnen ~300 ms auf (Auto-Open ohne spürbare Verzögerung).
+          runPollRef.current?.();
           console.info("[neuer-einsatz] angelegt:", { einsatzId, typ, inherit: !!inheritPersonalRef.current });
         }}
       />

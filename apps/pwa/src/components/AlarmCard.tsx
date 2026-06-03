@@ -1,5 +1,5 @@
 import { STICHWORT_STUFEN, type StichwortStufe } from "@hotdoc/shared";
-import { MapPin, Play, Siren } from "lucide-react";
+import { GraduationCap, MapPin, Play, Siren } from "lucide-react";
 
 export interface AlarmDaten {
   alarmId: string;
@@ -17,25 +17,79 @@ export interface AlarmDaten {
 interface Props {
   alarm: AlarmDaten;
   onPlayAudio?: () => void;
+  /** #164 (Test 2026-06-03): Bei einer Übung wird die Karte GRÜN dargestellt
+   *  + "ÜBUNG"-Banner statt rotem "Aktiver Alarm" — auch in der Fahrzeug-
+   *  Ansicht muss sofort klar sein, dass es kein echter Einsatz ist. */
+  einsatzTyp?: "alarm" | "manuell" | "lotsendienst" | "uebung";
 }
 
 /**
  * AlarmCard — 1:1 portiert aus claude.ai/design HotDoc Fahrzeugbericht.html.
  * Nutzt die .alarm/.alarm-top/.alarm-icon/.alarm-meta-Klassen aus design.css.
  */
-export function AlarmCard({ alarm, onPlayAudio }: Props) {
+export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
+  const istUebung = einsatzTyp === "uebung";
   return (
-    <section className="alarm">
+    <section
+      className="alarm"
+      style={
+        istUebung
+          ? {
+              // Grüne Übungs-Optik überschreibt das rote Alarm-Theme.
+              background:
+                "linear-gradient(135deg, var(--surface) 0%, var(--ok-tint) 55%, color-mix(in srgb, var(--ok) 16%, transparent) 100%)",
+              borderColor: "var(--ok-border)",
+              boxShadow: "var(--glow-ok)",
+            }
+          : undefined
+      }
+    >
+      {istUebung && (
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "4px 12px",
+            borderRadius: "var(--radius-pill)",
+            background: "var(--ok)",
+            color: "#fff",
+            fontFamily: "var(--font-mono)",
+            fontWeight: 800,
+            fontSize: 11,
+            letterSpacing: "var(--tracking-caps)",
+            textTransform: "uppercase",
+            marginBottom: 12,
+            boxShadow: "0 4px 12px -4px rgba(4,120,87,0.45)",
+          }}
+        >
+          <GraduationCap size={14} strokeWidth={2.4} />
+          Übung
+        </div>
+      )}
       <div className="alarm-top">
         <div className="alarm-left">
-          <div className="alarm-icon">
-            <Siren size={30} color="#fff" strokeWidth={2} />
+          <div
+            className="alarm-icon"
+            style={istUebung ? { background: "var(--ok)" } : undefined}
+          >
+            {istUebung ? (
+              <GraduationCap size={30} color="#fff" strokeWidth={2} />
+            ) : (
+              <Siren size={30} color="#fff" strokeWidth={2} />
+            )}
           </div>
           <div>
             <div className="alarm-tags">
-              <span className="alarm-tag">
-                <span className="dot" />
-                Aktiver Alarm
+              <span
+                className="alarm-tag"
+                style={istUebung ? { color: "var(--ok)" } : undefined}
+              >
+                <span
+                  className="dot"
+                  style={istUebung ? { background: "var(--ok)" } : undefined}
+                />
+                {istUebung ? "Übung" : "Aktiver Alarm"}
               </span>
               <span className="alarm-tag muted">
                 · {alarm.alarmierungAuthor}

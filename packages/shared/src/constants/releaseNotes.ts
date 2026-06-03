@@ -21,6 +21,19 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.13",
+    date: "2026-06-03",
+    title: "Übung-Feinschliff, Karte stabil & GPS-Adresse",
+    bullets: [
+      "Übung wird jetzt AUCH in der Fahrzeug-Ansicht klar als ÜBUNG (grün) dargestellt — nicht mehr als roter Einsatz.",
+      "Karte: Kacheln bauen jetzt sauber auf — die Aktualisierung wartet, bis die Einblend-Animation fertig ist (kein zerstückeltes Kartenbild mehr).",
+      "Einsatzort am Fahrzeug-Tablet: neuer GPS-Knopf — am Einsatzort antippen, die echte Adresse wird automatisch übernommen (Workflow: leer anlegen, vor Ort GPS).",
+      "Übung anlegen: ein eingetragener Übungsleiter wird automatisch Fahrzeug-Kommandant.",
+      "Übung anlegen: der gewählte Übungstyp wird automatisch als erster Auftrag übernommen.",
+      "Neuen Einsatz/Übung anlegen: öffnet sofort (kein Warten mehr auf den nächsten Abgleich).",
+    ],
+  },
+  {
     version: "0.1.12",
     date: "2026-06-03",
     title: "Test-Sprint-Fixes: PDF, Karte, Übung, Florian-Editor",
