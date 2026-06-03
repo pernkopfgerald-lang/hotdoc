@@ -59,19 +59,16 @@ function applyTileLayer(
     const cfg = MAP_TILES.hybrid;
     const fotoCfg = MAP_TILES.foto;
     layersRef.base = L.tileLayer(fotoCfg.url, {
-      subdomains: fotoCfg.subdomains as unknown as string[],
       maxZoom: cfg.maxZoom,
       attribution: cfg.attribution,
     }).addTo(map);
     layersRef.overlay = L.tileLayer(cfg.overlayUrl, {
-      subdomains: cfg.subdomains as unknown as string[],
       maxZoom: cfg.maxZoom,
       attribution: cfg.attribution,
     }).addTo(map);
   } else {
     const cfg = MAP_TILES[choice];
     layersRef.base = L.tileLayer(cfg.url, {
-      subdomains: cfg.subdomains as unknown as string[],
       maxZoom: cfg.maxZoom,
       attribution: cfg.attribution,
     }).addTo(map);

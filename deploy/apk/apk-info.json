@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.15",
-  "apkUrl": "/hotdoc-v0.1.15-release.apk",
-  "releaseNotes": "v0.1.15 — Einsatzleiter im PDF & Karte komplett\n\n• Einsatzbericht-PDF: Das Feld 'Einsatzleiter' wird jetzt automatisch ausgefüllt — der als Einsatzleiter markierte Fahrzeug-Kommandant steht jetzt unten im Vordruck.\n• Karte: Beim Aufklappen/Vollbild werden jetzt ALLE Kacheln sauber nachgeladen (vorher blieben Teile leer).\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.14.",
-  "publishedAt": "2026-06-03T15:00:00+00:00",
+  "currentVersion": "0.1.16",
+  "apkUrl": "/hotdoc-v0.1.16-release.apk",
+  "releaseNotes": "v0.1.16 — Karte: Kachel-Bug endgültig behoben\n\n• Lagekarte lädt jetzt ALLE Kacheln vollständig. Ursache war ein abgeschalteter basemap.at-Server (Subdomains maps1–maps4 gibt es nicht mehr) — umgestellt auf mapsneu.wien.gv.at.\n• Einsatzleiter wird automatisch ins Einsatzbericht-PDF übernommen (aus v0.1.15).\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.15.",
+  "publishedAt": "2026-06-03T16:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

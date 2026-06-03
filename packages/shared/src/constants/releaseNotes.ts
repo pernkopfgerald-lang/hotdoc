@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.16",
+    date: "2026-06-03",
+    title: "Karte: Kachel-Bug endgültig behoben",
+    bullets: [
+      "Lagekarte lädt jetzt ALLE Kacheln vollständig. Ursache war ein abgeschalteter basemap.at-Server (die Subdomains maps1–maps4 existieren nicht mehr) — dadurch ging jede zweite bis vierte Kachel ins Leere. Umgestellt auf den aktuellen Endpoint mapsneu.wien.gv.at.",
+    ],
+  },
+  {
     version: "0.1.15",
     date: "2026-06-03",
     title: "Einsatzleiter im PDF & Karte komplett",
