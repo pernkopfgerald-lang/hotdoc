@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.17",
+    date: "2026-06-03",
+    title: "Reaktivierung & Übungs-Titel",
+    bullets: [
+      "Reaktivieren funktioniert jetzt vollständig: Wird ein abgeschlossener Einsatz wieder geöffnet, kann auch das Fahrzeug seinen Fahrzeugbericht wieder bearbeiten (z. B. Mannschaft nachtragen) — vorher konnte nur Florian den Bericht öffnen.",
+      "Übung/Lotsendienst ohne erfasstes Thema zeigt im Kopf jetzt korrekt 'Übung' bzw. 'Lotsendienst' statt 'Einsatz'.",
+    ],
+  },
+  {
     version: "0.1.16",
     date: "2026-06-03",
     title: "Karte: Kachel-Bug endgültig behoben",

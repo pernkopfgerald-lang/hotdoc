@@ -366,7 +366,19 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       const persisted = persistedStates[api._id] ?? null;
       const alarm: AlarmDaten = {
         alarmId: api.alarmId ?? api._id.replace(/^einsatz:/, ""),
-        einsatzart: api.einsatzart ?? api.einsatzartFreitext ?? api.alarmierungText ?? "Einsatz",
+        // BUG-Fix: bei einer Übung (oder Lotsendienst) ohne erfasstes Thema
+        // war der Titel früher die generische "Einsatz"-Fallback-Beschriftung
+        // — die Karte war grün + "ÜBUNG"-Pill, aber der große Titel sagte
+        // "Einsatz". Fallback jetzt typ-abhängig.
+        einsatzart:
+          api.einsatzart ||
+          api.einsatzartFreitext ||
+          api.alarmierungText ||
+          (api.einsatzTyp === "uebung"
+            ? "Übung"
+            : api.einsatzTyp === "lotsendienst"
+              ? "Lotsendienst"
+              : "Einsatz"),
         einsatzort: api.einsatzort ?? "",
         alarmierungZeit: api.alarmierungZeit ?? new Date().toISOString(),
         alarmierungAuthor: api.alarmierungAuthor ?? "BWST",
@@ -583,24 +595,49 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           }>(`/api/einsaetze/${einsatzIdEnc}/fahrzeugberichte`);
           if (cancelled) return;
           const mine = fz.items?.find((b) => b.fahrzeugId === fahrzeugId);
-          if (!mine || mine.status !== "abgeschlossen") continue;
-          setEinsaetze((prev) =>
-            prev.map((e) =>
-              e.id === target._id && !e.abgeschlossen
-                ? {
-                    ...e,
-                    abgeschlossen: {
-                      ts: mine.geaendertAm ?? new Date().toISOString(),
-                      durch:
-                        mine.fahrzeugKdtPersonId !== undefined
-                          ? `Pers-${mine.fahrzeugKdtPersonId}`
-                          : "—",
-                      kmGefahren: mine.km?.gefahrenKm ?? 0,
-                    },
-                  }
-                : e,
-            ),
-          );
+          if (!mine) continue;
+          if (mine.status === "abgeschlossen") {
+            setEinsaetze((prev) =>
+              prev.map((e) =>
+                e.id === target._id && !e.abgeschlossen
+                  ? {
+                      ...e,
+                      abgeschlossen: {
+                        ts: mine.geaendertAm ?? new Date().toISOString(),
+                        durch:
+                          mine.fahrzeugKdtPersonId !== undefined
+                            ? `Pers-${mine.fahrzeugKdtPersonId}`
+                            : "—",
+                        kmGefahren: mine.km?.gefahrenKm ?? 0,
+                      },
+                    }
+                  : e,
+              ),
+            );
+          } else if (mine.status === "in_arbeit") {
+            // BUG-Fix Reaktivierung: Der Backend-Fahrzeugbericht ist wieder
+            // OFFEN. Wenn lokal noch ein Abschluss-Stand klebt UND das Backend
+            // NACH diesem Abschluss geändert wurde (= echte Reaktivierung, nicht
+            // nur ein noch nicht angekommener Abschluss-PUT), öffnen wir den
+            // Bericht lokal wieder + löschen den persistenten Closed-Stand.
+            // Vorher blieb der Fahrzeugbericht für den Kdt schreibgeschützt,
+            // obwohl der Einsatz reaktiviert war ("nur Florian kann öffnen").
+            const persistedClosed = loadReportStates(fahrzeugId)[target._id];
+            if (persistedClosed) {
+              const backendTs = mine.geaendertAm ? Date.parse(mine.geaendertAm) : 0;
+              const localTs = Date.parse(persistedClosed.ts);
+              if (backendTs > localTs) {
+                saveReportState(fahrzeugId, target._id, null);
+                setEinsaetze((prev) =>
+                  prev.map((e) =>
+                    e.id === target._id && e.abgeschlossen
+                      ? { ...e, abgeschlossen: null }
+                      : e,
+                  ),
+                );
+              }
+            }
+          }
         }
       } catch {
         // Backend nicht erreichbar — localStorage-Stand bleibt massgeblich.

@@ -724,6 +724,50 @@ einsaetzeRouter.post(
       { id, by: session.username, grund: parsed.data.grund },
       "Einsatz REAKTIVIERT — Audit-Trail aktualisiert",
     );
+
+    // BUG-Fix (Reaktivierung): Beim Hauptauftrag-Abschluss werden die offenen
+    // Fahrzeugberichte kaskadiert geschlossen (autoAbgeschlossenGrund=
+    // "hauptauftrag-geschlossen"). Beim Reaktivieren muss das rückgängig
+    // gemacht werden — sonst bleibt der Fahrzeugbericht schreibgeschützt und
+    // der Fahrzeugkommandant kommt nicht mehr an seine Mannschaft heran
+    // (nur Florian konnte den Bericht öffnen). Wir öffnen alle abgeschlossenen
+    // Fahrzeugberichte dieses Einsatzes wieder (Status → in_arbeit), damit
+    // die Fahrzeuge weiterarbeiten können. Schlägt das fehl, bleibt der
+    // Einsatz trotzdem reaktiviert (nicht blockierend).
+    try {
+      const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
+      const fzgList = await db.list({
+        startkey: fzgPrefix,
+        endkey: `${fzgPrefix}￰`,
+        include_docs: true,
+      });
+      const wiederOeffnen = fzgList.rows
+        .map((r) => r.doc)
+        .filter((d): d is NonNullable<typeof d> => !!d)
+        .filter((f) => (f as { status?: string }).status === "abgeschlossen")
+        .map((f) => ({
+          ...(f as Record<string, unknown>),
+          status: "in_arbeit" as const,
+          schreibschutz: false,
+          // Auto-Abschluss-Marker entfernen (undefined → JSON lässt sie weg).
+          autoAbgeschlossen: undefined,
+          autoAbgeschlossenAm: undefined,
+          autoAbgeschlossenGrund: undefined,
+          geaendertAm: new Date().toISOString(),
+        }));
+      if (wiederOeffnen.length > 0) {
+        const { ok, failed } = await bulkUpdateWithRetry(wiederOeffnen, logger);
+        logger.info(
+          { id, reopened: ok, failed: failed.length },
+          "Fahrzeugberichte beim Reaktivieren wieder geöffnet",
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, id },
+        "Fahrzeugbericht-Reopen beim Reaktivieren fehlgeschlagen — Einsatz ist trotzdem reaktiviert",
+      );
+    }
     // Audit-Trail (Spec §17.1) — Reaktivierungen MÜSSEN nachvollziehbar sein.
     // Pflicht-Begründung wird im `details`-Feld mitgeschrieben.
     await writeAuditEvent({
