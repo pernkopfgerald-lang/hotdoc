@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.20",
-  "apkUrl": "/hotdoc-v0.1.20-release.apk",
-  "releaseNotes": "v0.1.20 — Größere, besser lesbare Schrift\n\n• Alle Schriften in der Tablet-Ansicht um 25 % vergrößert — besser lesbar mit Handschuhen, in der Sonne, unter Stress.\n• Schriftart auf die System-Schrift (Roboto) umgestellt: maximal lesbar und immer offline verfügbar.\n• Stärkere Text-Kontraste für bessere Lesbarkeit.\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.19.",
-  "publishedAt": "2026-06-03T20:00:00+00:00",
+  "currentVersion": "0.1.21",
+  "apkUrl": "/hotdoc-v0.1.21-release.apk",
+  "releaseNotes": "v0.1.21 — Lotsendienst-Bericht im vollen Format\n\n• Der Lotsendienst-Bericht hat jetzt — wie Einsatz- und Übungsbericht — den vollen Charakter: pro Fahrzeug Kommandant/Kraftfahrer/Mannschaft mit Funktion, Geräte, Chronik und je-Fahrzeug-Anhangblätter. Auftraggeber, Route und Verrechnungs-Block bleiben erhalten.\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.20.",
+  "publishedAt": "2026-06-05T08:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

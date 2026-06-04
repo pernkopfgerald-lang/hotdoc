@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.21",
+    date: "2026-06-05",
+    title: "Lotsendienst-Bericht im vollen Format",
+    bullets: [
+      "Der Lotsendienst-Bericht hat jetzt — wie Einsatz- und Übungsbericht — den vollen Charakter: pro Fahrzeug Kommandant/Kraftfahrer/Mannschaft mit Funktion, Geräte, Chronik und je-Fahrzeug-Anhangblätter. Auftraggeber, Route und der Verrechnungs-Block bleiben erhalten (Lotsendienst ist verrechenbar).",
+    ],
+  },
+  {
     version: "0.1.20",
     date: "2026-06-03",
     title: "Größere, besser lesbare Schrift",

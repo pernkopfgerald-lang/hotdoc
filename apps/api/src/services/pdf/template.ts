@@ -60,6 +60,22 @@ export interface BerichtDaten {
   uebungsleiter?: string;
   /** Übungs-Typ/-Kategorie (nur Übung), z. B. "Atemschutz". */
   uebungsTyp?: string;
+  /**
+   * Lotsendienst-Modus (2026-06-05): wie die Übung laeuft der Lotsendienst
+   * durch denselben Renderer wie der Einsatzbericht (renderHauptberichtHtml),
+   * bekommt dadurch Chronik, je-Fahrzeug-Anhangblaetter, Mannschaft-mit-
+   * Funktion + Geraete und Fotos. Akzentfarbe ist BERNSTEIN (#b45309), Titel
+   * "Lotsendienst-Bericht", Quelle-Label "LOTSENDIENST". Die Einsatz-/Brand-
+   * spezifischen Bloecke (syBOS-Statistik, Pflichtbereich/Einsatzzone/ueber-
+   * oertliche Hilfe, Einsatzauftrag-via, Anrufer, Brand-Zeitmarken, Einsatz-
+   * art-Tabelle) werden ausgeblendet. Der Verrechnungs-Block BLEIBT (Lotsen-
+   * dienst ist verrechenbar). Auftraggeber + Route werden im Kopf angezeigt.
+   */
+  istLotsendienst?: boolean;
+  /** Auftraggeber (nur Lotsendienst). Wird prominent im Kopf angezeigt. */
+  lotsendienstAuftraggeber?: string;
+  /** Route/Strecke (nur Lotsendienst). Wird im Kopf angezeigt wenn gesetzt. */
+  lotsendienstRoute?: string;
   einsatzende?: string;
   /**
    * Einsatzleiter-Name (v0.1.15). Quelle: Fahrzeugbericht mit
@@ -179,6 +195,11 @@ const ALARMQUELLEN = ["WAS", "Funk", "Telefon", "Bote", "Behoerde"] as const;
 
 export function renderHauptberichtHtml(d: BerichtDaten): string {
   const isUebung = d.istUebung === true;
+  const isLotsen = d.istLotsendienst === true;
+  // Gemeinsam-auszublendende Einsatz-/Brand-only-Bloecke (syBOS-Statistik,
+  // Pflichtbereich/Einsatzzone/Alarmierung/Anrufer, Einsatzart-Tabelle, Brand-
+  // Zeitmarken) gelten weder fuer die Übung noch fuer den Lotsendienst.
+  const isSpezial = isUebung || isLotsen;
   const isManuell = d.einsatzTyp === "manuell";
   const datum = formatDate(d.alarmierungZeit);
   const datumZeit = `${datum} · ${formatTime(d.alarmierungZeit)}`;
@@ -189,9 +210,17 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   // werden. Trennt User-Daten visuell vom Papier-Raster.
   // Übung (2026-06-03): bei einer Übung wird die Akzentfarbe GRUEN, damit der
   // Empfaenger sofort sieht, dass das KEIN Brand-/Einsatzbericht ist.
-  const FILLED = isUebung ? "#15803d" : "#1e3a8a";
-  const titel = isUebung ? "Übungsbericht" : "Einsatzbericht";
-  const quelleLabel = isUebung ? "ÜBUNG" : isManuell ? "MANUELL" : "BlaulichtSMS";
+  // Lotsendienst (2026-06-05): BERNSTEIN — klar unterscheidbar von Einsatz
+  // (blau) und Übung (gruen).
+  const FILLED = isUebung ? "#15803d" : isLotsen ? "#b45309" : "#1e3a8a";
+  const titel = isUebung ? "Übungsbericht" : isLotsen ? "Lotsendienst-Bericht" : "Einsatzbericht";
+  const quelleLabel = isUebung
+    ? "ÜBUNG"
+    : isLotsen
+      ? "LOTSENDIENST"
+      : isManuell
+        ? "MANUELL"
+        : "BlaulichtSMS";
 
   // Hilfsfunktion: Wert dunkelblau rendern wenn vorhanden, sonst Leerzeile
   const v = (val: string | undefined | null, fallback = "—"): string =>
@@ -312,8 +341,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   <div class="hd">
     <div class="hd-l">${renderBrandLogo()}</div>
     <div class="hd-r">
-      ${isUebung ? `<div style="display:inline-block;background:${FILLED};color:#fff;font-size:10pt;font-weight:800;letter-spacing:0.14em;padding:2pt 8pt;border-radius:2pt;margin-bottom:2pt">ÜBUNG</div>` : ""}
-      <div class="hd-title" style="${isUebung ? `color:${FILLED}` : ""}">${titel}</div>
+      ${isSpezial ? `<div style="display:inline-block;background:${FILLED};color:#fff;font-size:10pt;font-weight:800;letter-spacing:0.14em;padding:2pt 8pt;border-radius:2pt;margin-bottom:2pt">${quelleLabel}</div>` : ""}
+      <div class="hd-title" style="${isSpezial ? `color:${FILLED}` : ""}">${titel}</div>
       <div style="font-family:'Courier New',monospace;font-size:9pt;font-weight:600;margin-top:2pt;">
         ${escape(d.einsatzId)} · ${quelleLabel}
       </div>
@@ -341,9 +370,30 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       : ""
   }
 
+  ${
+    isLotsen
+      ? `<table class="bx">
+    <tr>
+      <td class="lbl" style="width:50%">Auftraggeber</td>
+      <td class="lbl">Einsatzleiter</td>
+    </tr>
+    <tr>
+      <td class="val big">${v(d.lotsendienstAuftraggeber)}</td>
+      <td class="val big">${v(d.einsatzleiter)}</td>
+    </tr>
+    ${d.lotsendienstRoute ? `<tr>
+      <td class="lbl" colspan="2">Route / Strecke</td>
+    </tr>
+    <tr>
+      <td class="val" colspan="2" style="white-space:pre-wrap">${v(d.lotsendienstRoute)}</td>
+    </tr>` : ""}
+  </table>`
+      : ""
+  }
+
   <table class="bx">
     <tr>
-      <td class="lbl" style="width:64%">${isUebung ? "Übungsort" : "Einsatzort"}</td>
+      <td class="lbl" style="width:64%">${isUebung ? "Übungsort" : isLotsen ? "Ort / Treffpunkt" : "Einsatzort"}</td>
       <td class="lbl">Datum und Uhrzeit</td>
     </tr>
     <tr>
@@ -353,7 +403,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   </table>
 
   ${
-    isUebung
+    isSpezial
       ? ""
       : `<table class="bx cb-row">
     <tr>
@@ -403,7 +453,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   </table>
 
   ${
-    isUebung
+    isSpezial
       ? ""
       : `<table class="bx">
     <tr>
@@ -418,7 +468,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   }
 
   ${
-    isUebung
+    isSpezial
       ? `<table class="bx" style="margin-top:1mm">
     <tr><td class="lbl">Beteiligte Stellen</td></tr>
     <tr>
@@ -502,12 +552,12 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   </table>
 
   <table class="bx">
-    <tr><td class="lbl">${isUebung ? "Übungschronik / Tätigkeitsbericht" : "Meldung von der Einsatzleitung (Einsatzchronik)"}</td></tr>
+    <tr><td class="lbl">${isUebung ? "Übungschronik / Tätigkeitsbericht" : isLotsen ? "Lotsendienst-Chronik / Tätigkeitsbericht" : "Meldung von der Einsatzleitung (Einsatzchronik)"}</td></tr>
     <tr><td>${renderMeldungEinsatzleitungInhalt(d)}</td></tr>
   </table>
 
-  ${isUebung ? "" : renderTechnischeStatistikBlock(d)}
-  ${isUebung ? "" : renderBrandStatistikBlock(d)}
+  ${isSpezial ? "" : renderTechnischeStatistikBlock(d)}
+  ${isSpezial ? "" : renderBrandStatistikBlock(d)}
 
   ${
     d.reaktivierungen && d.reaktivierungen.length > 0

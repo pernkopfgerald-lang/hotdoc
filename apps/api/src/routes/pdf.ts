@@ -15,7 +15,6 @@ import { deriveBerichtNrFromId } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
-import { renderLotsendienstHtml, type LotsendienstDaten } from "../services/pdf/lotsendienst.js";
 import { renderPdf } from "../services/pdf/generator.js";
 import {
   renderHauptberichtHtml,
@@ -153,99 +152,50 @@ pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), (async (req, res) => {
 }) as RequestHandler);
 
 /**
- * Baut die Lotsendienst-PDF-Daten zusammen. Mannschaft + Fahrzeuge kommen
- * aus den Fahrzeugbericht-Docs (falls vorhanden), KM aus dem km.gefahrenKm-
- * Feld. Wenn noch keine Fahrzeugberichte existieren (Lotsendienst frisch
- * angelegt), wird eine leere Tabelle generiert.
+ * Lotsendienst-Bericht (2026-06-05): laeuft — wie der Übungsbericht — durch
+ * DENSELBEN Renderer wie der Einsatzbericht (`renderHauptberichtHtml`), damit
+ * der Lotsendienst den vollen Einsatzbericht-Charakter bekommt: Chronik,
+ * je-Fahrzeug-Anhangblaetter (Mannschaft mit Funktion + Atemschutz + Geraete),
+ * Foto-Anhang. Wir bauen zuerst die volle `BerichtDaten` und overlayen dann
+ * die Lotsendienst-spezifischen Felder (Auftraggeber, Route). Die Einsatz-/
+ * Brand-only-Bloecke (syBOS-Statistik, Pflichtbereich/Einsatzzone/ueberoert-
+ * liche Hilfe, Einsatzauftrag-via, Anrufer, Brand-Zeitmarken, Einsatzart-
+ * Tabelle) werden ausgeblendet. Der Verrechnungs-Block BLEIBT erhalten —
+ * der Lotsendienst ist verrechenbar.
  */
 async function buildLotsendienstHtml(
   id: string,
   doc: Record<string, unknown>,
 ): Promise<string> {
-  const fzgBerichte = await loadFahrzeugberichte(id);
+  const data = await buildBerichtDaten(id, doc);
 
-  // Mannschaft aus allen Fahrzeugberichten zusammenführen
-  const allePersonenIds = new Set<number>();
-  const personenList: Array<{ id: number; kdt: boolean; fahrer: boolean }> = [];
-  for (const fz of fzgBerichte) {
-    const m = (fz.mannschaft as Array<{ personId: number }> | undefined) ?? [];
-    for (const slot of m) {
-      if (slot.personId && !allePersonenIds.has(slot.personId)) {
-        allePersonenIds.add(slot.personId);
-        personenList.push({ id: slot.personId, kdt: false, fahrer: false });
-      }
-    }
-    const kdt = fz.fahrzeugKdtPersonId as number | undefined;
-    const fahrer = fz.fahrerPersonId as number | undefined;
-    if (kdt && !allePersonenIds.has(kdt)) {
-      allePersonenIds.add(kdt);
-      personenList.push({ id: kdt, kdt: true, fahrer: false });
-    }
-    if (fahrer && !allePersonenIds.has(fahrer)) {
-      allePersonenIds.add(fahrer);
-      personenList.push({ id: fahrer, kdt: false, fahrer: true });
-    }
+  data.istLotsendienst = true;
+  data.einsatzQuelle = "Lotsendienst";
+
+  data.lotsendienstAuftraggeber = String(doc.lotsendienstAuftraggeber ?? "—");
+  if (doc.lotsendienstRoute) {
+    data.lotsendienstRoute = String(doc.lotsendienstRoute);
   }
 
-  const mannschaft = await Promise.all(
-    personenList.map(async (p) => {
-      const person = await loadPerson(p.id);
-      return {
-        name: person
-          ? `${person.nachname ?? ""} ${person.vorname ?? ""}`.trim() || `Pers-${p.id}`
-          : `Pers-${p.id}`,
-        ...(person?.dienstgrad ? { rang: person.dienstgrad } : {}),
-        kdt: p.kdt,
-        fahrer: p.fahrer,
-      };
-    }),
-  );
+  // Verrechnung sicherstellen: Lotsendienst ist standardmaessig verrechenbar.
+  // Der Verrechnungs-Block bleibt im Renderer sichtbar (Guard `!isUebung`).
+  data.verrechenbar =
+    (doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar ?? true;
 
-  const fahrzeuge = fzgBerichte.map((fz) => {
-    const fid = (fz.fahrzeugId as string) ?? "?";
-    const km = (fz.km as { gefahrenKm?: number } | undefined)?.gefahrenKm ?? 0;
-    const zeit = fz.zeit as { von?: string; bis?: string } | undefined;
-    return {
-      abk: FAHRZEUG_ABK[fid] ?? fid.toUpperCase(),
-      funkrufname: FAHRZEUG_FUNKRUF[fid] ?? fid,
-      kmGefahren: km,
-      ...(zeit?.von ? { zeitVon: zeit.von } : {}),
-      ...(zeit?.bis ? { zeitBis: zeit.bis } : {}),
-    };
-  });
+  // Einsatz-/Brand-only-Felder entfernen — fuer den Lotsendienst irrelevant.
+  // Der Renderer guarded zusaetzlich per `isLotsendienst`/`isSpezial`, aber so
+  // steht im data-Objekt auch nichts Irrefuehrendes mehr. Verrechnung NICHT
+  // loeschen (siehe oben).
+  delete data.technischeStatistik;
+  delete data.brandStatistik;
+  delete data.pflichtbereich;
+  delete data.einsatzzoneEzell;
+  delete data.ueberOertlicheHilfe;
+  delete data.einsatzauftragVia;
+  delete data.anrufer;
+  delete data.anruferTel;
 
-  // Tätigkeitsbericht aus dem ersten Fahrzeugbericht (falls Aufträge dokumentiert)
-  const taetigkeitsbericht = fzgBerichte
-    .map((fz) => String(fz.taetigkeitsbericht ?? "").trim())
-    .filter((t) => t.length > 0)
-    .join("\n\n");
-
-  const data: LotsendienstDaten = {
-    einsatzId: id,
-    berichtsNummer: deriveBerichtNrFromId(
-      id,
-      doc.einsatzart as string | undefined,
-      doc.alarmierungZeit as string | undefined,
-    ),
-    einsatzQuelle: "Lotsendienst",
-    einsatzort: String(doc.einsatzort ?? "—"),
-    alarmierungZeit: String(doc.alarmierungZeit ?? ""),
-    ...(doc.einsatzende ? { einsatzende: String(doc.einsatzende) } : {}),
-    auftraggeber: String(doc.lotsendienstAuftraggeber ?? "—"),
-    ...(doc.lotsendienstRoute ? { route: String(doc.lotsendienstRoute) } : {}),
-    verrechenbar:
-      ((doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar) ?? true,
-    ...((doc.verrechnung as { rechnungsadresse?: string } | undefined)?.rechnungsadresse
-      ? { rechnungsadresse: (doc.verrechnung as { rechnungsadresse: string }).rechnungsadresse }
-      : {}),
-    mannschaft,
-    fahrzeuge,
-    ...(taetigkeitsbericht ? { taetigkeitsbericht } : {}),
-    ...(doc.meldungEinsatzleitung
-      ? { meldungEinsatzleitung: String(doc.meldungEinsatzleitung) }
-      : {}),
-  };
-  return renderLotsendienstHtml(data);
+  return renderHauptberichtHtml(data);
 }
 
 /**
