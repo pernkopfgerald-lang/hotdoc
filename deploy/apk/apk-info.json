@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.22",
-  "apkUrl": "/hotdoc-v0.1.22-release.apk",
-  "releaseNotes": "v0.1.22 — Großes Robustheits- & Usability-Update (4-Personas-Audit)\n\n• Kein Datenverlust mehr: Eingaben überleben Tab-Wechsel, Reload, Funkloch und parallele Speichervorgänge.\n• Tab-X schließt nicht mehr ungefragt den ganzen Einsatz — Abschluss-Dialog ist das einzige Tor.\n• Abgeschlossene Berichte: eigene Abschluss-Ansicht am Tablet mit Reaktivieren-Knopf; blockierte Übertragungen sichtbar + automatisches Nachreichen.\n• Echte fortlaufende Berichtsnummern (B26-001/T26-001) beim Abschluss, auf PDF und im Archiv.\n• PDF-Fixes: Lage unter Kontrolle/Brand aus, Geräte-Klartext, Rechnungsadresse, Foto-Anhang passt auf A4.\n• Alle Knöpfe daumengroß (44 px), Tabs zeigen Einsatzort, verständliche Fehlermeldungen.\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.21.",
-  "publishedAt": "2026-06-12T10:00:00+00:00",
+  "currentVersion": "0.1.23",
+  "apkUrl": "/hotdoc-v0.1.23-release.apk",
+  "releaseNotes": "v0.1.23 — Lagekarte zeigt parallele Einsatzorte\n\n• Bei Mehrfach-Lagen (z. B. Sturm) zeigt die Lagekarte jetzt die Einsatzorte ALLER parallelen Einsätze als halbtransparente Pins — der aktive Einsatz bleibt der kräftige rote Pin. 'Gesamt' nimmt alle Orte mit ins Bild.\n\n— Enthält das große Robustheits-Update v0.1.22 (Datenverlust-Schutz, Tab-X-Fix, Berichtsnummern, PDF-Fixes, 44-px-Bedienziele) und alle Neuerungen aus v0.1.10–v0.1.21.",
+  "publishedAt": "2026-06-12T12:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

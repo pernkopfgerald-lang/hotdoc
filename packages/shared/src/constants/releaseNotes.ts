@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.23",
+    date: "2026-06-12",
+    title: "Lagekarte zeigt parallele Einsatzorte",
+    bullets: [
+      "Bei Mehrfach-Lagen (z. B. Sturm) zeigt die Lagekarte in der Florian-Zentrale jetzt die Einsatzorte ALLER parallelen Einsätze als halbtransparente Pins — der aktive Einsatz bleibt der kräftige rote Pin. 'Gesamt' und das Auto-Lagebild nehmen alle Orte mit ins Bild.",
+    ],
+  },
+  {
     version: "0.1.22",
     date: "2026-06-12",
     title: "Großes Robustheits- & Usability-Update (4-Personas-Audit)",

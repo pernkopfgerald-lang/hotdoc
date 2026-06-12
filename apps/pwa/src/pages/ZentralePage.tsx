@@ -3273,6 +3273,22 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   },
                 }
               : {})}
+            // EL-08 (Audit-Folge): bei Mehrfach-Lagen die Einsatzorte ALLER
+            // parallelen Einsätze als halbtransparente Pins mitzeigen —
+            // der EL sieht das gesamte Lagebild, der aktive Einsatz bleibt
+            // der kräftige Pin. (aktiveEinsaetze ist bereits Lotsendienst-
+            // bereinigt, #165.)
+            weitereEinsatzorte={aktiveEinsaetze.flatMap((eDoc) => {
+              if (eDoc._id === aktiverEinsatzId || !eDoc.koordinaten) return [];
+              const label = eDoc.einsatzort ?? eDoc.einsatzart;
+              return [
+                {
+                  lat: eDoc.koordinaten.lat,
+                  lng: eDoc.koordinaten.lng,
+                  ...(label ? { label } : {}),
+                },
+              ];
+            })}
             fahrzeuge={buildFleetForFlorianMap(positions, fahrzeugStatus)}
             zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
             selectedFahrzeugId={selectedFahrzeugId}

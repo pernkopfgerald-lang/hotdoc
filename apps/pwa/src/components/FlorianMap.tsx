@@ -106,6 +106,13 @@ const HOME = FLORIAN_POSITION;
 
 interface Props {
   einsatzort?: { lat: number; lng: number; label?: string };
+  /**
+   * EL-08 (Audit-Folge, v0.1.23): Einsatzorte der PARALLELEN Einsätze.
+   * Werden als halbtransparente Pins gerendert + ins Auto-Fit-Bounds
+   * aufgenommen — bei Mehrfach-Lagen (Sturm!) sieht der Einsatzleiter
+   * alle Einsatzorte auf einen Blick, der aktive bleibt der kräftige Pin.
+   */
+  weitereEinsatzorte?: Array<{ lat: number; lng: number; label?: string }>;
   fahrzeuge: FahrzeugPos[];
   /** Standardzoom auf Einsatzort. */
   zoom?: number;
@@ -145,6 +152,7 @@ interface Props {
  */
 export function FlorianMap({
   einsatzort,
+  weitereEinsatzorte,
   fahrzeuge,
   zoom = 14,
   selectedFahrzeugId: controlledSelectedId,
@@ -158,6 +166,15 @@ export function FlorianMap({
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const einsatzMarkerRef = useRef<L.Marker | null>(null);
+  // EL-08: Sekundär-Marker der parallelen Einsatzorte. Stabiler Key statt
+  // Array-Identität als Effect-Dependency — der Aufrufer baut das Array
+  // bei jedem Render neu, die Marker sollen aber nur bei ECHTER Änderung
+  // neu gesetzt werden.
+  const weitereMarkerRef = useRef<L.Marker[]>([]);
+  const weitere = weitereEinsatzorte ?? [];
+  const weitereKey = weitere
+    .map((w) => `${w.lat.toFixed(5)},${w.lng.toFixed(5)},${w.label ?? ""}`)
+    .join(";");
   // Issue 25 (Einsatz-Test 2026-06-02): Tile-Layer-Refs (Base + optional
   // Overlay fuer Hybrid). Werden bei Layer-Switch ausgetauscht.
   const tileLayersRef = useRef<{
@@ -270,6 +287,8 @@ export function FlorianMap({
     if (!map || !autoFollowRef.current) return;
     const points: LatLngExpression[] = [];
     if (einsatzort) points.push([einsatzort.lat, einsatzort.lng]);
+    // EL-08: parallele Einsatzorte gehören mit ins Lagebild.
+    for (const w of weitere) points.push([w.lat, w.lng]);
     for (const f of fahrzeuge) points.push([f.lat, f.lng]);
     if (points.length === 0) return;
     if (points.length === 1) {
@@ -282,7 +301,8 @@ export function FlorianMap({
       points.map((p) => p as L.LatLngTuple),
     );
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17, animate: true });
-  }, [einsatzort?.lat, einsatzort?.lng, fahrzeuge.length, tileChoice]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [einsatzort?.lat, einsatzort?.lng, weitereKey, fahrzeuge.length, tileChoice]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -298,6 +318,36 @@ export function FlorianMap({
       }).addTo(map);
     }
   }, [einsatzort?.lat, einsatzort?.lng, einsatzort?.label]);
+
+  // EL-08: Halbtransparente Pins für die PARALLELEN Einsatzorte.
+  // ING-Auflage aus dem Audit: die Sekundär-Marker werden im SELBEN
+  // Lifecycle aufgeräumt wie der Haupt-Marker — pro Update erst alle
+  // entfernen, dann neu setzen. Sonst Marker-Leak im Stunden-Betrieb.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of weitereMarkerRef.current) m.remove();
+    weitereMarkerRef.current = [];
+    for (const w of weitere) {
+      const m = L.marker([w.lat, w.lng], {
+        icon: weitererEinsatzIcon(),
+        title: w.label ?? "Weiterer Einsatzort",
+        // Hinter dem aktiven Einsatz-Pin einsortieren — der aktive Einsatz
+        // bleibt der dominante Marker.
+        zIndexOffset: -100,
+      }).addTo(map);
+      if (w.label) {
+        m.bindTooltip(w.label, { direction: "top", offset: [0, -30] });
+      }
+      weitereMarkerRef.current.push(m);
+    }
+    return () => {
+      // Unmount-Aufräumen (Vollbild-/Popout-Wechsel zerstört die Map neu).
+      for (const m of weitereMarkerRef.current) m.remove();
+      weitereMarkerRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weitereKey]);
 
   const [tickNow, setTickNow] = useState(() => Date.now());
   useEffect(() => {
@@ -411,6 +461,8 @@ export function FlorianMap({
     if (!map) return;
     const points: LatLngExpression[] = [];
     if (einsatzort) points.push([einsatzort.lat, einsatzort.lng]);
+    // EL-08: "Gesamt" heisst wirklich gesamt — auch parallele Einsatzorte.
+    for (const w of weitere) points.push([w.lat, w.lng]);
     for (const f of fahrzeuge) points.push([f.lat, f.lng]);
     if (points.length === 0) {
       map.setView([HOME.lat, HOME.lng], 12, { animate: true });
@@ -921,6 +973,25 @@ function einsatzIcon(): L.DivIcon {
       </svg>`,
     iconSize: [32, 42],
     iconAnchor: [16, 40],
+  });
+}
+
+/**
+ * EL-08: Pin für PARALLELE Einsatzorte — gleiche Form wie der aktive
+ * Einsatz-Pin, aber halbtransparent und etwas kleiner. So ist auf einen
+ * Blick klar: "dort brennt es auch", ohne mit dem aktiven Einsatz zu
+ * konkurrieren.
+ */
+function weitererEinsatzIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "fln-einsatz-weitere",
+    html: `
+      <svg viewBox="0 0 36 48" width="26" height="34" style="opacity:0.55;filter:drop-shadow(0 3px 7px rgba(15,23,42,0.35));">
+        <path d="M18 0 C8 0 2 8 2 16 C2 28 18 48 18 48 C18 48 34 28 34 16 C34 8 28 0 18 0 Z" fill="#C8102E" stroke="#fff" stroke-width="2"/>
+        <path d="M18 8 C13 12 13 17 16 19 C14 18 13.5 16 14.5 14 M18 8 C23 12 23 17 20 19 C22 18 22.5 16 21.5 14 M16 21 H20 V25 H16 Z" fill="#fff"/>
+      </svg>`,
+    iconSize: [26, 34],
+    iconAnchor: [13, 32],
   });
 }
 
