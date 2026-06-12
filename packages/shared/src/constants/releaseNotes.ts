@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.24",
+    date: "2026-06-12",
+    title: "Zwei-Geräte-Warnung & schnellerer Abgleich",
+    bullets: [
+      "Bearbeiten zwei Geräte denselben Fahrzeugbericht (z. B. Tablet + übergebenes Handy), warnt jetzt ein einmaliger Hinweis-Dialog: 'Zweites Gerät bearbeitet diesen Bericht' — mit klarer Absprache-Anweisung, damit sich Eingaben nicht gegenseitig überschreiben.",
+      "Der 5-Sekunden-Abgleich der Fahrzeug-Tablets überträgt jetzt nur noch die wirklich benötigten Felder statt kompletter Berichte — spürbar weniger Datenvolumen und Akkulast, besonders im mobilen Netz.",
+    ],
+  },
+  {
     version: "0.1.23",
     date: "2026-06-12",
     title: "Lagekarte zeigt parallele Einsatzorte",

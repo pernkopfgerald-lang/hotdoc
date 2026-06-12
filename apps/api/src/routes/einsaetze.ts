@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { Router, type Response, type RequestHandler } from "express";
 import { z } from "zod";
-import { EinsatzSchema, FahrzeugberichtSchema } from "@hotdoc/shared";
+import { EINSATZ_POLL_FELDER, EinsatzSchema, FahrzeugberichtSchema } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -164,7 +164,28 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
   // "Zeige 1-200 von 423".
   const total = docs.length;
   const items = docs.slice(skip, skip + limit);
-  res.json({ ok: true, items, total, limit, skip });
+
+  // ING-10 Stufe 2 (4-Personas-Audit, 2026-06-12): Schlanke Poll-Projektion.
+  // ?shape=poll schickt NUR der 5-s-Fahrzeug-Tablet-Poll (BerichtPage) —
+  // die Items werden auf das geteilte Feld-Inventar EINSATZ_POLL_FELDER
+  // reduziert (insb. ohne Chronik-Array + Brand-/Technisch-Statistik).
+  // Stiller-Bruch-Schutz: Felder werden 1:1 kopiert wie das Einsatz-Doc
+  // sie traegt (nur vorhandene Keys, kein Raten/Umbenennen). OHNE
+  // shape-Param bleibt das Verhalten exakt wie bisher (volle Docs fuer
+  // Florianstation, Lagekarten-Popout und Archiv).
+  const shape = typeof req.query.shape === "string" ? req.query.shape : "";
+  const shapedItems =
+    shape === "poll"
+      ? items.map((d) => {
+          const source = d as Record<string, unknown>;
+          const projected: Record<string, unknown> = {};
+          for (const feld of EINSATZ_POLL_FELDER) {
+            if (feld in source) projected[feld] = source[feld];
+          }
+          return projected;
+        })
+      : items;
+  res.json({ ok: true, items: shapedItems, total, limit, skip });
 }) as RequestHandler);
 
 // ─── GET /api/einsaetze/:id ─────────────────────────────────

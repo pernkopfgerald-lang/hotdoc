@@ -38,6 +38,7 @@ const VorschauModal = lazy(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
 import { useGeraete } from "../lib/geraete-config";
+import { getDeviceId } from "../lib/device-id";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
 import { enqueueRequest, unblockRequests } from "../lib/request-outbox";
@@ -201,6 +202,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     id: string;
     einsatzart: string;
     einsatzort: string;
+  } | null>(null);
+  /**
+   * ING-04 (4-Personas-Audit, 2026-06-12): Fremdschreib-Hinweis. Ein
+   * ZWEITES Geraet (typisch: das QR-Handoff-Handy) hat den eigenen
+   * Fahrzeugbericht zuletzt geschrieben — Last-Writer-Wins kann Eingaben
+   * still ueberschreiben. EL-Auflage: EINMALIGER Amber-Dialog mit
+   * Handlungsanweisung statt Dauer-Rotbanner. Sichtbarkeit, keine Sperre.
+   */
+  const [fremdGeraetHinweis, setFremdGeraetHinweis] = useState<{
+    einsatzId: string;
   } | null>(null);
   /**
    * Zeitstempel des letzten erfolgreichen Auto-Save-Roundtrips. Wird vom
@@ -632,8 +643,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       if (pollInFlightRef.current) return;
       pollInFlightRef.current = true;
       try {
+        // ING-10 Stufe 2 (4-Personas-Audit, 2026-06-12): &shape=poll laesst
+        // den Server jedes Item auf EINSATZ_POLL_FELDER (@hotdoc/shared)
+        // projizieren — genau das Inventar von ApiEinsatzListItem oben.
+        // Spart pro Tick das Chronik-Array + die Brand-/Technisch-Statistik.
+        // WICHTIG: Liest dieser Effekt kuenftig ein NEUES Feld aus
+        // list.items, MUSS es in EINSATZ_POLL_FELDER nachgezogen werden.
         const list = await apiCall<{ items: ApiEinsatzListItem[] }>(
-          `/api/einsaetze?status=aktiv&fuerFahrzeug=${encodeURIComponent(fahrzeugId)}`,
+          `/api/einsaetze?status=aktiv&fuerFahrzeug=${encodeURIComponent(fahrzeugId)}&shape=poll`,
         );
         if (cancelled) return;
         // ING-01 (AUDIT-02, 2026-06-12): Der fruehere Early-Return bei leerer
@@ -796,11 +813,33 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               geaendertAm?: string;
               km?: { gefahrenKm?: number };
               fahrzeugKdtPersonId?: number;
+              // ING-04 (2026-06-12): Geraete-ID des letzten Schreibers —
+              // Basis der Fremdschreib-Erkennung (Tablet vs. Handoff-Handy).
+              lastWriterDeviceId?: string;
             }>;
           }>(`/api/einsaetze/${einsatzIdEnc}/fahrzeugberichte`);
           if (cancelled) return;
           const mine = fz.items?.find((b) => b.fahrzeugId === fahrzeugId);
           if (!mine) continue;
+          // ING-04 (4-Personas-Audit, 2026-06-12): Fremdschreib-Erkennung.
+          // Ein ANDERES Geraet hat meinen Fahrzeugbericht zuletzt
+          // geschrieben (lastWriterDeviceId gesetzt + nicht meine eigene
+          // ID) und der Bericht ist noch offen → einmaliger Amber-Hinweis.
+          // Eigene Schreibvorgaenge loesen nichts aus (ID-Vergleich), und
+          // pro (einsatzId + fremder DeviceId) zeigt die Session den Dialog
+          // genau EINMAL (Merkliste im Ref).
+          if (
+            mine.status !== "abgeschlossen" &&
+            typeof mine.lastWriterDeviceId === "string" &&
+            mine.lastWriterDeviceId.length > 0 &&
+            mine.lastWriterDeviceId !== getDeviceId()
+          ) {
+            const merkKey = `${target._id}:${mine.lastWriterDeviceId}`;
+            if (!fremdschreiberGesehenRef.current.has(merkKey)) {
+              fremdschreiberGesehenRef.current.add(merkKey);
+              setFremdGeraetHinweis({ einsatzId: target._id });
+            }
+          }
           if (mine.status === "abgeschlossen") {
             setEinsaetze((prev) =>
               prev.map((e) =>
@@ -937,6 +976,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   // AUDIT-02 (2026-06-12): laufender runPoll → naechsten 5-s-Tick ueberspringen
   // (Reconcile-GETs koennen einen Lauf ueber die Tick-Grenze ziehen).
   const pollInFlightRef = useRef(false);
+  // ING-04 (2026-06-12): Merkliste bereits gezeigter Fremdschreib-Hinweise —
+  // Key "<einsatzId>:<fremde DeviceId>". Bewusst nur Session-genau (useRef,
+  // kein Persist): nach einem App-Neustart darf der Hinweis erneut kommen.
+  const fremdschreiberGesehenRef = useRef<Set<string>>(new Set());
   // Foto-Funktion (2026-06-03): Busy-Flag während Komprimierung/Speichern.
   const [fotoBusy, setFotoBusy] = useState(false);
   // #172 (Test 2026-06-03): GPS-Adresse-Übernahme-Status für den Einsatzort-Button.
@@ -1839,6 +1882,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         oelbindemittelSaecke: Math.max(0, Math.min(99, Math.floor(einsatz.oelSaecke))),
         taetigkeitsbericht: einsatz.auftraege.map((a) => `· ${a.text}`).join("\n"),
         status: "abgeschlossen" as const,
+        // ING-04 (2026-06-12): eigene Geraete-ID als Last-Writer-Marker —
+        // ING-Auflage: BEIDE PUT-Pfade (Live-Sync + Abschluss-Upload).
+        lastWriterDeviceId: getDeviceId(),
       };
 
       const putPath = `/api/einsaetze/${encodeURIComponent(einsatzId)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`;
@@ -2045,6 +2091,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           .map((a) => `· ${a.text}`)
           .join("\n"),
         status: "in_arbeit" as const,
+        // ING-04 (2026-06-12): eigene Geraete-ID als Last-Writer-Marker.
+        // Das andere Geraet (Tablet ODER Handoff-Handy) erkennt daran im
+        // 5-s-Poll, dass hier ein Fremdschreiber aktiv ist.
+        lastWriterDeviceId: getDeviceId(),
       };
       await apiCall(
         `/api/einsaetze/${encodeURIComponent(einsatz.id)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
@@ -3304,6 +3354,104 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 autoFocus
               >
                 Jetzt zum neuen Einsatz wechseln
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ING-04 (4-Personas-Audit, 2026-06-12): EINMALIGER Amber-Dialog
+           bei Fremdschreib-Erkennung. Ein zweites Geraet (QR-Handoff-Handy)
+           bearbeitet denselben Fahrzeugbericht — Last-Writer-Wins kann
+           Eingaben still ueberschreiben. EL-Auflage: Hinweis mit klarer
+           Handlungsanweisung + ein "Verstanden"-Button, KEIN Dauer-Banner,
+           KEINE Sperre. Einmaligkeit pro (einsatzId + fremder DeviceId)
+           via fremdschreiberGesehenRef (Session-genau). ─── */}
+      {fremdGeraetHinweis && (
+        <div
+          className="modal-backdrop"
+          style={{
+            // Selbes Muster wie das Neuer-Einsatz-Popup oben: position+inset
+            // inline, weil die Klasse modal-backdrop nirgendwo definiert ist.
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fremd-geraet-title"
+        >
+          <div
+            style={{
+              background: "var(--bg)",
+              color: "var(--fg)",
+              borderRadius: "var(--radius-m)",
+              padding: "24px 28px",
+              width: "min(560px, calc(100% - 32px))",
+              border: "3px solid var(--warn)",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 14px",
+                borderRadius: "var(--radius-pill)",
+                background: "var(--warn)",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "var(--font-sm)",
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                marginBottom: 12,
+              }}
+            >
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+              Hinweis
+            </div>
+            <h2
+              id="fremd-geraet-title"
+              style={{ margin: "0 0 6px 0", fontSize: 27.5, lineHeight: 1.25 }}
+            >
+              Zweites Gerät bearbeitet diesen Bericht
+            </h2>
+            <div
+              style={{
+                fontSize: "var(--font-md)",
+                color: "var(--fg-2)",
+                marginBottom: 20,
+                lineHeight: 1.5,
+              }}
+            >
+              Eingaben können sich gegenseitig überschreiben. Sprecht ab, dass
+              nur EIN Gerät den Bericht führt — das andere nur mitliest.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setFremdGeraetHinweis(null)}
+                style={{
+                  minWidth: 200,
+                  minHeight: 48,
+                  background: "var(--warn)",
+                  borderColor: "var(--warn)",
+                  color: "#fff",
+                  fontWeight: 700,
+                }}
+                autoFocus
+              >
+                Verstanden
               </button>
             </div>
           </div>

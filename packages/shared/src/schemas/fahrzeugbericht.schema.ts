@@ -100,6 +100,17 @@ export const FahrzeugberichtSchema = z.object({
 
   status: z.enum(["in_arbeit", "abgeschlossen"]).default("in_arbeit"),
 
+  /**
+   * ING-04 (4-Personas-Audit, 2026-06-12): Geraete-ID des letzten
+   * Schreibers (Fahrzeug-Tablet vs. QR-Handoff-Handy). Beide PUT-Pfade
+   * der PWA (Live-Sync + Abschluss-Upload) schicken sie mit; das Tablet
+   * erkennt im 5-s-Poll daran einen Fremdschreiber und zeigt einen
+   * einmaligen Hinweis-Dialog (Sichtbarkeit, KEINE Sperre — Last-Writer-
+   * Wins bleibt). Optional, damit Bestandsberichte ohne das Feld weiter
+   * valide bleiben (kein Schema-Bruch).
+   */
+  lastWriterDeviceId: z.string().optional(),
+
   erstelltAm: z.string().datetime({ offset: true }),
   geaendertAm: z.string().datetime({ offset: true }),
 });

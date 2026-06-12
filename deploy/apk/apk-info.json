@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.23",
-  "apkUrl": "/hotdoc-v0.1.23-release.apk",
-  "releaseNotes": "v0.1.23 — Lagekarte zeigt parallele Einsatzorte\n\n• Bei Mehrfach-Lagen (z. B. Sturm) zeigt die Lagekarte jetzt die Einsatzorte ALLER parallelen Einsätze als halbtransparente Pins — der aktive Einsatz bleibt der kräftige rote Pin. 'Gesamt' nimmt alle Orte mit ins Bild.\n\n— Enthält das große Robustheits-Update v0.1.22 (Datenverlust-Schutz, Tab-X-Fix, Berichtsnummern, PDF-Fixes, 44-px-Bedienziele) und alle Neuerungen aus v0.1.10–v0.1.21.",
-  "publishedAt": "2026-06-12T12:00:00+00:00",
+  "currentVersion": "0.1.24",
+  "apkUrl": "/hotdoc-v0.1.24-release.apk",
+  "releaseNotes": "v0.1.24 — Zwei-Geräte-Warnung & schnellerer Abgleich\n\n• Bearbeiten zwei Geräte denselben Fahrzeugbericht, warnt ein einmaliger Hinweis-Dialog mit klarer Absprache-Anweisung — kein stilles Überschreiben mehr.\n• Der 5-Sekunden-Abgleich überträgt nur noch die benötigten Felder — weniger Datenvolumen und Akkulast im mobilen Netz.\n\n— Enthält parallele Einsatzorte auf der Lagekarte (v0.1.23), das große Robustheits-Update (v0.1.22) und alle Neuerungen aus v0.1.10–v0.1.21.",
+  "publishedAt": "2026-06-12T16:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",
