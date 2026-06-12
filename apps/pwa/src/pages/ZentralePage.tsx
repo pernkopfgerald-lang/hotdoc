@@ -36,12 +36,17 @@ import { HandoffModal } from "../components/HandoffModal";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
-import { apiCall, getTabletToken } from "../lib/api";
+import { apiCall, ApiError, describeApiError, getTabletToken } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
+// AUDIT-09/KDT-06 (Audit 2026-06-12): gecachte Personalliste als Offline-Fallback.
+import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useGeolocation } from "../lib/geo";
 import {
   BETEILIGTE_STELLEN as DEFAULT_BETEILIGTE_STELLEN,
+  // AUDIT-07/EL-11a (Audit 2026-06-12): Fallback-Berichtsnummer fuer die
+  // Abschluss-Quittung, solange die Response keine echte Nummer liefert.
+  deriveBerichtNrFromId,
   FAHRZEUGE,
   FLORIAN_POSITION,
   SONSTIGE_FF as DEFAULT_SONSTIGE_FF,
@@ -87,6 +92,12 @@ interface EinsatzApiDoc {
   status?: string;
   einsatzTyp?: string;
   schreibschutz?: boolean;
+  /** AUDIT-01 (6): Server-Aenderungsstand — entscheidet ob ein lokaler
+   *  Editor-Draft (localStorage) juenger ist als das Backend-Doc. */
+  geaendertAm?: string;
+  /** AUDIT-07/EL-11a: echte Berichtsnummer (serverseitig beim Abschluss
+   *  vergeben) — fuer die Abschluss-Quittung beim already_closed-Pfad. */
+  berichtNummer?: string;
   pflichtbereich?: boolean;
   einsatzzoneEzell?: boolean;
   ueberOertlicheHilfe?: boolean;
@@ -290,6 +301,11 @@ function hhmmToIso(hhmm: string, refDateIso: string): string | undefined {
     0,
     0,
   );
+  // AUDIT-01/EL-09 (Audit 2026-06-12): Einsatz ueber Mitternacht — liegt die
+  // eingegebene Uhrzeit mehr als 2 Minuten VOR der Alarmierung, ist der
+  // Folgetag gemeint ("Brand aus 00:30" bei Alarm 23:40 → naechster Tag).
+  // Logik-Vorbild: hhmmToISOAt in BerichtPage.tsx.
+  if (d.getTime() < ref.getTime() - 2 * 60_000) d.setDate(d.getDate() + 1);
   return d.toISOString();
 }
 
@@ -474,11 +490,37 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [saveErr, setSaveErr] = useState<string | null>(null);
   /** U-21: Strg+S Toast. */
   const [savedToastAt, setSavedToastAt] = useState<number | null>(null);
+  // ── AUDIT-01 (Audit 2026-06-12): Save-Hardening — Spiegel-Refs ────────────
+  // Diese Refs werden bei JEDEM Render aktualisiert, damit Intervalle,
+  // Keydown-Handler und Flush-Pfade nie mit veralteten Closures arbeiten.
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const editorDirtyRef = useRef(editorDirty);
+  editorDirtyRef.current = editorDirty;
+  const saveBusyRef = useRef(saveBusy);
+  saveBusyRef.current = saveBusy;
+  const aktiverEinsatzIdRef = useRef(aktiverEinsatzId);
+  aktiverEinsatzIdRef.current = aktiverEinsatzId;
+  const schreibschutzRef = useRef(aktiverEinsatz?.schreibschutz === true);
+  schreibschutzRef.current = aktiverEinsatz?.schreibschutz === true;
+  /** AUDIT-01 (1): immer die FRISCHESTE saveEditor-Closure — wird nach der
+   *  saveEditor-Definition bei jedem Render zugewiesen. Behebt die
+   *  Stale-Closure beim Strg+S-Handler und ermoeglicht den 15-s-Retry. */
+  const saveEditorRef = useRef<() => Promise<void>>(async () => undefined);
+  /** AUDIT-01 (2): Cross-Save-Sperre — fuer WELCHEN Einsatz ist der Editor
+   *  dirty? Nur wenn diese ID mit aktiverEinsatzId uebereinstimmt, darf ein
+   *  Auto-Save laufen. Damit kann KEIN Pfad mehr Editor-Daten von Einsatz A
+   *  per PUT auf Einsatz B schreiben. */
+  const dirtyEinsatzIdRef = useRef<string | null>(null);
+
   // Auto-Save: nach 1,5 s ohne weitere Tipparbeit speichern. Manueller
   // "Speichern"-Button wurde entfernt — der User soll sich nichts merken muessen.
   useEffect(() => {
     const ist_schreibgeschuetzt = aktiverEinsatz?.schreibschutz === true;
     if (!editorDirty || !aktiverEinsatzId || ist_schreibgeschuetzt) return;
+    // AUDIT-01 (2): GUARD — der Editor traegt Daten eines ANDEREN Einsatzes
+    // (z. B. Poll hat waehrend Tipparbeit umgeschaltet). Kein Save.
+    if (dirtyEinsatzIdRef.current !== aktiverEinsatzId) return;
     const handle = setTimeout(() => {
       void saveEditor();
     }, 1500);
@@ -487,13 +529,24 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   }, [editor, editorDirty, aktiverEinsatzId, aktiverEinsatz?.schreibschutz]);
 
   // U-21: Strg+S / Cmd+S triggert sofortiges saveEditor + zeigt Toast.
+  // AUDIT-01 (1): via saveEditorRef — der Handler haengt an
+  // [aktiverEinsatzId, schreibschutz]; ohne Ref speicherte er nach Minuten
+  // Tipparbeit den EDITOR-STAND VOM EFFEKT-ZEITPUNKT (Rollback-Bug).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         const ist_schreibgeschuetzt = aktiverEinsatz?.schreibschutz === true;
         if (aktiverEinsatzId && !ist_schreibgeschuetzt) {
-          void saveEditor();
+          // Cross-Save-Sperre auch hier: dirty fuer einen anderen Einsatz
+          // → kein Save (Daten wuerden am falschen Doc landen).
+          if (
+            editorDirtyRef.current &&
+            dirtyEinsatzIdRef.current !== aktiverEinsatzId
+          ) {
+            return;
+          }
+          void saveEditorRef.current();
           setSavedToastAt(Date.now());
         }
       }
@@ -502,6 +555,43 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktiverEinsatzId, aktiverEinsatz?.schreibschutz]);
+
+  // AUDIT-01 (5)/ING-05: Auto-Save-Retry — ein einzelner fehlgeschlagener
+  // Save (Funkloch, 12-s-Timeout) blieb frueher haengen bis zur naechsten
+  // Tipparbeit. Alle 15 s: wenn dirty und kein Save laeuft → erneut versuchen.
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (
+        editorDirtyRef.current &&
+        !saveBusyRef.current &&
+        !schreibschutzRef.current &&
+        dirtyEinsatzIdRef.current === aktiverEinsatzIdRef.current
+      ) {
+        void saveEditorRef.current();
+      }
+    }, 15_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // AUDIT-01 (6)/ING-05: Editor-Draft nach localStorage spiegeln (700 ms
+  // debounced, Muster: Draft-Mirror der BerichtPage). Reload/Crash bei
+  // saveErr verliert damit keine Florian-Tipparbeit mehr — der Seed-Effekt
+  // stellt den Draft wieder her, solange er juenger als der Server-Stand ist.
+  useEffect(() => {
+    if (!editorDirty || !aktiverEinsatzId) return;
+    const id = aktiverEinsatzId;
+    const handle = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          `hotdoc.zentrale-draft.${id}`,
+          JSON.stringify({ editor: editorRef.current, savedAt: new Date().toISOString() }),
+        );
+      } catch {
+        // Quota/Private-Mode — Draft ist Best-Effort, Auto-Save bleibt Pflichtpfad.
+      }
+    }, 700);
+    return () => clearTimeout(handle);
+  }, [editor, editorDirty, aktiverEinsatzId]);
 
   useEffect(() => {
     if (savedToastAt === null) return;
@@ -529,6 +619,39 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  geoeffnet. Cancel mid-flow schreibt NICHTS — der User kann den
    *  klassischen Abschluss-Confirm sofort danach trotzdem benutzen. */
   const [brandWizardOpen, setBrandWizardOpen] = useState(false);
+  /** AUDIT-07/EL-13: Brand-Statistik nachtraeglich bearbeiten — im
+   *  Edit-Modus oeffnet handleBrandWizardComplete danach NICHT das
+   *  Abschluss-Confirm, sondern zeigt nur den Gespeichert-Hinweis. */
+  const brandWizardEditModeRef = useRef(false);
+  /** AUDIT-07/EL-11a: Persistente Abschluss-Quittung — ueberlebt das
+   *  Poll-Wegfallen des abgeschlossenen Einsatzes aus der Tab-Leiste.
+   *  Reset bei neuem Abschluss (Overwrite) oder manuellem Schliessen. */
+  const [letzterAbschluss, setLetzterAbschluss] = useState<{
+    einsatzId: string;
+    zeit: string;
+    berichtNummer?: string;
+  } | null>(null);
+  /** AUDIT-07: Tab-X-Pfad wechselt den Einsatz UND seeded das Abschluss-
+   *  Confirm im selben Handler — der Reset-Effekt unten darf dieses
+   *  Seeding nicht gleich wieder wegwischen. */
+  const abschlussSeedGuardRef = useRef(false);
+  /** AUDIT-09/EL-06: Lotsendienst-Erfolgsbanner (~12 s sichtbar) — der
+   *  Poll-Filter #165 wirft Lotsendienst aus der Florian-Ansicht, ohne
+   *  Banner sah die Anlage wie ein stiller Fehlschlag aus. */
+  const [lotsendienstHinweis, setLotsendienstHinweis] = useState<string | null>(null);
+  /** AUDIT-09/EL-06: Doppel-Anlage-Guard — Button 30 s nach Anlage sperren. */
+  const [lotsendienstAngelegtAt, setLotsendienstAngelegtAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!lotsendienstHinweis) return;
+    const t = setTimeout(() => setLotsendienstHinweis(null), 12_000);
+    return () => clearTimeout(t);
+  }, [lotsendienstHinweis]);
+  useEffect(() => {
+    if (lotsendienstAngelegtAt === null) return;
+    const t = setTimeout(() => setLotsendienstAngelegtAt(null), 30_000);
+    return () => clearTimeout(t);
+  }, [lotsendienstAngelegtAt]);
+  const lotsendienstGesperrt = lotsendienstAngelegtAt !== null;
   /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   const [archivOpenFlorian, setArchivOpenFlorian] = useState(false);
@@ -543,18 +666,61 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // löscht den Save-OK-Hinweis falls noch sichtbar.
   function patchEditor(p: Partial<EditorState>) {
     setEditor((prev) => ({ ...prev, ...p }));
+    // AUDIT-01 (2): merken, FUER WELCHEN Einsatz die Tipparbeit gilt —
+    // Grundlage der Cross-Save-Sperre in allen Save-Pfaden.
+    dirtyEinsatzIdRef.current = aktiverEinsatzId;
     setEditorDirty(true);
     setSaveOk(null);
   }
+
+  /**
+   * AUDIT-01 (3): Einsatz-Wechsel mit Flush — ungespeicherte Tipparbeit wird
+   * VOR dem Wechsel gegen den ALTEN Einsatz gespeichert. saveEditorRef haelt
+   * zu diesem Zeitpunkt noch die Closure mit dem alten aktiverEinsatz
+   * (refIso fuer Zeitmarken, kategorieFuer) — der Save geht also korrekt auf
+   * den alten Einsatz. setEditorDirty(false) gibt den Seed-Effekt fuer den
+   * neuen Einsatz frei. BEWUSST NICHT: "immer gegen dirtyEinsatzIdRef-ID
+   * speichern" — das wuerde A-Daten mit B-Datum/-Kategorie speichern.
+   */
+  function wechsleAktivenEinsatz(fullId: string): void {
+    if (fullId === aktiverEinsatzId) return;
+    if (editorDirty) {
+      void saveEditorRef.current();
+      setEditorDirty(false);
+    }
+    setAktiverEinsatzId(fullId);
+  }
+
+  // AUDIT-07/EL-10: kein Abschluss-State-Leak zwischen Einsaetzen —
+  // Verrechenbar/Rechnungsadresse/Override-Grund gehoeren immer genau zu
+  // EINEM Einsatz und werden beim Wechsel zurueckgesetzt.
+  useEffect(() => {
+    if (abschlussSeedGuardRef.current) {
+      // Tab-X-Pfad hat soeben gewechselt UND geseedet — Reset ueberspringen.
+      abschlussSeedGuardRef.current = false;
+      return;
+    }
+    setAbschlussVerrechenbar(false);
+    setAbschlussRechnungsadresse("");
+    setAbschlussOverrideGrund("");
+  }, [aktiverEinsatzId]);
 
   // Aktive Einsätze vom Backend laden — der erste aktive wird die Quelle
   // für PDF/Spickzettel/Chronik-Sync. Refresht alle 30 s.
   // Während der User editiert (`editorDirty=true`) wird der Editor-State
   // NICHT überschrieben, sonst verliert er seine Tipparbeit zwischen den
   // Polls. Nur das Backend-Doc selbst wird aktualisiert.
+  // AUDIT-01 (8)/ING-10-Teil: laufender Poll → naechsten Tick ueberspringen.
+  // Verhindert Request-Stau (12-s-Timeout vs. 10-s-Intervall) und Out-of-
+  // Order-Antworten, die den Einsatz-State zuruecksetzen.
+  const einsatzPollInFlightRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    const load = async (force = false) => {
+      // force = forciertes Reload nach onCreated/Reaktivierung — darf einen
+      // laufenden Poll ueberholen, der den neuen Einsatz noch nicht kennt.
+      if (einsatzPollInFlightRef.current && !force) return;
+      einsatzPollInFlightRef.current = true;
       try {
         const r = await apiCall<{ items: EinsatzApiDoc[] }>(
           "/api/einsaetze?status=aktiv",
@@ -584,12 +750,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       } catch {
         // Backend nicht erreichbar — bleibt beim aktuellen Stand (kein
         // ungewollter Reset bei kurzem Netz-Wackler).
+      } finally {
+        einsatzPollInFlightRef.current = false;
       }
     };
     // Reload-Hook fuer onCreated: ruft direkt load() ohne aufs naechste
     // Polling-Intervall zu warten.
     reloadAktiveEinsaetzeRef.current = () => {
-      void load();
+      void load(true);
     };
     void load();
     // Polling alle 10 s (statt 30 s) — damit Multi-Tablet-Updates schneller
@@ -708,8 +876,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           }))
           .sort((a, b) => `${a.nachname} ${a.vorname}`.localeCompare(`${b.nachname} ${b.vorname}`));
         setPersonen(list);
+        // AUDIT-09/KDT-06: Liste cachen — beim naechsten Funkloch-Boot ist
+        // der PersonPicker trotzdem befuellt.
+        savePersonenCache(list);
       } catch {
-        // Endpoint vielleicht (noch) nicht vorhanden — ignorieren, UI zeigt IDs
+        // AUDIT-09/KDT-06: kein leerer catch mehr — gecachte Personalliste
+        // als Fallback (leicht veraltet ist besser als leer/nur IDs).
+        const cached = loadPersonenCache();
+        if (!cancelled && cached) {
+          setPersonen((cur) => (cur.length > 0 ? cur : cached));
+        }
       }
     })();
     return () => {
@@ -722,6 +898,38 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   useEffect(() => {
     if (!aktiverEinsatz) return;
     if (editorDirty) return;
+    // AUDIT-01 (6): Draft-Restore — liegt ein lokaler Editor-Draft vor, der
+    // JUENGER ist als der Server-Stand, hat die lokale Tipparbeit Vorrang
+    // (z. B. Reload nach Save-Fehler/Crash). setEditorDirty(true) loest den
+    // Auto-Save aus; nach erfolgreichem PUT loescht saveEditor den Draft.
+    if (aktiverEinsatz.schreibschutz !== true) {
+      const draftKey = `hotdoc.zentrale-draft.${aktiverEinsatz._id}`;
+      try {
+        const raw = localStorage.getItem(draftKey);
+        if (raw) {
+          const draft = JSON.parse(raw) as {
+            editor?: Partial<EditorState>;
+            savedAt?: string;
+          };
+          const draftZeit = draft.savedAt ? new Date(draft.savedAt).getTime() : 0;
+          const docZeit = aktiverEinsatz.geaendertAm
+            ? new Date(aktiverEinsatz.geaendertAm).getTime()
+            : 0;
+          if (draft.editor && draftZeit > docZeit) {
+            // Defensiv ueber EMPTY_EDITOR mergen — ein Draft aus einer
+            // aelteren App-Version darf keine Felder fehlen lassen.
+            setEditor({ ...EMPTY_EDITOR, ...draft.editor });
+            dirtyEinsatzIdRef.current = aktiverEinsatz._id;
+            setEditorDirty(true);
+            return;
+          }
+          // Veralteter Draft — Server-Stand gewinnt, Draft aufraeumen.
+          localStorage.removeItem(draftKey);
+        }
+      } catch {
+        // Korrupter Draft/Storage-Fehler — ignorieren, Server-Stand seeden.
+      }
+    }
     // Auto-Fill bei Einsatzort in Eberstalzell: Pflichtbereich = Ja,
     // Einsatzzone FF Eberstalzell = Ja, ueberoertliche Hilfe = Nein.
     // Greift nur wenn der Server noch keinen Wert hatte (null/undefined)
@@ -824,6 +1032,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     setSaveBusy(true);
     setSaveErr(null);
     setSaveOk(null);
+    // AUDIT-01 (4)/ING-06: Save-Race-Schutz — Snapshot des Editor-Stands,
+    // der jetzt gespeichert wird. Tippt der User WAEHREND des PUTs weiter,
+    // ist editorRef.current nach dem PUT ein anderes Objekt (patchEditor
+    // erzeugt neue Objekte) → dirty bleibt stehen, der Debounce speichert
+    // die Nacharbeit 1,5 s spaeter. Nichts verschwindet mehr.
+    const snapshot = editor;
     try {
       const refIso = aktiverEinsatz?.alarmierungZeit ?? new Date().toISOString();
       const lage = hhmmToIso(editor.lageUnterKontrolleHHMM, refIso);
@@ -928,7 +1142,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         method: "PUT",
         body,
       });
-      setEditorDirty(false);
+      // AUDIT-01 (4): dirty nur loeschen wenn der Editor seit dem Snapshot
+      // unveraendert ist (Referenzvergleich genuegt). Sonst bleibt dirty —
+      // die Nacharbeit wird vom Debounce/Retry nachgespeichert.
+      if (editorRef.current === snapshot) {
+        setEditorDirty(false);
+        // AUDIT-01 (6): Stand ist am Server — Editor-Draft aufraeumen.
+        try {
+          localStorage.removeItem(`hotdoc.zentrale-draft.${aktiverEinsatzId}`);
+        } catch {
+          // egal — Draft wird spaeter ueber den Seed-Effekt ausgemistet.
+        }
+      }
       setSaveOk(`Hauptbericht gespeichert · ${new Date().toLocaleTimeString("de-AT")}`);
       // Doc neu laden damit die Anzeige stimmt
       try {
@@ -940,15 +1165,45 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         // egal — der Save war erfolgreich, nächster Poll holt es
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setSaveErr(`Speichern fehlgeschlagen: ${msg}`);
+      // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
+      setSaveErr(`Speichern fehlgeschlagen: ${describeApiError(e)}`);
     } finally {
       setSaveBusy(false);
     }
   }
+  // AUDIT-01 (1): Zuweisung bei JEDEM Render — saveEditorRef zeigt immer auf
+  // die frischeste Closure (aktueller editor + aktiverEinsatz). KEIN useEffect
+  // noetig; Strg+S, 15-s-Retry und Tab-Wechsel-Flush greifen darauf zu.
+  saveEditorRef.current = saveEditor;
 
   function toggleArrayItem<T>(arr: T[], item: T): T[] {
     return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
+  }
+
+  /**
+   * AUDIT-07/EL-10: Gemeinsames Seeding fuer das Abschluss-Confirm — aufgerufen
+   * vom CTA (Pfad "confirm"), von handleBrandWizardComplete und vom Tab-X-Pfad.
+   * Frueher startete das Confirm immer mit verrechenbar=false bzw. dem
+   * State-Leak des vorherigen Einsatzes — der im Editor gesetzte Stand wurde
+   * beim Abschluss-Cascade stillschweigend ueberschrieben.
+   *
+   * `zielDoc` wird vom Tab-X-Pfad uebergeben (frisch gewechselter Einsatz —
+   * die Closure haelt dort noch editor/aktiverEinsatz des ALTEN Einsatzes).
+   */
+  function openAbschlussConfirm(zielDoc?: EinsatzApiDoc | null): void {
+    const doc = zielDoc ?? aktiverEinsatz;
+    const istAktiverEinsatz = !zielDoc || zielDoc._id === aktiverEinsatzId;
+    // Beim aktiven Einsatz hat der Editor den frischesten Verrechenbar-Stand
+    // (Tipparbeit kann noch vor dem Auto-Save liegen), bei Fremd-Tab das Doc.
+    setAbschlussVerrechenbar(
+      istAktiverEinsatz
+        ? editor.verrechenbar
+        : (doc?.verrechnung?.verrechenbar ?? false),
+    );
+    setAbschlussRechnungsadresse(doc?.verrechnung?.rechnungsadresse ?? "");
+    setAbschlussErr(null);
+    setAbschlussOk(null);
+    setAbschlussConfirmOpen(true);
   }
 
   /**
@@ -968,11 +1223,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *
    * Bei 409 (already_closed): das Tablet hatte einen veralteten Stand
    * — wir laden nur neu, kein Fehler.
+   *
+   * AUDIT-07/EL-11b: Rueckgabe `Promise<boolean>` — true bei Erfolg UND beim
+   * 409-already_closed-Pfad (Ziel "Einsatz ist zu" erreicht), false bei
+   * Fehler. Die Aufrufer (Override-Modal) entscheiden damit synchron, ob sie
+   * schliessen — statt das stale abschlussErr aus der Closure zu lesen.
    */
-  async function handleAbschluss(overrideGrund?: string): Promise<void> {
+  async function handleAbschluss(overrideGrund?: string): Promise<boolean> {
     if (!aktiverEinsatzId) {
       setAbschlussErr("Kein aktiver Einsatz ausgewählt.");
-      return;
+      return false;
     }
     setAbschlussBusy(true);
     setAbschlussErr(null);
@@ -994,7 +1254,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           body.rechnungsadresse = abschlussRechnungsadresse.trim();
         }
       }
-      await apiCall<{ ok: true; id: string; rev: string }>(
+      // AUDIT-07/EL-11a: /abschluss liefert seit AUDIT-11 die echte
+      // Berichtsnummer mit — Fallback fuer Altstaende: deriveBerichtNrFromId.
+      const resp = await apiCall<{
+        ok: true;
+        id: string;
+        rev: string;
+        berichtNummer?: string;
+      }>(
         `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/abschluss`,
         Object.keys(body).length > 0 ? { method: "POST", body } : { method: "POST" },
       );
@@ -1011,32 +1278,71 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       setAbschlussOk(
         `Einsatz abgeschlossen · ${new Date().toLocaleTimeString("de-AT")} · Bericht ist jetzt schreibgeschützt`,
       );
+      // AUDIT-07/EL-11a: persistente Quittung — bleibt stehen, auch wenn der
+      // naechste Poll den abgeschlossenen Einsatz aus der Tab-Leiste nimmt.
+      setLetzterAbschluss({
+        einsatzId: aktiverEinsatzId,
+        zeit: new Date().toISOString(),
+        berichtNummer:
+          resp.berichtNummer ??
+          deriveBerichtNrFromId(
+            aktiverEinsatzId,
+            aktiverEinsatz?.einsatzart,
+            aktiverEinsatz?.alarmierungZeit,
+          ),
+      });
+      return true;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // 409 = bereits abgeschlossen → kein echter Fehler, nur Neu-Laden.
-      if (msg.includes("already_closed") || msg.includes("409")) {
+      // AUDIT-07/EL-11b: ApiError-Status statt fragiler String-Matches
+      // ("409"/"403" konnten frueher auch zufaellig im Fehlertext stehen).
+      if (
+        e instanceof ApiError &&
+        (e.status === 409 || e.message.includes("already_closed"))
+      ) {
+        // 409 = bereits abgeschlossen → kein echter Fehler, nur Neu-Laden.
+        let nummer: string | undefined;
         try {
           const reloaded = await apiCall<EinsatzApiDoc>(
             `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
           );
-          setAktiveEinsaetze((prev) => prev.map((e) => (e._id === reloaded._id ? reloaded : e)));
+          setAktiveEinsaetze((prev) => prev.map((e2) => (e2._id === reloaded._id ? reloaded : e2)));
+          nummer = reloaded.berichtNummer;
         } catch {
           // egal
         }
         setAbschlussConfirmOpen(false);
         setAbschlussOk("Einsatz war bereits abgeschlossen.");
-      } else if (msg.includes("403") || msg.includes("insufficient_role")) {
+        setLetzterAbschluss({
+          einsatzId: aktiverEinsatzId,
+          zeit: new Date().toISOString(),
+          berichtNummer:
+            nummer ??
+            deriveBerichtNrFromId(
+              aktiverEinsatzId,
+              aktiverEinsatz?.einsatzart,
+              aktiverEinsatz?.alarmierungZeit,
+            ),
+        });
+        return true;
+      }
+      if (
+        e instanceof ApiError &&
+        (e.status === 403 || e.message.includes("insufficient_role"))
+      ) {
         setAbschlussErr(
           "Sitzung veraltet — diese Anmeldung wurde noch mit der alten Rollen-Zuordnung ausgestellt. Bitte einmal neu anmelden, danach funktioniert der Abschluss.",
         );
         setAbschlussNeedsReauth(true);
-      } else if (msg.includes("401")) {
+        return false;
+      }
+      if (e instanceof ApiError && e.status === 401) {
         setAbschlussErr(
           "Sitzung abgelaufen — bitte die Seite neu laden und erneut anmelden.",
         );
-      } else {
-        setAbschlussErr(`Abschluss fehlgeschlagen: ${msg}`);
+        return false;
       }
+      setAbschlussErr(`Abschluss fehlgeschlagen: ${describeApiError(e)}`);
+      return false;
     } finally {
       setAbschlussBusy(false);
     }
@@ -1099,14 +1405,23 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         // egal
       }
       setBrandWizardOpen(false);
+      // AUDIT-07/EL-13: Edit-Modus ("Brand-Statistik bearbeiten") — NUR
+      // speichern + Hinweis, KEIN Abschluss-Confirm. Der Sachbearbeiter
+      // korrigiert die Statistik, ohne den Abschluss-Flow anzustossen.
+      if (brandWizardEditModeRef.current) {
+        brandWizardEditModeRef.current = false;
+        setSaveOk(
+          `Brand-Statistik gespeichert · ${new Date().toLocaleTimeString("de-AT")}`,
+        );
+        return;
+      }
       // Nach erfolgreichem Wizard direkt das normale Abschluss-Confirm
       // anzeigen (User sieht Sanity-Check + verrechenbar-Felder).
-      setAbschlussErr(null);
-      setAbschlussOk(null);
-      setAbschlussConfirmOpen(true);
+      // AUDIT-07/EL-10: via openAbschlussConfirm — seeded Verrechenbar-Stand.
+      openAbschlussConfirm();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setAbschlussErr(`Brand-Statistik speichern fehlgeschlagen: ${msg}`);
+      // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
+      setAbschlussErr(`Brand-Statistik speichern fehlgeschlagen: ${describeApiError(e)}`);
       // Wizard offen lassen — User kann nochmal probieren oder cancel
     }
   }
@@ -1146,6 +1461,47 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   }
 
   // (Frueher openSpickzettel — syBOS-Spickzettel-Button und Funktion entfernt.)
+
+  // ── AUDIT-09/EL-07: Tablet-Fotos in der Florian-Chronik sichtbar ──────────
+  // Die Zentrale hat die Fotos nicht in der lokalen PouchDB (die liegen am
+  // aufnehmenden Tablet) — wir laden sie EINMAL pro Einsatz gesammelt via
+  // GET /api/einsaetze/:id/fotos und cachen fotoId→dataUrl. Vorbild:
+  // BerichtPage nutzt getLocalFotoDataUrl fuer denselben loadFoto-Prop.
+  const fotoCacheRef = useRef<Map<string, string | null>>(new Map());
+  const fotoLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const fotosLoadedForRef = useRef<string | null>(null);
+
+  async function loadFotoFlorian(fotoId: string): Promise<string | null> {
+    const einsatzId = aktiverEinsatzIdRef.current;
+    if (!einsatzId) return null;
+    if (fotosLoadedForRef.current !== einsatzId) {
+      // Einsatz-Wechsel → Cache verwerfen und genau EINEN Fetch starten.
+      // Das Promise wird gecacht — parallele loadFoto-Aufrufe der Timeline
+      // warten alle auf denselben Request statt N-mal /fotos zu treffen.
+      fotosLoadedForRef.current = einsatzId;
+      fotoCacheRef.current = new Map();
+      fotoLoadPromiseRef.current = (async () => {
+        try {
+          const r = await apiCall<{
+            items?: Array<{ _id?: string; dataUrl?: string }>;
+          }>(`/api/einsaetze/${encodeURIComponent(einsatzId)}/fotos`);
+          const map = new Map<string, string | null>();
+          for (const it of r.items ?? []) {
+            if (typeof it._id === "string") {
+              map.set(it._id, typeof it.dataUrl === "string" ? it.dataUrl : null);
+            }
+          }
+          fotoCacheRef.current = map;
+        } catch {
+          // Fetch-Fehler → leerer Cache, alle Anfragen liefern null (die
+          // Timeline zeigt den Im-Bericht-enthalten-Hinweis, KEIN Endlos-
+          // Spinner). Naechster Einsatz-Wechsel versucht es neu.
+        }
+      })();
+    }
+    if (fotoLoadPromiseRef.current) await fotoLoadPromiseRef.current;
+    return fotoCacheRef.current.get(fotoId) ?? null;
+  }
 
   /**
    * Fahrzeug-Status pro Wagen — abgeleitet aus den echten Fahrzeugbericht-
@@ -1271,6 +1627,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // (identischer Cross-Sync wie auf den Tablets). Start leer; sobald ein
   // echter Einsatz aktiv ist, fuellen die Polls die Liste auf.
   const [chronik, setChronik] = useState<ChronikEintrag[]>([]);
+  // AUDIT-01 (8): knownIds aus einem Ref statt aus der Effect-Closure — der
+  // Effekt haengt nur an [aktiverEinsatzId]; ohne Ref fragte jeder 8-s-Tick
+  // mit dem CHRONIK-STAND VOM EFFEKT-START an (immer groesserer Diff).
+  const chronikRef = useRef<ChronikEintrag[]>([]);
+  useEffect(() => {
+    chronikRef.current = chronik;
+  }, [chronik]);
 
   useEffect(() => {
     // Ohne aktiven Einsatz nichts pollen — keine Phantom-Anfragen mit
@@ -1279,9 +1642,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       setChronik([]);
       return;
     }
+    // AUDIT-01 (8): beim Einsatz-WECHSEL sofort leeren — sonst stehen die
+    // Eintraege des vorigen Einsatzes bis zum ersten Tick (und darueber
+    // hinaus, weil der Diff nur ANHAENGT) in der Timeline des neuen.
+    setChronik([]);
+    chronikRef.current = [];
     let cancelled = false;
     const tick = async () => {
-      const knownIds = new Set(chronik.map((c) => c.id));
+      const knownIds = new Set(chronikRef.current.map((c) => c.id));
       const neue = await fetchChronikDiff(aktiverEinsatzId, knownIds);
       if (cancelled || neue.length === 0) return;
       setChronik((prev) => {
@@ -1326,7 +1694,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         activeId={einsatzId}
         onSelect={(id) => {
           const fullId = id.startsWith("einsatz:") ? id : `einsatz:${id}`;
-          setAktiverEinsatzId(fullId);
+          // AUDIT-01 (3): Flush ungespeicherter Tipparbeit VOR dem Wechsel —
+          // Tab-Wechsel binnen 1,5 s nach dem Tippen verliert nichts mehr.
+          wechsleAktivenEinsatz(fullId);
         }}
         onNew={() => setNeuerEinsatzOpen("manuell")}
         onCloseTab={(id) => {
@@ -1345,6 +1715,118 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <HandoffBanner onReleased={onHandoffLogout} />
 
       <main className="page">
+        {/* AUDIT-09/EL-06: Lotsendienst-Erfolgsbanner — der Einsatz erscheint
+            hier bewusst NICHT (#165-Filter), ohne Banner sah die Anlage wie
+            ein stiller Fehlschlag aus und wurde doppelt angelegt. */}
+        {lotsendienstHinweis ? (
+          <section
+            role="status"
+            style={{
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--ok-tint)",
+              border: "1px solid var(--ok-border)",
+              color: "var(--ok)",
+              fontSize: 16.5,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span style={{ flex: 1 }}>{lotsendienstHinweis}</span>
+            <button
+              type="button"
+              onClick={() => setLotsendienstHinweis(null)}
+              aria-label="Hinweis schließen"
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "inherit",
+                cursor: "pointer",
+                padding: 4,
+                minHeight: 0,
+                display: "inline-flex",
+              }}
+            >
+              <X size={14} />
+            </button>
+          </section>
+        ) : null}
+
+        {/* AUDIT-07/EL-11a: Persistente Abschluss-Quittung — der Einsatz
+            verschwindet nach dem Abschluss aus der Tab-Leiste (Poll-Filter),
+            diese Karte bleibt als Beleg + PDF-Einstieg stehen. */}
+        {letzterAbschluss ? (
+          <section
+            role="status"
+            className="card"
+            style={{
+              marginBottom: 14,
+              borderColor: "var(--ok-border)",
+              background: "var(--ok-tint)",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <CheckCircle2 size={22} style={{ color: "var(--ok)", flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 220, fontSize: 16.5, color: "var(--fg)" }}>
+              <strong>Einsatz abgeschlossen</strong>
+              {letzterAbschluss.berichtNummer ? (
+                <>
+                  {" · "}
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {letzterAbschluss.berichtNummer}
+                  </span>
+                </>
+              ) : null}
+              <span style={{ color: "var(--fg-3)" }}>
+                {" "}· {formatTime(letzterAbschluss.zeit)}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void downloadPdf(letzterAbschluss.einsatzId)}
+              disabled={downloadBusy !== null}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--ok-border)",
+                background: "var(--surface)",
+                color: "var(--ok)",
+                fontSize: 15.5,
+                fontWeight: 700,
+                cursor: downloadBusy !== null ? "wait" : "pointer",
+              }}
+            >
+              <Download size={14} />
+              {downloadBusy === "pdf" ? "Lade …" : "PDF-Bericht öffnen"}
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setLetzterAbschluss(null)}
+              aria-label="Quittung schließen"
+              title="Quittung schließen"
+            >
+              <X size={14} />
+            </button>
+          </section>
+        ) : null}
+
         {/* Hauptbericht-Header bzw. Idle-Karte wenn kein aktiver Einsatz. */}
         {istIdle ? (
           <section
@@ -1404,7 +1886,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       type="button"
                       className="cta"
                       onClick={() => setNeuerEinsatzOpen("lotsendienst")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)" }}
+                      // AUDIT-09/EL-06: 30-s-Doppel-Anlage-Guard — direkt nach
+                      // einer Lotsendienst-Anlage gesperrt, weil der Einsatz
+                      // hier bewusst NICHT erscheint (#165) und ein zweiter
+                      // Klick sonst ein Duplikat anlegt.
+                      disabled={lotsendienstGesperrt}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)", ...(lotsendienstGesperrt ? { opacity: 0.55, cursor: "not-allowed" } : {}) }}
                     >
                       <MapPin size={14} /> Lotsendienst anlegen
                     </button>
@@ -2261,6 +2748,46 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </>
         )}
 
+        {/* AUDIT-07/EL-13: Brand-Statistik nachtraeglich editierbar — vor dem
+            Abschluss erfasste Werte (Wizard durchlaufen, dann Tippfehler
+            bemerkt) waren bisher nur durch erneutes Abschliessen erreichbar.
+            Analog zur Technisch-Statistik-Sektion, aber als Wizard-Einstieg. */}
+        {kategorieFuer(aktiverEinsatz?.einsatzart) === "brand" &&
+          !schreibschutz &&
+          aktiverEinsatz?.brandStatistik && (
+            <>
+              <SectionHead title="syBOS Brand-Statistik" />
+              <section className="card">
+                <div className="card-head">
+                  <div className="card-title">Brand-Statistik erfasst</div>
+                  <span className="card-meta">
+                    Übertrag in syBOS-Maske · via Abschluss-Assistent
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    brandWizardEditModeRef.current = true;
+                    setBrandWizardOpen(true);
+                  }}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: 16.5,
+                    fontWeight: 600,
+                    background: "var(--surface-2)",
+                    color: "var(--fg)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    minHeight: 44,
+                  }}
+                >
+                  Brand-Statistik bearbeiten
+                </button>
+              </section>
+            </>
+          )}
+
         {/* Feld "Freitext Einsatzleiter" wurde entfernt (User-Wunsch) — die
             Meldung der Einsatzleitung kommt jetzt direkt in das Chronik-Feld
             unten, das umbenannt wurde auf "Einsatzbericht / Chronologie".
@@ -2794,6 +3321,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               kommt sonst vom Backend mit 423 zurueck). */}
           <ChronikTimeline
             eintraege={chronik}
+            // AUDIT-09/EL-07: Tablet-Fotos auch in der Zentrale anzeigen —
+            // laedt GET /fotos einmal pro Einsatz (Cache, siehe loadFotoFlorian).
+            loadFoto={loadFotoFlorian}
             canEdit={() => !aktiverEinsatz?.schreibschutz}
             onSaveEdit={async (entryId, newText) => {
               if (!aktiverEinsatzId) return false;
@@ -2823,6 +3353,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           />
           <FlorianChronikInput
             einsatzId={aktiverEinsatzId}
+            // AUDIT-09/EL-03-UI: bei Schreibschutz gesperrt + Hinweis statt
+            // Eingaben, die der Server ohnehin mit 423 ablehnt.
+            schreibschutz={schreibschutz}
             onAdded={(eintrag) =>
               setChronik((prev) =>
                 [...prev, eintrag].sort(
@@ -2830,13 +3363,22 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 ),
               )
             }
+            // AUDIT-09/EL-03-UI: Server hat den Eintrag endgueltig abgelehnt
+            // (404/423) → optimistischen Eintrag wieder entfernen.
+            onRejected={(entryId) =>
+              setChronik((prev) => prev.filter((c) => c.id !== entryId))
+            }
           />
         </section>
 
+        {/* AUDIT-12/EL-04: Sektion heisst jetzt "Abschluss & PDF" und startet
+            OFFEN (kein defaultClosed mehr) — der rote Abschluss-CTA und der
+            PDF-Button waren auf frischen Geraeten unsichtbar ("kein
+            Abschluss-Knopf gefunden", echtes Testfeedback). storageKey bleibt:
+            wer bewusst zugeklappt hat, behaelt seine Wahl. */}
         <SectionHead
-          title="Übergabe an Bearbeiter"
+          title="Abschluss & PDF"
           collapsible
-          defaultClosed
           storageKey="uebergabe-bearbeiter"
         />
         <div className="cta-wrap">
@@ -2978,7 +3520,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       return;
                     }
                     if (abschlussPfad === "confirm") {
-                      setAbschlussConfirmOpen(true);
+                      // AUDIT-07/EL-10: Confirm mit Verrechenbar-Seeding
+                      // aus dem Editor-Stand oeffnen.
+                      openAbschlussConfirm();
                     }
                   }}
                   disabled={abschlussBlocked}
@@ -3147,25 +3691,87 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         onClose={() => setVehicleSwitcherOpen(false)}
       />
 
-      {/* ─── Tab-Schließen-Dialog (X im Browser-Tab-Reiter) ─── */}
+      {/* ─── Tab-Schließen-Dialog (X im Browser-Tab-Reiter) ───
+          AUDIT-07/EL-14: das X POSTet NICHT mehr roh /abschluss. Es laeuft
+          durch DENSELBEN Trichter wie der CTA (entscheideAbschlussPfad):
+          Brand ohne Statistik → Wizard, offene Fahrzeugberichte → Override
+          mit Grund-Pflicht, sonst → Abschluss-Confirm mit Verrechenbar-
+          Seeding. Vorher konnte das X den Brand-Wizard, den Override-Grund
+          und die Verrechnungs-Abfrage komplett umgehen. */}
       <CloseTabConfirmModal
         open={tabToClose !== null}
         tabLabel={tabToClose?.label ?? ""}
-        isHauptauftrag={true}
+        warnText="Achtung: Schliesst den gesamten Einsatz fuer ALLE Fahrzeuge."
         onClose={() => setTabToClose(null)}
         onConfirmAbschluss={async () => {
           if (!tabToClose) return;
-          await apiCall(
-            `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/abschluss`,
-            { method: "POST" },
-          );
-          // Wenn der geschlossene Tab der aktive war: weg vom abgeschlossenen
-          // Einsatz — der nächste Polling-Tick filtert ihn weg, der EinsatzTabs-
-          // Reducer setzt den Index automatisch auf den nächsten aktiven Einsatz.
-          if (tabToClose.id === aktiverEinsatzId) {
-            setAktiverEinsatzId(null);
+          const zielId = tabToClose.id;
+          setTabToClose(null);
+          const zielDoc = aktiveEinsaetze.find((e2) => e2._id === zielId) ?? null;
+          // Ziel-Einsatz aktivieren — die gesamte Abschluss-Maschinerie
+          // (Wizard/Override/Confirm/handleAbschluss) arbeitet auf
+          // aktiverEinsatzId. Der Reset-Effekt wird per Guard uebersprungen,
+          // damit das folgende Confirm-Seeding stehen bleibt.
+          if (zielId !== aktiverEinsatzId) {
+            abschlussSeedGuardRef.current = true;
+            wechsleAktivenEinsatz(zielId);
           }
-          reloadAktiveEinsaetzeRef.current();
+          // Frische Fahrzeugbericht-Lage des ZIEL-Einsatzes holen — der
+          // 15-s-Poll haelt noch den Stand des vorher aktiven Einsatzes.
+          let berichte: FahrzeugberichtApiDoc[] = [];
+          try {
+            const r = await apiCall<{ items: FahrzeugberichtApiDoc[] }>(
+              `/api/einsaetze/${encodeURIComponent(zielId)}/fahrzeugberichte`,
+            );
+            berichte = r.items;
+          } catch {
+            // Kein frischer Stand (Netz) — Fallback: leere Liste, der
+            // Backend-Check beim POST /abschluss bleibt die letzte Instanz.
+          }
+          const offeneBerichte = berichte.filter(
+            (b) => b.status !== "abgeschlossen",
+          );
+          const istManuell =
+            zielDoc?.einsatzTyp === "manuell" ||
+            zielDoc?.einsatzTyp === "uebung" ||
+            zielDoc?.einsatzTyp === "lotsendienst";
+          const pfad = entscheideAbschlussPfad({
+            schreibschutz: zielDoc?.schreibschutz === true,
+            hatEinsatzId: true,
+            busy: abschlussBusy,
+            blockiert: !istManuell && offeneBerichte.length > 0,
+            istBrand: kategorieFuer(zielDoc?.einsatzart) === "brand",
+            hatBrandStatistik: !!zielDoc?.brandStatistik,
+          });
+          setAbschlussErr(null);
+          setAbschlussOk(null);
+          if (pfad !== "confirm") {
+            // Der Reset-Effekt wurde per Guard uebersprungen — fuer Wizard-/
+            // Override-Pfad den Verrechnungs-State trotzdem frisch vom
+            // ZIEL-Doc seeden (kein Leak des vorherigen Einsatzes).
+            setAbschlussVerrechenbar(zielDoc?.verrechnung?.verrechenbar ?? false);
+            setAbschlussRechnungsadresse(
+              zielDoc?.verrechnung?.rechnungsadresse ?? "",
+            );
+          }
+          if (pfad === "wizard") {
+            setBrandWizardOpen(true);
+            return;
+          }
+          if (pfad === "blocked") {
+            if (zielDoc?.schreibschutz === true) {
+              // Bereits abgeschlossen — nichts zu tun, Liste auffrischen.
+              setAbschlussOk("Einsatz war bereits abgeschlossen.");
+              reloadAktiveEinsaetzeRef.current();
+              return;
+            }
+            if (abschlussBusy) return;
+            // Offene Fahrzeugberichte → Override-Pfad mit Grund-Pflicht.
+            setAbschlussOverrideGrund("");
+            setAbschlussOverrideOpen(true);
+            return;
+          }
+          openAbschlussConfirm(zielDoc);
         }}
         onConfirmVerwerfen={async (grund) => {
           if (!tabToClose) return;
@@ -3540,10 +4146,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 type="button"
                 disabled={abschlussBusy || abschlussOverrideGrund.trim().length < 10}
                 onClick={async () => {
-                  await handleAbschluss(abschlussOverrideGrund.trim());
-                  if (!abschlussErr) {
-                    setAbschlussOverrideOpen(false);
-                  }
+                  // AUDIT-07/EL-11b: Erfolg kommt jetzt als Rueckgabewert —
+                  // frueher wurde das STALE abschlussErr aus der Render-
+                  // Closure gelesen: nach einem Fehlversuch schloss der
+                  // Dialog beim zweiten (erfolgreichen) Klick nicht bzw.
+                  // schloss faelschlich trotz frischem Fehler.
+                  const ok = await handleAbschluss(abschlussOverrideGrund.trim());
+                  if (ok) setAbschlussOverrideOpen(false);
                 }}
                 style={{
                   padding: "10px 18px",
@@ -3572,12 +4181,25 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         open={neuerEinsatzOpen !== null}
         initialTyp={neuerEinsatzOpen ?? "manuell"}
         onClose={() => setNeuerEinsatzOpen(null)}
-        onCreated={(einsatzId) => {
+        onCreated={(einsatzId, typ) => {
           setNeuerEinsatzOpen(null);
+          // AUDIT-09/EL-06: Lotsendienst erscheint hier bewusst NIE als
+          // Hauptbericht (#165-Filter) — statt Auto-Switch ins Leere ein
+          // Erfolgsbanner + 30-s-Doppel-Anlage-Guard. KEIN justCreatedRef/
+          // setAktiverEinsatzId, der Poll wuerde den Einsatz ohnehin filtern.
+          if (typ === "lotsendienst") {
+            setLotsendienstHinweis(
+              "Lotsendienst angelegt — Dokumentation läuft am Fahrzeug-Tablet (KDO/TLF). Der Bericht erscheint später im Archiv.",
+            );
+            setLotsendienstAngelegtAt(Date.now());
+            return;
+          }
           // Auto-Switch auf den neu angelegten Einsatz — robust gegen den
           // naechsten Poll-Tick der ihn noch nicht in items[] hat.
           justCreatedRef.current = { id: einsatzId, ts: Date.now() };
-          setAktiverEinsatzId(einsatzId);
+          // AUDIT-01 (3): via wechsleAktivenEinsatz — flusht ungespeicherte
+          // Tipparbeit des vorher aktiven Einsatzes.
+          wechsleAktivenEinsatz(einsatzId);
           // Forciertes Reload der Einsatz-Liste — Backend hat den neuen
           // Einsatz schon angelegt + zurueckgegeben, wir warten nicht aufs
           // naechste 10-s-Polling. So ist der Editor binnen <300 ms befuellt
@@ -3589,6 +4211,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <ArchivTabletModal
         open={archivOpenFlorian}
         onClose={() => setArchivOpenFlorian(false)}
+        // AUDIT-09/EL-12: reaktivierter Einsatz SOFORT als aktiver Tab
+        // sichtbar (exakt das bewaehrte onCreated-Muster) — vorher wartete
+        // der EL bis zu 10 s auf den naechsten Poll und reaktivierte im
+        // Zweifel ein zweites Mal.
+        onReaktiviert={(id) => {
+          justCreatedRef.current = { id, ts: Date.now() };
+          wechsleAktivenEinsatz(id);
+          reloadAktiveEinsaetzeRef.current();
+          setArchivOpenFlorian(false);
+        }}
       />
 
       <AboutModal
@@ -3611,7 +4243,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             ? (aktiverEinsatz.brandStatistik as Partial<BrandStatistik>)
             : null
         }
-        onCancel={() => setBrandWizardOpen(false)}
+        onCancel={() => {
+          setBrandWizardOpen(false);
+          // AUDIT-07/EL-13: Edit-Modus auch beim Abbruch zuruecksetzen —
+          // sonst wuerde der NAECHSTE regulaere Abschluss-Wizard-Durchlauf
+          // faelschlich ohne Abschluss-Confirm enden.
+          brandWizardEditModeRef.current = false;
+        }}
         onComplete={(bs) => {
           void handleBrandWizardComplete(bs);
         }}
@@ -3888,10 +4526,18 @@ function TriToggle({
  */
 function FlorianChronikInput({
   einsatzId,
+  schreibschutz,
   onAdded,
+  onRejected,
 }: {
   einsatzId: string | null;
+  /** AUDIT-09/EL-03-UI: bei abgeschlossenem Einsatz ist die Eingabe gesperrt
+   *  — der Server wuerde den POST ohnehin mit 423 ablehnen. */
+  schreibschutz: boolean;
   onAdded: (entry: ChronikEintrag) => void;
+  /** AUDIT-09/EL-03-UI: Server hat den Eintrag ENDGUELTIG abgelehnt (404/423)
+   *  — der Aufrufer entfernt den optimistischen Eintrag wieder. */
+  onRejected: (entryId: string) => void;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3900,6 +4546,7 @@ function FlorianChronikInput({
   async function submit() {
     const cleaned = text.trim();
     if (!cleaned) return;
+    if (schreibschutz) return;
     if (!einsatzId) {
       setErr("Kein aktiver Einsatz — kann Chronik-Eintrag nicht zuordnen.");
       return;
@@ -3918,7 +4565,10 @@ function FlorianChronikInput({
     onAdded(entry); // optimistic
     setText("");
     setBusy(false);
-    await broadcastChronikEntry(einsatzId, {
+    // AUDIT-09/EL-03: Broadcast-Ergebnis auswerten — 'queued' ist KEIN Fehler
+    // (Offline-Outbox reicht nach, optimistischer Eintrag bleibt stehen);
+    // nur bei 'rejected' (404/423) Eintrag entfernen + User informieren.
+    const result = await broadcastChronikEntry(einsatzId, {
       id,
       zeitstempel,
       funkrufname: "Florian Eberstalzell",
@@ -3926,6 +4576,10 @@ function FlorianChronikInput({
       source: "manuell",
       text: cleaned,
     });
+    if (result === "rejected") {
+      onRejected(id);
+      setErr("Eintrag NICHT gespeichert — Bericht ist abgeschlossen.");
+    }
   }
 
   return (
@@ -3954,8 +4608,12 @@ function FlorianChronikInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void submit()}
-          placeholder="Eintrag von Florian Eberstalzell · z. B. Nachalarmierung BFKDT angefordert …"
-          disabled={!einsatzId}
+          placeholder={
+            schreibschutz
+              ? "Bericht abgeschlossen — Eingabe gesperrt"
+              : "Eintrag von Florian Eberstalzell · z. B. Nachalarmierung BFKDT angefordert …"
+          }
+          disabled={!einsatzId || schreibschutz}
           spellCheck
           lang="de-AT"
         />
@@ -3963,7 +4621,7 @@ function FlorianChronikInput({
           type="button"
           className="add-btn"
           onClick={() => void submit()}
-          disabled={busy || !text.trim() || !einsatzId}
+          disabled={busy || !text.trim() || !einsatzId || schreibschutz}
           aria-label="Chronik-Eintrag hinzufügen"
         >
           +
@@ -3974,11 +4632,13 @@ function FlorianChronikInput({
           marginTop: 8,
           fontSize: 14,
           fontFamily: "var(--font-mono)",
-          color: "var(--fg-3)",
+          color: schreibschutz ? "var(--warn)" : "var(--fg-3)",
           letterSpacing: "0.06em",
         }}
       >
-        Eintrag erscheint binnen 8 s in der Chronik aller Fahrzeug-Tablets.
+        {schreibschutz
+          ? "Bericht abgeschlossen — erst reaktivieren."
+          : "Eintrag erscheint binnen 8 s in der Chronik aller Fahrzeug-Tablets."}
       </p>
     </div>
   );

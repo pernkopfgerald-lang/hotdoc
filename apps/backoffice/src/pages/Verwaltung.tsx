@@ -25,7 +25,7 @@ import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { Florianstation } from "./Florianstation";
-import { FLORIAN_ADDRESS, type AuthResponse } from "@hotdoc/shared";
+import { FLORIAN_ADDRESS, deriveBerichtNrFromId, type AuthResponse } from "@hotdoc/shared";
 
 /** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
 function AddItemForm({ onAdd, placeholder }: { onAdd: (text: string) => void; placeholder: string }) {
@@ -210,6 +210,17 @@ type Tab =
 
 export function Verwaltung({ auth, onLogout }: Props) {
   const [tab, setTab] = useState<Tab>("berichte");
+  // AUDIT-15 (SF-07): Listen-Panels melden ungespeicherte Aenderungen nach
+  // oben — der Tab-Wechsel fragt VOR dem Unmount nach, sonst sind die
+  // Eingaben kommentarlos weg.
+  const [panelDirty, setPanelDirty] = useState(false);
+
+  function switchTab(next: Tab) {
+    if (next === tab) return;
+    if (panelDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+    setPanelDirty(false);
+    setTab(next);
+  }
 
   function logout() {
     clearToken();
@@ -333,7 +344,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
               key={g.key}
               type="button"
               onClick={() => {
-                if (!active) setTab(g.tabs[0]!.key);
+                if (!active) switchTab(g.tabs[0]!.key);
               }}
               style={{
                 display: "flex",
@@ -374,7 +385,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
           <TabButton
             key={t.key}
             active={tab === t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => switchTab(t.key)}
             icon={t.icon}
           >
             {t.label}
@@ -398,11 +409,11 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "statistik" && <StatistikPanel />}
         {tab === "aktivitaet" && <AktivitaetPanel />}
         {tab === "schnittstellen" && <SchnittstellenPanel />}
-        {tab === "einsatzstichworte" && <EinsatzstichwortePanel />}
+        {tab === "einsatzstichworte" && <EinsatzstichwortePanel onDirtyChange={setPanelDirty} />}
         {tab === "nummerierung" && <NummerierungPanel />}
         {tab === "personal" && <PersonalPanel />}
-        {tab === "geraete" && <GeraetePanel />}
-        {tab === "auftragstypen" && <AuftragstypenPanel />}
+        {tab === "geraete" && <GeraetePanel onDirtyChange={setPanelDirty} />}
+        {tab === "auftragstypen" && <AuftragstypenPanel onDirtyChange={setPanelDirty} />}
         {tab === "beteiligte-stellen" && (
           <StringListPanel
             configKey="beteiligte-stellen"
@@ -410,6 +421,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
             icon={<Siren size={20} />}
             description="Diese Liste erscheint im Editor von Florian Eberstalzell als anhakbare Chips, wenn der Einsatzleiter dokumentiert, wer noch auf der Einsatzstelle anwesend war (Polizei, Rotes Kreuz, Notarzt, …). Änderungen wirken sich sofort aus."
             placeholder="Neue Stelle …"
+            onDirtyChange={setPanelDirty}
           />
         )}
         {tab === "sonstige-ff" && (
@@ -419,6 +431,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
             icon={<Flame size={20} />}
             description="Liste der ueblichen Nachbar-Feuerwehren. Im Editor von Florian Eberstalzell als Schnellauswahl-Chips verfügbar (Sturm, BMA-Übergreifend, Personenrettung-Mitarbeit …)."
             placeholder="Neue FF …"
+            onDirtyChange={setPanelDirty}
           />
         )}
         {/* Issue 16 (Follow-up Einsatz-Test 2026-06-02): Gefährliche-Stoffe-
@@ -431,11 +444,12 @@ export function Verwaltung({ auth, onLogout }: Props) {
             icon={<AlertTriangle size={20} />}
             description="Liste der gefährlichen Stoffe für die syBOS-Technisch-Statistik (z. B. Diesel, Benzin, Säuren, Gase). Erscheint im Florian-Editor bei technischen Einsätzen als anhakbare Chips. Frei erweiterbar — auch der Einsatzleiter kann im Editor eigene Stoffe per Freitext ergänzen."
             placeholder="Neuen Stoff …"
+            onDirtyChange={setPanelDirty}
           />
         )}
-        {tab === "stammdaten" && <StammdatenPanel />}
+        {tab === "stammdaten" && <StammdatenPanel onDirtyChange={setPanelDirty} />}
         {tab === "devices" && <DevicesPanel />}
-        {tab === "app-version" && <AppVersionPanel />}
+        {tab === "app-version" && <AppVersionPanel onDirtyChange={setPanelDirty} />}
         {tab === "about" && <AboutPanel />}
       </main>
     </div>
@@ -567,18 +581,28 @@ function PersonalPanel() {
   );
 }
 
-function GeraetePanel() {
-  const [data, setData] = useState<GeraeteData | null>(null);
+function GeraetePanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
+  // AUDIT-15 (SF-07): setData ist ein Wrapper um den State-Setter, der jede
+  // Mutation als "ungespeichert" markiert und das nach oben meldet — der
+  // Lade-Effekt nutzt setDataRaw direkt und bleibt sauber.
+  const [data, setDataRaw] = useState<GeraeteData | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [activeFzg, setActiveFzg] = useState<string>("lfa-b");
+
+  function setData(next: GeraeteData) {
+    setDataRaw(next);
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await getConfig<GeraeteData>("geraete");
-        setData(r.data);
+        setDataRaw(r.data);
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       }
@@ -591,6 +615,8 @@ function GeraetePanel() {
     setErr(null);
     try {
       await putConfig("geraete", data);
+      setDirty(false);
+      onDirtyChange?.(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -602,6 +628,7 @@ function GeraetePanel() {
 
   function addItem(fzg: string, bezeichnung: string) {
     if (!data || !bezeichnung.trim()) return;
+    const bez = bezeichnung.trim();
     const id = bezeichnung
       .toLowerCase()
       .replace(/[äöü]/g, (c) => ({ ä: "ae", ö: "oe", ü: "ue" })[c]!)
@@ -609,11 +636,22 @@ function GeraetePanel() {
       .replace(/[^a-z0-9]/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
+    // AUDIT-15 (SF-14): Duplikat-Check VOR dem Hinzufuegen — gleiche slug-id
+    // ODER gleiche Bezeichnung im selben Fahrzeug. Wortlaut identisch zur
+    // EditableChip-validate-Meldung, damit beide Pfade gleich klingen.
+    const vorhanden = (data.byFahrzeug[fzg] ?? []).some(
+      (it) => it.id === id || it.bezeichnung === bez,
+    );
+    if (vorhanden) {
+      setErr(`"${bez}" existiert bereits für ${labels[fzg] ?? fzg}`);
+      return;
+    }
+    setErr(null);
     setData({
       ...data,
       byFahrzeug: {
         ...data.byFahrzeug,
-        [fzg]: [...(data.byFahrzeug[fzg] ?? []), { id, bezeichnung: bezeichnung.trim() }],
+        [fzg]: [...(data.byFahrzeug[fzg] ?? []), { id, bezeichnung: bez }],
       },
     });
   }
@@ -658,7 +696,12 @@ function GeraetePanel() {
           Geräte &amp; Mittel pro Fahrzeug
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {saved ? <span className="badge ok">gespeichert</span> : null}
+          {/* AUDIT-15 (SF-07): Dirty-Badge — Muster Florianstation. */}
+          {saved ? (
+            <span className="badge ok">gespeichert</span>
+          ) : dirty ? (
+            <span className="badge neutral">ungespeicherte Änderungen</span>
+          ) : null}
           <button
             type="button"
             className="cta"
@@ -719,17 +762,26 @@ function GeraetePanel() {
   );
 }
 
-function AuftragstypenPanel() {
-  const [data, setData] = useState<AuftragstypenData | null>(null);
+function AuftragstypenPanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
+  // AUDIT-15 (SF-07): setData-Wrapper markiert jede Mutation als
+  // "ungespeichert" — der Lade-Effekt nutzt setDataRaw direkt.
+  const [data, setDataRaw] = useState<AuftragstypenData | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  function setData(next: AuftragstypenData) {
+    setDataRaw(next);
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await getConfig<AuftragstypenData>("auftragstypen");
-        setData(r.data);
+        setDataRaw(r.data);
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       }
@@ -742,6 +794,8 @@ function AuftragstypenPanel() {
     setErr(null);
     try {
       await putConfig("auftragstypen", data);
+      setDirty(false);
+      onDirtyChange?.(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -775,7 +829,12 @@ function AuftragstypenPanel() {
           Auftrag-Typen (global)
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {saved ? <span className="badge ok">gespeichert</span> : null}
+          {/* AUDIT-15 (SF-07): Dirty-Badge — Muster Florianstation. */}
+          {saved ? (
+            <span className="badge ok">gespeichert</span>
+          ) : dirty ? (
+            <span className="badge neutral">ungespeicherte Änderungen</span>
+          ) : null}
           <span className="card-meta">
             <span className="num">{data?.items.length ?? 0}</span> Typen
           </span>
@@ -833,24 +892,36 @@ function StringListPanel({
   icon,
   description,
   placeholder,
+  onDirtyChange,
 }: {
   configKey: Extract<ConfigKey, "beteiligte-stellen" | "sonstige-ff" | "gefaehrliche-stoffe">;
   title: string;
   icon: React.ReactNode;
   description: string;
   placeholder: string;
+  /** AUDIT-15 (SF-07): meldet ungespeicherte Aenderungen nach oben. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [data, setData] = useState<StringListData | null>(null);
+  // setData-Wrapper markiert jede Mutation als "ungespeichert" —
+  // der Lade-Effekt nutzt setDataRaw direkt.
+  const [data, setDataRaw] = useState<StringListData | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  function setData(next: StringListData) {
+    setDataRaw(next);
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await getConfig<StringListData>(configKey);
         // Defensive: data kann fehlen wenn das Doc noch leer ist
-        setData({ items: Array.isArray(r.data?.items) ? r.data.items : [] });
+        setDataRaw({ items: Array.isArray(r.data?.items) ? r.data.items : [] });
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       }
@@ -863,6 +934,8 @@ function StringListPanel({
     setErr(null);
     try {
       await putConfig(configKey, data);
+      setDirty(false);
+      onDirtyChange?.(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -898,7 +971,12 @@ function StringListPanel({
           {title}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {saved ? <span className="badge ok">gespeichert</span> : null}
+          {/* AUDIT-15 (SF-07): Dirty-Badge — Muster Florianstation. */}
+          {saved ? (
+            <span className="badge ok">gespeichert</span>
+          ) : dirty ? (
+            <span className="badge neutral">ungespeicherte Änderungen</span>
+          ) : null}
           <span className="card-meta">
             <span className="num">{data?.items.length ?? 0}</span> Einträge
           </span>
@@ -1095,9 +1173,15 @@ function ArchivPanel() {
                   <TypBadge typ={(it.einsatzTyp ?? "alarm") as EinsatzTyp} />
                 </td>
                 <td style={archTd}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11 }}>
-                    {it._id.replace(/^einsatz:/, "").slice(0, 18)}
-                    {it._id.length > 24 ? "…" : ""}
+                  {/* AUDIT-15 (SF-03): echte berichtNummer (vergeben beim
+                      Abschluss, AUDIT-11) mit Ableitungs-Fallback fuer
+                      Altberichte; die Couch-ID nur noch als Tooltip. */}
+                  <span
+                    style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11 }}
+                    title={it._id}
+                  >
+                    {(it as EinsatzListItem & { berichtNummer?: string }).berichtNummer ??
+                      deriveBerichtNrFromId(it._id, it.einsatzart, it.alarmierungZeit)}
                   </span>
                 </td>
                 <td style={archTd}>{formatDate(it.alarmierungZeit)}</td>
@@ -1159,7 +1243,9 @@ function ArchivPanel() {
   );
 }
 
-function TypBadge({ typ }: { typ: EinsatzTyp }) {
+/** AUDIT-15: exportiert, damit BerichteBrowser/BerichtDetail dasselbe
+ *  Badge rendern wie das Archiv — eine Wahrheit fuer alle Ansichten. */
+export function TypBadge({ typ }: { typ: EinsatzTyp }) {
   const meta: Record<EinsatzTyp, { label: string; color: string }> = {
     alarm: { label: "ALARM", color: "var(--red)" },
     manuell: { label: "MANUELL", color: "var(--info)" },
@@ -1401,17 +1487,26 @@ function formatChecked(iso: string): string {
   return new Date(iso).toLocaleString("de-AT");
 }
 
-function EinsatzstichwortePanel() {
-  const [data, setData] = useState<EinsatzstichworteData | null>(null);
+function EinsatzstichwortePanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
+  // AUDIT-15 (SF-07): setData-Wrapper markiert jede Mutation als
+  // "ungespeichert" — der Lade-Effekt nutzt setDataRaw direkt.
+  const [data, setDataRaw] = useState<EinsatzstichworteData | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  function setData(next: EinsatzstichworteData) {
+    setDataRaw(next);
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await getConfig<EinsatzstichworteData>("einsatzstichworte");
-        setData(r.data);
+        setDataRaw(r.data);
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       }
@@ -1424,6 +1519,8 @@ function EinsatzstichwortePanel() {
     setErr(null);
     try {
       await putConfig("einsatzstichworte", data);
+      setDirty(false);
+      onDirtyChange?.(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -1467,7 +1564,12 @@ function EinsatzstichwortePanel() {
           Einsatzstichworte &amp; Kategorisierung
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {saved ? <span className="badge ok">gespeichert</span> : null}
+          {/* AUDIT-15 (SF-07): Dirty-Badge — Muster Florianstation. */}
+          {saved ? (
+            <span className="badge ok">gespeichert</span>
+          ) : dirty ? (
+            <span className="badge neutral">ungespeicherte Änderungen</span>
+          ) : null}
           <span className="card-meta">
             <span className="num">{data?.items.length ?? 0}</span> Stichworte
           </span>
@@ -1586,6 +1688,10 @@ function NummerierungPanel() {
         <NumExample label="Brand-Beispiele" prefix="B" yy={yy} numbers={[1, 14, 142]} tone="red" />
         <NumExample label="Technisch-Beispiele" prefix="T" yy={yy} numbers={[1, 9, 87]} tone="info" />
       </div>
+      {/* AUDIT-15: Text an die echte Counter-Logik (AUDIT-11, services/
+          bericht-nummer.ts) angepasst — die frueheren Aussagen zu
+          provisorischer Offline-Vergabe und Reconnect-Konfliktpruefung
+          waren Phantome, so etwas gibt es nicht. */}
       <p
         style={{
           marginTop: 18,
@@ -1594,10 +1700,16 @@ function NummerierungPanel() {
           lineHeight: 1.5,
         }}
       >
-        <strong>Wichtig:</strong> Beim Jahreswechsel beginnen beide Zähler bei 001.
-        Bei Offline-Vergabe (mehrere Tablets ohne Verbindung) wird die Nummer
-        provisorisch vergeben — bei Reconnect prüft Florian Eberstalzell auf Konflikte
-        und schlägt eine Korrektur vor (siehe <code style={{ fontFamily: "var(--font-mono)" }}>docs/sync-architecture.md</code>).
+        <strong>So funktioniert die Vergabe:</strong> Die laufende Nummer wird beim
+        Einsatz-Abschluss <strong>serverseitig</strong> aus dem zentralen Zähler
+        (<code style={{ fontFamily: "var(--font-mono)" }}>config:bericht-counter</code>)
+        vergeben — je Kategorie (B/T) und Jahr ein eigener Zähler, der mit dem
+        Jahreswechsel automatisch wieder bei 001 beginnt. Die Reihenfolge entspricht
+        der Verarbeitungsreihenfolge am Server: offline nachgereichte Abschlüsse
+        erhalten ihre Nummer erst, wenn der Server sie verarbeitet. Doppelvergaben
+        sind ausgeschlossen; schlägt ein Abschluss nach dem Ziehen der Nummer fehl,
+        kann eine Lücke entstehen. Altberichte ohne gespeicherte Nummer zeigen im
+        Archiv eine aus Kategorie und Anlagedatum abgeleitete Nummer.
       </p>
     </section>
   );
@@ -1664,17 +1776,27 @@ const archTd: React.CSSProperties = {
   fontSize: 13,
 };
 
-function StammdatenPanel() {
-  const [data, setData] = useState<StammdatenData | null>(null);
+function StammdatenPanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
+  // AUDIT-15 (SF-07): setData-Wrapper markiert jede Mutation als
+  // "ungespeichert" — alle Inline-onChange-Handler laufen darueber,
+  // der Lade-Effekt nutzt setDataRaw direkt.
+  const [data, setDataRaw] = useState<StammdatenData | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  function setData(next: StammdatenData) {
+    setDataRaw(next);
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await getConfig<StammdatenData>("stammdaten");
-        setData(r.data);
+        setDataRaw(r.data);
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       }
@@ -1687,6 +1809,8 @@ function StammdatenPanel() {
     setErr(null);
     try {
       await putConfig("stammdaten", data);
+      setDirty(false);
+      onDirtyChange?.(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -1712,7 +1836,12 @@ function StammdatenPanel() {
           Stammdaten
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {saved ? <span className="badge ok">gespeichert</span> : null}
+          {/* AUDIT-15 (SF-07): Dirty-Badge — Muster Florianstation. */}
+          {saved ? (
+            <span className="badge ok">gespeichert</span>
+          ) : dirty ? (
+            <span className="badge neutral">ungespeicherte Änderungen</span>
+          ) : null}
           <button
             type="button"
             className="cta"
@@ -2824,17 +2953,26 @@ function DevicesPanel() {
 // Pflegt die config:app-version. Der Funktionaer setzt die aktuelle
 // empfohlene Version + URL — Tablets ziehen das beim 6h-Update-Check.
 
-function AppVersionPanel() {
-  const [data, setData] = useState<AppVersionConfig | null>(null);
+function AppVersionPanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
+  // AUDIT-15 (SF-07): setData-Wrapper markiert jede Mutation als
+  // "ungespeichert" — der Lade-Effekt nutzt setDataRaw direkt.
+  const [data, setDataRaw] = useState<AppVersionConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  function setData(next: AppVersionConfig) {
+    setDataRaw(next);
+    setDirty(true);
+    onDirtyChange?.(true);
+  }
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await getAppVersionConfig();
-        setData(r);
+        setDataRaw(r);
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       }
@@ -2847,6 +2985,8 @@ function AppVersionPanel() {
     setErr(null);
     try {
       await setAppVersionConfig(data);
+      setDirty(false);
+      onDirtyChange?.(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -2864,7 +3004,12 @@ function AppVersionPanel() {
           App-Version-Management
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {saved ? <span className="badge ok">gespeichert</span> : null}
+          {/* AUDIT-15 (SF-07): Dirty-Badge — Muster Florianstation. */}
+          {saved ? (
+            <span className="badge ok">gespeichert</span>
+          ) : dirty ? (
+            <span className="badge neutral">ungespeicherte Änderungen</span>
+          ) : null}
           <button
             type="button"
             className="cta"

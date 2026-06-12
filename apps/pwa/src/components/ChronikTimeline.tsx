@@ -361,7 +361,15 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                           fontFamily: "var(--font-mono)",
                         }}
                       >
-                        {fotoCache[e.fotoId] === null ? "📷 Foto (im Bericht enthalten)" : "📷 Foto lädt …"}
+                        {/* AUDIT-09/EL-07 (Audit 2026-06-12): drei Faelle —
+                            null = geladen, aber lokal/serverseitig nicht
+                            verfuegbar; ohne loadFoto-Prop gibt es NIE ein
+                            Bild (frueher stand dann ewig "Foto laedt …"). */}
+                        {fotoCache[e.fotoId] === null
+                          ? "📷 Foto (im Bericht enthalten)"
+                          : loadFoto
+                            ? "📷 Foto lädt …"
+                            : "📷 Foto am Tablet — im PDF enthalten"}
                       </div>
                     )
                   ) : null}

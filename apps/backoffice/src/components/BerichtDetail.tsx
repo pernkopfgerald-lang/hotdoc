@@ -1,19 +1,26 @@
-import { AlertTriangle, CheckCircle2, Lock, Trash2, Unlock } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileText, Lock, Trash2, Unlock } from "lucide-react";
 import { useEffect, useState } from "react";
+import { fetchAndOpenBlob } from "../api/client";
 import {
   abschluss,
   getEinsatz,
   loeschenEinsatz,
   reaktivieren,
   type EinsatzListItem,
+  type EinsatzTyp,
 } from "../api/einsaetze";
+import { TypBadge } from "../pages/Verwaltung";
 
 interface Props {
   id: string;
   onChange: () => void;
+  /** AUDIT-15 (SF-09): nach erfolgreichem Endgueltig-Loeschen — der
+   *  Aufrufer muss die Auswahl leeren BEVOR er neu laedt, sonst bleibt
+   *  eine Geist-Detailansicht mit aktiven Buttons stehen. */
+  onDeleted: () => void;
 }
 
-export function BerichtDetail({ id, onChange }: Props) {
+export function BerichtDetail({ id, onChange, onDeleted }: Props) {
   const [doc, setDoc] = useState<(EinsatzListItem & Record<string, unknown>) | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -79,8 +86,9 @@ export function BerichtDetail({ id, onChange }: Props) {
       await loeschenEinsatz(id, deleteGrund.trim());
       setDeleteModal(false);
       setDeleteGrund("");
-      // Doc ist weg → onChange triggert die Listenansicht, kein load().
-      onChange();
+      // Doc ist weg → onDeleted raeumt die Auswahl + laedt die Liste neu.
+      // KEIN load() — das wuerde fuer das Tombstone-Doc nur einen 404 ziehen.
+      onDeleted();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -102,6 +110,21 @@ export function BerichtDetail({ id, onChange }: Props) {
         {busy ? "lädt …" : err ?? "—"}
       </div>
     );
+  }
+
+  // AUDIT-15: typabhaengige Zusatzfelder aus dem bereits geladenen Doc —
+  // defensiv gecastet, weil das Listen-Item-Interface nur die Stammfelder
+  // typisiert. berichtNummer kommt erst mit AUDIT-11 (Counter beim Abschluss).
+  const verrechnung = doc.verrechnung as
+    | { verrechenbar?: boolean; rechnungsadresse?: string }
+    | undefined;
+  const berichtNummer =
+    typeof doc.berichtNummer === "string" ? doc.berichtNummer : undefined;
+
+  function openBlob(pfad: string) {
+    void fetchAndOpenBlob(pfad).catch((e: unknown) => {
+      setErr(e instanceof Error ? e.message : String(e));
+    });
   }
 
   return (
@@ -133,18 +156,24 @@ export function BerichtDetail({ id, onChange }: Props) {
               color: "var(--fg-3)",
             }}
           >
-            {doc._id} · {doc.einsatzTyp === "manuell" ? "manuell" : "BlaulichtSMS"}
+            {doc._id}
           </p>
         </div>
-        {doc.status === "aktiv" ? (
-          <span className="badge ok" style={{ gap: 6, padding: "4px 10px" }}>
-            <Unlock size={11} /> aktiv
-          </span>
-        ) : (
-          <span className="badge neutral" style={{ gap: 6, padding: "4px 10px" }}>
-            <Lock size={11} /> geschützt
-          </span>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* AUDIT-15: TypBadge statt Freitext-Kuerzel — eine Wahrheit fuer
+              Archiv, Liste und Detail (uebung/lotsendienst waren vorher
+              faelschlich als "BlaulichtSMS" etikettiert). */}
+          <TypBadge typ={(doc.einsatzTyp ?? "alarm") as EinsatzTyp} />
+          {doc.status === "aktiv" ? (
+            <span className="badge ok" style={{ gap: 6, padding: "4px 10px" }}>
+              <Unlock size={11} /> aktiv
+            </span>
+          ) : (
+            <span className="badge neutral" style={{ gap: 6, padding: "4px 10px" }}>
+              <Lock size={11} /> geschützt
+            </span>
+          )}
+        </div>
       </header>
 
       {err && (
@@ -182,6 +211,32 @@ export function BerichtDetail({ id, onChange }: Props) {
           <Field label="Alarmiert von">
             {(doc as unknown as { alarmierungAuthor: string }).alarmierungAuthor}
           </Field>
+        )}
+        {/* AUDIT-15: typabhaengige Felder — vorher mussten Schriftfuehrer
+            fuer Uebungs-/Lotsendienst-Details das PDF oeffnen. */}
+        {berichtNummer && (
+          <Field label="Berichts-Nr">
+            <span style={{ fontFamily: "var(--font-mono)" }}>{berichtNummer}</span>
+          </Field>
+        )}
+        {doc.einsatzTyp === "uebung" && (
+          <>
+            <Field label="Übungsthema">{doc.uebungThema ?? "—"}</Field>
+            <Field label="Übungsleiter">{doc.uebungsleiter ?? "—"}</Field>
+            <Field label="Übungstyp">{doc.uebungsTyp ?? "—"}</Field>
+          </>
+        )}
+        {doc.einsatzTyp === "lotsendienst" && (
+          <>
+            <Field label="Auftraggeber">{doc.lotsendienstAuftraggeber ?? "—"}</Field>
+            <Field label="Route">{doc.lotsendienstRoute ?? "—"}</Field>
+          </>
+        )}
+        {verrechnung?.verrechenbar !== undefined && (
+          <Field label="Verrechenbar">{verrechnung.verrechenbar ? "JA" : "NEIN"}</Field>
+        )}
+        {verrechnung?.rechnungsadresse && (
+          <Field label="Rechnungsadresse">{verrechnung.rechnungsadresse}</Field>
         )}
       </dl>
 
@@ -266,6 +321,42 @@ export function BerichtDetail({ id, onChange }: Props) {
             <Unlock size={16} /> Reaktivieren …
           </button>
         )}
+        {/* AUDIT-15 (SF-05/SF-12): PDF + syBOS-Spickzettel direkt aus dem
+            Backoffice-Arbeitsplatz oeffnen. Blob-Fetch mit Bearer-Header
+            (window.open ohne Auth → 403), identische Nutzung im ArchivPanel. */}
+        <button
+          type="button"
+          onClick={() => openBlob(`/api/einsaetze/${encodeURIComponent(id)}/pdf`)}
+          disabled={busy}
+          className="cta"
+          style={{
+            width: "auto",
+            padding: "12px 18px",
+            fontSize: 14,
+            background: "linear-gradient(180deg, var(--info) 0%, color-mix(in srgb, var(--info) 70%, #000) 100%)",
+            boxShadow: "0 4px 12px rgba(37, 99, 235, 0.30)",
+          }}
+          title="PDF-Bericht in neuem Tab oeffnen"
+        >
+          <FileText size={16} /> PDF öffnen
+        </button>
+        <button
+          type="button"
+          onClick={() => openBlob(`/api/einsaetze/${encodeURIComponent(id)}/spickzettel`)}
+          disabled={busy}
+          className="cta"
+          style={{
+            width: "auto",
+            padding: "12px 18px",
+            fontSize: 14,
+            background: "transparent",
+            color: "var(--info)",
+            border: "1px solid var(--info)",
+          }}
+          title="Abtipphilfe fuer die syBOS-Erfassung (HTML, neuer Tab)"
+        >
+          <ClipboardList size={16} /> syBOS-Spickzettel
+        </button>
         {/* Issue 2 (Einsatz-Test 2026-06-02): Loesch-Button.
             Bewusst sekundaer gestaltet (rot, ohne Schatten) damit er nicht
             zufaellig statt "Abschliessen" geklickt wird. */}

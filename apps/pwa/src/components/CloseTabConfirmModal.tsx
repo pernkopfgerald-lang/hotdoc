@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { describeApiError } from "../lib/api";
 
 interface Props {
   open: boolean;
@@ -8,6 +9,14 @@ interface Props {
   /** Setzen wenn der User einen Hauptauftrag schließt (Florianstation).
    *  Zeigt zusätzlichen Hinweis: "schließt auch alle Fahrzeugberichte". */
   isHauptauftrag?: boolean;
+  /**
+   * AUDIT-06 (Audit 2026-06-12): expliziter roter Warnhinweis über den
+   * Buttons — sichtbar für Abschluss- UND Verwerfen-Aktion. Der Aufrufer
+   * formuliert die Tragweite (z. B. "Schließt den GESAMTEN Einsatz für
+   * ALLE Fahrzeuge …"), damit niemand aus einem Tab-X eine Cascade
+   * auslöst, ohne es zu wissen.
+   */
+  warnText?: string;
   onClose: () => void;
   /**
    * Schließen mit Speichern. Bericht bleibt im Archiv,
@@ -38,6 +47,7 @@ export function CloseTabConfirmModal({
   open,
   tabLabel,
   isHauptauftrag,
+  warnText,
   onClose,
   onConfirmAbschluss,
   onConfirmVerwerfen,
@@ -67,6 +77,35 @@ export function CloseTabConfirmModal({
 
   if (!open) return null;
 
+  /* AUDIT-06 (Audit 2026-06-12): roter Warnblock über den Buttons — wird in
+     BEIDEN Steps gerendert (Abschluss-Auswahl UND Verwerfen-Bestätigung),
+     weil beide Aktionen dieselbe Tragweite haben. */
+  const warnBlock = warnText ? (
+    <div
+      role="alert"
+      style={{
+        margin: "0 0 14px",
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        fontSize: 17.5,
+        fontWeight: 600,
+        lineHeight: 1.45,
+        color: "var(--red)",
+        background: "var(--red-tint, rgba(217,59,59,0.12))",
+        border: "1px solid var(--red-border, #d93b3b)",
+        borderRadius: 10,
+        padding: "12px 14px",
+      }}
+    >
+      <AlertTriangle
+        size={20}
+        style={{ color: "var(--red)", flexShrink: 0, marginTop: 1 }}
+      />
+      <div>{warnText}</div>
+    </div>
+  ) : null;
+
   async function handleAbschluss() {
     setBusy(true);
     setError(null);
@@ -74,11 +113,8 @@ export function CloseTabConfirmModal({
       await onConfirmAbschluss();
       onClose();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Abschluss fehlgeschlagen — Verbindung?",
-      );
+      // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
+      setError(describeApiError(err));
       setBusy(false);
     }
   }
@@ -95,11 +131,8 @@ export function CloseTabConfirmModal({
       await onConfirmVerwerfen(grund.trim());
       onClose();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Verwerfen fehlgeschlagen — Verbindung?",
-      );
+      // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
+      setError(describeApiError(err));
       setBusy(false);
     }
   }
@@ -220,6 +253,8 @@ export function CloseTabConfirmModal({
                   </div>
                 </div>
               )}
+
+              {warnBlock}
 
               <button
                 type="button"
@@ -349,6 +384,7 @@ export function CloseTabConfirmModal({
                   outline: "none",
                 }}
               />
+              {warnBlock}
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   type="button"

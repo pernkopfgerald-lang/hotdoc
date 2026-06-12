@@ -12,6 +12,8 @@
  * der Client wird dann beim nächsten API-Call mit 401 ausgeloggt.
  */
 
+import { resolveApiUrl } from "./api";
+
 const KEY = "hotdoc.handoffInfo";
 const TOKEN_KEY = "hotdoc.tabletToken";
 
@@ -69,9 +71,11 @@ export async function releaseHandoff(): Promise<void> {
   try {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
-      // Best-effort — kein await-Crash bei Fehlern
+      // Best-effort — kein await-Crash bei Fehlern. ING-09 (Audit
+      // 2026-06-12): resolveApiUrl — im Capacitor-Webview gibt es keinen
+      // /api-Proxy, der relative Pfad würde dort ins Leere laufen.
       try {
-        await fetch("/api/auth/handoff/release", {
+        await fetch(resolveApiUrl("/api/auth/handoff/release"), {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,

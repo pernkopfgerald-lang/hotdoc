@@ -98,6 +98,9 @@ function EinsatzTab({
         }
       }}
       aria-current={active}
+      /* EL-05 (Audit 2026-06-12): voller Kontext im Tooltip — Einsatzart UND
+         Ort, damit bei mehreren ähnlichen Tabs klar ist welcher gemeint ist. */
+      title={`${tab.einsatzart}${tab.einsatzort ? " · " + tab.einsatzort : ""}`}
       className="group flex shrink-0 items-center gap-2 rounded-t-[12px] border-x border-t px-3.5 py-2 text-left transition cursor-pointer"
       style={{
         background: active ? "var(--surface)" : "var(--surface-2)",
@@ -127,12 +130,25 @@ function EinsatzTab({
           stark abgesetzter Endstatus ist (selten gezeigt, Funktionaer soll
           ihn klar sehen). */}
       <div className="flex flex-col leading-tight">
-        {/* Issue 11 (Einsatz-Test 2026-06-02): Tab-Label auf Mobile auf
-            80px gekuerzt damit 3-4 Tabs nebeneinander passen. Desktop
-            bleibt 180px. */}
-        <span className="max-w-[80px] sm:max-w-[180px] truncate text-[13px] font-semibold tracking-tight">
+        {/* KDT-13b + EL-05 (Audit 2026-06-12): FIXE Breiten 140px (Tablet) /
+            220px (Desktop) statt 80/180 max-w — damit wandert das X bei
+            wechselnden Texten nicht, und unter der Einsatzart steht eine
+            zweite Zeile mit dem Einsatzort (auf ~30 Zeichen begrenzt). Bei
+            zwei gleichzeitigen "Brandeinsatz"-Tabs war vorher nicht
+            unterscheidbar, welcher zu welcher Adresse gehört. */}
+        <span className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate text-[13px] font-semibold tracking-tight">
           {tab.einsatzart}
         </span>
+        {tab.einsatzort ? (
+          <span
+            className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate font-mono text-[11px]"
+            style={{ color: "var(--fg-3)" }}
+          >
+            {tab.einsatzort.length > 30
+              ? `${tab.einsatzort.slice(0, 30)}…`
+              : tab.einsatzort}
+          </span>
+        ) : null}
         {closed ? (
           <span
             className="font-mono text-[9px] font-medium uppercase tracking-[0.1em] inline-flex items-center gap-1"
@@ -144,8 +160,10 @@ function EinsatzTab({
       </div>
       {active ? <ChevronDown size={12} className="ml-1 opacity-50" /> : null}
       {onClose && (
-        /* U-19: X-Button auf 32x32 Icon-Box, padding:8 ergibt 48x48
-           effektives Touch-Target — sicher 44x44 fuer Tablet-Bedienung. */
+        /* KDT-13b (Audit 2026-06-12): X-Button auf echte 44x44. Der alte
+           U-19-Kommentar ("32x32 + padding 8 = 48x48") war falsch — durch
+           Tailwind-Preflight gilt box-sizing:border-box, das padding zählt
+           INNERHALB von width/height; effektiv waren es nur 32x32. */
         <button
           type="button"
           onClick={(e) => {
@@ -158,8 +176,8 @@ function EinsatzTab({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 32,
-            height: 32,
+            width: 44,
+            height: 44,
             marginLeft: 4,
             padding: 8,
             borderRadius: 8,

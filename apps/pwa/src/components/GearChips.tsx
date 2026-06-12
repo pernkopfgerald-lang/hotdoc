@@ -124,13 +124,17 @@ function OelSmartChip({
         <span className="dot" style={{ background: "var(--warn)" }} />
         Ölbindemittel
       </button>
+      {/* KDT-08 (Audit 2026-06-12): Stepper-Buttons von 22x22 auf 44x44 —
+          mit Einsatzhandschuh treffbar (Muster: stepBtnStyle im AsTimer von
+          MannschaftSlot.tsx). Abstand zum Aktivieren-Toggle >=12px, damit
+          ein Fehltap nicht das ganze Ölbindemittel deaktiviert. */}
       <span
         style={{
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          marginLeft: 8,
-          paddingLeft: 8,
+          marginLeft: 12,
+          paddingLeft: 12,
           borderLeft: "1px solid rgba(217,119,6,0.30)",
           fontFamily: "var(--font-mono)",
           fontVariantNumeric: "tabular-nums",
@@ -141,9 +145,10 @@ function OelSmartChip({
           onClick={() => step(-1)}
           aria-label="Minus 1 Sack"
           style={{
-            width: 22,
-            height: 22,
-            minHeight: 22,
+            width: 44,
+            height: 44,
+            minWidth: 44,
+            minHeight: 44,
             border: "1px solid rgba(217,119,6,0.35)",
             background: "var(--surface)",
             borderRadius: 6,
@@ -153,7 +158,7 @@ function OelSmartChip({
             placeItems: "center",
           }}
         >
-          <Minus size={11} strokeWidth={3} />
+          <Minus size={15} strokeWidth={3} />
         </button>
         <span style={{ minWidth: 18, textAlign: "center", fontWeight: 700, color: "var(--fg)" }}>
           {saecke}
@@ -164,9 +169,10 @@ function OelSmartChip({
           onClick={() => step(1)}
           aria-label="Plus 1 Sack"
           style={{
-            width: 22,
-            height: 22,
-            minHeight: 22,
+            width: 44,
+            height: 44,
+            minWidth: 44,
+            minHeight: 44,
             border: "1px solid rgba(217,119,6,0.35)",
             background: "var(--surface)",
             borderRadius: 6,
@@ -176,7 +182,7 @@ function OelSmartChip({
             placeItems: "center",
           }}
         >
-          <Plus size={11} strokeWidth={3} />
+          <Plus size={15} strokeWidth={3} />
         </button>
       </span>
     </span>

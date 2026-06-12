@@ -103,6 +103,9 @@ export interface BerichtDaten {
   sonstigeAnwesendeFF?: string[];
   sonstigeFreitext?: string;
   verrechenbar?: boolean;
+  /** AUDIT-14 (SF-02): Rechnungsadresse — gerendert im Verrechenbar-Block
+   *  wenn verrechenbar === true. Quelle: doc.verrechnung.rechnungsadresse. */
+  rechnungsadresse?: string;
   /** Aggregation: Personen-Anzahl, AS-Trupps etc. */
   mannschaft?: {
     eingesetzt: number;
@@ -123,7 +126,7 @@ export interface BerichtDaten {
   }>;
   /**
    * Foto-Funktion (2026-06-03): Einsatz-Fotos. Inline als 4×3-cm-Thumbnail in
-   * der Chronik (verknüpft über fotoId), groß im Anhang (9×12 cm, 4 pro A4).
+   * der Chronik (verknüpft über fotoId), groß im Anhang (8,5×10,5 cm, 4 pro A4).
    */
   fotos?: Array<{
     fotoId: string;
@@ -343,6 +346,11 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     <div class="hd-r">
       ${isSpezial ? `<div style="display:inline-block;background:${FILLED};color:#fff;font-size:10pt;font-weight:800;letter-spacing:0.14em;padding:2pt 8pt;border-radius:2pt;margin-bottom:2pt">${quelleLabel}</div>` : ""}
       <div class="hd-title" style="${isSpezial ? `color:${FILLED}` : ""}">${titel}</div>
+      ${
+        d.berichtsNummer
+          ? `<div style="font-size:11pt;font-weight:700;margin-top:2pt;color:#000">Berichts-Nr <b>${escape(d.berichtsNummer)}</b></div>`
+          : ""
+      }
       <div style="font-family:'Courier New',monospace;font-size:9pt;font-weight:600;margin-top:2pt;">
         ${escape(d.einsatzId)} · ${quelleLabel}
       </div>
@@ -540,7 +548,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         isUebung
           ? ""
           : `<td class="val" style="vertical-align:top">
-        Verrechenbar: <span class="cb">${boxFilled(d.verrechenbar === true)} JA</span> · <span class="cb">${boxFilled(d.verrechenbar === false)} NEIN</span><br>
+        Verrechenbar: <span class="cb">${boxFilled(d.verrechenbar === true)} JA</span> · <span class="cb">${boxFilled(d.verrechenbar === false)} NEIN</span>${d.verrechenbar === true && d.rechnungsadresse ? `<br>Rechnung an: <span style="color:${FILLED};font-weight:600">${escape(d.rechnungsadresse)}</span>` : ""}<br>
         Ölbindemittel: ${
           d.oelbindemittelSaecke && d.oelbindemittelSaecke > 0
             ? `<strong style="color:${FILLED}">${boxFilled(true)} ${d.oelbindemittelSaecke} Sack</strong>`
@@ -623,7 +631,7 @@ ${renderFotoAnhang(d)}
  *
  * Die separate Chronik-Anhang-Seite wurde entfernt — die Chronik wird
  * komplett hier auf Seite 1 gefuehrt. Der grosse Foto-Anhang
- * (9×12 cm, 4 pro A4) bleibt erhalten (renderFotoAnhang).
+ * (8,5×10,5 cm, 4 pro A4) bleibt erhalten (renderFotoAnhang).
  */
 function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
   const FILLED = "#1e3a8a";
@@ -677,8 +685,13 @@ function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
 
 /**
  * Foto-Funktion (2026-06-03): Foto-Anhang-Seiten. Alle Einsatz-Fotos groß
- * (9×12 cm), 4 pro A4-Blatt im 2×2-Raster, mit Zeit + Beschreibung als
+ * (8,5×10,5 cm), 4 pro A4-Blatt im 2×2-Raster, mit Zeit + Beschreibung als
  * Bildunterschrift. Leerer String wenn keine Fotos vorhanden.
+ *
+ * AUDIT-16 (SF-08 Stufe 1): Bildboxen 85×105 mm + 6 mm Raster-Abstand —
+ * damit passt das 2×2-Raster inkl. Header rechnerisch sicher in die
+ * nutzbaren ~265×178 mm bei den 16-mm-Puppeteer-Raendern (generator.ts).
+ * Vorher 90×120 mm: Folgeseiten-Ueberlauf / beschnittene Spalten.
  */
 function renderFotoAnhang(d: BerichtDaten): string {
   const fotos = (d.fotos ?? []).slice().sort(
@@ -701,11 +714,11 @@ function renderFotoAnhang(d: BerichtDaten): string {
       </div>
     </div>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:4mm">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-top:4mm">
     ${gruppe
       .map(
         (f) => `<div style="display:flex;flex-direction:column;gap:2mm">
-          <img src="${f.dataUrl}" alt="Einsatz-Foto" style="width:90mm;height:120mm;object-fit:contain;border:0.5pt solid #999;background:#f4f4f4" />
+          <img src="${f.dataUrl}" alt="Einsatz-Foto" style="width:85mm;height:105mm;object-fit:contain;border:0.5pt solid #999;background:#f4f4f4" />
           <div style="font-size:8.5pt;color:#333;line-height:1.3">
             <strong>${formatTime(f.aufgenommenAm)}</strong>${f.aufgenommenVon ? ` · ${escape(f.aufgenommenVon)}` : ""}${f.beschreibung ? `<br/>${escape(f.beschreibung)}` : ""}
           </div>
@@ -795,6 +808,12 @@ function boxFilled(checked: boolean): string {
 }
 
 export function renderSpickzettelHtml(d: BerichtDaten): string {
+  // AUDIT-14 (SF-12): Spickzettel typabhaengig — Uebung und Lotsendienst
+  // bekommen ihre eigenen Abtipp-Zeilen, die Berichts-Nr (nach AUDIT-11 die
+  // echte) steht im Kopf. Der Spickzettel ist KEIN Papier-Vordruck und darf
+  // frei erweitert werden.
+  const istUebung = d.istUebung === true;
+  const istLotsen = d.istLotsendienst === true;
   return /* html */ `<!doctype html>
 <html lang="de">
 <head>
@@ -814,16 +833,28 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
 <body>
   <h1>syBOS-Spickzettel</h1>
   <div class="sub">
-    Bericht <span class="nr">${escape(d.einsatzId)}</span> ·
-    bearbeite diesen Einsatz in syBOS in folgender Reihenfolge:
+    Bericht <span class="nr">${escape(d.berichtsNummer ?? d.einsatzId)}</span>${d.berichtsNummer ? ` · ${escape(d.einsatzId)}` : ""} ·
+    bearbeite diesen ${istUebung ? "Übungsbericht" : istLotsen ? "Lotsendienst" : "Einsatz"} in syBOS in folgender Reihenfolge:
   </div>
   <ol>
-    <li>Einsatzort: <span class="val">${escape(d.einsatzort)}</span></li>
+    ${d.berichtsNummer ? `<li>Berichts-Nr: <span class="val">${escape(d.berichtsNummer)}</span></li>` : ""}
+    <li>${istUebung ? "Übungsort" : istLotsen ? "Ort / Treffpunkt" : "Einsatzort"}: <span class="val">${escape(d.einsatzort)}</span></li>
     <li>Datum / Uhrzeit: <span class="val">${formatDateTime(d.alarmierungZeit)}</span></li>
-    <li>Einsatzart: <span class="val">${escape(d.einsatzart ?? d.einsatzartFreitext ?? "—")}</span></li>
+    ${
+      istUebung
+        ? `<li>Übungsthema: <span class="val">${escape(d.uebungThema ?? "—")}</span></li>
+    <li>Übungstyp: <span class="val">${escape(d.uebungsTyp ?? "—")}</span></li>
+    <li>Übungsleiter: <span class="val">${escape(d.uebungsleiter ?? "—")}</span></li>`
+        : istLotsen
+          ? `<li>Auftraggeber: <span class="val">${escape(d.lotsendienstAuftraggeber ?? "—")}</span></li>
+    ${d.lotsendienstRoute ? `<li>Route / Strecke: <span class="val">${escape(d.lotsendienstRoute)}</span></li>` : ""}
+    ${d.rechnungsadresse ? `<li>Rechnungsadresse: <span class="val">${escape(d.rechnungsadresse)}</span></li>` : ""}`
+          : `<li>Einsatzart: <span class="val">${escape(d.einsatzart ?? d.einsatzartFreitext ?? "—")}</span></li>`
+    }
     ${d.alarmierungAuthor ? `<li>Alarmierungsquelle: <span class="val">${escape(d.alarmierungAuthor)}</span></li>` : ""}
-    ${d.einsatzende ? `<li>Einsatzende: <span class="val">${formatDateTime(d.einsatzende)}</span></li>` : ""}
+    ${d.einsatzende ? `<li>${istUebung ? "Übungsende" : "Einsatzende"}: <span class="val">${formatDateTime(d.einsatzende)}</span></li>` : ""}
     ${d.oelbindemittelSaecke ? `<li>Ölbindemittel: <span class="val">${d.oelbindemittelSaecke} Säcke (VERRECHENBAR)</span></li>` : ""}
+    ${!istUebung && !istLotsen && d.rechnungsadresse ? `<li>Rechnungsadresse: <span class="val">${escape(d.rechnungsadresse)}</span></li>` : ""}
     <li>Bericht-PDF als Anhang an den syBOS-Eintrag hängen.</li>
   </ol>
   <p style="margin-top:18pt;font-size:9pt;color:#888;">

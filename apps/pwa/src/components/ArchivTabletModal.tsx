@@ -39,6 +39,14 @@ interface Props {
   fahrzeugId?: string;
   /** Anzeige-Name fuer den Header (z. B. Funkrufname). */
   fahrzeugName?: string;
+  /**
+   * AUDIT-09/EL-12 (Audit 2026-06-12): wird nach erfolgreichem
+   * POST /reaktivieren mit der Einsatz-Doc-ID aufgerufen — die ZentralePage
+   * schaltet damit SOFORT auf den reaktivierten Einsatz um (statt bis zu
+   * 10 s auf den naechsten Poll zu warten). Optional — die BerichtPage-
+   * Verwendung bleibt unveraendert (dort reicht der 5-s-Poll).
+   */
+  onReaktiviert?: (einsatzId: string) => void;
 }
 
 const TYP_LABEL: Record<NonNullable<ArchivItem["einsatzTyp"]>, { label: string; icon: typeof Flame; color: string }> = {
@@ -58,7 +66,7 @@ const TYP_LABEL: Record<NonNullable<ArchivItem["einsatzTyp"]>, { label: string; 
  * Bewusst minimal — die Tablets sind nicht für Recherche-Sessions
  * gedacht. Wer länger im Archiv arbeitet, soll das Backoffice nutzen.
  */
-export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: Props) {
+export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onReaktiviert }: Props) {
   const [items, setItems] = useState<ArchivItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -577,14 +585,18 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName }: P
                   setReaktivBusy(true);
                   setReaktivErr(null);
                   try {
+                    const reaktivierteId = reaktivOpen.id;
                     await apiCall(
-                      `/api/einsaetze/${encodeURIComponent(reaktivOpen.id)}/reaktivieren`,
+                      `/api/einsaetze/${encodeURIComponent(reaktivierteId)}/reaktivieren`,
                       { method: "POST", body: { grund: reaktivGrund.trim() } },
                     );
                     setReaktivOpen(null);
                     setReaktivGrund("");
-                    // Modal schliessen → ZentralePage holt den
-                    // reaktivierten Einsatz beim naechsten Poll.
+                    // AUDIT-09/EL-12: Aufrufer informieren — die ZentralePage
+                    // schaltet sofort auf den reaktivierten Einsatz um.
+                    if (onReaktiviert) onReaktiviert(reaktivierteId);
+                    // Modal schliessen → ohne onReaktiviert holt der
+                    // naechste Poll den reaktivierten Einsatz.
                     onClose();
                   } catch (e) {
                     if (e instanceof ApiError && e.status === 409) {

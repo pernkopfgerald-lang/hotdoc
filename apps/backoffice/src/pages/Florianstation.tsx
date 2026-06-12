@@ -47,6 +47,10 @@ interface FormState {
   /** Beteiligte Stellen — string[] gespeichert als Set fuer Toggle-Logik. */
   beteiligteStellen: string[];
   sonstigeAnwesendeFF: string[];
+  /** AUDIT-08-Kuer: sichtbares Freitext-Feld fuer sonstige FF — fuehrt
+   *  sonstigeAnwesendeFF.sonstigeFreitext, damit der Autosave das in der
+   *  PWA erfasste Feld nicht mehr unsichtbar ueberschreibt. */
+  sonstigeFreitext: string;
   /** "Lage unter Kontrolle" + "Brand aus" sind Time-Strings (HH:mm). */
   lageUnterKontrolle: string;
   brandAus: string;
@@ -77,6 +81,14 @@ function buildFormFromDoc(doc: Record<string, unknown>): FormState {
         return (v as { aktive: string[] }).aktive;
       }
       return [];
+    })(),
+    sonstigeFreitext: (() => {
+      const v = doc.sonstigeAnwesendeFF;
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const f = (v as { sonstigeFreitext?: unknown }).sonstigeFreitext;
+        if (typeof f === "string") return f;
+      }
+      return "";
     })(),
     lageUnterKontrolle:
       typeof doc.zeitmarken === "object" && doc.zeitmarken
@@ -221,6 +233,19 @@ export function Florianstation() {
     setSaving(true);
     setSaveErr(null);
     try {
+      // AUDIT-08: Der Backend-PUT ersetzt Objekt-Felder komplett (shallow-
+      // merge in einsaetze.ts) — ein Body ohne die fremden Felder wuerde
+      // also in der PWA erfasste Werte (z. B. zeitmarken.alst2/alst3)
+      // loeschen. Darum: Original-Doc aus der aktiven Liste mergen.
+      // ACHTUNG: orig kann zwischen 15s-Poll und Save veraltet sein —
+      // akzeptiertes Restrisiko, deutlich besser als das Voll-Ersetzen.
+      const orig = aktive.find((e) => e._id === selectedId) as
+        | (EinsatzListItem & Record<string, unknown>)
+        | undefined;
+      const refIso = orig?.alarmierungZeit;
+      const lageIso = fromTime(form.lageUnterKontrolle, refIso);
+      const brandIso = fromTime(form.brandAus, refIso);
+      const freitext = form.sonstigeFreitext.trim();
       const body: Record<string, unknown> = {
         einsatzort: form.einsatzort,
         einsatzart: form.einsatzart || undefined,
@@ -229,11 +254,20 @@ export function Florianstation() {
         beteiligteStellen: form.beteiligteStellen,
         // Schema erwartet { aktive: string[] }, NICHT ein nacktes Array.
         // Vorher: Backoffice schickte string[] → 400 schema_invalid.
-        sonstigeAnwesendeFF: { aktive: form.sonstigeAnwesendeFF },
+        // sonstigeFreitext fuehrt das sichtbare Formularfeld (AUDIT-08) —
+        // leer → Feld weglassen, undefined NIE in den Body spreaden.
+        sonstigeAnwesendeFF: {
+          aktive: form.sonstigeAnwesendeFF,
+          ...(freitext ? { sonstigeFreitext: freitext } : {}),
+        },
         meldungEinsatzleitung: form.meldungEinsatzleitung || undefined,
+        // AUDIT-08: GANZES zeitmarken-Objekt aus dem Original uebernehmen
+        // und nur die hier gefuehrten Felder ueberschreiben. Leere Inputs
+        // (fromTime → undefined) loeschen keine vorhandenen Zeiten.
         zeitmarken: {
-          lageUnterKontrolle: fromTime(form.lageUnterKontrolle),
-          brandAus: fromTime(form.brandAus),
+          ...((orig?.zeitmarken as object | undefined) ?? {}),
+          ...(lageIso ? { lageUnterKontrolle: lageIso } : {}),
+          ...(brandIso ? { brandAus: brandIso } : {}),
         },
       };
       await apiCall(`/api/einsaetze/${encodeURIComponent(selectedId)}`, {
@@ -248,7 +282,7 @@ export function Florianstation() {
     } finally {
       setSaving(false);
     }
-  }, [selectedId, form]);
+  }, [selectedId, form, aktive]);
 
   // Auto-Save mit 1.5s-Debounce (analog ZentralePage in der PWA)
   useEffect(() => {
@@ -526,6 +560,15 @@ export function Florianstation() {
               </div>
             </Field>
 
+            <Field label="Sonstige FF (Freitext)" full>
+              <input
+                className="input"
+                value={form.sonstigeFreitext}
+                onChange={(e) => patch("sonstigeFreitext", e.target.value)}
+                placeholder="z. B. FF Lambach mit Kran"
+              />
+            </Field>
+
             <Field label="Lage unter Kontrolle">
               <input
                 className="input num"
@@ -786,11 +829,20 @@ function toTime(v: unknown): string {
   }
 }
 
-/** "HH:mm" → ISO-Timestamp (heutiges Datum). Leer → undefined (PUT laesst Feld weg). */
-function fromTime(hhmm: string): string | undefined {
+/** "HH:mm" → ISO-Timestamp. Leer → undefined (PUT laesst Feld weg).
+ *  AUDIT-08: Datum aus refIso (= Alarmierungszeit) statt "heute" — sonst
+ *  bekaeme ein am Folgetag nachgetragener Wert das falsche Datum. Liegt das
+ *  Ergebnis mehr als 2 min VOR der Referenz, war der Einsatz ueber
+ *  Mitternacht → +1 Tag (Logik-Vorbild: hhmmToISOAt in
+ *  apps/pwa/src/pages/BerichtPage.tsx). */
+function fromTime(hhmm: string, refIso?: string): string | undefined {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return undefined;
   const [h, m] = hhmm.split(":").map(Number);
-  const d = new Date();
+  const refParsed = refIso ? new Date(refIso) : new Date();
+  const ref = Number.isNaN(refParsed.getTime()) ? new Date() : refParsed;
+  const d = new Date(ref);
   d.setHours(h ?? 0, m ?? 0, 0, 0);
+  // Einsatz ueber Mitternacht: "Brand aus 00:30" bei Alarm 23:40 → Folgetag.
+  if (d.getTime() < ref.getTime() - 2 * 60_000) d.setDate(d.getDate() + 1);
   return d.toISOString();
 }

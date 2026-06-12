@@ -1,8 +1,9 @@
-import { ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, MapPin, Save, Truck, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, MapPin, RotateCcw, Save, Truck, UploadCloud, Users } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
+import { AbgeschlossenView } from "../components/AbgeschlossenView";
 import { IdleView } from "../components/IdleView";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
@@ -24,7 +25,7 @@ import {
   type MannschaftSlotData,
 } from "../components/MannschaftSlot";
 import { MapCard, type MapPosition, type RouteData } from "../components/MapCard";
-import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
+import { NeuerEinsatzTabletModal, PLATZHALTER_ORT_REGEX, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
@@ -37,13 +38,16 @@ const VorschauModal = lazy(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
 import { useGeraete } from "../lib/geraete-config";
-import { apiCall, ApiError } from "../lib/api";
+import { apiCall, ApiError, describeApiError } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
-import { enqueueRequest } from "../lib/request-outbox";
+import { enqueueRequest, unblockRequests } from "../lib/request-outbox";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
+import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
+import { useSyncStatus } from "../lib/use-sync-status";
 import { haversineKm, useGeolocation } from "../lib/geo";
 import {
   clearDraft,
+  listDraftEinsatzIds,
   loadDraft,
   loadReportStates,
   saveDraft,
@@ -215,6 +219,46 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     label: string;
   } | null>(null);
 
+  // Sync-Zustand für den Upload — wird nach abschliessen() befüllt damit
+  // der User sieht ob der Bericht im Backend angekommen ist.
+  // AUDIT-02/ING-03 (2026-06-12): Deklaration nach oben gezogen, weil der
+  // Draft-Mirror-Effekt jetzt davon abhängt (Draft erst löschen wenn der
+  // Upload BESTÄTIGT ist, nicht schon beim lokalen Abschluss).
+  const [uploadState, setUploadState] = useState<
+    | { kind: "idle" }
+    | { kind: "uploading" }
+    | { kind: "ok"; einsatzId: string; at: string }
+    | { kind: "queued" }
+    | { kind: "error"; msg: string }
+  >({ kind: "idle" });
+
+  // AUDIT-03 (2026-06-12): aggregierter Outbox-Status für das persistente
+  // Sync-Badge unter der Topbar (wartend = nur Netz fehlt, blockiert =
+  // Bericht wurde abgeschlossen → erst Reaktivierung reicht nach).
+  const syncStatus = useSyncStatus();
+
+  // ING-08 (AUDIT-03, 2026-06-12): stehender Hinweis-Banner (~8 s) wenn ein
+  // Einsatz OFFLINE angelegt wurde — die Outbox legt ihn automatisch an,
+  // sobald Netz da ist. Vorher gab es nur eine Vibration und der Funktionär
+  // stand vor einer scheinbar leeren App.
+  const [offlineAnlageToastAt, setOfflineAnlageToastAt] = useState<number | null>(null);
+
+  // AUDIT-03 (2026-06-12): roter Hinweis wenn ein Chronik-Eintrag vom Server
+  // endgültig abgelehnt wurde (404/423) — der lokale Eintrag wird entfernt.
+  const [chronikRejectedAt, setChronikRejectedAt] = useState<number | null>(null);
+
+  // KDT-07 (AUDIT-10, 2026-06-12): Undo-Puffer für die GPS-Adress-Übernahme.
+  // 15-s-Toast mit Rückgängig-Button statt harter Sperre.
+  const [gpsUndo, setGpsUndo] = useState<{
+    einsatzId: string;
+    prev: {
+      einsatzort: string;
+      koordinaten: { lat: number; lng: number };
+      einsatzPos: { lat: number; lng: number };
+    };
+    neu: string;
+  } | null>(null);
+
   // einsaetze[] startet leer — kein Phantom-Einsatz, keine Vorbelegung.
   // Backend-Poll fuegt einen Eintrag hinzu sobald ein echter Einsatz im
   // CouchDB ist (BlaulichtSMS-Alarm ODER manuelle Anlage via Modal).
@@ -269,9 +313,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
 
   // Personalliste aus /api/admin/personen — Quelle: syBOS-Sync. Keine
   // lokale Vorbelegung; der Kdt traegt die tatsaechliche Besatzung manuell ein.
+  // KDT-06 (AUDIT-02, 2026-06-12): bei Erfolg wird die Liste in den
+  // localStorage-Cache gespiegelt; scheitert der Fetch (Funkloch beim Boot),
+  // kommt der letzte gecachte Stand als Fallback — vorher blieb der
+  // PersonPicker fuer den Rest des Einsatzes LEER (leerer catch).
+  const ladePersonenRef = useRef<() => void>(() => {});
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const lade = async () => {
       try {
         const r = await apiCall<{
           items: Array<{
@@ -296,15 +345,33 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           }))
           .sort((a, b) => a.nachname.localeCompare(b.nachname));
         setPersonen(list);
+        savePersonenCache(list);
       } catch {
-        // Backend nicht erreichbar — Picker bleibt leer, Auto-Retry beim
-        // naechsten Mount/Vehicle-Switch.
+        // Backend nicht erreichbar — gecachte Liste als Fallback laden
+        // (leicht veraltet ist tausendmal besser als leer). Der 30-s-Retry
+        // unten versucht den Live-Fetch weiter.
+        const cached = loadPersonenCache();
+        if (!cancelled && cached) {
+          setPersonen((cur) => (cur.length > 0 ? cur : cached));
+        }
       }
-    })();
+    };
+    ladePersonenRef.current = () => void lade();
+    void lade();
     return () => {
       cancelled = true;
     };
   }, [fahrzeugId]);
+
+  // KDT-06: 30-s-Retry solange die Personalliste leer ist (weder Fetch noch
+  // Cache haben geliefert). Stoppt automatisch sobald Personen da sind.
+  useEffect(() => {
+    if (personen.length > 0) return;
+    const t = setInterval(() => {
+      ladePersonenRef.current();
+    }, 30_000);
+    return () => clearInterval(t);
+  }, [personen.length]);
 
   // Persist abgeschlossen-Status in localStorage bei jeder Änderung —
   // damit der Reload nicht den frisch abgeschlossenen Bericht wieder
@@ -321,12 +388,20 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   // Stand (Mannschaft, Atemschutz-Zeiten, Öl, Geräte, Aufträge, Chronik,
   // editierte Adresse) einen Reload oder Android-OOM-Kill im Funkloch — der
   // gefährlichste Datenverlust-Fall. Set → Array serialisieren (Set überlebt
-  // JSON.stringify nicht). Abgeschlossene Einsätze brauchen keinen Draft mehr
-  // → Draft löschen (der Abschluss-Stand liegt in report-state + Outbox).
+  // JSON.stringify nicht).
+  // ING-03 (AUDIT-02, 2026-06-12): Draft erst löschen wenn der Upload
+  // BESTÄTIGT im Backend ist (uploadState ok für genau diesen Einsatz) —
+  // nicht schon beim lokalen Abschluss. Vorher konnte ein Abschluss im
+  // Funkloch + Reload den einzigen lokalen Träger des Berichts killen,
+  // während die Outbox noch auf Netz wartete.
   useEffect(() => {
     const handle = setTimeout(() => {
       for (const e of einsaetze) {
-        if (e.abgeschlossen) {
+        if (
+          e.abgeschlossen &&
+          uploadState.kind === "ok" &&
+          uploadState.einsatzId === e.id
+        ) {
           clearDraft(fahrzeugId, e.id);
           continue;
         }
@@ -334,7 +409,120 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       }
     }, 700);
     return () => clearTimeout(handle);
-  }, [einsaetze, fahrzeugId]);
+  }, [einsaetze, fahrzeugId, uploadState]);
+
+  // KDT-02 (AUDIT-02, 2026-06-12): Draft-Boot-Seeding. Nach einem Reload im
+  // Funkloch liefert der Backend-Poll nichts — der komplette Arbeitsstand
+  // (Mannschaft, AS-Zeiten, Chronik …) lag aber als Draft im localStorage
+  // und blieb vorher unsichtbar. Wir bauen die Einsätze direkt aus den
+  // Drafts wieder auf, BEVOR der erste runPoll läuft. Seed-Guards gegen
+  // Zombie-Drafts: (a) abgeschlossene Drafts nie seeden, (b) nur Drafts
+  // jünger als 24 h. Die knownIds-Dedupe in runPoll verhindert Dubletten
+  // beim späteren Poll; hydratedIdsRef schützt vor Backend-Overwrite.
+  useEffect(() => {
+    const known = new Set(einsaetzeRef.current.map((e) => e.id));
+    const seeded: EinsatzInstance[] = [];
+    for (const id of listDraftEinsatzIds(fahrzeugId)) {
+      if (known.has(id)) continue;
+      const draft = loadDraft(fahrzeugId, id);
+      if (!draft) continue;
+      // Guard (a): Draft eines abgeschlossenen Berichts → nicht seeden.
+      if (draft.abgeschlossen) continue;
+      const alarmRaw =
+        draft.alarm && typeof draft.alarm === "object"
+          ? (draft.alarm as Record<string, unknown>)
+          : null;
+      const alarmZeit =
+        alarmRaw && typeof alarmRaw.alarmierungZeit === "string"
+          ? Date.parse(alarmRaw.alarmierungZeit)
+          : NaN;
+      // Guard (b): nur Drafts juenger als 24 h (alles andere ist vom
+      // 6-h-Auto-Close laengst serverseitig versiegelt → Zombie).
+      if (!Number.isFinite(alarmZeit) || Date.now() - alarmZeit > 24 * 60 * 60 * 1000) {
+        continue;
+      }
+      const koord =
+        alarmRaw &&
+        alarmRaw.koordinaten &&
+        typeof (alarmRaw.koordinaten as { lat?: unknown }).lat === "number" &&
+        typeof (alarmRaw.koordinaten as { lng?: unknown }).lng === "number"
+          ? (alarmRaw.koordinaten as { lat: number; lng: number })
+          : HOME_POS;
+      const alarm: AlarmDaten = {
+        alarmId:
+          alarmRaw && typeof alarmRaw.alarmId === "string"
+            ? alarmRaw.alarmId
+            : id.replace(/^einsatz:/, ""),
+        einsatzart:
+          alarmRaw && typeof alarmRaw.einsatzart === "string"
+            ? alarmRaw.einsatzart
+            : "Einsatz",
+        einsatzort:
+          alarmRaw && typeof alarmRaw.einsatzort === "string"
+            ? alarmRaw.einsatzort
+            : "",
+        alarmierungZeit: new Date(alarmZeit).toISOString(),
+        alarmierungAuthor:
+          alarmRaw && typeof alarmRaw.alarmierungAuthor === "string"
+            ? alarmRaw.alarmierungAuthor
+            : "BWST",
+        koordinaten: koord,
+        distanzKm: 0,
+      };
+      if (alarmRaw && typeof alarmRaw.stichwort === "string") {
+        alarm.stichwort = alarmRaw.stichwort as NonNullable<AlarmDaten["stichwort"]>;
+      }
+      const einsatzPos =
+        draft.einsatzPos &&
+        typeof (draft.einsatzPos as { lat?: unknown }).lat === "number" &&
+        typeof (draft.einsatzPos as { lng?: unknown }).lng === "number"
+          ? (draft.einsatzPos as { lat: number; lng: number })
+          : koord;
+      const typ =
+        draft.einsatzTyp === "manuell" ||
+        draft.einsatzTyp === "uebung" ||
+        draft.einsatzTyp === "lotsendienst"
+          ? draft.einsatzTyp
+          : "alarm";
+      // Skeleton wie in buildEinsatzFromApi, dann die Arbeitsfelder defensiv
+      // aus dem Draft mergen (gearSelected Array → Set etc.).
+      const fresh: EinsatzInstance = {
+        id,
+        alarm,
+        einsatzPos,
+        manuell: typ !== "alarm",
+        einsatzTyp: typ,
+        fahrer: null,
+        kdt: null,
+        mannschaft: Array.from(
+          { length: fahrzeug.besatzung.mannschaftsplaetzeZusaetzlich },
+          (_, i) => emptySlot(i + 1),
+        ),
+        gearSelected: new Set(),
+        oelSaecke: 0,
+        auftraege: [],
+        chronik: [],
+        abgeschlossen: null,
+        uhrzeitBisHHMM: "",
+        kmManualOverride: null,
+        kdtIstEinsatzleiter: fahrzeugId === "kdo",
+      };
+      const merged = mergeDraftIntoInstance(fresh, draft);
+      hydratedIdsRef.current.add(id);
+      seeded.push(merged);
+      known.add(id);
+    }
+    if (seeded.length === 0) return;
+    setEinsaetze((prev) => {
+      const prevIds = new Set(prev.map((e) => e.id));
+      const freshOnes = seeded.filter((s) => !prevIds.has(s.id));
+      return freshOnes.length > 0 ? [...prev, ...freshOnes] : prev;
+    });
+    // Den ersten geseedeten Einsatz aktiv schalten wenn noch keiner offen ist
+    // — der Kdt soll seinen Arbeitsstand sofort wiedersehen.
+    setActiveId((cur) => cur || seeded[0]!.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fahrzeugId]);
 
   // Backend-Polling (alle 30 s) — drei Aufgaben in einem Lauf:
   //   1. Frischer abgeschlossen-Stand aus Backend übernehmen (z. B. nach
@@ -437,12 +625,21 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     };
 
     const runPoll = async () => {
+      // AUDIT-02 (2026-06-12): laufender Poll → diesen Tick ueberspringen.
+      // Mit dem Reconcile (Extra-GETs pro Einsatz) kann ein Lauf laenger als
+      // 5 s dauern; ohne Guard wuerden sich Polls ueberlappen und Phase-2-
+      // Updates gegeneinander racen.
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
       try {
         const list = await apiCall<{ items: ApiEinsatzListItem[] }>(
           `/api/einsaetze?status=aktiv&fuerFahrzeug=${encodeURIComponent(fahrzeugId)}`,
         );
         if (cancelled) return;
-        if (list.items.length === 0) return;
+        // ING-01 (AUDIT-02, 2026-06-12): Der fruehere Early-Return bei leerer
+        // Liste ist WEG — sonst erfaehrt das Tablet nie, dass sein letzter
+        // Einsatz remote (Florian/Auto-Close) abgeschlossen wurde, und der
+        // Kdt tippt in einen Bericht, der serverseitig laengst versiegelt ist.
 
         // Phase 1: Neue Einsaetze erkennen + in lokale Liste aufnehmen.
         // Beim ersten neuen Einsatz im Tick switcht das Tablet auto-magisch
@@ -556,6 +753,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           // ein rotes Pop-Up — er soll bewusst entscheiden, nicht aus Versehen
           // mitten in der Eingabe rausgerissen werden.
           const cur = einsaetzeRef.current.find((e) => e.id === activeIdRef.current);
+          // KDT-14 (AUDIT-02, 2026-06-12): auch eigene Chronik-Eintraege und
+          // ein manueller KM-Override zaehlen als "echte Arbeit" — vorher
+          // riss ein neuer Alarm den Kdt trotzdem aus der Eingabe.
           const hasActiveWork =
             cur &&
             !cur.abgeschlossen &&
@@ -564,7 +764,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               cur.mannschaft.some((m) => m.person) ||
               cur.gearSelected.size > 0 ||
               cur.oelSaecke > 0 ||
-              cur.auftraege.length > 0);
+              cur.auftraege.length > 0 ||
+              cur.chronik.some((c) => c.fahrzeugId === fahrzeugId) ||
+              cur.kmManualOverride !== null);
           if (hasActiveWork) {
             // Pop-Up triggern — Werte aus der frisch erkannten Einsatz-Doc.
             const target = list.items.find((it) => it._id === firstNewId);
@@ -642,8 +844,63 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             }
           }
         }
+
+        // Phase 3 — ING-01 (AUDIT-02, 2026-06-12): Remote-Abschluss-Reconcile.
+        // Lokale, nicht-abgeschlossene Einsaetze, die NICHT mehr in der
+        // status=aktiv-Liste stehen, wurden remote abgeschlossen oder
+        // verworfen. HARTE REGEL: Dieser Block laeuft NUR, wenn der Listen-
+        // Request oben netzwerkseitig erfolgreich war (wir sind im try-Block
+        // NACH Erhalt von list) — ein Netzfehler darf geseedete Einsaetze
+        // NIE killen.
+        const listIds = new Set(list.items.map((it) => it._id));
+        const offeneLokal = einsaetzeRef.current.filter(
+          (e) => !e.abgeschlossen && !listIds.has(e.id),
+        );
+        for (const lokal of offeneLokal) {
+          try {
+            const doc = await apiCall<{ status?: string; einsatzende?: string }>(
+              `/api/einsaetze/${encodeURIComponent(lokal.id)}`,
+            );
+            if (cancelled) return;
+            if (doc.status === "abgeschlossen") {
+              // KM wie bisher berechnen: manueller Override gewinnt, sonst
+              // Luftlinie x Strassenfaktor x 2 (die GraphHopper-Route gehoert
+              // zum gerade aktiven Einsatz und ist hier nicht verfuegbar).
+              const km =
+                typeof lokal.kmManualOverride === "number"
+                  ? lokal.kmManualOverride
+                  : haversineKm(HOME_POS, lokal.einsatzPos) * ROAD_FACTOR * 2;
+              setEinsaetze((prev) =>
+                prev.map((e) =>
+                  e.id === lokal.id && !e.abgeschlossen
+                    ? {
+                        ...e,
+                        // Quelle "remote": die AbgeschlossenView zeigt
+                        // "geschlossen durch Florian/Auto-Abschluss".
+                        abgeschlossen: {
+                          ts: doc.einsatzende ?? new Date().toISOString(),
+                          durch: "Florian/Auto-Abschluss",
+                          kmGefahren: km,
+                        },
+                      }
+                    : e,
+                ),
+              );
+            }
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) {
+              // Einsatz wurde verworfen/geloescht → Tab entfernen. Den
+              // Draft bewusst NICHT loeschen (Zero-Data-Loss — er altert
+              // ueber den 24-h-Seed-Guard von selbst raus).
+              setEinsaetze((prev) => prev.filter((e) => e.id !== lokal.id));
+            }
+            // Netzfehler/5xx → nichts tun, naechster Poll prueft erneut.
+          }
+        }
       } catch {
         // Backend nicht erreichbar — localStorage-Stand bleibt massgeblich.
+      } finally {
+        pollInFlightRef.current = false;
       }
     };
 
@@ -677,12 +934,22 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const hydratedIdsRef = useRef<Set<string>>(new Set());
   // OPT-6b (Audit 2026-06-03): Doppel-Submit-Guard für den Abschluss-Button.
   const abschlussInFlightRef = useRef(false);
+  // AUDIT-02 (2026-06-12): laufender runPoll → naechsten 5-s-Tick ueberspringen
+  // (Reconcile-GETs koennen einen Lauf ueber die Tick-Grenze ziehen).
+  const pollInFlightRef = useRef(false);
   // Foto-Funktion (2026-06-03): Busy-Flag während Komprimierung/Speichern.
   const [fotoBusy, setFotoBusy] = useState(false);
   // #172 (Test 2026-06-03): GPS-Adresse-Übernahme-Status für den Einsatzort-Button.
   const [gpsAdrBusy, setGpsAdrBusy] = useState(false);
   // Chronik-Texteingabe (Diktat vorerst ersetzt).
   const [chronikInput, setChronikInput] = useState("");
+
+  // KDT-14 (AUDIT-02, 2026-06-12): halbgetippter Chronik-Text gehoert zum
+  // alten Einsatz — beim Tab-Wechsel leeren, sonst landet er versehentlich
+  // in der Chronik des falschen Einsatzes.
+  useEffect(() => {
+    setChronikInput("");
+  }, [activeId]);
 
   /**
    * #172: Aktuelle GPS-Position als Einsatzadresse übernehmen — der Kdt steht
@@ -703,6 +970,23 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       }
       return;
     }
+    // KDT-07 (AUDIT-10, 2026-06-12): weiches Confirm NUR bei erkennbarer
+    // Fahrt (>10 km/h) — die GPS-Position waere dann irgendwo auf der
+    // Anfahrt, nicht der Einsatzort. speedKmh ist oft null (kein Heading-
+    // Fix), darum KEINE harte Button-Sperre.
+    if (fix.speedKmh != null && fix.speedKmh > 10) {
+      const wirklich = window.confirm(
+        "Fahrzeug bewegt sich — Adresse wirklich durch aktuelle Position ersetzen?",
+      );
+      if (!wirklich) return;
+    }
+    // KDT-07: alte Werte fuer den Undo-Toast sichern, BEVOR ueberschrieben wird.
+    const prevWerte = {
+      einsatzort: active.alarm.einsatzort,
+      koordinaten: active.alarm.koordinaten,
+      einsatzPos: active.einsatzPos,
+    };
+    const undoEinsatzId = active.id;
     setGpsAdrBusy(true);
     let adresse = `GPS ${fix.lat.toFixed(5)}, ${fix.lng.toFixed(5)}`;
     try {
@@ -728,8 +1012,40 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         },
         einsatzPos: { lat: fix.lat, lng: fix.lng },
       }));
+      // KDT-07: 15-s-Undo-Toast — der 1,5-s-Debounce-Sync verteilt eine
+      // Ruecknahme genauso wie die Ersetzung selbst.
+      setGpsUndo({ einsatzId: undoEinsatzId, prev: prevWerte, neu: adresse });
       setGpsAdrBusy(false);
     }
+  }
+
+  // KDT-07: Undo-Toast nach 15 s automatisch ausblenden.
+  useEffect(() => {
+    if (gpsUndo === null) return;
+    const t = setTimeout(() => setGpsUndo(null), 15_000);
+    return () => clearTimeout(t);
+  }, [gpsUndo]);
+
+  /** KDT-07: GPS-Adress-Ersetzung rueckgaengig machen (Undo-Toast-Button). */
+  function gpsUndoZuruecknehmen(): void {
+    if (!gpsUndo) return;
+    const { einsatzId, prev } = gpsUndo;
+    setEinsaetze((cur) =>
+      cur.map((e) =>
+        e.id === einsatzId
+          ? {
+              ...e,
+              alarm: {
+                ...e.alarm,
+                einsatzort: prev.einsatzort,
+                koordinaten: prev.koordinaten,
+              },
+              einsatzPos: prev.einsatzPos,
+            }
+          : e,
+      ),
+    );
+    setGpsUndo(null);
   }
 
   useEffect(() => {
@@ -941,6 +1257,37 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     geo.fix?.lng,
   ]);
 
+  // KDT-05 (AUDIT-10, 2026-06-12): SEPARATE Route fuer die KM-Berechnung —
+  // Feuerwehrhaus → Einsatzort, einmal pro Einsatzort geholt. Die Live-
+  // Navigationsroute oben (GPS → Einsatzort) bleibt unveraendert fuer
+  // MapCard/ETA, taugt aber NICHT als Abrechnungs-KM: am Einsatzort stehend
+  // war route.distanceM nahe 0 und der "Auto"-Wert log.
+  const [kmRoute, setKmRoute] = useState<{ distanceM: number } | null>(null);
+  useEffect(() => {
+    if (!active?.einsatzPos) {
+      setKmRoute(null);
+      return;
+    }
+    const ziel = active.einsatzPos;
+    let cancelled = false;
+    setKmRoute(null);
+    void (async () => {
+      try {
+        const r = await apiCall<{ ok: true; distanceM: number }>(
+          `/api/routing/route?fromLat=${HOME_POS.lat}&fromLng=${HOME_POS.lng}&toLat=${ziel.lat}&toLng=${ziel.lng}`,
+        );
+        if (cancelled) return;
+        setKmRoute({ distanceM: r.distanceM });
+      } catch {
+        // Routing tot/Quota → Luftlinien-Fallback in computeKmAuto bleibt.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.einsatzPos?.lat, active?.einsatzPos?.lng]);
+
   // Live-Fleet-Polling: alle 3 s die Positionen aller Fahrzeuge holen.
   // Das eigene Fahrzeug erscheint in der Liste mit isSelf-Flag, damit die
   // Map es hervorheben kann. Florian Eberstalzell wird im Backend nicht
@@ -1023,6 +1370,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     const t = setTimeout(() => setSavedToastAt(null), 3000);
     return () => clearTimeout(t);
   }, [savedToastAt]);
+
+  // ING-08 (AUDIT-03): Offline-Anlage-Banner nach 8 s ausblenden — lang
+  // genug zum Lesen, kein blosses Vibrieren mehr.
+  useEffect(() => {
+    if (offlineAnlageToastAt === null) return;
+    const t = setTimeout(() => setOfflineAnlageToastAt(null), 8_000);
+    return () => clearTimeout(t);
+  }, [offlineAnlageToastAt]);
 
   // Live-Sync zum Backend: nach jeder Aenderung am Bericht (Mannschaft,
   // Geraete, Aufträge, ÖL) wird mit 2,5 s Debounce ein status="in_arbeit"-
@@ -1160,6 +1515,38 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
    *  - kind="audio" (iOS-Safari/Firefox): Audio-Blob hochladen an Whisper-API.
    *    Bei nicht-konfigurierter API erscheint ein klarer Hinweis-Text im Eintrag.
    */
+  /**
+   * AUDIT-03 (2026-06-12): zentrale Auswertung des broadcast-Ergebnisses.
+   *  - 'ok'/'queued' → nichts tun, der optimistische lokale Eintrag bleibt
+   *    stehen ('queued' ist KEIN Fehler — die persistente Outbox reicht nach).
+   *  - 'rejected' (404 Einsatz weg / 423 Bericht abgeschlossen) → Eintrag aus
+   *    dem lokalen State entfernen + roter Hinweis, sonst glaubt der Kdt,
+   *    sein Eintrag sei gespeichert, obwohl ihn der Server nie annimmt.
+   */
+  function sendeChronikEintrag(
+    einsatzId: string,
+    entry: Parameters<typeof broadcastChronikEntry>[1],
+  ): void {
+    void broadcastChronikEntry(einsatzId, entry).then((ergebnis) => {
+      if (ergebnis !== "rejected") return;
+      setEinsaetze((prev) =>
+        prev.map((e) =>
+          e.id === einsatzId
+            ? { ...e, chronik: e.chronik.filter((c) => c.id !== entry.id) }
+            : e,
+        ),
+      );
+      setChronikRejectedAt(Date.now());
+    });
+  }
+
+  // AUDIT-03: roten Chronik-Abgelehnt-Hinweis nach 8 s ausblenden.
+  useEffect(() => {
+    if (chronikRejectedAt === null) return;
+    const t = setTimeout(() => setChronikRejectedAt(null), 8_000);
+    return () => clearTimeout(t);
+  }, [chronikRejectedAt]);
+
   // Foto-Funktion (2026-06-03): Foto aus der Kamera in die Chronik aufnehmen.
   // Komprimieren + lokal speichern + Offline-Outbox-Upload (lib/foto.ts), dann
   // als Chronik-Eintrag mit fotoId. Die Beschreibung kann der Kdt nachträglich
@@ -1185,7 +1572,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         fotoId: res.fotoId,
       };
       patchActive((e) => ({ ...e, chronik: [...e.chronik, eintrag] }));
-      void broadcastChronikEntry(activeId, eintrag);
+      sendeChronikEintrag(activeId, eintrag);
     } catch (err) {
       console.warn("[foto] Aufnahme fehlgeschlagen:", err);
       alert("Foto konnte nicht verarbeitet werden. Bitte erneut versuchen.");
@@ -1210,7 +1597,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       text,
     };
     patchActive((e) => ({ ...e, chronik: [...e.chronik, entry] }));
-    void broadcastChronikEntry(activeId, entry);
+    sendeChronikEintrag(activeId, entry);
   }
 
   function onDictateResult(result: DictateResult) {
@@ -1239,7 +1626,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           },
         ],
       }));
-      void broadcastChronikEntry(activeId, {
+      sendeChronikEintrag(activeId, {
         id,
         zeitstempel,
         funkrufname: fahrzeug.funkrufname,
@@ -1268,7 +1655,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         },
       ],
     }));
-    void broadcastChronikEntry(activeId, {
+    sendeChronikEintrag(activeId, {
       id,
       zeitstempel,
       funkrufname: fahrzeug.funkrufname,
@@ -1292,7 +1679,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             : entry,
         ),
       }));
-      void broadcastChronikEntry(activeId, {
+      sendeChronikEintrag(activeId, {
         id,
         zeitstempel,
         funkrufname: fahrzeug.funkrufname,
@@ -1332,7 +1719,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         },
       ],
     }));
-    void broadcastChronikEntry(activeId, {
+    sendeChronikEintrag(activeId, {
       id: chronikId,
       zeitstempel,
       funkrufname: fahrzeug.funkrufname,
@@ -1370,9 +1757,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   /**
    * KM-Berechnung priorisiert:
    *   1. Manueller Override durch den Fahrzeugkdt (wenn vorhanden)
-   *   2. GraphHopper-Route Feuerwehrhaus → Einsatzort × 2 (Hin+Rück)
-   *   3. Luftlinie × 1.3 (Strassen-Faktor) × 2 als Fallback wenn Routing
-   *      noch nicht zurueckgegeben hat oder die API down ist
+   *   2. GraphHopper-Route Feuerwehrhaus → Einsatzort × 2 (Hin+Rück) —
+   *      KDT-05 (AUDIT-10, 2026-06-12): jetzt WIRKLICH ab Feuerwehrhaus
+   *      (kmRoute), nicht mehr die Live-Navigationsroute ab GPS-Position.
+   *   3. Luftlinie ab Feuerwehrhaus × 1.3 (Strassen-Faktor) × 2 als
+   *      Fallback wenn das Routing (noch) nichts geliefert hat
    *
    * Die manuelle Eingabe gewinnt IMMER — der Kdt weiss am besten ob er
    * den direkten Weg gefahren ist oder noch ein Mannschaftsfahrzeug
@@ -1385,22 +1774,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   }
   function computeKmAuto(): number {
     if (!active) return 0;
-    if (route && route.distanceM > 0) {
-      return (route.distanceM / 1000) * 2;
+    if (kmRoute && kmRoute.distanceM > 0) {
+      return (kmRoute.distanceM / 1000) * 2;
     }
     const luftlinie = haversineKm(HOME_POS, active.einsatzPos);
     return luftlinie * ROAD_FACTOR * 2;
   }
-
-  // Sync-Zustand für den Upload — wird nach abschliessen() befüllt damit
-  // der User sieht ob der Bericht im Backend angekommen ist.
-  const [uploadState, setUploadState] = useState<
-    | { kind: "idle" }
-    | { kind: "uploading" }
-    | { kind: "ok"; einsatzId: string; at: string }
-    | { kind: "queued" }
-    | { kind: "error"; msg: string }
-  >({ kind: "idle" });
 
   /**
    * Fahrzeugbericht-Upload — wird beim Abschließen versucht. Findet den
@@ -1408,11 +1787,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
    * den Bericht. Bei Offline / fehlendem Einsatz: lokaler Stand bleibt
    * erhalten, der User sieht eine "lokal gespeichert"-Meldung und kann
    * beim nächsten Reconnect erneut hochladen.
+   *
+   * AUDIT-03 (2026-06-12): Rueckgabewert fuer die Abschluss-Sequenzierung —
+   * "ok" (PUT angekommen) und "queued" (Outbox) zaehlen als erledigt,
+   * "failed" (Client-/Schema-Fehler, Abschluss lokal zurueckgenommen)
+   * darf KEINEN nachgelagerten Einsatz-Abschluss ausloesen.
    */
   async function uploadFahrzeugbericht(
     einsatz: EinsatzInstance,
     kmGefahren: number,
-  ): Promise<void> {
+  ): Promise<"ok" | "queued" | "failed"> {
     setUploadState({ kind: "uploading" });
     // BLOCKER-2b+3 (Audit 2026-06-03): einsatz.id IST bereits die Backend-Doc-ID
     // (aus buildEinsatzFromApi: id = api._id). Der frühere GET /api/einsaetze
@@ -1461,6 +1845,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       try {
         await apiCall(putPath, { method: "PUT", body });
         setUploadState({ kind: "ok", einsatzId, at: new Date().toLocaleTimeString("de-AT") });
+        return "ok";
       } catch (e) {
         // BLOCKER-2b+3 (Audit 2026-06-03): Netz-/Timeout-/5xx-Fehler → in die
         // Offline-Outbox legen, der 30-s-Worker reicht es automatisch nach.
@@ -1468,19 +1853,30 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         // echtem Client-/Schema-Fehler (Retry sinnlos) zeigen wir einen Fehler.
         const clientErr = e instanceof ApiError && [400, 404, 409, 422].includes(e.status);
         if (clientErr) {
-          setUploadState({ kind: "error", msg: e instanceof Error ? e.message : String(e) });
-        } else {
-          await enqueueRequest(
-            1,
-            `fzgber:${einsatzId}:${fahrzeugId}`,
-            "PUT",
-            putPath,
-            body as Record<string, unknown>,
-          ).catch(() => {
-            /* PouchDB-Fehler → der localStorage-Draft bleibt als letzter Schutz */
-          });
-          setUploadState({ kind: "queued" });
+          setUploadState({ kind: "error", msg: describeApiError(e) });
+          // ING-03 (AUDIT-02, 2026-06-12): Abschluss lokal ZURUECKNEHMEN —
+          // der Server hat genau diesen Body endgueltig abgelehnt. Der Kdt
+          // soll korrigieren und erneut abschliessen koennen, statt einen
+          // identisch-abgelehnten Body wieder und wieder zu re-senden.
+          saveReportState(fahrzeugId, einsatzId, null);
+          setEinsaetze((prev) =>
+            prev.map((x) =>
+              x.id === einsatzId ? { ...x, abgeschlossen: null } : x,
+            ),
+          );
+          return "failed";
         }
+        await enqueueRequest(
+          1,
+          `fzgber:${einsatzId}:${fahrzeugId}`,
+          "PUT",
+          putPath,
+          body as Record<string, unknown>,
+        ).catch(() => {
+          /* PouchDB-Fehler → der localStorage-Draft bleibt als letzter Schutz */
+        });
+        setUploadState({ kind: "queued" });
+        return "queued";
       }
     }
   }
@@ -1508,11 +1904,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       },
     }));
     setAbschlussModalOpen(false);
-    void uploadFahrzeugbericht(active, km);
-    // Solo-Tablet-Workflow: Wenn der Funktionaer das Hakerl gesetzt hat,
-    // schliesst der Fahrzeug-Abschluss auch gleich den Einsatz selbst.
-    // Backend erlaubt das seit dem requireAuth("mannschaft")-Switch.
-    if (alsoCloseEinsatz) {
+    // AUDIT-03 (2026-06-12): Abschluss-Sequenzierung. Der POST /abschluss darf
+    // erst raus, wenn der fzgber-PUT erledigt ist (Erfolg ODER Outbox-Enqueue)
+    // — vorher konnte der POST den PUT online ueberholen, der Einsatz war
+    // schreibgeschuetzt und der eigene Bericht prallte mit 423 ab.
+    void uploadFahrzeugbericht(active, km).then((ergebnis) => {
+      // Solo-Tablet-Workflow: Wenn der Funktionaer das Hakerl gesetzt hat,
+      // schliesst der Fahrzeug-Abschluss auch gleich den Einsatz selbst.
+      // Backend erlaubt das seit dem requireAuth("mannschaft")-Switch.
+      // Bei "failed" wurde der Abschluss lokal zurueckgenommen (ING-03) —
+      // dann darf auch der Einsatz NICHT geschlossen werden.
+      if (!alsoCloseEinsatz || ergebnis === "failed") return;
       const abschlussPath = `/api/einsaetze/${encodeURIComponent(einsatzId)}/abschluss`;
       void apiCall(abschlussPath, { method: "POST", body: {} }).catch((err) => {
         // BLOCKER-2b+3 (Audit 2026-06-03): Im Funkloch nicht verlieren — in die
@@ -1531,6 +1933,56 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           console.warn("[abschluss] Einsatz-Abschluss endgültig fehlgeschlagen:", err);
         }
       });
+    });
+  }
+
+  /**
+   * AUDIT-02 (2026-06-12): Reaktivierung direkt am Fahrzeug-Tablet (aus der
+   * AbgeschlossenView). REIHENFOLGE (ING): (1) falls der Einsatz selbst
+   * schreibgeschuetzt ist → POST /reaktivieren (Route erlaubt Rolle
+   * mannschaft, Issue 10), (2) Fahrzeugbericht per PUT wieder auf
+   * in_arbeit, (3) lokalen Abschluss-Stand loeschen, (4) blockierte
+   * Outbox-Items freigeben → der 30-s-Worker reicht sie automatisch nach.
+   */
+  async function reaktivieren(einsatz: EinsatzInstance): Promise<void> {
+    const einsatzId = einsatz.id;
+    const enc = encodeURIComponent(einsatzId);
+    try {
+      // (1) Einsatz-Schreibschutz pruefen + ggf. aufheben.
+      try {
+        const doc = await apiCall<{ status?: string; schreibschutz?: boolean }>(
+          `/api/einsaetze/${enc}`,
+        );
+        if (doc.status === "abgeschlossen" || doc.schreibschutz === true) {
+          await apiCall(`/api/einsaetze/${enc}/reaktivieren`, {
+            method: "POST",
+            body: { grund: "Reaktivierung am Fahrzeug-Tablet" },
+          });
+        }
+      } catch (err) {
+        // 404 → Einsatz weg, Reaktivierung sinnlos. Alles andere (Netz) →
+        // trotzdem mit dem PUT weitermachen, der Fehler zeigt sich dort.
+        if (err instanceof ApiError && err.status === 404) throw err;
+      }
+      // (2) Eigenen Fahrzeugbericht wieder oeffnen (Backend merged partial).
+      await apiCall(
+        `/api/einsaetze/${enc}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
+        { method: "PUT", body: { status: "in_arbeit" } },
+      );
+      // (3) Lokal aufmachen.
+      saveReportState(fahrzeugId, einsatzId, null);
+      setEinsaetze((prev) =>
+        prev.map((e) => (e.id === einsatzId ? { ...e, abgeschlossen: null } : e)),
+      );
+      setUploadState({ kind: "idle" });
+      // (4) AUDIT-03: blockierte Outbox-Items (423/409) wieder freigeben.
+      await unblockRequests(einsatzId).catch(() => {
+        /* PouchDB-Fehler — der naechste Flush-Tick sieht den Stand */
+      });
+    } catch (err) {
+      // Klartext statt Alert-Stacktrace — describeApiError erklaert auch
+      // den Offline-Fall.
+      window.alert(`Reaktivieren fehlgeschlagen: ${describeApiError(err)}`);
     }
   }
 
@@ -1625,11 +2077,33 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const kmRound = computeKm();
   const kmDisplay = `${kmRound.toFixed(1).replace(".", ",")} km`;
 
+  // KDT-11 (AUDIT-10, 2026-06-12): Platzhalter-Adressen ("GPS …", "Ort noch
+  // nicht erfasst", "Übungsort folgt") zaehlen NICHT als gesetzte Adresse —
+  // vorher war der Check gruen, obwohl im PDF ein Platzhalter stand.
+  const ortTrimmed = active?.alarm.einsatzort.trim() ?? "";
+  const ortGesetzt = !!ortTrimmed && !PLATZHALTER_ORT_REGEX.test(ortTrimmed);
+
   const checks: AbschlussCheck[] = [
     { ok: !!active?.fahrer, label: "Fahrer eingetragen" },
     { ok: !!active?.kdt, label: "Fahrzeug-Kommandant eingetragen" },
     { ok: mannschaftCount >= 1, label: `Mindestens 1 Mannschaftsplatz besetzt (aktuell ${mannschaftCount})` },
-    { ok: !!active?.alarm.einsatzort.trim(), label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" },
+    { ok: ortGesetzt, label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" },
+    // #153-Zusage: bei einer Uebung muss vor dem Abschluss ein Thema/Typ
+    // erfasst sein (als Auftrag ODER als konkrete Einsatzart).
+    ...(active?.einsatzTyp === "uebung"
+      ? [
+          {
+            ok:
+              active.auftraege.length > 0 ||
+              (!!active.alarm.einsatzart && active.alarm.einsatzart !== "Übung"),
+            label: "Übungsthema/-typ erfasst",
+          },
+        ]
+      : []),
+    // EL/SF-Plausibilitaet: unter 1 km Gesamtstrecke ist bei gesetzter
+    // Adresse fast immer ein Rechenfehler/fehlendes Routing — kein harter
+    // Blocker, "Trotzdem schliessen" bleibt moeglich.
+    { ok: kmRound >= 1 || !ortGesetzt, label: `KM plausibel (aktuell ${kmDisplay})` },
   ];
 
   const abschlussSummary = [
@@ -1672,8 +2146,72 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       <StatusBanner />
       <HandoffBanner onReleased={onHandoffLogout} />
 
+      {/* AUDIT-03 (2026-06-12): persistentes Sync-Badge — die Outbox arbeitet
+          nicht mehr unsichtbar. Rot (blockiert) schlaegt grau (wartend). */}
+      {syncStatus.blockiert > 0 ? (
+        <div
+          role="alert"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            justifyContent: "center",
+            padding: "8px 14px",
+            background: "var(--red-tint)",
+            borderBottom: "1px solid var(--red-border, #d93b3b)",
+            color: "var(--red)",
+            fontSize: 15,
+            fontWeight: 600,
+          }}
+        >
+          <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+          Übertragung blockiert — Bericht wurde abgeschlossen. Reaktivieren,
+          dann wird automatisch nachgereicht.
+        </div>
+      ) : syncStatus.wartend > 0 ? (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            justifyContent: "center",
+            padding: "8px 14px",
+            background: "var(--surface-2)",
+            borderBottom: "1px solid var(--border)",
+            color: "var(--fg-2)",
+            fontSize: 15,
+            fontWeight: 600,
+          }}
+        >
+          <UploadCloud size={15} style={{ flexShrink: 0 }} />
+          {syncStatus.wartend === 1
+            ? "1 Übertragung wartet auf Netz"
+            : `${syncStatus.wartend} Übertragungen warten auf Netz`}
+        </div>
+      ) : null}
+
       <main className="page">
-        {istIdle || !active ? (
+        {active && active.abgeschlossen ? (
+          /* KDT-03 (AUDIT-02, 2026-06-12): nach dem Abschluss die fertige
+             AbgeschlossenView statt der anonymen IdleView — mit Summary,
+             Sync-Status, Reaktivieren-Button und Quick-Actions. */
+          <AbgeschlossenView
+            funkrufname={fahrzeug.funkrufname}
+            abgeschlossenAm={active.abgeschlossen.ts}
+            durch={active.abgeschlossen.durch}
+            summary={abschlussSummary}
+            syncState={uploadState}
+            onRetryUpload={() =>
+              active.abgeschlossen &&
+              void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)
+            }
+            onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
+            onArchiv={() => setArchivOpen(true)}
+            onSwitchFahrzeug={() => setVehicleSwitcherOpen(true)}
+            onReaktivieren={() => void reaktivieren(active)}
+          />
+        ) : istIdle || !active ? (
           <IdleView
             funkrufname={fahrzeug.funkrufname}
             onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
@@ -1907,13 +2445,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     </button>
                   ) : (
                     // U-10: Klarsprache — "Route" wenn GraphHopper lieferte,
-                    // sonst "Luftlinie".
+                    // sonst "Luftlinie". KDT-05: Pill zeigt die KM-Route ab
+                    // Feuerwehrhaus (kmRoute), nicht die Navigationsroute.
                     <div
                       className="chev"
                       title={
-                        route && route.distanceM > 0
-                          ? "Über Straßen-Route berechnet (GraphHopper)"
-                          : "Luftlinie × 1,3 — Routing-Server noch nicht da"
+                        kmRoute && kmRoute.distanceM > 0
+                          ? "Über Straßen-Route ab Feuerwehrhaus berechnet (GraphHopper)"
+                          : "Luftlinie × 1,3 ab Feuerwehrhaus — Routing-Server noch nicht da"
                       }
                       style={{
                         fontSize: 12.5,
@@ -1922,13 +2461,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                         letterSpacing: "0.06em",
                         textTransform: "uppercase",
                         padding: "2px 6px",
-                        background: route && route.distanceM > 0 ? "var(--ok-tint)" : "var(--surface-2)",
-                        color: route && route.distanceM > 0 ? "var(--ok)" : "var(--fg-3)",
-                        border: `1px solid ${route && route.distanceM > 0 ? "var(--ok-border)" : "var(--border)"}`,
+                        background: kmRoute && kmRoute.distanceM > 0 ? "var(--ok-tint)" : "var(--surface-2)",
+                        color: kmRoute && kmRoute.distanceM > 0 ? "var(--ok)" : "var(--fg-3)",
+                        border: `1px solid ${kmRoute && kmRoute.distanceM > 0 ? "var(--ok-border)" : "var(--border)"}`,
                         borderRadius: 6,
                       }}
                     >
-                      {route && route.distanceM > 0 ? "Route" : "Luftlinie"}
+                      {kmRoute && kmRoute.distanceM > 0 ? "Route" : "Luftlinie"}
                     </div>
                   )}
                 </div>
@@ -2327,22 +2866,30 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         onClose={() => setVehicleSwitcherOpen(false)}
       />
 
-      {/* Tab-Schließen-Dialog (X im Browser-Tab-Reiter) */}
+      {/* Tab-Schließen-Dialog (X im Browser-Tab-Reiter).
+          AUDIT-06/KDT-01 (2026-06-12): Das X auf dem AKTIVEN Tab fuehrt
+          nicht mehr hart in abschliessen(true) (= Einsatz-Abschluss + F3-
+          Cascade auf ALLE Fahrzeugberichte), sondern oeffnet das normale
+          AbschlussModal — dort sind die Checks sichtbar und "auch Einsatz
+          schliessen" ist eine bewusste Opt-in-Checkbox (default AUS). */}
       <CloseTabConfirmModal
         open={tabToClose !== null}
         tabLabel={tabToClose?.label ?? ""}
         isHauptauftrag={false}
+        warnText="Achtung: Schließt den GESAMTEN Einsatz für ALLE Fahrzeuge und die Zentrale — noch offene Fahrzeugberichte werden automatisch mit dem aktuellen Zwischenstand versiegelt."
         onClose={() => setTabToClose(null)}
         onConfirmAbschluss={async () => {
           if (!tabToClose) return;
-          // Wenn der zu schließende Tab der aktive ist: regulärer
-          // Abschluss-Flow inkl. Upload-State + Einsatz-schließen.
+          // Aktiver Tab → Pflicht-Tor AbschlussModal (einziges Tor zum
+          // Abschluss), KEIN direkter abschliessen(true)-Aufruf mehr.
           if (tabToClose.id === activeId) {
-            abschliessen(true);
+            setTabToClose(null);
+            setAbschlussModalOpen(true);
             return;
           }
-          // Ansonsten: nur den Einsatz im Backend schließen, lokalen
-          // Tab vergessen. Der Polling-Tick filtert den abgeschlossenen
+          // Nicht-aktiver Tab: Einsatz im Backend schließen (der rote
+          // warnText oben macht die Tragweite explizit), lokalen Tab
+          // vergessen. Der Polling-Tick filtert den abgeschlossenen
           // Tab anschließend weg.
           await apiCall(
             `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/abschluss`,
@@ -2415,9 +2962,19 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         onClose={() => setNeuerEinsatzOpen(null)}
         onCreated={(einsatzId, typ, extras) => {
           setNeuerEinsatzOpen(null);
+          // ING-08 (AUDIT-03, 2026-06-12): Offline-Anlage erkennen — die ID
+          // beginnt dann mit "outbox:einsatz:". In dem Fall (a) stehender
+          // Banner statt nur Vibration, (b) die 30-s-Auto-Clears der Vererbungs-
+          // Refs NICHT starten: die Refs werden erst geleert, wenn sie beim
+          // (deutlich spaeteren) Auftauchen des Einsatzes angewendet wurden.
+          const offlineAngelegt = einsatzId.startsWith("outbox:einsatz:");
+          if (offlineAngelegt) {
+            setOfflineAnlageToastAt(Date.now());
+          }
           // #155/#162: Übungs-Vorauswahl (Übungsleiter + Übungstyp) puffern —
           // wird beim Auftauchen des neuen Übungs-Einsatzes als Kdt + Auftrag
-          // angewendet (siehe buildEinsatzFromApi-Loop). Auto-Clear nach 30 s.
+          // angewendet (siehe buildEinsatzFromApi-Loop). Auto-Clear nach 30 s
+          // NUR im Online-Fall.
           if (typ === "uebung" && (extras?.uebungsleiterPerson || extras?.uebungsTyp)) {
             pendingUebungSetupRef.current = {
               ...(extras.uebungsleiterPerson
@@ -2425,9 +2982,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 : {}),
               ...(extras.uebungsTyp ? { uebungsTyp: extras.uebungsTyp } : {}),
             };
-            setTimeout(() => {
-              pendingUebungSetupRef.current = null;
-            }, 30_000);
+            if (!offlineAngelegt) {
+              setTimeout(() => {
+                pendingUebungSetupRef.current = null;
+              }, 30_000);
+            }
           }
           // Folge-Auftrag-Personal puffern: wenn der aktuelle Einsatz noch
           // laeuft und Personal eingetragen hat, uebernehmen wir es in den
@@ -2456,9 +3015,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             // auftaucht (z. B. Backend-Fehler) und ein viel spaeterer, ganz
             // anderer BlaulichtSMS-Alarm reinkommt, soll der nicht das alte
             // Personal erben. Der Poll laeuft alle 5 s — 30 s ist grosszuegig.
-            setTimeout(() => {
-              inheritPersonalRef.current = null;
-            }, 30_000);
+            // ING-08: im Offline-Fall NICHT starten — der Einsatz taucht erst
+            // nach dem Outbox-Flush auf, lange nach 30 s.
+            if (!offlineAngelegt) {
+              setTimeout(() => {
+                inheritPersonalRef.current = null;
+              }, 30_000);
+            }
           }
           // Vibration als haptisches Feedback bei erfolgreichem Anlegen.
           try {
@@ -2514,6 +3077,117 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           }}
         >
           <Save size={14} /> Gespeichert
+        </div>
+      )}
+
+      {/* ING-08 (AUDIT-03): stehender Banner nach Offline-Anlage — gleiches
+          Toast-Muster wie savedToast, aber 8 s und mit klarer Botschaft. */}
+      {offlineAnlageToastAt !== null && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 28,
+            zIndex: 3000,
+            maxWidth: "min(440px, calc(100% - 56px))",
+            padding: "12px 16px",
+            background: "var(--warn)",
+            color: "#fff",
+            borderRadius: 10,
+            fontSize: 16.5,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <UploadCloud size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+          Kein Netz — Bericht wird automatisch angelegt, sobald Verbindung
+          besteht.
+        </div>
+      )}
+
+      {/* AUDIT-03: Server hat einen Chronik-Eintrag endgueltig abgelehnt
+          (Bericht abgeschlossen) — der lokale Eintrag wurde entfernt. */}
+      {chronikRejectedAt !== null && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 28,
+            zIndex: 3001,
+            maxWidth: "min(440px, calc(100% - 56px))",
+            padding: "12px 16px",
+            background: "var(--red, #d93b3b)",
+            color: "#fff",
+            borderRadius: 10,
+            fontSize: 16.5,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+          Eintrag NICHT gespeichert — Bericht ist abgeschlossen (erst
+          reaktivieren).
+        </div>
+      )}
+
+      {/* KDT-07 (AUDIT-10): 15-s-Undo-Toast nach GPS-Adress-Uebernahme. */}
+      {gpsUndo !== null && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 88,
+            right: 28,
+            zIndex: 3000,
+            maxWidth: "min(480px, calc(100% - 56px))",
+            padding: "12px 16px",
+            background: "var(--info)",
+            color: "#fff",
+            borderRadius: 10,
+            fontSize: 16.5,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <MapPin size={18} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>Adresse ersetzt: {gpsUndo.neu}</span>
+          <button
+            type="button"
+            onClick={gpsUndoZuruecknehmen}
+            style={{
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              minHeight: 44,
+              padding: "0 14px",
+              background: "rgba(255,255,255,0.18)",
+              border: "1px solid rgba(255,255,255,0.55)",
+              borderRadius: 8,
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 15.5,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <RotateCcw size={15} />
+            Rückgängig
+          </button>
         </div>
       )}
 

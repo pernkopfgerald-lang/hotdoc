@@ -1,6 +1,7 @@
 import { AlertCircle, Lock, Plus, Unlock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { listEinsaetze, manuellAnlegen, type EinsatzListItem } from "../api/einsaetze";
+import { listEinsaetze, manuellAnlegen, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
+import { TypBadge } from "../pages/Verwaltung";
 import { BerichtDetail } from "./BerichtDetail";
 import { ManuellerBerichtModal } from "./ManuellerBerichtModal";
 
@@ -126,24 +127,35 @@ export function BerichteBrowser() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    {/* AUDIT-15: Titel-Fallback wie im ArchivPanel — Uebungen/
+                        Lotsendienste ohne Einsatzart zeigten vorher nur "—". */}
                     <span className="name" style={{ fontSize: 14 }}>
-                      {it.einsatzart ?? it.einsatzartFreitext ?? "—"}
+                      {it.einsatzart ??
+                        it.einsatzartFreitext ??
+                        it.uebungThema ??
+                        it.lotsendienstAuftraggeber ??
+                        "—"}
                     </span>
                     <StatusBadge item={it} />
                   </div>
                   <span style={{ fontSize: 12, color: "var(--fg-2)", textAlign: "left" }}>{it.einsatzort}</span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
-                      color: "var(--fg-3)",
-                      textAlign: "left",
-                    }}
-                  >
-                    {formatDateTime(it.alarmierungZeit)} · {it.einsatzTyp === "manuell" ? "MAN" : "ALR"}
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        color: "var(--fg-3)",
+                        textAlign: "left",
+                      }}
+                    >
+                      {formatDateTime(it.alarmierungZeit)}
+                    </span>
+                    {/* AUDIT-15: TypBadge aus Verwaltung.tsx statt des
+                        MAN/ALR-Kuerzels — eine Wahrheit fuer beide Ansichten. */}
+                    <TypBadge typ={(it.einsatzTyp ?? "alarm") as EinsatzTyp} />
                   </span>
                 </button>
               </li>
@@ -153,7 +165,17 @@ export function BerichteBrowser() {
 
         <div>
           {selectedId ? (
-            <BerichtDetail id={selectedId} onChange={reload} />
+            <BerichtDetail
+              id={selectedId}
+              onChange={reload}
+              // AUDIT-15 (SF-09): Auswahl leeren VOR dem Reload — sonst
+              // bleibt eine Geist-Detailansicht des geloeschten Berichts
+              // mit aktiven Buttons stehen.
+              onDeleted={() => {
+                setSelectedId(null);
+                void reload();
+              }}
+            />
           ) : (
             <div
               style={{

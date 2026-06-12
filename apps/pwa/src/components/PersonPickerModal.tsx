@@ -84,7 +84,7 @@ export function PersonPickerModal({
               {title}
             </h3>
             {subtitle && (
-              <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-text-3">
+              <p className="mt-0.5 font-mono text-[12px] uppercase tracking-[0.18em] text-text-3">
                 {subtitle}
               </p>
             )}
@@ -106,7 +106,14 @@ export function PersonPickerModal({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Name suchen …"
-            autoFocus
+            /* KDT-12 (Audit 2026-06-12): autoFocus nur bei Maus/Trackpad
+               (Desktop-Florian) — am Tablet würde der Fokus sofort die
+               Bildschirmtastatur aufspringen lassen und die halbe
+               Personenliste verdecken. */
+            autoFocus={
+              typeof window !== "undefined" &&
+              window.matchMedia("(pointer: fine)").matches
+            }
             className="flex-1 bg-transparent text-[16px] text-text-1 outline-none placeholder:text-text-3"
           />
           <span className="whitespace-nowrap font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-text-3">
@@ -116,31 +123,41 @@ export function PersonPickerModal({
 
         <ul className="m-0 list-none overflow-y-auto p-2">
           {filtered.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-text-3">Keine Person gefunden.</li>
+            /* KDT-06 (Audit 2026-06-12): ehrlicher Empty-State. Wenn die
+               GESAMT-Liste leer ist, liegt es am fehlgeschlagenen Personal-
+               Load (Funkloch beim Boot) — nicht an der Suche. Der 30-s-Retry
+               in der BerichtPage lädt automatisch nach. */
+            <li className="px-4 py-8 text-center text-sm text-text-3">
+              {personen.length === 0
+                ? "Personalliste nicht geladen — wird automatisch erneut versucht."
+                : "Keine Person gefunden."}
+            </li>
           ) : (
             filtered.map((p) => {
               const gewaehlt = bereitsGewaehlt.has(p.syBosId);
               return (
                 <li key={p._id}>
+                  {/* KDT-12 (Audit 2026-06-12): Zeilen >=56px hoch + größere
+                      Schrift — Auswahl mit Einsatzhandschuh am Tablet. */}
                   <button
                     type="button"
                     disabled={gewaehlt}
                     onClick={() => onSelect(p)}
-                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left transition hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
+                    className="flex min-h-[56px] w-full items-center gap-2.5 rounded-md px-3 py-3 text-left transition hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
                   >
-                    <span className="flex-1 text-[15px] font-medium text-text-1">
+                    <span className="flex-1 text-[18px] font-medium text-text-1">
                       {p.nachname} {p.vorname}
                     </span>
                     {p.atemschutzGueltig ? (
-                      <span className="rounded border border-amber/40 bg-amber/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.10em] text-amber">
+                      <span className="rounded border border-amber/40 bg-amber/15 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-amber">
                         AS
                       </span>
                     ) : (
-                      <span className="rounded border border-border bg-transparent px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.10em] text-text-3 opacity-50">
+                      <span className="rounded border border-border bg-transparent px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-text-3 opacity-50">
                         AS
                       </span>
                     )}
-                    <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.10em] text-blue">
+                    <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-blue">
                       {p.dienstgrad}
                     </span>
                   </button>

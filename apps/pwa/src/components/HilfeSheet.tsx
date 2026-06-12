@@ -231,7 +231,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="In der Hilfe suchen — z. B. Vidierung, Atemschutz, Übergabe …"
+              placeholder="In der Hilfe suchen — z. B. Abschluss, Atemschutz, Übergabe …"
               style={{
                 width: "100%",
                 padding: "10px 38px 10px 38px",
@@ -689,33 +689,44 @@ const KATEGORIEN: Kategorie[] = [
         tags: ["zentrale", "übersicht", "hauptbericht"],
       },
       {
+        // AUDIT-12/EL-15 (b): Die Zuweisung passiert NICHT im Anlage-Dialog,
+        // sondern in der Sektion "Fahrzeug-Disposition" im Hauptbericht-Editor.
         frage: "Wie weise ich Fahrzeuge einem Einsatz zu?",
         antwort:
-          "Wenn du im Florian einen manuellen Einsatz anlegst (z. B. Übung), kannst du im " +
-          "Anlage-Dialog Fahrzeuge auswählen. Diese bekommen den Einsatz automatisch als " +
-          "neuen Auftrag auf ihren Tablets.\n\n" +
-          "Bei BlaulichtSMS-Alarmen sind alle Fahrzeuge per Default involviert — sie sehen den " +
-          "Auftrag, der jeweilige Kdt entscheidet ob das Fahrzeug ausrückt.",
-        tags: ["disposition", "fahrzeug zuteilen", "alarmieren"],
+          "In der Florian-Zentrale gibt es im Hauptbericht-Editor die Sektion " +
+          "'Fahrzeug-Disposition'. Keine Auswahl → alle Fahrzeug-Tablets sehen den " +
+          "Einsatz (Default bei BlaulichtSMS-Alarm). Eine Auswahl filtert die " +
+          "Sichtbarkeit auf die markierten Fahrzeuge — nützlich z. B. bei Sturm, " +
+          "um Adressen aufzuteilen.\n\n" +
+          "Der jeweilige Fahrzeug-Kdt entscheidet am Tablet, ob das Fahrzeug ausrückt.",
+        tags: ["disposition", "fahrzeug zuteilen", "alarmieren", "sichtbarkeit"],
       },
       {
-        frage: "Wie schließe ich den Hauptauftrag ab?",
+        // AUDIT-12/EL-15 (a): reale Button-Beschriftung + Fundort + Brand-Sonderfall.
+        frage: "Wie schließe ich den Einsatz (Hauptbericht) ab?",
         antwort:
-          "Wenn alle Fahrzeugberichte abgeschlossen sind, ist der Button 'Hauptauftrag abschließen' " +
-          "aktiv. Klick → Confirm-Dialog → PDF wird erstellt → fertig für syBOS.\n\n" +
+          "In der Sektion 'Abschluss & PDF' (unten im Hauptbericht) sitzt der rote " +
+          "Button 'Einsatz abschließen & archivieren'. Klick → Bestätigungs-Dialog " +
+          "(inkl. Verrechenbar-Abfrage) → Bericht wird schreibgeschützt archiviert; " +
+          "das PDF holst du über den Button 'PDF-Bericht' in derselben Sektion.\n\n" +
+          "Bei Brandeinsätzen öffnet sich zuerst der syBOS-Brand-Statistik-Assistent, " +
+          "danach die Abschluss-Bestätigung.\n\n" +
           "Falls ein Fahrzeug-Kdt den Tablet-Bericht NICHT mehr abschließen kann (z. B. Akku " +
-          "leer, Tablet defekt): du kannst per 'Trotzdem abschließen (mit Grund)' den " +
-          "Override-Pfad nehmen. Dann wird im PDF vermerkt, dass dieser Fahrzeugbericht " +
-          "unvollständig war.",
-        tags: ["beenden", "ende", "pdf erzeugen", "override"],
+          "leer, Tablet defekt): du kannst per 'Trotzdem abschliessen (mit Grund)' den " +
+          "Override-Pfad nehmen. Der Grund wandert ins Audit-Log und auf das PDF.",
+        tags: ["beenden", "ende", "pdf erzeugen", "override", "hauptauftrag", "archivieren"],
       },
       {
+        // AUDIT-12/EL-15 (d): an die echten Fahrzeug-Badges angeglichen
+        // (Status kommt aus den Fahrzeugberichten, nicht aus dem GPS-Ping).
         frage: "Was bedeuten die Status-Farben bei den Fahrzeugen?",
         antwort:
-          "  · Grün — Fahrzeug ist eingeloggt + sendet aktuelle Position\n" +
-          "  · Gelb — Fahrzeug hat sich nicht innerhalb 10 min gemeldet (Position stale)\n" +
-          "  · Grau — Fahrzeug nicht in diesem Einsatz oder Tablet offline",
-        tags: ["ampel", "farbe", "online offline"],
+          "  · Grün — Fahrzeugbericht abgeschlossen\n" +
+          "  · Gelb/Amber — im Einsatz (Bericht in Arbeit)\n" +
+          "  · Grau — wartend (noch kein Fahrzeugbericht angelegt)\n\n" +
+          "Auf der Lagekarte zeigt zusätzlich ein 'offline seit …'-Label, wenn ein " +
+          "Tablet länger keine Position gesendet hat.",
+        tags: ["ampel", "farbe", "online offline", "badge"],
       },
       {
         frage: "Was zeigt 'AS-Träger am Fahrzeug'?",
@@ -747,23 +758,18 @@ const KATEGORIEN: Kategorie[] = [
           "erhalten — und 'manuell überschrieben' wird daneben angezeigt.",
         tags: ["uhrzeit", "von bis", "alarmierung"],
       },
-      {
-        frage: "Was tut die Vidierung?",
-        antwort:
-          "Die Vidierung ist die inhaltliche Prüfung des Berichts durch einen zweiten Funktionär. " +
-          "Bei BlaulichtSMS-Alarmen mit Personenschaden ist sie Pflicht. " +
-          "Der Hauptbericht wird erst nach erfolgter Vidierung an syBOS übergeben.",
-        tags: ["prüfung", "kontrolle", "vier-augen"],
-      },
+      // AUDIT-12/EL-15 (c): Vidierung-Eintrag ERSATZLOS entfernt — das
+      // Feature existiert in der PWA nicht (einziger Treffer war dieser
+      // Hilfetext selbst).
       {
         frage: "Was bedeutet 'aktiv' vs. 'abgeschlossen'?",
         antwort:
           "  · Aktiv — Bericht in Bearbeitung, Änderungen möglich, Tab sichtbar\n" +
           "  · Abgeschlossen — Bericht fertig, schreibgeschützt, Tab verschwindet aus der " +
           "Leiste. Nur noch im Archiv sichtbar.\n\n" +
-          "Reaktivieren ist nur im Florianstation-Archiv durch einen Funktionär möglich " +
-          "(mit Grund-Pflicht).",
-        tags: ["status", "fertig", "archiv"],
+          "Reaktivieren geht über das Archiv (Florian-Zentrale oder Fahrzeug-Tablet) — " +
+          "immer mit Grund-Pflicht, der Grund landet im Audit-Log und auf dem PDF.",
+        tags: ["status", "fertig", "archiv", "reaktivieren"],
       },
       {
         frage: "Was passiert wenn ein Einsatz lange offen bleibt?",
@@ -893,10 +899,13 @@ const KATEGORIEN: Kategorie[] = [
         antwort:
           "An jedem Tab oben siehst du ein X-Symbol. Tippe drauf → Schließen-Dialog mit " +
           "zwei Optionen:\n" +
-          "  · 'Mit Speichern abschließen' (grün, Standard) — Bericht wandert ins Archiv, " +
-          "PDF wird erzeugt.\n" +
+          "  · 'Bericht jetzt abschliessen & PDF erzeugen' (grün, Standard) — Bericht " +
+          "wandert ins Archiv.\n" +
           "  · 'Ohne Speichern verwerfen' (rot, mit 2. Bestätigung + Grund) — Bericht wird " +
           "als verworfen markiert. Nur für Fehlanlagen / Doppel-Einträge.\n\n" +
+          "Achtung: Ein Einsatz-Tab betrifft den GESAMTEN Einsatz für alle Fahrzeuge — " +
+          "der Dialog zeigt dazu einen roten Warnhinweis und führt durch dieselbe " +
+          "Abschluss-Prüfung wie der Abschluss-Button.\n\n" +
           "Abgeschlossene Berichte sind nicht mehr in der Tab-Leiste — nur im Archiv.",
         tags: ["tab schließen", "verwerfen", "abbrechen"],
       },
@@ -930,9 +939,11 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Speichert die App automatisch?",
         antwort:
-          "Ja. Jede Änderung (Mannschaft, Geräte, KM, Diktat) wird nach 2.5 s automatisch " +
+          "Ja. Jede Änderung (Mannschaft, Geräte, KM, Diktat) wird nach ca. 1,5 s automatisch " +
           "an die Florianstation gesendet. Du musst nicht aktiv 'Speichern' drücken.\n\n" +
-          "Unten im Footer siehst du den Status: 'Automatisch gespeichert · 14:23'.",
+          "Unten im Footer siehst du den Status: 'Automatisch gespeichert · 14:23'. " +
+          "Zusätzlich sichert die App den Arbeitsstand lokal am Gerät — auch ein " +
+          "App-Neustart im Funkloch verliert keine Eingaben.",
         tags: ["auto-save", "speichern", "verloren"],
       },
       {
@@ -982,15 +993,15 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Mein Bericht lässt sich nicht abschließen — was fehlt?",
         antwort:
-          "Beim Klick auf 'Fahrzeugbericht abschließen' zeigt das Tablet eine Pflichtfeld-" +
-          "Prüfung. Folgende Felder sind Pflicht:\n" +
+          "Beim Klick auf 'Fahrzeugbericht abschließen' zeigt das Tablet eine Checkliste:\n" +
           "  · Fahrer\n" +
           "  · Fahrzeug-Kommandant (Kdt)\n" +
           "  · Mindestens 1 Person in der Mannschaft\n" +
           "  · Einsatzadresse (wird normalerweise automatisch aus dem Alarm übernommen)\n\n" +
-          "Wenn alle gefüllt sind und es immer noch nicht geht: Funktionär informieren " +
-          "+ Screenshot machen.",
-        tags: ["pflichtfeld", "fehler beim abschluss"],
+          "Fehlende Punkte kannst du direkt beheben — oder bewusst mit 'Trotzdem " +
+          "schließen' übersteuern, wenn ein Punkt für diesen Einsatz nicht zutrifft. " +
+          "Wenn gar nichts geht: Funktionär informieren + Screenshot machen.",
+        tags: ["pflichtfeld", "fehler beim abschluss", "trotzdem schließen"],
       },
       {
         frage: "Falsche Person eingetragen — wie raus?",

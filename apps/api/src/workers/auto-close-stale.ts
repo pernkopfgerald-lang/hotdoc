@@ -25,6 +25,7 @@ import cron from "node-cron";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
 import { writeAuditEvent } from "../services/audit.js";
+import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 
 const CRON_AUSDRUCK = "*/30 * * * *";
 const DEFAULT_AUTO_CLOSE_HOURS = 6;
@@ -57,6 +58,9 @@ interface EinsatzMin {
   erstelltAm?: string;
   alarmierungZeit?: string;
   einsatzTyp?: string;
+  einsatzart?: string;
+  /** AUDIT-11: bereits vergebene Berichtsnummer (Reaktivierungs-Fall). */
+  berichtNummer?: string;
 }
 
 interface FahrzeugberichtMin {
@@ -206,6 +210,25 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     );
     const docsToUpdate: Array<Record<string, unknown>> = [];
 
+    // AUDIT-11: auch der Auto-Abschluss vergibt eine echte Berichtsnummer —
+    // dieselbe Nur-wenn-fehlt-Bedingung wie in POST /abschluss (Reaktivieren
+    // + erneuter Abschluss zieht KEINE zweite Nummer). Vergabe-Fehler
+    // blockieren den Auto-Abschluss nicht (PDF-Fallback: deriveBerichtNrFromId).
+    let berichtNummer = einsatz.berichtNummer;
+    if (!berichtNummer) {
+      try {
+        berichtNummer = await vergebeBerichtNummer(
+          einsatz.einsatzart,
+          einsatz.alarmierungZeit,
+        );
+      } catch (err) {
+        logger.warn(
+          { err, einsatzId: einsatz._id },
+          "Auto-Close: Berichtsnummer-Vergabe fehlgeschlagen — Abschluss ohne Nummer",
+        );
+      }
+    }
+
     // Einsatz schließen
     docsToUpdate.push({
       ...(einsatz as unknown as Record<string, unknown>),
@@ -217,6 +240,7 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
       autoAbgeschlossenGrund: `inaktiv-${hours}h` as const,
       abschlussOverrideHinweis: `Auto-Abschluss nach ${hours} h Inaktivität — letzter Stand: ${einsatz.geaendertAm ?? einsatz.alarmierungZeit ?? "unbekannt"}.`,
       geaendertAm: now,
+      ...(berichtNummer ? { berichtNummer } : {}),
     });
 
     // Kaskade: offene Fahrzeugberichte

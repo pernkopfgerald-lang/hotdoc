@@ -18,6 +18,7 @@ import { db } from "../couch/client.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { writeAuditEvent } from "../services/audit.js";
+import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 
 export const einsaetzeRouter: Router = Router();
 
@@ -446,6 +447,25 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   // Override-Hinweis kommt entweder aus Body (Override-Flow) oder aus
   // der automatischen "offene Fahrzeugberichte"-Detection (siehe oben).
   const finalOverrideHinweis = overrideHinweisFromBody ?? abschlussOverrideHinweis;
+  // AUDIT-11: Echte laufende Berichtsnummer (config:bericht-counter) beim
+  // Abschluss vergeben — NUR wenn das Doc noch keine traegt. Reaktivieren +
+  // erneuter Abschluss zieht damit KEINE zweite Nummer. Schlaegt die Vergabe
+  // fehl (Counter-Doc dauerhaft contended), laeuft der Abschluss trotzdem
+  // weiter — das PDF faellt dann auf deriveBerichtNrFromId zurueck.
+  let berichtNummer = doc.berichtNummer as string | undefined;
+  if (!berichtNummer) {
+    try {
+      berichtNummer = await vergebeBerichtNummer(
+        doc.einsatzart as string | undefined,
+        doc.alarmierungZeit as string | undefined,
+      );
+    } catch (err) {
+      logger.warn(
+        { err, id },
+        "Berichtsnummer-Vergabe fehlgeschlagen — Abschluss laeuft ohne Nummer weiter",
+      );
+    }
+  }
   const updated = {
     ...doc,
     status: "abgeschlossen",
@@ -456,9 +476,10 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     verrechnung: verrechnungUpdated,
     geaendertAm: new Date().toISOString(),
     ...(finalOverrideHinweis ? { abschlussOverrideHinweis: finalOverrideHinweis } : {}),
+    ...(berichtNummer ? { berichtNummer } : {}),
   };
   const result = await db.insert(updated);
-  logger.info({ id, by: session.username }, "Einsatz abgeschlossen");
+  logger.info({ id, by: session.username, berichtNummer }, "Einsatz abgeschlossen");
 
   // F3: Cascade-Abschluss aller noch offenen Fahrzeugberichte.
   // Hintergrund: wenn der Einsatzleiter den Hauptauftrag schließt, sollen
@@ -555,7 +576,9 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
     ...(req.ip ? { ipAddress: req.ip } : {}),
   });
-  res.json({ ok: true, id, rev: result.rev });
+  // AUDIT-11: berichtNummer in der Response mitliefern — bestehende Felder
+  // bleiben unveraendert, Clients ohne berichtNummer-Auswertung sind kompatibel.
+  res.json({ ok: true, id, rev: result.rev, ...(berichtNummer ? { berichtNummer } : {}) });
 }) as RequestHandler);
 
 // ─── POST /api/einsaetze/:id/verwerfen ──────────────────────

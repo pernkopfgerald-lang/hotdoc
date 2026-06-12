@@ -10,7 +10,7 @@
  * MIME-Type des MediaRecorders.
  */
 
-import { getTabletToken } from "./api";
+import { getTabletToken, resolveApiUrl } from "./api";
 
 export type TranscribeOutcome =
   | { ok: true; text: string; durationSec: number }
@@ -61,15 +61,28 @@ export async function transcribeAudio(
   // Original-MIME des MediaRecorder-Outputs sein (typ. audio/webm;codecs=opus).
   const mime = blob.type || "audio/webm";
 
+  // ING-09 (Audit 2026-06-12): AbortController-Timeout 60 s (passend zum
+  // Whisper-Backend-Limit) — ohne ihn hängt der Upload im Funkloch bis zum
+  // OS-TCP-Timeout. Ein optional vom Caller übergebenes Signal wird
+  // mit-verdrahtet (Muster aus apiCall).
+  const ctrl = new AbortController();
+  const timeoutHandle = setTimeout(() => ctrl.abort(), 60_000);
+  if (options.signal) {
+    if (options.signal.aborted) ctrl.abort();
+    else options.signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+  }
+
   try {
-    const res = await fetch(url, {
+    // ING-09: resolveApiUrl — im Capacitor-Webview (Origin https://localhost)
+    // gibt es keinen /api-Proxy, der relative Pfad würde garantiert failen.
+    const res = await fetch(resolveApiUrl(url), {
       method: "POST",
       headers: {
         "Content-Type": mime,
         Authorization: `Bearer ${token}`,
       },
       body: blob,
-      ...(options.signal ? { signal: options.signal } : {}),
+      signal: ctrl.signal,
     });
 
     if (res.ok) {
@@ -105,10 +118,16 @@ export async function transcribeAudio(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("aborted") || msg.includes("AbortError")) {
+    if (
+      msg.includes("aborted") ||
+      msg.includes("AbortError") ||
+      (err instanceof DOMException && err.name === "AbortError")
+    ) {
       return { ok: false, reason: "whisper_timeout" };
     }
     return { ok: false, reason: "network", message: msg };
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 

@@ -142,6 +142,26 @@ export function clearDraft(fahrzeugId: FahrzeugId, einsatzId: string): void {
   }
 }
 
+/**
+ * KDT-02 (Audit 2026-06-12): Liefert die Einsatz-IDs aller gespeicherten
+ * Drafts dieses Fahrzeugs. Grundlage für das Boot-Seeding in der
+ * BerichtPage — nach Reload im Funkloch muss der Arbeitsstand auch dann
+ * wieder auftauchen, wenn der Backend-Poll (noch) nichts liefert.
+ */
+export function listDraftEinsatzIds(fahrzeugId: FahrzeugId): string[] {
+  try {
+    const prefix = `${DRAFT_PREFIX}${fahrzeugId}.`;
+    const ids: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) ids.push(k.slice(prefix.length));
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 /** Löscht ALLE Drafts dieses Fahrzeugs — bei Setup-Reset. */
 export function clearAllDrafts(fahrzeugId: FahrzeugId): void {
   try {

@@ -219,6 +219,14 @@ export const EinsatzSchema = z.object({
 
   status: z.enum(["aktiv", "abgeschlossen"]).default("aktiv"),
   /**
+   * AUDIT-11: Echte laufende Berichtsnummer (B26-001 / T26-001), serverseitig
+   * beim Abschluss vergeben (config:bericht-counter, Route /abschluss + Auto-
+   * Close-Cron). Optional — Altberichte tragen keine; das PDF faellt dann auf
+   * deriveBerichtNrFromId zurueck. Additiv, damit der PUT-Roundtrip das Feld
+   * nicht filtert.
+   */
+  berichtNummer: z.string().optional(),
+  /**
    * Optionale Disposition: welche Fahrzeuge sind diesem Einsatz zugewiesen?
    * Leer/undefined → alle Tablets sehen den Einsatz (BlaulichtSMS-Default).
    * Liste vorhanden → nur die zugewiesenen Fahrzeug-Tablets pollen ihn,

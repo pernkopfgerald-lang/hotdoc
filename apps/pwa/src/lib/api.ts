@@ -53,6 +53,35 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * ING-12 (Audit 2026-06-12): Klartext + Handlungsanweisung statt nackter
+ * Fehlercodes. "HTTP 423" sagt der Mannschaft um 03:00 nichts — diese
+ * Funktion übersetzt jeden API-Fehler in einen Satz, der erklärt was
+ * passiert ist UND was als Nächstes zu tun ist (bzw. dass nichts zu tun
+ * ist, weil die Outbox automatisch nachreicht).
+ */
+export function describeApiError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 0 || err.message === "timeout") {
+      return "Keine Verbindung — Eingaben sind lokal gesichert und werden automatisch übertragen.";
+    }
+    if (err.status === 423) {
+      return "Bericht ist abgeschlossen — erst reaktivieren (Florian oder Archiv), dann wird automatisch nachgereicht.";
+    }
+    if (err.status === 409) {
+      return "Wurde zwischenzeitlich anderweitig geändert — Anzeige wird aktualisiert.";
+    }
+    if (err.status === 401 || err.status === 403) {
+      return "Anmeldung abgelaufen — bitte neu anmelden.";
+    }
+    if (err.status >= 500) {
+      return "Server-Problem — wird automatisch erneut versucht.";
+    }
+    return err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 interface ReqOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
@@ -68,6 +97,43 @@ interface ReqOpts {
  */
 function isAuthBypassPath(path: string): boolean {
   return path.startsWith("/api/auth/") || path === "/api/admin/health";
+}
+
+/**
+ * ING-11 (Audit 2026-06-12): Zweitprüfung vor dem Auto-Logout. Ein einzelner
+ * 401 kann auch von einem Proxy-Schluckauf oder einem Backend-Deploy kommen —
+ * vorher hat JEDER spuriöse 401 das Tablet mitten im Einsatz hart in den
+ * Setup-Screen geworfen. Wir prüfen mit einem nackten fetch (NICHT apiCall —
+ * keine Rekursion) gegen /api/auth/me nach:
+ *  - "invalid":  /me liefert ebenfalls 401 → Token ist wirklich tot.
+ *  - "valid":    /me liefert 2xx → der 401 war spuriös, KEIN Logout.
+ *  - "unknown":  Netz-Fehler/anderer Status/Recheck läuft bereits → im
+ *                Zweifel KEIN Logout (der nächste echte 401 prüft erneut).
+ */
+let authRecheckInFlight = false;
+
+async function recheckAuth(token: string): Promise<"valid" | "invalid" | "unknown"> {
+  if (authRecheckInFlight) return "unknown";
+  authRecheckInFlight = true;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8_000);
+    try {
+      const res = await fetch(resolveApiUrl("/api/auth/me"), {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        signal: ctrl.signal,
+      });
+      if (res.status === 401) return "invalid";
+      if (res.ok) return "valid";
+      return "unknown";
+    } finally {
+      clearTimeout(t);
+    }
+  } catch {
+    return "unknown";
+  } finally {
+    authRecheckInFlight = false;
+  }
 }
 
 export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
@@ -120,21 +186,33 @@ export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
 
   // Auto-Logout bei 401 wenn wir einen Token gesendet haben — der Token
   // wurde abgelehnt (z. B. Handoff-Auto-Release nach 24h, oder JWT
-  // tatsächlich abgelaufen). Token + Handoff-Info löschen, dann reload
-  // damit App.tsx den Setup-Screen anzeigt. Bypass für Auth-Routen
-  // selbst (sonst Login-Schleife).
+  // tatsächlich abgelaufen). Bypass für Auth-Routen selbst (sonst
+  // Login-Schleife). ING-11 (Audit 2026-06-12): NICHT mehr sofort Token
+  // löschen + reloaden — erst per /api/auth/me nachprüfen, ob der Token
+  // wirklich tot ist. Nur dann ausloggen; ein spuriöser 401 (Proxy/Deploy)
+  // wirft nur den ApiError und der Aufrufer/Retry macht normal weiter.
   if (res.status === 401 && token && !isAuthBypassPath(path)) {
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem("hotdoc.handoffInfo");
-    } catch {
-      // egal
+    const verdict = await recheckAuth(token);
+    if (verdict === "invalid") {
+      try {
+        // Setup.tsx zeigt den Grund an ("Anmeldung abgelaufen").
+        sessionStorage.setItem("hotdoc.setupReason", "auth-failed");
+      } catch {
+        // egal
+      }
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem("hotdoc.handoffInfo");
+      } catch {
+        // egal
+      }
+      // Reload statt window.location.href damit der Service-Worker frische
+      // App-Shell ausliefert wenn ein Update da ist.
+      window.location.reload();
     }
-    // Reload statt window.location.href damit der Service-Worker frische
-    // App-Shell ausliefert wenn ein Update da ist.
-    window.location.reload();
-    // Promise will nie resolven weil der Reload läuft — werfen damit
-    // der Call-Site nicht versucht das Result zu nutzen.
+    // Werfen in JEDEM Fall — bei "invalid" läuft der Reload (Promise darf
+    // nicht als Erfolg resolven), bei "valid"/"unknown" soll der Aufrufer
+    // den 401 normal behandeln (Outbox retry't, UI zeigt Meldung).
     throw new ApiError("session_expired", 401, body);
   }
 

@@ -21,6 +21,20 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.22",
+    date: "2026-06-12",
+    title: "Großes Robustheits- & Usability-Update (4-Personas-Audit)",
+    bullets: [
+      "Kein Datenverlust mehr: Eingaben in Florian-Zentrale und Fahrzeug-Tablet überleben jetzt Tab-Wechsel, Reload, Funkloch und parallele Speichervorgänge (lokale Entwürfe + automatische Wiederholung).",
+      "Tab-X schließt nicht mehr ungefragt den ganzen Einsatz — der Abschluss-Dialog mit Prüfungen ist jetzt das einzige Tor, mit klarer roter Warnung.",
+      "Abgeschlossene Berichte zeigen am Tablet eine eigene Abschluss-Ansicht mit Reaktivieren-Knopf; blockierte Übertragungen werden sichtbar gemacht und nach Reaktivierung automatisch nachgereicht.",
+      "Echte fortlaufende Berichtsnummern (B26-001 / T26-001) werden beim Abschluss serverseitig vergeben und stehen auf dem PDF, in der Abschluss-Quittung und im Archiv.",
+      "PDF-Fixes: 'Lage unter Kontrolle'/'Brand aus' erscheinen jetzt wirklich im PDF, Geräte in Klartext, Rechnungsadresse beim Verrechenbar-Block, Foto-Anhang passt sicher auf A4.",
+      "Bedienbarkeit: alle Knöpfe der Berichtsmaske mindestens daumengroß (44 px), Einsatz-Tabs zeigen den Einsatzort, Personenliste größer, verständliche Fehlermeldungen mit Handlungsanweisung.",
+      "Backoffice: Autosave der Florianstation löscht keine fremden Felder mehr, PDF/Spickzettel direkt im Bericht-Detail, Warnung bei ungespeicherten Änderungen.",
+    ],
+  },
+  {
     version: "0.1.21",
     date: "2026-06-05",
     title: "Lotsendienst-Bericht im vollen Format",

@@ -35,6 +35,16 @@ export interface RequestOutboxItem {
   enqueuedAt: string;
   lastAttempt?: string;
   attempts: number;
+  /**
+   * AUDIT-03 (Audit 2026-06-12): Item ist blockiert statt im Endlos-Retry.
+   * Gesetzt bei 423 (Schreibschutz — Bericht wurde zwischenzeitlich
+   * abgeschlossen) und bei 409 auf einem fahrzeugbericht-PUT (Doppel-
+   * Konflikt). Der Flush ÜBERSPRINGT blockierte Items; erst eine
+   * Reaktivierung des Einsatzes ruft unblockRequests() und reicht sie nach.
+   * Vorher: 423 retry'te alle 30 s gegen dieselbe Wand, 409 DROPPTE den
+   * einzigen Träger des finalen Berichts.
+   */
+  blocked?: { status: number; at: string };
 }
 
 /**
@@ -98,6 +108,47 @@ export async function listPendingRequests(): Promise<RequestOutboxItem[]> {
   return items;
 }
 
+/** Liefert nur die blockierten Items (für Sync-Badge / Diagnose). */
+export async function listBlockedRequests(): Promise<RequestOutboxItem[]> {
+  return (await listPendingRequests()).filter((it) => !!it.blocked);
+}
+
+/**
+ * Hebt die Blockade aller Items dieses Einsatzes auf — wird nach einer
+ * Reaktivierung gerufen, damit der nächste Flush-Tick die gepufferten
+ * Berichte/Abschlüsse automatisch nachreicht. Matching über den Pfad:
+ * jeder Outbox-Pfad enthält die URL-enkodierte Einsatz-ID.
+ */
+export async function unblockRequests(einsatzId: string): Promise<void> {
+  const enc = encodeURIComponent(einsatzId);
+  const items = await listBlockedRequests();
+  for (const item of items) {
+    if (!item.path.includes(enc)) continue;
+    try {
+      const fresh = (await db.get(item._id)) as RequestOutboxItem;
+      const { blocked: _blocked, ...rest } = fresh;
+      await db.put(rest);
+    } catch {
+      // Race (schon weg / parallel geändert) — nächster Tick sieht den Stand.
+    }
+  }
+}
+
+/** Markiert ein Item als blockiert (siehe RequestOutboxItem.blocked). */
+async function markBlocked(item: RequestOutboxItem, status: number): Promise<void> {
+  try {
+    const fresh = (await db.get(item._id)) as RequestOutboxItem;
+    await db.put({
+      ...fresh,
+      lastAttempt: new Date().toISOString(),
+      attempts: (fresh.attempts ?? 0) + 1,
+      blocked: { status, at: new Date().toISOString() },
+    });
+  } catch {
+    // egal — nächster Tick versucht erneut (und blockiert dann)
+  }
+}
+
 async function removeItem(item: RequestOutboxItem): Promise<void> {
   try {
     const fresh = (await db.get(item._id)) as RequestOutboxItem;
@@ -134,10 +185,12 @@ export async function flushRequestOutbox(): Promise<{
   pending: number;
 }> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    const pending = (await listPendingRequests()).length;
+    const pending = (await listPendingRequests()).filter((it) => !it.blocked).length;
     return { total: pending, ok: 0, failed: 0, pending };
   }
-  const items = await listPendingRequests();
+  // AUDIT-03 (Audit 2026-06-12): blockierte Items überspringen — sie warten
+  // auf eine Reaktivierung (unblockRequests), nicht auf Netz.
+  const items = (await listPendingRequests()).filter((it) => !it.blocked);
   if (items.length === 0) return { total: 0, ok: 0, failed: 0, pending: 0 };
   let ok = 0;
   let failed = 0;
@@ -147,13 +200,25 @@ export async function flushRequestOutbox(): Promise<{
       await removeItem(item);
       ok++;
     } catch (err) {
-      // Echte Client-/Schema-Fehler sind nicht durch Retry heilbar → droppen.
-      // 409 zählt bewusst dazu: beim Abschluss-POST bedeutet er
-      // "already_closed" (= Ziel erreicht), beim fzgber-PUT einen
-      // unauflösbaren Doppel-Konflikt — beides per Retry nicht heilbar.
-      // Netz-Fehler (status 0), Timeout, 401, 423, 5xx → Retry beim nächsten Tick.
-      const droppable = new Set([400, 404, 409, 422]);
-      if (err instanceof ApiError && droppable.has(err.status)) {
+      // AUDIT-03 (Audit 2026-06-12): differenzierte Fehlerbehandlung.
+      // - 423 (Schreibschutz): NICHT endlos retry'en — als blockiert markieren,
+      //   eine Reaktivierung (unblockRequests) reicht das Item dann nach.
+      // - 409 auf fahrzeugbericht-PUT: ebenfalls blockieren statt droppen —
+      //   das Item ist der EINZIGE Träger des finalen Berichts.
+      // - 409 auf /abschluss-POST bleibt droppable (already_closed = Ziel
+      //   erreicht), genau wie echte Client-/Schema-Fehler (400/404/422).
+      // - Netz-Fehler (status 0), Timeout, 401, 5xx → Retry beim nächsten Tick.
+      if (err instanceof ApiError && err.status === 423) {
+        await markBlocked(item, 423);
+        failed++;
+      } else if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        item.path.includes("/fahrzeugbericht/")
+      ) {
+        await markBlocked(item, 409);
+        failed++;
+      } else if (err instanceof ApiError && [400, 404, 409, 422].includes(err.status)) {
         await removeItem(item);
         failed++;
       } else {
@@ -162,6 +227,6 @@ export async function flushRequestOutbox(): Promise<{
       }
     }
   }
-  const rest = (await listPendingRequests()).length;
+  const rest = (await listPendingRequests()).filter((it) => !it.blocked).length;
   return { total: items.length, ok, failed, pending: rest };
 }

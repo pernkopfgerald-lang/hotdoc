@@ -95,13 +95,25 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
             plusDisabled={data.atemschutzDauerMin >= maxDauer}
           />
         ) : (
+          /* KDT-09 (Audit 2026-06-12): AS-Button per Inline-Style auf 44x44 —
+             NICHT die globale .icon-btn-Klasse anfassen (36px dort hat andere
+             Konsumenten, z. B. Florian-Desktop). */
           <button
             type="button"
             className="icon-btn"
             aria-label="Atemschutz aktivieren"
             onClick={onToggleAs}
             title="Atemschutz aktivieren"
-            style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 14, letterSpacing: "0.06em" }}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontWeight: 700,
+              fontSize: 14,
+              letterSpacing: "0.06em",
+              width: 44,
+              height: 44,
+              minWidth: 44,
+              minHeight: 44,
+            }}
           >
             AS
           </button>
@@ -109,7 +121,10 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
         {/* Mit aktivem AS: Minus = AS beenden. Sonst: roter X = Slot leeren
             (Person raus). Versehentlich gewaehlt war frueher ein Wechsel-
             Button mit Plus-Icon — das war irrefuehrend und der Slot liess
-            sich nicht mehr leeren wenn die Person gar nicht mitgefahren ist. */}
+            sich nicht mehr leeren wenn die Person gar nicht mitgefahren ist.
+            KDT-09 (Audit 2026-06-12): beide auf 44x44 + >=12px Abstand zum
+            AS-Button daneben; das X bleibt visuell Ghost (transparent),
+            die Touch-Flaeche ist voll. */}
         {data.atemschutzAktiv ? (
           <button
             type="button"
@@ -117,8 +132,15 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
             aria-label="AS beenden"
             onClick={onToggleAs}
             title="Atemschutz beenden"
+            style={{
+              width: 44,
+              height: 44,
+              minWidth: 44,
+              minHeight: 44,
+              marginLeft: 12,
+            }}
           >
-            <Minus size={14} strokeWidth={2.5} />
+            <Minus size={15} strokeWidth={2.5} />
           </button>
         ) : (
           <button
@@ -127,8 +149,16 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
             aria-label="Person aus Slot entfernen"
             title="Person aus Slot entfernen"
             onClick={onClearPerson}
+            style={{
+              width: 44,
+              height: 44,
+              minWidth: 44,
+              minHeight: 44,
+              marginLeft: 12,
+              background: "transparent",
+            }}
           >
-            <X size={14} strokeWidth={2.5} />
+            <X size={15} strokeWidth={2.5} />
           </button>
         )}
       </div>

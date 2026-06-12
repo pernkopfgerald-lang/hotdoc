@@ -8,6 +8,21 @@ import { PersonPickerModal, type PickPerson } from "./PersonPickerModal";
 
 export type EinsatzTyp = "manuell" | "lotsendienst" | "uebung";
 
+/**
+ * KDT-11 (Audit 2026-06-12): Platzhalter-Einsatzorte zentral definiert.
+ * Diese Strings sind KEINE echten Adressen — sie entstehen beim Anlegen
+ * ohne Adresse/GPS bzw. als GPS-Koordinaten-Fallback. Der Abschluss-Check
+ * in der BerichtPage prüft den Einsatzort gegen PLATZHALTER_ORT_REGEX,
+ * damit "Adresse gesetzt" nicht fälschlich grün ist, wenn nur ein
+ * Platzhalter drinsteht. Quelle und Prüfung bleiben hier gekoppelt.
+ */
+export const ORT_GPS_PREFIX = "GPS ";
+export const ORT_PLATZHALTER_MANUELL = "Ort noch nicht erfasst";
+export const ORT_PLATZHALTER_UEBUNG = "Übungsort folgt";
+export const PLATZHALTER_ORT_REGEX = new RegExp(
+  `^(${ORT_GPS_PREFIX}|${ORT_PLATZHALTER_MANUELL}|${ORT_PLATZHALTER_UEBUNG})`,
+);
+
 interface ManuellAnlageBody {
   einsatzTyp: EinsatzTyp;
   einsatzort: string;
@@ -313,7 +328,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         if (geo.address) {
           ortString = geo.address;
         } else {
-          ortString = `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
+          ortString = `${ORT_GPS_PREFIX}${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
         }
         if (geo.pflichtbereich) autoPflicht.pflichtbereich = true;
         if (geo.einsatzzoneEzell) autoPflicht.einsatzzoneEzell = true;
@@ -321,7 +336,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         // Geocoding-Timeout oder Fehler → GPS-Fallback. Pflichtbereich
         // wird trotzdem clientseitig via Bbox erkannt: Eberstalzell-Box
         // liegt zwischen 48.00-48.08 lat / 13.93-14.04 lng.
-        ortString = `GPS ${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
+        ortString = `${ORT_GPS_PREFIX}${koord.lat.toFixed(5)}, ${koord.lng.toFixed(5)}`;
         const inE =
           koord.lat >= 48.0 &&
           koord.lat <= 48.08 &&
@@ -337,7 +352,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     // setzen. Der Kdt ergänzt die Adresse später per GPS-Button am Tablet.
     // Backend braucht min. 3 Zeichen.
     if (!ortString)
-      ortString = typ === "uebung" ? "Übungsort folgt" : "Ort noch nicht erfasst";
+      ortString = typ === "uebung" ? ORT_PLATZHALTER_UEBUNG : ORT_PLATZHALTER_MANUELL;
     const body: ManuellAnlageBody = {
       einsatzTyp: typ,
       einsatzort: ortString,
@@ -743,7 +758,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                   (pos) => {
                     setKoord({ lat: pos.coords.latitude, lng: pos.coords.longitude });
                     if (!einsatzort.trim()) {
-                      setEinsatzort(`GPS ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
+                      setEinsatzort(`${ORT_GPS_PREFIX}${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
                     }
                   },
                   (gpsErr) => {

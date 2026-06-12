@@ -46,58 +46,72 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+/**
+ * AUDIT-16 (2): Render-Serialisierung ohne neue Dependency — maximal EIN
+ * Chromium-Tab gleichzeitig. Florian + Schriftfuehrer + Archiv parallel
+ * waren der dokumentierte OOM-Ausloeser auf der kleinen fly.io-Instanz.
+ * Der RENDER_TIMEOUT_MS garantiert, dass die Kette nie haengen bleibt.
+ */
+let renderChain: Promise<void> = Promise.resolve();
+
 /** Rendert HTML → A4-PDF (Bytes). */
 export async function renderPdf(html: string): Promise<Buffer> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  // Externe Requests abbrechen — der Bericht ist self-contained (Base64-Logo
-  // + Base64-Fotos, Inline-CSS, System-Fonts). Das verhindert den dokumentierten
-  // Hang beim Warten auf eine nicht erreichbare Asset-URL (ein Foto-Bericht hing
-  // sonst bis zum Render-Timeout → HTTP 500). data:/blob:/about: bleiben erlaubt.
-  await page.setRequestInterception(true);
-  page.on("request", (req) => {
-    const u = req.url();
-    if (u.startsWith("data:") || u.startsWith("blob:") || u.startsWith("about:")) {
-      void req.continue();
-    } else {
-      void req.abort();
-    }
-  });
-  let timedOut = false;
-  const renderPromise = (async (): Promise<Buffer> => {
-    // "load" statt "networkidle0": wir warten auf das Laden der (eingebetteten)
-    // Ressourcen, nicht auf 500 ms Netz-Ruhe — Letzteres ist unnoetig fragil.
-    await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "16mm", right: "16mm", bottom: "16mm", left: "16mm" },
-    });
-    return Buffer.from(pdf);
-  })();
-  const timeoutPromise = new Promise<never>((_resolve, reject) => {
-    const timer = setTimeout(() => {
-      timedOut = true;
-      reject(new Error(`pdf_render_timeout (${RENDER_TIMEOUT_MS}ms)`));
-    }, RENDER_TIMEOUT_MS);
-    // Wenn der renderPromise zuerst settle, raeumen wir den Timer auf.
-    renderPromise.finally(() => clearTimeout(timer)).catch(() => {});
-  });
-  try {
-    return await Promise.race([renderPromise, timeoutPromise]);
-  } finally {
-    // Page immer schliessen — auch bei Timeout. Browser-Disconnect-Handler
-    // greift wenn der ganze Browser haengt.
-    try {
-      await page.close();
-    } catch (err) {
-      if (timedOut) {
-        logger.warn({ err }, "PDF-Render: page.close nach Timeout fehlgeschlagen");
+  const run = async (): Promise<Buffer> => {
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    // Externe Requests abbrechen — der Bericht ist self-contained (Base64-Logo
+    // + Base64-Fotos, Inline-CSS, System-Fonts). Das verhindert den dokumentierten
+    // Hang beim Warten auf eine nicht erreichbare Asset-URL (ein Foto-Bericht hing
+    // sonst bis zum Render-Timeout → HTTP 500). data:/blob:/about: bleiben erlaubt.
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const u = req.url();
+      if (u.startsWith("data:") || u.startsWith("blob:") || u.startsWith("about:")) {
+        void req.continue();
       } else {
-        throw err;
+        void req.abort();
+      }
+    });
+    const renderPromise = (async (): Promise<Buffer> => {
+      // "load" statt "networkidle0": wir warten auf das Laden der (eingebetteten)
+      // Ressourcen, nicht auf 500 ms Netz-Ruhe — Letzteres ist unnoetig fragil.
+      await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "16mm", right: "16mm", bottom: "16mm", left: "16mm" },
+      });
+      return Buffer.from(pdf);
+    })();
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`pdf_render_timeout (${RENDER_TIMEOUT_MS}ms)`));
+      }, RENDER_TIMEOUT_MS);
+      // Wenn der renderPromise zuerst settle, raeumen wir den Timer auf.
+      renderPromise.finally(() => clearTimeout(timer)).catch(() => {});
+    });
+    try {
+      return await Promise.race([renderPromise, timeoutPromise]);
+    } finally {
+      // Page immer schliessen — auch bei Timeout. AUDIT-16 (1): ein
+      // page.close()-Fehler darf das fertige PDF NIE zum 500 machen —
+      // immer nur warnen. Der disconnected-Handler (getBrowser) setzt
+      // browserPromise ohnehin zurueck, wenn der ganze Browser haengt.
+      try {
+        await page.close();
+      } catch (err) {
+        logger.warn({ err }, "PDF-Render: page.close fehlgeschlagen");
       }
     }
-  }
+  };
+  // An die Kette haengen: laeuft erst, wenn der vorherige Render fertig ist
+  // (Erfolg ODER Fehler — then(run, run) startet in beiden Faellen).
+  const result = renderChain.then(run, run);
+  renderChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
 }
 
 export async function shutdownPdfGenerator(): Promise<void> {

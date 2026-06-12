@@ -66,6 +66,9 @@ export function AuftraegeSection({ auftraege, verfuegbareTypen, onAdd, onRemove 
           <span key={a.id} className="chip task selected" style={{ gap: 8 }}>
             <span className="dot" />
             {a.text}
+            {/* KDT-13a (Audit 2026-06-12): Entfernen-X von 13px-Hitbox auf
+                44x44 Touch-Target — vorher war das X mit Handschuh praktisch
+                nicht treffbar (Fehltap toggelte die ganze Pille). */}
             <button
               type="button"
               onClick={() => onRemove(a.id)}
@@ -75,14 +78,16 @@ export function AuftraegeSection({ auftraege, verfuegbareTypen, onAdd, onRemove 
                 border: 0,
                 color: "inherit",
                 cursor: "pointer",
-                padding: 0,
+                padding: 8,
                 marginLeft: 4,
-                marginRight: -4,
                 display: "inline-flex",
-                minHeight: 0,
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 44,
+                minHeight: 44,
               }}
             >
-              <X size={13} />
+              <X size={15} />
             </button>
           </span>
         ))}

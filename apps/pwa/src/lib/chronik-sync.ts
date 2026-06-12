@@ -9,13 +9,15 @@
  * - Lokale Einträge (Diktat, Auftrag) werden sowohl in den lokalen State
  *   gepusht als auch via POST /api/einsaetze/:id/chronik gebroadcastet
  *
- * Offline-Fallback: Wenn der POST fehlschlägt (kein Netz), bleibt der
- * Eintrag lokal. Beim nächsten erfolgreichen Poll erkennt der Server
- * den Eintrag nicht — wir hängen ihn dann mit dem nächsten POST nach,
- * sobald wieder Netz da ist (in pendingBroadcastQueue gemerkt).
+ * Offline-Fallback (AUDIT-03, 2026-06-12): Wenn der POST am Netz scheitert,
+ * landet der Eintrag in der PERSISTENTEN request-outbox (PouchDB) — der
+ * 30-s-Worker in App.tsx reicht ihn nach. Die frühere In-Memory-Queue
+ * (pendingByEinsatz) hat einen Reload/OOM-Kill nicht überlebt: der Eintrag
+ * stand lokal in der Timeline, erreichte aber nie ein anderes Gerät.
  */
 
 import { apiCall, ApiError } from "./api";
+import { enqueueRequest } from "./request-outbox";
 import type { ChronikEintrag } from "../components/ChronikTimeline";
 
 interface PostBody {
@@ -44,50 +46,58 @@ interface GetResponse {
   geaendertAm?: string;
 }
 
-// Lokaler Outbox-Puffer für Einträge die noch nicht erfolgreich
-// gepostet werden konnten (Offline-Modus).
-const pendingByEinsatz: Map<string, Map<string, PostBody>> = new Map();
-
-function pending(einsatzId: string): Map<string, PostBody> {
-  let m = pendingByEinsatz.get(einsatzId);
-  if (!m) {
-    m = new Map();
-    pendingByEinsatz.set(einsatzId, m);
-  }
-  return m;
-}
-
 /**
- * Sendet einen Chronik-Eintrag an den Server. Schwächt nicht-online-Fehler
- * ab — wirft nur bei expliziten Validierungs-/Auth-Fehlern.
+ * Sendet einen Chronik-Eintrag an den Server. Wirft NIE — der Aufrufer
+ * wertet das Ergebnis aus:
+ *  - 'ok'       → angekommen (oder serverseitig dedupliziert)
+ *  - 'queued'   → kein Netz/Server-Problem; Eintrag liegt in der persistenten
+ *                 Outbox und wird automatisch nachgereicht. KEIN Fehler —
+ *                 der optimistische lokale Eintrag bleibt stehen.
+ *  - 'rejected' → Server lehnt endgültig ab (404 Einsatz weg, 423 Bericht
+ *                 abgeschlossen). Der Aufrufer muss den lokalen Eintrag
+ *                 markieren/entfernen und den User informieren.
  */
 export async function broadcastChronikEntry(
   einsatzId: string,
   entry: PostBody,
-): Promise<void> {
+): Promise<"ok" | "queued" | "rejected"> {
   try {
     await apiCall<PostResponse>(`/api/einsaetze/${encodeURIComponent(einsatzId)}/chronik`, {
       method: "POST",
       body: entry,
     });
-    pending(einsatzId).delete(entry.id);
+    return "ok";
   } catch (err) {
     if (err instanceof ApiError && (err.status === 404 || err.status === 423)) {
-      // Einsatz existiert (noch) nicht im Backend ODER ist schreibgeschützt
-      // → lokal nicht weiter retry'en
+      // Einsatz existiert nicht (mehr) im Backend ODER ist schreibgeschützt
+      // → Retry sinnlos, NICHT queuen.
       console.warn(`[chronik-sync] ${einsatzId} ${err.status}: ${err.message}`);
-      return;
+      return "rejected";
     }
-    // Netz-Fehler oder 5xx → in Outbox für späteren Retry parken
-    pending(einsatzId).set(entry.id, entry);
+    // Netz-Fehler / Timeout / 5xx → persistent in die request-outbox parken.
+    // Der Endpoint dedupliziert über entry.id — ein Doppel-POST (direkter
+    // Retry + Outbox-Flush) ist harmlos.
+    try {
+      await enqueueRequest(
+        1,
+        `chronik:${entry.id}`,
+        "POST",
+        `/api/einsaetze/${encodeURIComponent(einsatzId)}/chronik`,
+        entry as unknown as Record<string, unknown>,
+      );
+    } catch {
+      // PouchDB-Fehler — der lokale Timeline-Eintrag bleibt als letzter Stand.
+    }
     console.warn(`[chronik-sync] queued ${entry.id} (${(err as Error).message})`);
+    return "queued";
   }
 }
 
 /**
  * Holt aktuelle Chronik vom Server und liefert neue Einträge zurück,
- * die im übergebenen Set noch fehlen. Side-effect: queued-out broadcasts
- * werden mit der gleichen Gelegenheit re-posted.
+ * die im übergebenen Set noch fehlen. Das Nachreichen gescheiterter
+ * Broadcasts übernimmt seit AUDIT-03 der 30-s-Outbox-Worker in App.tsx
+ * (persistente request-outbox) — kein Re-Post-Side-Effect mehr hier.
  *
  * BEWUSSTE DESIGN-ENTSCHEIDUNG (Einsatz-Test 2026-06-02, v0.1.10):
  * Der Diff filtert NUR nach unbekannten entry.id — ein nachträglich
@@ -103,14 +113,6 @@ export async function fetchChronikDiff(
   einsatzId: string,
   bekannteIds: Set<string>,
 ): Promise<ChronikEintrag[]> {
-  // Erst pending-Queue abarbeiten (best effort, blockt nicht)
-  const q = pending(einsatzId);
-  if (q.size > 0) {
-    for (const e of [...q.values()]) {
-      void broadcastChronikEntry(einsatzId, e);
-    }
-  }
-
   try {
     const r = await apiCall<GetResponse>(
       `/api/einsaetze/${encodeURIComponent(einsatzId)}/chronik`,

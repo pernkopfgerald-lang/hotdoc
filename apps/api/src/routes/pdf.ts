@@ -102,6 +102,47 @@ async function loadFotos(
   }
 }
 
+/**
+ * AUDIT-04: Toleranter Zeitmarken-Reader. Das Einsatz-Doc speichert
+ * zeitmarken.lageUnterKontrolle/brandAus als ISO-STRING (einsatz.schema.ts)
+ * und alst2/alst3 als Objekt mit Feld `uhrzeit` (ZeitmarkeSchema) — der
+ * fruehere Reader las auf allen vier Feldern `.zeit` und lieferte damit
+ * IMMER leer. Dieser Helper akzeptiert alle drei Formen (ISO-String,
+ * { zeit }, { uhrzeit }), rein lesetolerant ohne Schema-Eingriff.
+ */
+function zeitmarkeZeit(v: unknown): string | undefined {
+  if (typeof v === "string") return v || undefined;
+  if (v && typeof v === "object") {
+    const o = v as { zeit?: string; uhrzeit?: string };
+    return o.zeit ?? o.uhrzeit ?? undefined;
+  }
+  return undefined;
+}
+
+/**
+ * AUDIT-14 (SF-10): Geraete-Klartext-Aufloesung. Laedt das config:geraete-Doc
+ * EINMAL und baut eine Label-Map fahrzeugId → (materialId → bezeichnung).
+ * Wird vom Hauptbericht (vor der fzgBerichte-Schleife, NICHT pro Fahrzeug —
+ * der PDF-Pfad hatte Timeout-Probleme) und vom Standalone-Fahrzeugbericht-
+ * Endpoint geteilt. Fehler → leere Map, Fallback auf die Roh-materialId.
+ */
+async function loadGeraeteLabelMap(): Promise<Record<string, Map<string, string>>> {
+  try {
+    const geraeteCfg = (await db.get("config:geraete")) as {
+      data?: { byFahrzeug?: Record<string, Array<{ id: string; bezeichnung: string }>> };
+    };
+    const byFahrzeug = geraeteCfg.data?.byFahrzeug ?? {};
+    const out: Record<string, Map<string, string>> = {};
+    for (const [fzgId, list] of Object.entries(byFahrzeug)) {
+      out[fzgId] = new Map(list.map((g) => [g.id, g.bezeichnung]));
+    }
+    return out;
+  } catch (err) {
+    logger.warn({ err }, "config:geraete laden fehlgeschlagen — Geraete bleiben Roh-Ids");
+    return {};
+  }
+}
+
 const FAHRZEUG_ABK: Record<string, string> = {
   kdo: "KDO",
   "tlf-a-4000": "TANK",
@@ -221,6 +262,10 @@ async function buildBerichtDaten(
 
   const fzgBerichte = await loadFahrzeugberichte(id);
 
+  // AUDIT-14: Geraete-Klartext — config:geraete EINMAL laden (nicht pro
+  // Fahrzeug), die Schleife unten loest materialId → bezeichnung auf.
+  const geraeteLabelMap = await loadGeraeteLabelMap();
+
   // Mannschafts-Aggregat berechnen
   let eingesetzt = 0;
   let asTrupps = 0; // Paare von Atemschutz-Personen / 2
@@ -320,8 +365,10 @@ async function buildBerichtDaten(
         ? { fahrzeugKdt: `${kdtName.nachname ?? ""} ${kdtName.vorname ?? ""}`.trim() }
         : {}),
       mannschaft: mannschaftResolved,
+      // AUDIT-14: Klartext-Bezeichnung aus config:geraete — Fallback auf die
+      // Roh-materialId ist Pflicht (unbekannte/gelöschte Material-Ids).
       geraete: ((fz.geraete as Array<{ materialId: string }> | undefined) ?? []).map(
-        (g) => g.materialId,
+        (g) => geraeteLabelMap[fid]?.get(g.materialId) ?? g.materialId,
       ),
       oelSaecke: (fz.oelbindemittelSaecke as number | undefined) ?? 0,
       taetigkeitsbericht: String(fz.taetigkeitsbericht ?? ""),
@@ -334,14 +381,17 @@ async function buildBerichtDaten(
       ? String(doc.abschlussOverrideHinweis)
       : undefined;
 
-  const zeitmarkenDoc = doc.zeitmarken as
-    | {
-        lageUnterKontrolle?: { zeit?: string };
-        brandAus?: { zeit?: string };
-        alst2?: { zeit?: string; anforderer?: string };
-        alst3?: { zeit?: string; anforderer?: string };
-      }
-    | undefined;
+  // AUDIT-04: Zeitmarken lesetolerant — das Doc speichert lageUnterKontrolle/
+  // brandAus als ISO-String und alst2/alst3 als { uhrzeit, anforderer }.
+  // zeitmarkeZeit (siehe oben) akzeptiert alle Formen; alst2/alst3 werden auf
+  // die Template-Form { zeit, anforderer } normalisiert (template.ts liest .zeit).
+  const zm = doc.zeitmarken as Record<string, unknown> | undefined;
+  const lageUnterKontrolleZeit = zeitmarkeZeit(zm?.lageUnterKontrolle);
+  const brandAusZeit = zeitmarkeZeit(zm?.brandAus);
+  const alst2Zeit = zeitmarkeZeit(zm?.alst2);
+  const alst2Anforderer = (zm?.alst2 as { anforderer?: string } | undefined)?.anforderer;
+  const alst3Zeit = zeitmarkeZeit(zm?.alst3);
+  const alst3Anforderer = (zm?.alst3 as { anforderer?: string } | undefined)?.anforderer;
 
   // Issue 22 (Einsatz-Test 2026-06-02): Ölbindemittel-Säcke werden beim
   // Abschluss aggregiert ans Einsatz-Doc geschrieben. Fallback fuer noch
@@ -371,11 +421,15 @@ async function buildBerichtDaten(
 
   const data: BerichtDaten = {
     einsatzId: id,
-    berichtsNummer: deriveBerichtNrFromId(
-      id,
-      doc.einsatzart as string | undefined,
-      doc.alarmierungZeit as string | undefined,
-    ),
+    // AUDIT-11: echte Berichtsnummer vom Doc (beim Abschluss vergeben) —
+    // das Derivat ist nur noch Fallback fuer Altberichte ohne Nummer.
+    berichtsNummer:
+      (doc.berichtNummer as string | undefined) ??
+      deriveBerichtNrFromId(
+        id,
+        doc.einsatzart as string | undefined,
+        doc.alarmierungZeit as string | undefined,
+      ),
     einsatzQuelle: einsatzQuelleLabel(doc.einsatzTyp as string | undefined),
     einsatzart: doc.einsatzart as string | undefined,
     einsatzartFreitext: doc.einsatzartFreitext as string | undefined,
@@ -396,17 +450,23 @@ async function buildBerichtDaten(
     anrufer: doc.anrufer as string | undefined,
     anruferTel: doc.anruferTel as string | undefined,
     zeitmarken: {
-      ...(zeitmarkenDoc?.lageUnterKontrolle?.zeit
-        ? { lageUnterKontrolle: zeitmarkenDoc.lageUnterKontrolle.zeit }
+      ...(lageUnterKontrolleZeit ? { lageUnterKontrolle: lageUnterKontrolleZeit } : {}),
+      ...(brandAusZeit ? { brandAus: brandAusZeit } : {}),
+      ...(zm?.alst2
+        ? {
+            alst2: {
+              ...(alst2Zeit ? { zeit: alst2Zeit } : {}),
+              ...(alst2Anforderer ? { anforderer: alst2Anforderer } : {}),
+            },
+          }
         : {}),
-      ...(zeitmarkenDoc?.brandAus?.zeit
-        ? { brandAus: zeitmarkenDoc.brandAus.zeit }
-        : {}),
-      ...(zeitmarkenDoc?.alst2
-        ? { alst2: zeitmarkenDoc.alst2 }
-        : {}),
-      ...(zeitmarkenDoc?.alst3
-        ? { alst3: zeitmarkenDoc.alst3 }
+      ...(zm?.alst3
+        ? {
+            alst3: {
+              ...(alst3Zeit ? { zeit: alst3Zeit } : {}),
+              ...(alst3Anforderer ? { anforderer: alst3Anforderer } : {}),
+            },
+          }
         : {}),
     },
     beteiligteStellen: Array.isArray(doc.beteiligteStellen)
@@ -440,6 +500,13 @@ async function buildBerichtDaten(
         : undefined,
     verrechenbar:
       (doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar,
+    // AUDIT-14 (SF-02): Rechnungsadresse fuer den Verrechenbar-Block.
+    ...((doc.verrechnung as { rechnungsadresse?: string } | undefined)?.rechnungsadresse
+      ? {
+          rechnungsadresse: (doc.verrechnung as { rechnungsadresse?: string })
+            .rechnungsadresse,
+        }
+      : {}),
     mannschaft: {
       eingesetzt,
       bereitschaft,
@@ -586,22 +653,13 @@ pdfRouter.get(
       const fahrerPerson = fahrerId ? await loadPerson(fahrerId) : null;
       const kdtPerson = kdtId ? await loadPerson(kdtId) : null;
 
-      // Geraete-Labels aus config:geraete aufloesen
+      // Geraete-Labels aus config:geraete aufloesen — geteilter Helper
+      // (AUDIT-14), Fallback auf die Roh-materialId bei unbekannten Ids.
       const geraeteRaw = (fzgber.geraete as Array<{ materialId: string }> | undefined) ?? [];
-      const geraeteLabels: string[] = [];
-      try {
-        const geraeteCfg = (await db.get("config:geraete")) as {
-          data?: { byFahrzeug?: Record<string, Array<{ id: string; bezeichnung: string }>> };
-        };
-        const list = geraeteCfg.data?.byFahrzeug?.[fahrzeugId] ?? [];
-        const map = new Map(list.map((g) => [g.id, g.bezeichnung]));
-        for (const g of geraeteRaw) {
-          geraeteLabels.push(map.get(g.materialId) ?? g.materialId);
-        }
-      } catch {
-        // Fallback: nur materialId anzeigen
-        for (const g of geraeteRaw) geraeteLabels.push(g.materialId);
-      }
+      const geraeteLabelMap = await loadGeraeteLabelMap();
+      const geraeteLabels = geraeteRaw.map(
+        (g) => geraeteLabelMap[fahrzeugId]?.get(g.materialId) ?? g.materialId,
+      );
 
       // Issue #173 (v0.1.12): Auch fuer den Fahrzeugbericht-PDF die Roh-
       // Chronik durch den normalisierenden Adapter ziehen, damit alte
@@ -610,11 +668,14 @@ pdfRouter.get(
 
       const data: FahrzeugberichtDaten = {
         einsatzId,
-        berichtsNummer: deriveBerichtNrFromId(
-          einsatzId,
-          einsatz.einsatzart as string | undefined,
-          einsatz.alarmierungZeit as string | undefined,
-        ),
+        // AUDIT-11: echte Berichtsnummer vom Einsatz-Doc, Derivat nur Fallback.
+        berichtsNummer:
+          (einsatz.berichtNummer as string | undefined) ??
+          deriveBerichtNrFromId(
+            einsatzId,
+            einsatz.einsatzart as string | undefined,
+            einsatz.alarmierungZeit as string | undefined,
+          ),
         einsatzQuelle: einsatzQuelleLabel(einsatz.einsatzTyp as string | undefined),
         fahrzeugId,
         abk: fahrzeugAbk(fahrzeugId),
@@ -676,17 +737,40 @@ pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), (async (req, res)
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as Record<string, unknown>;
+    // AUDIT-14 (SF-12): Spickzettel typabhaengig — Uebungs-/Lotsendienst-
+    // Felder + Rechnungsadresse + echte Berichtsnummer (AUDIT-11) durchreichen.
+    const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
+    const rechnungsadresse = (
+      doc.verrechnung as { rechnungsadresse?: string } | undefined
+    )?.rechnungsadresse;
     const html = renderSpickzettelHtml({
       einsatzId: id,
+      berichtsNummer:
+        (doc.berichtNummer as string | undefined) ??
+        deriveBerichtNrFromId(
+          id,
+          doc.einsatzart as string | undefined,
+          doc.alarmierungZeit as string | undefined,
+        ),
       einsatzart: doc.einsatzart as string | undefined,
       einsatzartFreitext: doc.einsatzartFreitext as string | undefined,
       einsatzort: String(doc.einsatzort ?? "—"),
       alarmierungZeit: String(doc.alarmierungZeit ?? ""),
       alarmierungAuthor: doc.alarmierungAuthor as string | undefined,
-      einsatzTyp: ((doc.einsatzTyp as string) === "manuell" ? "manuell" : "alarm"),
+      einsatzTyp: einsatzTyp === "manuell" ? "manuell" : "alarm",
       status: String(doc.status ?? ""),
       oelbindemittelSaecke:
         (doc.oelbindemittel as { gesamtSaecke?: number } | undefined)?.gesamtSaecke ?? 0,
+      ...(einsatzTyp === "uebung" ? { istUebung: true } : {}),
+      ...(einsatzTyp === "lotsendienst" ? { istLotsendienst: true } : {}),
+      ...(doc.uebungThema ? { uebungThema: String(doc.uebungThema) } : {}),
+      ...(doc.uebungsTyp ? { uebungsTyp: String(doc.uebungsTyp) } : {}),
+      ...(doc.uebungsleiter ? { uebungsleiter: String(doc.uebungsleiter) } : {}),
+      ...(doc.lotsendienstAuftraggeber
+        ? { lotsendienstAuftraggeber: String(doc.lotsendienstAuftraggeber) }
+        : {}),
+      ...(doc.lotsendienstRoute ? { lotsendienstRoute: String(doc.lotsendienstRoute) } : {}),
+      ...(rechnungsadresse ? { rechnungsadresse } : {}),
     });
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
