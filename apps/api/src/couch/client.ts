@@ -10,7 +10,12 @@ import { logger } from "../lib/logger.js";
 const auth = `${encodeURIComponent(env.COUCH_USER)}:${encodeURIComponent(env.COUCH_PASS)}`;
 const url = env.COUCH_URL.replace("://", `://${auth}@`);
 
-export const couch = nano(url);
+// A-06 (Audit 2026-07): Request-Timeout gegen Blackhole-Partitionen. Ohne
+// Timeout haengt ein nano-Request unbegrenzt, wenn CouchDB zwar TCP annimmt
+// aber nie antwortet (z. B. haengender Container, kaputtes NAT) — jeder
+// wartende Route-Handler blockiert dann bis zum Client-Abbruch. 15 s ist
+// grosszuegig ueber jeder realen CouchDB-Antwortzeit (Voll-Scans inklusive).
+export const couch = nano({ url, requestDefaults: { timeout: 15000 } });
 
 /**
  * CouchDB-Handle.

@@ -82,6 +82,30 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
     setErr(null);
   }
 
+  // U-02: bei Wechsel des Berichts-Typs typ-fremde Felder zuruecksetzen —
+  // gleiche Logik wie changeTyp() im PWA-Tablet-Modal. Sonst wandern z. B.
+  // Lotsendienst-Werte unsichtbar in eine Uebung.
+  function changeFormType(next: FormType) {
+    if (next === formType) return;
+    setFormType(next);
+    // Lotsendienst-Felder
+    setAuftraggeber("");
+    setRoute("");
+    setVerrechenbar(true);
+    setRechnungsadresse("");
+    // Uebungs-Felder
+    setUebungThema("");
+    setUebungsleiter("");
+    setUebungsTyp("");
+    // Einsatzart/Freitext nur beim Typ "manuell" sichtbar — beim Wechsel
+    // weg davon loeschen, damit nichts alt weiterlebt.
+    if (next !== "manuell") {
+      setEinsatzart("");
+      setFreitext("");
+    }
+    setErr(null);
+  }
+
   async function submit() {
     if (einsatzort.trim().length < 3) {
       setErr("Einsatzort/Ortsangabe mit mind. 3 Zeichen erforderlich.");
@@ -101,8 +125,10 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
       const body: ManuellAnlageInput = {
         einsatzTyp: formType,
         einsatzort: einsatzort.trim(),
-        ...(einsatzart ? { einsatzart } : {}),
-        ...(freitext ? { einsatzartFreitext: freitext } : {}),
+        // U-02: Einsatzart/Freitext gehoeren nur zum Typ "manuell" (Einsatz)
+        // — bei Lotsendienst/Uebung nicht in den Body uebernehmen.
+        ...(formType === "manuell" && einsatzart ? { einsatzart } : {}),
+        ...(formType === "manuell" && freitext ? { einsatzartFreitext: freitext } : {}),
         ...(grund ? { grund } : {}),
       };
       if (formType === "lotsendienst") {
@@ -208,7 +234,7 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
               <button
                 key={t}
                 type="button"
-                onClick={() => setFormType(t)}
+                onClick={() => changeFormType(t)}
                 style={{
                   display: "flex",
                   flexDirection: "column",

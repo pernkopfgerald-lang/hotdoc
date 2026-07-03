@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Lock, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface AbschlussCheck {
   ok: boolean;
@@ -38,6 +38,13 @@ export function AbschlussModal({
   showCloseEinsatzOption,
 }: Props) {
   const [alsoCloseEinsatz, setAlsoCloseEinsatz] = useState(false);
+  // T-01 (Audit 2026-07): Checkbox bei jedem Oeffnen zuruecksetzen — sonst
+  // klebt ein frueher gesetztes "Auch Einsatz abschliessen" unsichtbar am
+  // naechsten Abschluss und schliesst den GESAMTEN Einsatz mit (Muster:
+  // State-Reset in CloseTabConfirmModal).
+  useEffect(() => {
+    if (open) setAlsoCloseEinsatz(false);
+  }, [open]);
   if (!open) return null;
   const offene = checks.filter((c) => !c.ok);
   const canConfirm = offene.length === 0;

@@ -73,7 +73,11 @@ export const ChronikEintragSchema = z
 export const ReaktivierungSchema = z.object({
   vonBenutzerId: z.string(),
   am: z.string().datetime({ offset: true }),
-  grund: z.string().min(10, "Reaktivierungs-Grund mind. 10 Zeichen"),
+  // L-05/A-01 (Audit 2026-07): Grund ist per User-Entscheid OPTIONAL — die
+  // Reaktivieren-Route erlaubt leere Gruende (siehe einsaetze.ts, Issue 10).
+  // Der fruehere min(10)-Zwang liess Docs mit leerem Grund beim naechsten
+  // EinsatzSchema.safeParse (generisches PUT) durchfallen → Schema-Mismatch.
+  grund: z.string().optional(),
   vonStatus: z.literal("abgeschlossen"),
 });
 

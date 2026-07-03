@@ -11,10 +11,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { Router, type Response, type RequestHandler } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import { EINSATZ_POLL_FELDER, EinsatzSchema, FahrzeugberichtSchema } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { writeAuditEvent } from "../services/audit.js";
@@ -53,12 +54,25 @@ async function getEinsatzOr404(
  * in `failed[]` damit der Caller einen `cascade_failed`-Marker setzen
  * kann (Sichtbarkeit fuer manuellen Cleanup).
  *
+ * A-07 (Audit 2026-07): Der fruehere Retry inserte `{ ...sourceDoc,
+ * _rev: fresh._rev }` — damit ueberschrieb unser STALER sourceDoc-Stand
+ * alle Felder, die der parallele Writer gerade geaendert hatte
+ * (Lost-Update). Mit `patchFor` liefert der Caller NUR seine Absichts-
+ * Felder; im Conflict-Fall wird `{ ...fresh, ...patch }` inserted —
+ * fremde Aenderungen bleiben erhalten. Gibt patchFor `null` zurueck
+ * (Patch auf frischem Stand nicht mehr anwendbar), landet die ID in
+ * `failed`. Ohne patchFor bleibt das alte Verhalten (Backwards-Compat).
+ *
  * @returns ok = Anzahl erfolgreicher Updates inkl. Retries,
  *          failed = Liste der IDs die endgueltig fehlgeschlagen sind
  */
 async function bulkUpdateWithRetry(
   docs: Array<Record<string, unknown>>,
   log: typeof logger,
+  patchFor?: (
+    docId: string,
+    fresh: Record<string, unknown>,
+  ) => Record<string, unknown> | null,
 ): Promise<{ ok: number; failed: string[] }> {
   if (docs.length === 0) return { ok: 0, failed: [] };
   const bulkResult = await db.bulk({ docs });
@@ -81,14 +95,26 @@ async function bulkUpdateWithRetry(
       );
       continue;
     }
-    // Retry-Pfad: CouchDB-Conflict — frischen _rev holen und nochmal
-    // mit single-insert versuchen.
+    // Retry-Pfad: CouchDB-Conflict — frischen Stand holen und nochmal
+    // mit single-insert versuchen. Mit patchFor werden NUR die Absichts-
+    // Felder auf den frischen Stand appliziert (kein Stale-Overwrite).
     try {
       const fresh = (await db.get(docId)) as Record<string, unknown>;
-      const merged: Record<string, unknown> = {
-        ...sourceDoc,
-        _rev: fresh._rev,
-      };
+      let merged: Record<string, unknown>;
+      if (patchFor) {
+        const patch = patchFor(docId, fresh);
+        if (patch === null) {
+          failed.push(docId);
+          log.warn(
+            { id: docId },
+            "bulkUpdateWithRetry: patchFor nicht anwendbar — Doc bleibt im frischen Zustand",
+          );
+          continue;
+        }
+        merged = { ...fresh, ...patch };
+      } else {
+        merged = { ...sourceDoc, _rev: fresh._rev };
+      }
       await db.insert(merged as Parameters<typeof db.insert>[0]);
       ok += 1;
       log.info(
@@ -106,6 +132,22 @@ async function bulkUpdateWithRetry(
   return { ok, failed };
 }
 
+// A-03a (Audit 2026-07): In-Memory-TTL-Cache fuer den einsatz:-Voll-Scan.
+// GET /api/einsaetze ist der heisseste Pfad (Fahrzeug-Tablets pollen alle
+// 5 s, dazu Florian + Lagekarte) — alle Poller teilen sich damit EINEN
+// CouchDB-Read pro TTL-Fenster. Jeder erfolgreiche Schreib-Endpunkt auf
+// Einsaetze ruft invalidateEinsatzCache(), damit eigene Aenderungen ohne
+// Verzoegerung sichtbar sind; die TTL deckt nur den Poll-Traffic ab.
+const EINSATZ_LIST_CACHE_TTL_MS = 2500;
+let einsatzListCache: {
+  at: number;
+  list: Awaited<ReturnType<typeof db.list>>;
+} | null = null;
+
+function invalidateEinsatzCache(): void {
+  einsatzListCache = null;
+}
+
 // ─── GET /api/einsaetze ─────────────────────────────────────
 // F-29: Pagination via `limit` (Default 200, Max 500) + `skip`. Sortierung
 // und Filterung passieren weiterhin in JS — bei <1000 Einsaetzen unkritisch.
@@ -114,7 +156,7 @@ async function bulkUpdateWithRetry(
 // TODO P-05: Auf Mango-View (durch Index auf alarmierungZeit + status) migrieren wenn >1000 Einsätze
 const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 500;
-einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
+einsaetzeRouter.get("/api/einsaetze", requireAuth(), ah(async (req, res) => {
   const status = req.query.status as string | undefined;
   // Pagination-Parameter — defensive parse, clamp auf erlaubte Range
   const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
@@ -125,12 +167,21 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
   const rawSkip = Number.parseInt(String(req.query.skip ?? ""), 10);
   const skip = Number.isFinite(rawSkip) && rawSkip > 0 ? rawSkip : 0;
 
-  const list = await db.list({
-    startkey: "einsatz:",
-    endkey: "einsatz:￰",
-    include_docs: true,
-    descending: false,
-  });
+  // A-03a: rohes Scan-Ergebnis aus dem TTL-Cache bedienen wenn frisch —
+  // Filter/Sortierung/Projektion laufen weiterhin pro Request (billig).
+  let list: Awaited<ReturnType<typeof db.list>>;
+  const cached = einsatzListCache;
+  if (cached && Date.now() - cached.at < EINSATZ_LIST_CACHE_TTL_MS) {
+    list = cached.list;
+  } else {
+    list = await db.list({
+      startkey: "einsatz:",
+      endkey: "einsatz:￰",
+      include_docs: true,
+      descending: false,
+    });
+    einsatzListCache = { at: Date.now(), list };
+  }
   let docs = list.rows
     .map((r) => r.doc)
     .filter((d): d is NonNullable<typeof d> => d !== undefined)
@@ -186,10 +237,10 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), (async (req, res) => {
         })
       : items;
   res.json({ ok: true, items: shapedItems, total, limit, skip });
-}) as RequestHandler);
+}));
 
 // ─── GET /api/einsaetze/:id ─────────────────────────────────
-einsaetzeRouter.get("/api/einsaetze/:id", requireAuth(), (async (req, res) => {
+einsaetzeRouter.get("/api/einsaetze/:id", requireAuth(), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = await db.get(id);
@@ -201,7 +252,7 @@ einsaetzeRouter.get("/api/einsaetze/:id", requireAuth(), (async (req, res) => {
     }
     throw err;
   }
-}) as RequestHandler);
+}));
 
 // ─── POST /api/einsaetze/manuell ─── FR-12 + Lotsendienst + Übung ───
 const ManuellAnlageBodySchema = z.object({
@@ -266,7 +317,7 @@ const ManuellAnlageBodySchema = z.object({
 // Mannschaft+ darf anlegen — Fahrzeug-Tablets brauchen das fuer
 // eigenstaendige Uebungen, Lotsendienste und Sturm-Eins. Einsatzleiter ist
 // nicht mehr Pflicht.
-einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async (req, res) => {
+einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), ah(async (req, res) => {
   const parsed = ManuellAnlageBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -353,6 +404,7 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), (async
   }
   try {
     const result = await db.insert(doc);
+    invalidateEinsatzCache();
     logger.info({ id: doc._id, by: session.username }, "Manueller Einsatz angelegt");
     res.status(201).json({ ok: true, id: doc._id, rev: result.rev });
   } catch (err) {

@@ -29,9 +29,17 @@ export interface StatsRequest {
 export interface StatsResponse {
   range: { from: string; to: string };
   totals: {
+    /** U-09: Echte Einsaetze — OHNE einsatzTyp "uebung" und OHNE verworfene. */
     einsaetze: number;
+    /** U-09: Anzahl Uebungs-Docs (ohne verworfene). */
+    uebungen: number;
     pro_typ: Record<EinsatzTyp, number>;
+    /** Summe aus Einsatz- + Uebungs-Stunden (Backwards-Compat Backoffice). */
     mannschaftStunden: number;
+    /** U-09: Mannschaftsstunden nur aus Nicht-Uebungen. */
+    mannschaftStundenEinsatz: number;
+    /** U-09: Mannschaftsstunden nur aus Uebungen. */
+    mannschaftStundenUebung: number;
     asTrupps: number;
     asStunden: number;
     kmGesamt: number;
@@ -94,6 +102,8 @@ interface EinsatzMin {
   uebungsTyp?: string;
   alarmierungZeit: string;
   einsatzende?: string;
+  /** U-09: Verworfene Berichte zaehlen nicht in einsaetze/uebungen. */
+  verworfen?: boolean;
 }
 
 interface FahrzeugBerichtMin {
@@ -140,9 +150,14 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
 
   // ─── Aggregation ───
   const totals: StatsResponse["totals"] = {
-    einsaetze: einsatzDocs.length,
+    // U-09: einsaetze/uebungen werden unten im Doc-Loop gezaehlt —
+    // Uebungen sind KEINE Einsaetze, verworfene zaehlen gar nicht.
+    einsaetze: 0,
+    uebungen: 0,
     pro_typ: { alarm: 0, manuell: 0, lotsendienst: 0, uebung: 0 },
     mannschaftStunden: 0,
+    mannschaftStundenEinsatz: 0,
+    mannschaftStundenUebung: 0,
     asTrupps: 0,
     asStunden: 0,
     kmGesamt: 0,
@@ -158,6 +173,12 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
   for (const e of einsatzDocs) {
     const typ = (e.einsatzTyp ?? "alarm") as EinsatzTyp;
     totals.pro_typ[typ]++;
+    // U-09: Uebungen aus der Einsatz-Zaehlung raus, eigener Zaehler.
+    // Verworfene Berichte ("Schliessen ohne Speichern") zaehlen nirgends.
+    if (e.verworfen !== true) {
+      if (typ === "uebung") totals.uebungen++;
+      else totals.einsaetze++;
+    }
     const mk = monthKey(e.alarmierungZeit);
     if (mk) {
       const m = monateMap.get(mk) ?? { alarm: 0, manuell: 0, lotsendienst: 0, uebung: 0 };
@@ -191,13 +212,19 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
       slotsBesetzt + (f.fahrerPersonId ? 1 : 0) + (f.fahrzeugKdtPersonId ? 1 : 0);
     const dauerMin = f.zeit?.von && f.zeit?.bis ? calcDauerMin(f.zeit.von, f.zeit.bis) : 0;
     if (dauerMin > 0) {
-      totals.mannschaftStunden += (headcount * dauerMin) / 60;
-      // Übungsstunden pro Übungstyp
+      const stunden = (headcount * dauerMin) / 60;
+      // U-09: Split Einsatz-/Uebungsstunden — mannschaftStunden bleibt als
+      // Summe erhalten (Backwards-Compat: Backoffice liest das Feld direkt).
+      totals.mannschaftStunden += stunden;
       if (einsatz?.einsatzTyp === "uebung") {
+        totals.mannschaftStundenUebung += stunden;
+        // Übungsstunden pro Übungstyp
         const ut = einsatz.uebungsTyp ?? "Sonstige";
         const cur = uebungsTypenMap.get(ut) ?? { anzahl: 0, stunden: 0 };
-        cur.stunden += (headcount * dauerMin) / 60;
+        cur.stunden += stunden;
         uebungsTypenMap.set(ut, cur);
+      } else {
+        totals.mannschaftStundenEinsatz += stunden;
       }
     }
     // Atemschutz
@@ -212,6 +239,10 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
   }
   totals.asTrupps = Math.ceil(asPersonenGesamt / 2);
   totals.mannschaftStunden = Math.round(totals.mannschaftStunden * 100) / 100;
+  totals.mannschaftStundenEinsatz =
+    Math.round(totals.mannschaftStundenEinsatz * 100) / 100;
+  totals.mannschaftStundenUebung =
+    Math.round(totals.mannschaftStundenUebung * 100) / 100;
   totals.asStunden = Math.round(totals.asStunden * 100) / 100;
   totals.kmGesamt = Math.round(totals.kmGesamt * 100) / 100;
   totals.kmLotsendienst = Math.round(totals.kmLotsendienst * 100) / 100;

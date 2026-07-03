@@ -853,7 +853,7 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
     }
     ${d.alarmierungAuthor ? `<li>Alarmierungsquelle: <span class="val">${escape(d.alarmierungAuthor)}</span></li>` : ""}
     ${d.einsatzende ? `<li>${istUebung ? "Übungsende" : "Einsatzende"}: <span class="val">${formatDateTime(d.einsatzende)}</span></li>` : ""}
-    ${d.oelbindemittelSaecke ? `<li>Ölbindemittel: <span class="val">${d.oelbindemittelSaecke} Säcke (VERRECHENBAR)</span></li>` : ""}
+    ${d.oelbindemittelSaecke ? `<li>Ölbindemittel: <span class="val">${d.oelbindemittelSaecke} Säcke${istUebung ? "" : " (VERRECHENBAR)"}</span></li>` : ""}
     ${!istUebung && !istLotsen && d.rechnungsadresse ? `<li>Rechnungsadresse: <span class="val">${escape(d.rechnungsadresse)}</span></li>` : ""}
     <li>Bericht-PDF als Anhang an den syBOS-Eintrag hängen.</li>
   </ol>

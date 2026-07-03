@@ -54,8 +54,21 @@ async function getBrowser(): Promise<Browser> {
  */
 let renderChain: Promise<void> = Promise.resolve();
 
+/**
+ * A-10 (Audit 2026-07): Staulimit fuer die serialisierte Render-Kette.
+ * Da immer nur EIN Tab rendert, wuerde jeder weitere Request minutenlang
+ * in der Kette warten (Client-Timeouts, Retry-Sturm). Bei mehr als
+ * MAX_PENDING_RENDERS gleichzeitig laufenden/wartenden Renders lehnt
+ * renderPdf sofort mit "pdf_busy" ab — routes/pdf.ts mappt das auf 503.
+ */
+const MAX_PENDING_RENDERS = 3;
+let pendingRenders = 0;
+
 /** Rendert HTML → A4-PDF (Bytes). */
 export async function renderPdf(html: string): Promise<Buffer> {
+  if (pendingRenders > MAX_PENDING_RENDERS) {
+    throw new Error("pdf_busy");
+  }
   const run = async (): Promise<Buffer> => {
     const browser = await getBrowser();
     const page = await browser.newPage();
@@ -106,7 +119,12 @@ export async function renderPdf(html: string): Promise<Buffer> {
   };
   // An die Kette haengen: laeuft erst, wenn der vorherige Render fertig ist
   // (Erfolg ODER Fehler — then(run, run) startet in beiden Faellen).
-  const result = renderChain.then(run, run);
+  // A-10: pendingRenders zaehlt laufende + wartende Renders; das finally
+  // dekrementiert exakt einmal, egal ob der Render erfolgreich war.
+  pendingRenders += 1;
+  const result = renderChain.then(run, run).finally(() => {
+    pendingRenders -= 1;
+  });
   renderChain = result.then(
     () => undefined,
     () => undefined,

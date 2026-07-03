@@ -8,10 +8,16 @@
  * Fahrzeugbericht in CouchDB liegen.
  *
  * Dieser Worker säubert das auf:
- *  - Sucht abgeschlossene Einsätze, deren einsatzende ≥ PHANTOM_GRACE_HOURS h zurück liegt.
+ *  - Sucht abgeschlossene Einsätze, deren einsatzende ≥ PHANTOM_GRACE_HOURS h zurück liegt
+ *    UND jünger als PHANTOM_MAX_AGE_TAGE (14) Tage ist — Phantome entstehen nur
+ *    kurz nach dem Abschluss, ältere Einsätze liefern keine neuen mehr (A-03b:
+ *    hält den täglichen Scan klein statt jede Nacht das ganze Archiv zu wälzen).
  *  - Lädt deren Fahrzeugberichte.
  *  - Berichte die ALLE Merkmale erfüllen werden gelöscht:
- *      • status="in_arbeit" (NICHT vom Kdt. abgeschlossen)
+ *      • status="in_arbeit" (NICHT vom Kdt. abgeschlossen) — ODER
+ *        status="abgeschlossen" mit autoAbgeschlossenGrund
+ *        "hauptauftrag-unbefuellt" / "hauptauftrag-geschlossen" (Kaskaden-
+ *        Abschluss vom Auto-Close-Worker, kein menschlicher Abschluss)
  *      • mannschaft.length === 0   AND fahrerPersonId fehlt AND fahrzeugKdtPersonId fehlt
  *      • km.gefahrenKm === 0       AND km.abfahrt+rueckkehr fehlen
  *      • geraete.length === 0
@@ -31,6 +37,14 @@ import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
 
 const CRON_AUSDRUCK = "45 2 * * *";
+
+/**
+ * A-03b: Obergrenze fuer das Kandidaten-Fenster — Einsaetze deren einsatzende
+ * laenger als 14 Tage zurueckliegt haben ihre Phantome laengst verloren
+ * (der Worker laeuft taeglich). Haelt den Scan auf ein rollierendes Fenster
+ * begrenzt statt das gesamte Archiv zu pruefen.
+ */
+const PHANTOM_MAX_AGE_TAGE = 14;
 
 /**
  * Gnaden-Frist in Stunden — wie lange muss ein Einsatz schon abgeschlossen sein,
@@ -57,10 +71,12 @@ interface EinsatzMin {
   status?: string;
   einsatzende?: string;
 }
-interface FahrzeugberichtMin {
+export interface FahrzeugberichtMin {
   _id: string;
   _rev: string;
   status?: string;
+  /** Kaskaden-Marker vom Auto-Close-Worker (auto-close-stale.ts). */
+  autoAbgeschlossenGrund?: string;
   mannschaft?: unknown[];
   fahrerPersonId?: number;
   fahrzeugKdtPersonId?: number;
@@ -70,9 +86,24 @@ interface FahrzeugberichtMin {
   oelbindemittelSaecke?: number;
 }
 
-/** Prüft ob ein Fahrzeugbericht „phantom" ist (vollständig leer). */
-function isPhantom(b: FahrzeugberichtMin): boolean {
-  if (b.status === "abgeschlossen") return false;
+/**
+ * Prüft ob ein Fahrzeugbericht „phantom" ist (vollständig leer).
+ *
+ * Exportiert, weil der Auto-Close-Worker (auto-close-stale.ts, L-01) dasselbe
+ * Prädikat für die Unbefüllt-Erkennung braucht — eine Definition, kein Drift.
+ *
+ * status="abgeschlossen" gilt normalerweise als menschlicher Abschluss und
+ * schützt vor Löschung — AUSSER der Abschluss kam als Kaskade vom Auto-Close-
+ * Worker (autoAbgeschlossenGrund "hauptauftrag-unbefuellt" bzw.
+ * "hauptauftrag-geschlossen"): dann zählt nur der Inhalt.
+ */
+export function isPhantom(b: FahrzeugberichtMin): boolean {
+  if (b.status === "abgeschlossen") {
+    const grund = b.autoAbgeschlossenGrund;
+    const autoKaskade =
+      grund === "hauptauftrag-unbefuellt" || grund === "hauptauftrag-geschlossen";
+    if (!autoKaskade) return false;
+  }
   if (Array.isArray(b.mannschaft) && b.mannschaft.length > 0) return false;
   if (b.fahrerPersonId !== undefined && b.fahrerPersonId !== null) return false;
   if (b.fahrzeugKdtPersonId !== undefined && b.fahrzeugKdtPersonId !== null) return false;
@@ -90,6 +121,9 @@ export async function runPhantomCleanup(): Promise<PhantomResult> {
   const start = Date.now();
   const grace = phantomGraceHours();
   const cutoff = Date.now() - grace * 60 * 60 * 1000;
+  // A-03b: unteres Ende des Kandidaten-Fensters — aeltere Einsaetze liefern
+  // keine neuen Phantome mehr und werden gar nicht erst angefasst.
+  const maxAgeCutoff = Date.now() - PHANTOM_MAX_AGE_TAGE * 24 * 60 * 60 * 1000;
   const result: PhantomResult = {
     pruefte_einsaetze: 0,
     pruefte_fzgber: 0,
@@ -123,6 +157,8 @@ export async function runPhantomCleanup(): Promise<PhantomResult> {
       continue;
     }
     if (t > cutoff) continue;
+    // A-03b: Einsatzende aelter als das 14-Tage-Fenster → uebersprungen.
+    if (t < maxAgeCutoff) continue;
     candidates.push(doc);
   }
   result.pruefte_einsaetze = candidates.length;

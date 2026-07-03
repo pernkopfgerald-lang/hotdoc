@@ -1186,11 +1186,8 @@ function ArchivPanel() {
                 </td>
                 <td style={archTd}>{formatDate(it.alarmierungZeit)}</td>
                 <td style={archTd}>
-                  {it.einsatzTyp === "uebung"
-                    ? it.uebungThema ?? "—"
-                    : it.einsatzTyp === "lotsendienst"
-                      ? it.lotsendienstAuftraggeber ?? "—"
-                      : it.einsatzart ?? it.einsatzartFreitext ?? "—"}
+                  {/* U-10: gemeinsame Titel-Fallback-Kette (berichtTitel) */}
+                  {berichtTitel(it)}
                 </td>
                 <td style={archTd} title={it.einsatzort}>
                   {it.einsatzort.length > 32 ? it.einsatzort.slice(0, 32) + "…" : it.einsatzort}
@@ -1241,6 +1238,24 @@ function ArchivPanel() {
       </p>
     </section>
   );
+}
+
+/** U-10: einheitliche Titel-Fallback-Kette fuer alle Berichts-Listen
+ *  (Archiv + BerichteBrowser) — wie TypBadge exportiert, eine Wahrheit
+ *  fuer alle Ansichten. Typspezifisch zuerst (Uebung → Thema,
+ *  Lotsendienst → Auftraggeber), dann Einsatzart, Freitext, "—". */
+export function berichtTitel(item: {
+  einsatzTyp?: EinsatzTyp;
+  einsatzart?: string;
+  einsatzartFreitext?: string;
+  uebungThema?: string;
+  lotsendienstAuftraggeber?: string;
+}): string {
+  if (item.einsatzTyp === "uebung" && item.uebungThema) return item.uebungThema;
+  if (item.einsatzTyp === "lotsendienst" && item.lotsendienstAuftraggeber) {
+    return item.lotsendienstAuftraggeber;
+  }
+  return item.einsatzart ?? item.einsatzartFreitext ?? "—";
 }
 
 /** AUDIT-15: exportiert, damit BerichteBrowser/BerichtDetail dasselbe
@@ -1709,7 +1724,12 @@ function NummerierungPanel() {
         erhalten ihre Nummer erst, wenn der Server sie verarbeitet. Doppelvergaben
         sind ausgeschlossen; schlägt ein Abschluss nach dem Ziehen der Nummer fehl,
         kann eine Lücke entstehen. Altberichte ohne gespeicherte Nummer zeigen im
-        Archiv eine aus Kategorie und Anlagedatum abgeleitete Nummer.
+        Archiv eine aus Kategorie und Anlagedatum abgeleitete Nummer.{" "}
+        {/* U-03: eigener Uebungs-Nummernkreis dokumentieren */}
+        <strong>Übungen</strong> erhalten einen eigenen Nummernkreis{" "}
+        <code style={{ fontFamily: "var(--font-mono)" }}>U{yy}-lfd</code>{" "}
+        (z. B. U{yy}-001) und zählen nicht im B/T-Kreis der Einsätze — die
+        Vergabe erfolgt ebenfalls beim Abschluss.
       </p>
     </section>
   );
@@ -2272,9 +2292,16 @@ function pad(n: number): string {
 interface StatsResponse {
   range: { from: string; to: string };
   totals: {
+    // U-09: bereinigt — zaehlt OHNE Uebungen und ohne verworfene Berichte
     einsaetze: number;
+    // U-09: eigener Uebungs-Zaehler; optional, falls ein aelteres Backend
+    // das Feld noch nicht liefert (dann Fallback auf pro_typ.uebung)
+    uebungen?: number;
     pro_typ: { alarm: number; manuell: number; lotsendienst: number; uebung: number };
     mannschaftStunden: number;
+    // U-09: Split der Mannschaftsstunden — optional (aeltere Backends)
+    mannschaftStundenEinsatz?: number;
+    mannschaftStundenUebung?: number;
     asTrupps: number;
     asStunden: number;
     kmGesamt: number;
@@ -2314,6 +2341,16 @@ function StatistikPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // U-09: Bezugsgroesse fuer die Pro-Typ-Prozente — totals.einsaetze ist
+  // jetzt um Uebungen/verworfene bereinigt, daher die Summe aller Typen
+  // separat bilden, damit die Anteile wieder 100 % ergeben.
+  const proTypGesamt = stats
+    ? stats.totals.pro_typ.alarm +
+      stats.totals.pro_typ.manuell +
+      stats.totals.pro_typ.lotsendienst +
+      stats.totals.pro_typ.uebung
+    : 0;
 
   return (
     <section className="card">
@@ -2377,12 +2414,30 @@ function StatistikPanel() {
               icon={<Calendar size={14} />}
               color="var(--info)"
             />
+            {/* U-09: Uebungen zaehlen nicht mehr in "Einsaetze gesamt" —
+                eigene KPI-Karte; Fallback auf pro_typ.uebung fuer aeltere
+                Backend-Responses ohne totals.uebungen. */}
             <KpiCard
-              label="Mannschaftsstunden"
+              label="Übungen"
+              value={stats.totals.uebungen ?? stats.totals.pro_typ.uebung}
+              icon={<GraduationCap size={14} />}
+              color="var(--ok)"
+            />
+            <KpiCard
+              label="Mannschaftsstunden gesamt"
               value={`${stats.totals.mannschaftStunden}`}
               unit="h"
               icon={<Users size={14} />}
               color="var(--fg)"
+              // U-09: Einsatz/Uebung-Split als Unterzeile — nur wenn das
+              // Backend die Split-Felder liefert; defensiv per ?? auf die
+              // Gesamtsumme bzw. 0 zurueckfallen.
+              sub={
+                stats.totals.mannschaftStundenEinsatz != null ||
+                stats.totals.mannschaftStundenUebung != null
+                  ? `Einsatz ${stats.totals.mannschaftStundenEinsatz ?? stats.totals.mannschaftStunden} h · Übung ${stats.totals.mannschaftStundenUebung ?? 0} h`
+                  : undefined
+              }
             />
             <KpiCard
               label="AS-Trupps"
@@ -2427,28 +2482,28 @@ function StatistikPanel() {
             <TypKpi
               label="Alarm-Einsätze"
               value={stats.totals.pro_typ.alarm}
-              total={stats.totals.einsaetze}
+              total={proTypGesamt}
               icon={<Flame size={14} />}
               color="var(--red)"
             />
             <TypKpi
               label="Manuelle Berichte"
               value={stats.totals.pro_typ.manuell}
-              total={stats.totals.einsaetze}
+              total={proTypGesamt}
               icon={<Activity size={14} />}
               color="var(--info)"
             />
             <TypKpi
               label="Lotsendienste"
               value={stats.totals.pro_typ.lotsendienst}
-              total={stats.totals.einsaetze}
+              total={proTypGesamt}
               icon={<Siren size={14} />}
               color="var(--warn)"
             />
             <TypKpi
               label="Übungen"
               value={stats.totals.pro_typ.uebung}
-              total={stats.totals.einsaetze}
+              total={proTypGesamt}
               icon={<GraduationCap size={14} />}
               color="var(--ok)"
             />
@@ -2565,12 +2620,16 @@ function KpiCard({
   unit,
   icon,
   color,
+  sub,
 }: {
   label: string;
   value: string | number;
   unit?: string;
   icon: React.ReactNode;
   color: string;
+  /** U-09: optionale Unterzeile, z. B. Einsatz/Uebung-Split der Stunden.
+   *  `| undefined` wegen exactOptionalPropertyTypes (bedingtes Prop). */
+  sub?: string | undefined;
 }) {
   return (
     <div
@@ -2604,6 +2663,20 @@ function KpiCard({
           </span>
         ) : null}
       </div>
+      {sub ? (
+        <div
+          style={{
+            marginTop: 4,
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            color: "var(--fg-3)",
+          }}
+        >
+          {sub}
+        </div>
+      ) : null}
     </div>
   );
 }

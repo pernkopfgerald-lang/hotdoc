@@ -1,7 +1,7 @@
 import { AlertCircle, Lock, Plus, Unlock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { listEinsaetze, manuellAnlegen, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
-import { TypBadge } from "../pages/Verwaltung";
+import { berichtTitel, TypBadge } from "../pages/Verwaltung";
 import { BerichtDetail } from "./BerichtDetail";
 import { ManuellerBerichtModal } from "./ManuellerBerichtModal";
 
@@ -127,14 +127,11 @@ export function BerichteBrowser() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    {/* AUDIT-15: Titel-Fallback wie im ArchivPanel — Uebungen/
-                        Lotsendienste ohne Einsatzart zeigten vorher nur "—". */}
+                    {/* U-10: gemeinsame Titel-Fallback-Kette (berichtTitel aus
+                        Verwaltung.tsx) — typspezifisch zuerst, eine Wahrheit
+                        fuer Archiv und Browser. */}
                     <span className="name" style={{ fontSize: 14 }}>
-                      {it.einsatzart ??
-                        it.einsatzartFreitext ??
-                        it.uebungThema ??
-                        it.lotsendienstAuftraggeber ??
-                        "—"}
+                      {berichtTitel(it)}
                     </span>
                     <StatusBadge item={it} />
                   </div>

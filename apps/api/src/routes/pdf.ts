@@ -10,9 +10,10 @@
  *                     Bloecke ausgeblendet. Siehe buildUebungHtml.
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { deriveBerichtNrFromId } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { renderPdf } from "../services/pdf/generator.js";
@@ -159,7 +160,9 @@ const FAHRZEUG_FUNKRUF: Record<string, string> = {
   zentrale: "Florian Eberstalzell",
 };
 
-pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), (async (req, res) => {
+// A-02: ah(...) statt nacktem async-Handler — Rejections landen im globalen
+// Error-Handler statt den Request haengen zu lassen. Gilt fuer alle Routen.
+pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as Record<string, unknown>;
@@ -188,9 +191,17 @@ pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), (async (req, res) => {
       res.status(404).json({ error: "einsatz_not_found" });
       return;
     }
+    // A-10: Render-Kette voll — kein Server-Fehler, sondern "bitte warten".
+    if (err instanceof Error && err.message === "pdf_busy") {
+      res.status(503).json({
+        error: "pdf_busy",
+        hint: "Bericht wird bereits erzeugt - kurz warten und erneut versuchen.",
+      });
+      return;
+    }
     res.status(500).json({ error: "pdf_failed", message: String(err) });
   }
-}) as RequestHandler);
+}));
 
 /**
  * Lotsendienst-Bericht (2026-06-05): laeuft — wie der Übungsbericht — durch
@@ -604,7 +615,7 @@ async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promis
 pdfRouter.get(
   "/api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf",
   requireAuth(),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const einsatzId = decodeURIComponent(String(req.params.id));
     const fahrzeugId = decodeURIComponent(String(req.params.fzgId));
     try {
@@ -728,12 +739,20 @@ pdfRouter.get(
         res.status(404).json({ error: "not_found" });
         return;
       }
+      // A-10: Render-Kette voll — kein Server-Fehler, sondern "bitte warten".
+      if (err instanceof Error && err.message === "pdf_busy") {
+        res.status(503).json({
+          error: "pdf_busy",
+          hint: "Bericht wird bereits erzeugt - kurz warten und erneut versuchen.",
+        });
+        return;
+      }
       res.status(500).json({ error: "pdf_failed", message: String(err) });
     }
-  }) as RequestHandler,
+  }),
 );
 
-pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), (async (req, res) => {
+pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as Record<string, unknown>;
@@ -781,4 +800,4 @@ pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), (async (req, res)
     }
     throw err;
   }
-}) as RequestHandler);
+}));

@@ -6,6 +6,11 @@
  * Alarmierungszeit). Der Zaehler lebt im Doc `config:bericht-counter`
  * mit Shape `{ counters: Record<string, number> }` (Key z. B. "B26").
  *
+ * U-03 (Audit 2026-07): Uebungen bekommen einen EIGENEN Nummernkreis mit
+ * Prefix "U" (Format U26-001, Zaehler-Key "U26" im selben Counter-Doc) —
+ * einsatzTyp === "uebung" uebersteuert die B/T-Kategorisierung. Alle
+ * anderen Typen laufen unveraendert ueber B/T.
+ *
  * CouchDB kann NICHT atomar inkrementieren — deshalb Read-Modify-Write
  * mit 409-Conflict-Retry (max. 5 Versuche, Muster: bulkUpdateWithRetry
  * in routes/einsaetze.ts). Bei parallelem Abschluss zieht genau einer
@@ -41,8 +46,16 @@ interface BerichtCounterDoc {
 export async function vergebeBerichtNummer(
   einsatzart: string | undefined,
   alarmierungZeit: string | undefined,
+  einsatzTyp?: string,
 ): Promise<string> {
-  const prefix = kategorieFuer(einsatzart) === "brand" ? "B" : "T";
+  // U-03: Uebungen ziehen aus dem eigenen "U"-Nummernkreis, unabhaengig
+  // von der Brand/Technisch-Kategorisierung der einsatzart.
+  const prefix =
+    einsatzTyp === "uebung"
+      ? "U"
+      : kategorieFuer(einsatzart) === "brand"
+        ? "B"
+        : "T";
   let jahr = new Date().getFullYear();
   if (alarmierungZeit) {
     const d = new Date(alarmierungZeit);

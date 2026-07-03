@@ -59,9 +59,20 @@ export async function runAudioRetention(): Promise<RetentionResult> {
     const nextAttachments = { ...attachments };
     for (const key of audioKeys) {
       delete nextAttachments[key];
-      result.audioAttachmentsGeloescht += 1;
     }
-    await db.insert({ ...doc, _attachments: nextAttachments });
+    // A-09: Insert pro Einsatz kapseln — ein einzelner 409 (z. B. paralleler
+    // Write auf einen alten Einsatz) darf nicht den gesamten Retention-Lauf
+    // abbrechen. Fehler loggen, naechster Einsatz.
+    try {
+      await db.insert({ ...doc, _attachments: nextAttachments });
+    } catch (err) {
+      logger.warn(
+        { err, id: doc._id },
+        "Audio-Retention: Update fehlgeschlagen — Einsatz uebersprungen",
+      );
+      continue;
+    }
+    result.audioAttachmentsGeloescht += audioKeys.length;
     logger.info({ id: doc._id, geloeschteAudios: audioKeys.length }, "Audio-Retention angewandt");
   }
 
@@ -72,7 +83,13 @@ export async function runAudioRetention(): Promise<RetentionResult> {
 export function startAudioRetentionCron(): void {
   cron.schedule(CRON_AUSDRUCK, () => {
     logger.info({ cron: CRON_AUSDRUCK }, "Audio-Retention-Cron tickt");
-    void runAudioRetention().then((r) => logger.info(r, "Audio-Retention fertig"));
+    // A-09: .catch wie bei den anderen Workern — ein geplatzter Lauf darf
+    // keine unhandled rejection im Prozess hinterlassen.
+    void runAudioRetention()
+      .then((r) => logger.info(r, "Audio-Retention fertig"))
+      .catch((err) => {
+        logger.error({ err }, "Audio-Retention-Lauf fehlgeschlagen");
+      });
   });
   logger.info({ cron: CRON_AUSDRUCK, days: env.AUDIO_RETENTION_DAYS }, "Audio-Retention geplant");
 }
