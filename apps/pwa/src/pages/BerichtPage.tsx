@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, MapPin, RotateCcw, Save, Truck, UploadCloud, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, MapPin, RotateCcw, Save, UploadCloud, Users } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_BUILD, APP_VERSION } from "../version";
@@ -45,7 +45,7 @@ import { enqueueRequest, unblockRequests } from "../lib/request-outbox";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useSyncStatus } from "../lib/use-sync-status";
-import { haversineKm, useGeolocation } from "../lib/geo";
+import { haversineKm, useGeolocation, type GeoFix } from "../lib/geo";
 import {
   clearDraft,
   listDraftEinsatzIds,
@@ -109,6 +109,14 @@ interface EinsatzInstance {
    * Wird an /fahrzeugbericht/:fzgId PUT als `kdtIstEinsatzleiter` mitgegeben.
    */
   kdtIstEinsatzleiter: boolean;
+  /**
+   * U-06 (Audit 2026-07): Auftraggeber eines Lotsendienstes (Verrechnung!)
+   * — Grundlage fuer den Abschluss-Check "Auftraggeber erfasst". Die
+   * schlanke Poll-Projektion traegt das Feld bewusst nicht; es wird einmal
+   * pro Lotsendienst-Einsatz aus dem vollen Einsatz-Doc nachgeladen.
+   * undefined = noch nicht geladen, "" = geladen aber leer.
+   */
+  lotsendienstAuftraggeber?: string;
 }
 
 interface Props {
@@ -164,6 +172,10 @@ function mergeDraftIntoInstance(
   }
   if (typeof draft.kdtIstEinsatzleiter === "boolean") {
     merged.kdtIstEinsatzleiter = draft.kdtIstEinsatzleiter;
+  }
+  // U-06: Auftraggeber (Lotsendienst) mituebernehmen — spart den Refetch.
+  if (typeof draft.lotsendienstAuftraggeber === "string") {
+    merged.lotsendienstAuftraggeber = draft.lotsendienstAuftraggeber;
   }
   return merged;
 }
@@ -257,6 +269,21 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   // AUDIT-03 (2026-06-12): roter Hinweis wenn ein Chronik-Eintrag vom Server
   // endgültig abgelehnt wurde (404/423) — der lokale Eintrag wird entfernt.
   const [chronikRejectedAt, setChronikRejectedAt] = useState<number | null>(null);
+
+  // T-12 (Audit 2026-07): App-Modal statt window.confirm fuer die GPS-
+  // Adress-Uebernahme waehrend der Fahrt. window.confirm blockiert den
+  // JS-Thread, ist nicht stylebar und wirkt am Tablet wie ein System-
+  // Fehler. onConfirm fuehrt die gepufferte Uebernahme aus (mit dem Fix
+  // vom Klick-Zeitpunkt).
+  const [gpsFahrtConfirm, setGpsFahrtConfirm] = useState<{
+    open: boolean;
+    onConfirm: () => void;
+  } | null>(null);
+
+  // T-12 (Audit 2026-07): roter Fehler-Toast ersetzt alert()/window.alert()
+  // (blockierend, wirkt wie App-Absturz). Muster: chronikRejected-Banner
+  // (role="alert"), Auto-Hide nach ~6 s.
+  const [fehlerToast, setFehlerToast] = useState<{ at: number; text: string } | null>(null);
 
   // KDT-07 (AUDIT-10, 2026-06-12): Undo-Puffer für die GPS-Adress-Übernahme.
   // 15-s-Toast mit Rückgängig-Button statt harter Sperre.
@@ -421,6 +448,45 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     }, 700);
     return () => clearTimeout(handle);
   }, [einsaetze, fahrzeugId, uploadState]);
+
+  // A-08 (Audit 2026-07): Boot-Sweep fuer verwaiste localStorage-Drafts.
+  // Der 24-h-Seed-Guard unten haelt alte Drafts zwar aus der UI, aber die
+  // Eintraege selbst blieben ewig liegen (localStorage-Quota-Fresser auf
+  // Tablets, die jahrelang nie zurueckgesetzt werden). Alles unter
+  // `hotdoc.draft.*` — ueber ALLE Fahrzeug-IDs hinweg — das aelter als
+  // 7 Tage ist (Basis: alarmierungZeit im Draft) fliegt raus. Drafts ohne
+  // lesbaren Zeitstempel sind korrupt und fliegen ebenfalls. Laeuft VOR dem
+  // Seed-Effekt darunter (Deklarationsreihenfolge der Effekte beim Mount).
+  useEffect(() => {
+    try {
+      const LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith("hotdoc.draft.")) continue;
+        let ts = NaN;
+        try {
+          const draft = JSON.parse(localStorage.getItem(k) ?? "") as unknown;
+          const alarm =
+            draft &&
+            typeof draft === "object" &&
+            (draft as Record<string, unknown>).alarm &&
+            typeof (draft as Record<string, unknown>).alarm === "object"
+              ? ((draft as Record<string, unknown>).alarm as Record<string, unknown>)
+              : null;
+          if (alarm && typeof alarm.alarmierungZeit === "string") {
+            ts = Date.parse(alarm.alarmierungZeit);
+          }
+        } catch {
+          // korrupter JSON-Draft → faellt unten in die Remove-Liste
+        }
+        if (!Number.isFinite(ts) || Date.now() - ts > LIMIT_MS) toRemove.push(k);
+      }
+      for (const k of toRemove) localStorage.removeItem(k);
+    } catch {
+      // Private-Mode/Quota — der Sweep ist Hygiene, kein Muss.
+    }
+  }, []);
 
   // KDT-02 (AUDIT-02, 2026-06-12): Draft-Boot-Seeding. Nach einem Reload im
   // Funkloch liefert der Backend-Poll nichts — der komplette Arbeitsstand
@@ -1017,12 +1083,27 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     // Fahrt (>10 km/h) — die GPS-Position waere dann irgendwo auf der
     // Anfahrt, nicht der Einsatzort. speedKmh ist oft null (kein Heading-
     // Fix), darum KEINE harte Button-Sperre.
+    // T-12 (Audit 2026-07): App-Modal statt window.confirm — die eigentliche
+    // Uebernahme steckt in fuehreGpsUebernahmeAus() und laeuft erst nach
+    // explizitem "Trotzdem uebernehmen".
     if (fix.speedKmh != null && fix.speedKmh > 10) {
-      const wirklich = window.confirm(
-        "Fahrzeug bewegt sich — Adresse wirklich durch aktuelle Position ersetzen?",
-      );
-      if (!wirklich) return;
+      setGpsFahrtConfirm({
+        open: true,
+        onConfirm: () => {
+          setGpsFahrtConfirm(null);
+          void fuehreGpsUebernahmeAus(fix);
+        },
+      });
+      return;
     }
+    await fuehreGpsUebernahmeAus(fix);
+  }
+
+  /** T-12: eigentliche GPS-Adress-Uebernahme (Reverse-Geocoding + Patch) —
+   *  aus uebernehmeGpsAdresse() herausgezogen, damit das Fahrt-Confirm-Modal
+   *  sie nach Bestaetigung mit dem gepufferten Fix aufrufen kann. */
+  async function fuehreGpsUebernahmeAus(fix: GeoFix): Promise<void> {
+    if (!active || active.abgeschlossen) return;
     // KDT-07: alte Werte fuer den Undo-Toast sichern, BEVOR ueberschrieben wird.
     const prevWerte = {
       einsatzort: active.alarm.einsatzort,
@@ -1211,6 +1292,40 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       cancelled = true;
     };
   }, [einsaetze, personen, fahrzeugId]);
+
+  // U-06 (Audit 2026-07): Auftraggeber fuer den Lotsendienst-Abschluss-Check
+  // nachladen. Die schlanke Poll-Projektion (EINSATZ_POLL_FELDER) traegt das
+  // Feld bewusst nicht — wir holen es EINMAL pro Lotsendienst-Einsatz aus dem
+  // vollen Einsatz-Doc, sobald er aktiv wird. "" = geladen, aber leer (der
+  // Check bleibt dann rot). Scheitert der Fetch (Funkloch), bleibt das Feld
+  // undefined → Check ebenfalls rot; nie faelschlich gruen.
+  useEffect(() => {
+    if (!active || active.einsatzTyp !== "lotsendienst") return;
+    if (active.lotsendienstAuftraggeber !== undefined) return;
+    const id = active.id;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const doc = await apiCall<{ lotsendienstAuftraggeber?: string }>(
+          `/api/einsaetze/${encodeURIComponent(id)}`,
+        );
+        if (cancelled) return;
+        setEinsaetze((prev) =>
+          prev.map((e) =>
+            e.id === id
+              ? { ...e, lotsendienstAuftraggeber: doc.lotsendienstAuftraggeber ?? "" }
+              : e,
+          ),
+        );
+      } catch {
+        // Netz weg — Check bleibt rot, "Trotzdem schliessen" ist moeglich.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, active?.einsatzTyp, active?.lotsendienstAuftraggeber]);
 
   // Live-Position-Push: alle 3 s die aktuelle GPS-Position an /api/positions
   // schicken. Der Backend-State haelt nur den letzten Ping (kein Track-Persist),
@@ -1590,6 +1705,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     return () => clearTimeout(t);
   }, [chronikRejectedAt]);
 
+  // T-12 (Audit 2026-07): Fehler-Toast nach ~6 s automatisch ausblenden.
+  useEffect(() => {
+    if (fehlerToast === null) return;
+    const t = setTimeout(() => setFehlerToast(null), 6_000);
+    return () => clearTimeout(t);
+  }, [fehlerToast]);
+
   // Foto-Funktion (2026-06-03): Foto aus der Kamera in die Chronik aufnehmen.
   // Komprimieren + lokal speichern + Offline-Outbox-Upload (lib/foto.ts), dann
   // als Chronik-Eintrag mit fotoId. Die Beschreibung kann der Kdt nachträglich
@@ -1618,7 +1740,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       sendeChronikEintrag(activeId, eintrag);
     } catch (err) {
       console.warn("[foto] Aufnahme fehlgeschlagen:", err);
-      alert("Foto konnte nicht verarbeitet werden. Bitte erneut versuchen.");
+      // T-12 (Audit 2026-07): Toast statt blockierendem alert().
+      setFehlerToast({
+        at: Date.now(),
+        text: "Foto konnte nicht verarbeitet werden. Bitte erneut versuchen.",
+      });
     } finally {
       setFotoBusy(false);
     }
@@ -1941,10 +2067,15 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     }, 3000);
     const km = computeKm();
     const einsatzId = active.id;
+    // L-08 (Audit 2026-07): Abschluss-Zeitpunkt des CLIENTS festhalten — geht
+    // als clientTs an POST /abschluss (direkt UND Outbox). Ein im Funkloch
+    // gequeueter Abschluss bekommt sonst die viel spaetere Server-
+    // Ankunftszeit als Einsatzende.
+    const clientTs = new Date().toISOString();
     patchActive((e) => ({
       ...e,
       abgeschlossen: {
-        ts: new Date().toISOString(),
+        ts: clientTs,
         durch: e.kdt ? `${e.kdt.nachname} ${e.kdt.vorname}` : "—",
         kmGefahren: km,
       },
@@ -1962,7 +2093,22 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       // dann darf auch der Einsatz NICHT geschlossen werden.
       if (!alsoCloseEinsatz || ergebnis === "failed") return;
       const abschlussPath = `/api/einsaetze/${encodeURIComponent(einsatzId)}/abschluss`;
-      void apiCall(abschlussPath, { method: "POST", body: {} }).catch((err) => {
+      const abschlussBody = { clientTs };
+      // A-04a (Audit 2026-07): Landete der fzgber-PUT bereits in der Outbox
+      // ("queued"), den direkten POST UEBERSPRINGEN und den Abschluss sofort
+      // als Prio-2-Item einreihen. Sonst koennte der direkte POST (Netz
+      // kommt gerade zurueck) den noch gequeueten PUT ueberholen und den
+      // Einsatz versiegeln, BEVOR der eigene Bericht drin ist (423). Die
+      // Outbox flusht strikt Prio 1 vor Prio 2.
+      if (ergebnis === "queued") {
+        void enqueueRequest(2, `abschluss:${einsatzId}`, "POST", abschlussPath, abschlussBody).catch(
+          () => {
+            /* PouchDB-Fehler → nächster Versuch beim nächsten manuellen Abschluss */
+          },
+        );
+        return;
+      }
+      void apiCall(abschlussPath, { method: "POST", body: abschlussBody }).catch((err) => {
         // BLOCKER-2b+3 (Audit 2026-06-03): Im Funkloch nicht verlieren — in die
         // Offline-Outbox mit Priorität 2 (läuft NACH dem fzgber-PUT aus Prio 1,
         // sonst greift der schreibschutz-Check und der PUT würde abgelehnt).
@@ -1970,7 +2116,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         const clientErr =
           err instanceof ApiError && [400, 404, 409, 422].includes(err.status);
         if (!clientErr) {
-          void enqueueRequest(2, `abschluss:${einsatzId}`, "POST", abschlussPath, {}).catch(
+          void enqueueRequest(2, `abschluss:${einsatzId}`, "POST", abschlussPath, abschlussBody).catch(
             () => {
               /* PouchDB-Fehler → nächster Versuch beim nächsten manuellen Abschluss */
             },
@@ -2026,9 +2172,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         /* PouchDB-Fehler — der naechste Flush-Tick sieht den Stand */
       });
     } catch (err) {
-      // Klartext statt Alert-Stacktrace — describeApiError erklaert auch
-      // den Offline-Fall.
-      window.alert(`Reaktivieren fehlgeschlagen: ${describeApiError(err)}`);
+      // Klartext — describeApiError erklaert auch den Offline-Fall.
+      // T-12 (Audit 2026-07): Toast statt blockierendem window.alert().
+      setFehlerToast({
+        at: Date.now(),
+        text: `Reaktivieren fehlgeschlagen: ${describeApiError(err)}`,
+      });
     }
   }
 
@@ -2114,6 +2263,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     einsatzort: e.alarm.einsatzort,
     status: e.abgeschlossen ? "abgeschlossen" : "aktiv",
     manuell: e.manuell,
+    // Z-05 (Audit 2026-07): Typ mitgeben, damit die Tab-Leiste Uebung/
+    // Lotsendienst/Manuell farblich unterscheiden kann (optionales Feld
+    // in EinsatzTabSummary).
+    einsatzTyp: e.einsatzTyp,
   }));
 
   // Idle: kein aktiver Einsatz im lokalen State oder Bericht abgeschlossen.
@@ -2147,6 +2300,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               active.auftraege.length > 0 ||
               (!!active.alarm.einsatzart && active.alarm.einsatzart !== "Übung"),
             label: "Übungsthema/-typ erfasst",
+          },
+        ]
+      : []),
+    // U-06 (Audit 2026-07): beim Lotsendienst muss der Auftraggeber erfasst
+    // sein (Lotsendienste sind verrechenbar — ohne Auftraggeber keine
+    // Rechnung). Feld kommt lazy aus dem vollen Einsatz-Doc, siehe Effekt
+    // oben; undefined (noch nicht geladen) zaehlt als nicht erfasst.
+    ...(active?.einsatzTyp === "lotsendienst"
+      ? [
+          {
+            ok: !!active.lotsendienstAuftraggeber?.trim(),
+            label: "Auftraggeber erfasst",
           },
         ]
       : []),
@@ -2280,21 +2445,29 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   <Calendar size={20} />
                   Datum &amp; Zeitraum
                 </div>
-                <span className="card-meta">Auto-Übernahme aus Alarm</span>
+                {/* T-09 (Audit 2026-07): Funkrufname hier ergaenzt — die
+                    redundante "Fahrzeug"-Karte weiter unten ist entfernt. */}
+                <span className="card-meta">
+                  <span className="num">{fahrzeug.funkrufname}</span> · Auto-Übernahme aus Alarm
+                </span>
               </div>
               <div className="grid-3" style={{ gap: 14 }}>
+                {/* T-10 (Audit 2026-07): "Auto"-Pill statt Fake-Chevron (▾)
+                    an den readonly Feldern Datum + Uhrzeit von — der Chevron
+                    suggerierte ein Dropdown, das es nie gab. Muster: die
+                    Route/Luftlinie-Pill am KM-Feld unten. */}
                 <div className="field">
                   <label className="caption">Datum</label>
                   <div className="input-row filled">
                     <input value={datumStr} readOnly />
-                    <div className="chev"><span style={{ fontSize: 15 }}>▾</span></div>
+                    <AutoPill title="Automatisch aus der Alarmierung übernommen" />
                   </div>
                 </div>
                 <div className="field">
                   <label className="caption">Uhrzeit von</label>
                   <div className="input-row filled">
                     <input value={zeitStr} readOnly className="num" />
-                    <div className="chev"><span style={{ fontSize: 15 }}>▾</span></div>
+                    <AutoPill title="Automatisch aus der Alarmierung übernommen" />
                   </div>
                 </div>
                 <div className="field">
@@ -2346,7 +2519,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                           onClick={() =>
                             patchActive((x) => ({ ...x, uhrzeitBisHHMM: "" }))
                           }
-                          style={{ width: 30, height: 30, minHeight: 30 }}
+                          /* T-05 (Audit 2026-07): 44px Touch-Target (vorher 30). */
+                          style={{ width: 44, height: 44, minHeight: 44 }}
                         >
                           <span style={{ fontSize: 17.5, lineHeight: 1 }}>×</span>
                         </button>
@@ -2438,6 +2612,22 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     GPS
                   </button>
                 </div>
+                {/* T-11 (Audit 2026-07): Inline-Hint erklaert den grauen
+                    (disabled) GPS-Button — vorher stand die Erklaerung nur
+                    im title-Tooltip, den es am Touch-Tablet nicht gibt.
+                    Muster: Hint unter "Uhrzeit bis". */}
+                {!geo.fix ? (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 14,
+                      color: "var(--fg-3)",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    GPS-Button aktiviert sich, sobald ein Fix da ist.
+                  </div>
+                ) : null}
               </div>
               {/* Strecke / Kilometer — EIN Feld (Audit KISS B-03): der
                   Auto-Wert (Feuerwehrhaus ↔ Einsatzort × 2) steht als
@@ -2489,7 +2679,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                       onClick={() =>
                         patchActive((x) => ({ ...x, kmManualOverride: null }))
                       }
-                      style={{ width: 30, height: 30, minHeight: 30 }}
+                      /* T-05 (Audit 2026-07): 44px Touch-Target (vorher 30). */
+                      style={{ width: 44, height: 44, minHeight: 44 }}
                     >
                       <span style={{ fontSize: 17.5, lineHeight: 1 }}>×</span>
                     </button>
@@ -2521,6 +2712,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     </div>
                   )}
                 </div>
+                {/* T-11 (Audit 2026-07): Hint erklaert jetzt auch die Pill —
+                    was "Auto-Wert" konkret bedeutet (Strassen-Route bzw.
+                    Luftlinien-Fallback ab Feuerwehrhaus). */}
                 <div
                   style={{
                     marginTop: 4,
@@ -2529,65 +2723,21 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     lineHeight: 1.4,
                   }}
                 >
-                  Auto-Wert wird übernommen — nur tippen wenn die tatsächlich
-                  gefahrene Strecke abweicht.
+                  Auto-Wert ={" "}
+                  {kmRoute && kmRoute.distanceM > 0
+                    ? "Straßen-Route"
+                    : "Luftlinie × 1,3"}{" "}
+                  ab Feuerwehrhaus, hin + zurück — nur tippen wenn die
+                  tatsächlich gefahrene Strecke abweicht.
                 </div>
               </div>
             </section>
 
-            {/* U-04: Inline-Fahrzeug-Chips entfernt. Klick wechselte
-                frueher SOFORT ohne Confirm — Datenverlust-Trap mitten im
-                Bericht. Wechsel nur noch via Topbar/Confirm-Dialog. Die
-                Karte bleibt sichtbar als Info-Block + Shortcut zum
-                VehicleSwitcher. */}
-            <section className="card">
-              <div className="card-head">
-                <div className="card-title">
-                  <Truck size={20} />
-                  Fahrzeug
-                </div>
-                <span className="card-meta">
-                  <span className="num">{fahrzeug.bezeichnung}</span> · {fahrzeug.funkrufname}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  padding: "4px 2px",
-                }}
-              >
-                <div style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
-                  Aktuell als{" "}
-                  <strong style={{ color: "var(--fg)" }}>{fahrzeug.funkrufname}</strong>{" "}
-                  ({fahrzeug.bezeichnung}) angemeldet.
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setVehicleSwitcherOpen(true)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "8px 12px",
-                    fontSize: 16.5,
-                    fontWeight: 600,
-                    background: "transparent",
-                    color: "var(--fg)",
-                    border: "1px solid var(--border-strong)",
-                    borderRadius: 10,
-                    cursor: "pointer",
-                    minHeight: 44,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <Truck size={14} />
-                  Fahrzeug wechseln
-                </button>
-              </div>
-            </section>
+            {/* T-09 (Audit 2026-07): Die eigenstaendige "Fahrzeug"-Karte
+                (U-04-Nachfolger) ist ersatzlos raus — Topbar und Footer
+                zeigen Funkrufname/Fahrzeug bereits, und "Fahrzeug wechseln"
+                lebt in der Topbar. Der Funkrufname steht zusaetzlich im
+                card-meta der Einsatzdaten-Karte oben. */}
 
             <section className="card">
               <div className="card-head">
@@ -2926,7 +3076,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         open={tabToClose !== null}
         tabLabel={tabToClose?.label ?? ""}
         isHauptauftrag={false}
-        warnText="Achtung: Schließt den GESAMTEN Einsatz für ALLE Fahrzeuge und die Zentrale — noch offene Fahrzeugberichte werden automatisch mit dem aktuellen Zwischenstand versiegelt."
+        /* T-02 (Audit 2026-07): Der rote GESAMT-Warntext stimmt nur fuer
+           NICHT-aktive Tabs (dort schliesst der Confirm den Einsatz im
+           Backend). Beim AKTIVEN Tab fuehrt der Confirm lediglich ins
+           AbschlussModal (Pflicht-Tor mit Checks) — dort wuerde die
+           Cascade-Warnung faelschlich Angst machen. */
+        warnText={
+          tabToClose && tabToClose.id === activeId
+            ? "Es folgt die Abschluss-Pruefung - noch nichts wird geschlossen."
+            : "Achtung: Schließt den GESAMTEN Einsatz für ALLE Fahrzeuge und die Zentrale — noch offene Fahrzeugberichte werden automatisch mit dem aktuellen Zwischenstand versiegelt."
+        }
         onClose={() => setTabToClose(null)}
         onConfirmAbschluss={async () => {
           if (!tabToClose) return;
@@ -3190,6 +3349,37 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         </div>
       )}
 
+      {/* T-12 (Audit 2026-07): generischer roter Fehler-Toast — ersetzt die
+          blockierenden alert()/window.alert()-Aufrufe (Foto-Verarbeitung,
+          Reaktivieren). Gleiches Muster wie der Chronik-Abgelehnt-Banner,
+          Auto-Hide nach ~6 s. */}
+      {fehlerToast !== null && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            right: 28,
+            zIndex: 3001,
+            maxWidth: "min(440px, calc(100% - 56px))",
+            padding: "12px 16px",
+            background: "var(--red, #d93b3b)",
+            color: "#fff",
+            borderRadius: 10,
+            fontSize: 16.5,
+            fontWeight: 600,
+            lineHeight: 1.4,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+          {fehlerToast.text}
+        </div>
+      )}
+
       {/* KDT-07 (AUDIT-10): 15-s-Undo-Toast nach GPS-Adress-Uebernahme. */}
       {gpsUndo !== null && (
         <div
@@ -3360,6 +3550,110 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         </div>
       )}
 
+      {/* ─── T-12 (Audit 2026-07): Bestaetigungs-Modal fuer die GPS-Adress-
+           Uebernahme waehrend der Fahrt (>10 km/h) — ersetzt window.confirm
+           (blockierend, nicht stylebar, wirkt wie ein System-Dialog).
+           Muster: newEinsatzPopup oben; zwei grosse 48px-Buttons. ─── */}
+      {gpsFahrtConfirm?.open && (
+        <div
+          className="modal-backdrop"
+          style={{
+            // position+inset inline — die Klasse modal-backdrop ist nirgendwo
+            // definiert (siehe Kommentar am newEinsatzPopup).
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gps-fahrt-title"
+        >
+          <div
+            style={{
+              background: "var(--bg)",
+              color: "var(--fg)",
+              borderRadius: "var(--radius-m)",
+              padding: "24px 28px",
+              width: "min(520px, calc(100% - 32px))",
+              border: "3px solid var(--warn)",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 14px",
+                borderRadius: "var(--radius-pill)",
+                background: "var(--warn)",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: "var(--font-sm)",
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                marginBottom: 12,
+              }}
+            >
+              <MapPin size={14} style={{ flexShrink: 0 }} />
+              GPS-Übernahme
+            </div>
+            <h2
+              id="gps-fahrt-title"
+              style={{ margin: "0 0 6px 0", fontSize: 27.5, lineHeight: 1.25 }}
+            >
+              Fahrzeug bewegt sich
+            </h2>
+            <div
+              style={{
+                fontSize: "var(--font-md)",
+                color: "var(--fg-2)",
+                marginBottom: 20,
+                lineHeight: 1.5,
+              }}
+            >
+              Die aktuelle Position liegt vermutlich auf der Anfahrt, nicht am
+              Einsatzort. Adresse wirklich durch die aktuelle Position
+              ersetzen?
+            </div>
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setGpsFahrtConfirm(null)}
+                style={{ minWidth: 160, minHeight: 48, fontWeight: 600 }}
+                autoFocus
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={gpsFahrtConfirm.onConfirm}
+                style={{
+                  minWidth: 220,
+                  minHeight: 48,
+                  background: "var(--warn)",
+                  borderColor: "var(--warn)",
+                  color: "#fff",
+                  fontWeight: 700,
+                }}
+              >
+                Trotzdem uebernehmen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── ING-04 (4-Personas-Audit, 2026-06-12): EINMALIGER Amber-Dialog
            bei Fremdschreib-Erkennung. Ein zweites Geraet (QR-Handoff-Handy)
            bearbeitet denselben Fahrzeugbericht — Last-Writer-Wins kann
@@ -3493,6 +3787,34 @@ function SectionHead({ title }: { title: string }) {
     <div className="section-head">
       <span className="h">{title}</span>
       <span className="line" />
+    </div>
+  );
+}
+
+/**
+ * T-10 (Audit 2026-07): kleine Mono-Pill "Auto" fuer readonly Auto-Felder
+ * (Datum, Uhrzeit von) — ersetzt den frueheren Fake-Chevron (▾), der ein
+ * Dropdown suggerierte. Optik-Muster: Route/Luftlinie-Pill am KM-Feld.
+ */
+function AutoPill({ title }: { title: string }) {
+  return (
+    <div
+      className="chev"
+      title={title}
+      style={{
+        fontSize: 12.5,
+        fontFamily: "var(--font-mono)",
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        padding: "2px 6px",
+        background: "var(--surface-2)",
+        color: "var(--fg-3)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+      }}
+    >
+      Auto
     </div>
   );
 }

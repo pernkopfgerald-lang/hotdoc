@@ -194,12 +194,28 @@ export async function flushRequestOutbox(): Promise<{
   if (items.length === 0) return { total: 0, ok: 0, failed: 0, pending: 0 };
   let ok = 0;
   let failed = 0;
+  // A-04b (Audit 2026-07): Merkliste der Einsatz-IDs, deren Request in
+  // DIESEM Tick fehlgeschlagen ist. Nachfolgende Items derselben Einsatz-ID
+  // werden im selben Tick uebersprungen — sonst koennte z. B. der
+  // Abschluss-POST (Prio 2) trotz fehlgeschlagenem fzgber-PUT (Prio 1)
+  // durchgehen und den Einsatz versiegeln, BEVOR der eigene Bericht drin
+  // ist. Der naechste Tick versucht beide wieder in korrekter Reihenfolge.
+  const fehlgeschlageneEinsaetze = new Set<string>();
+  const einsatzIdAusPfad = (p: string): string | null =>
+    /einsaetze\/([^/]+)/.exec(p)?.[1] ?? null;
   for (const item of items) {
+    const einsatzId = einsatzIdAusPfad(item.path);
+    if (einsatzId && fehlgeschlageneEinsaetze.has(einsatzId)) {
+      // Kein bumpAttempt — das Item wurde gar nicht versucht, es wartet nur
+      // auf den Vorgaenger. Zaehlt als pending, nicht als failed.
+      continue;
+    }
     try {
       await apiCall(item.path, { method: item.method, body: item.body });
       await removeItem(item);
       ok++;
     } catch (err) {
+      if (einsatzId) fehlgeschlageneEinsaetze.add(einsatzId);
       // AUDIT-03 (Audit 2026-06-12): differenzierte Fehlerbehandlung.
       // - 423 (Schreibschutz): NICHT endlos retry'en — als blockiert markieren,
       //   eine Reaktivierung (unblockRequests) reicht das Item dann nach.

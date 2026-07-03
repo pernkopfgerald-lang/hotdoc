@@ -54,13 +54,16 @@ export function PersonButton({ label, person, onOpen, onClear }: Props) {
           )}
         </button>
         {person && onClear ? (
+          /* T-05 (Audit 2026-07): Entfernen-X per Inline-Style auf 44x44
+             Touch-Target — die globale .icon-btn-Klasse (36px) bleibt
+             unangetastet, sie hat andere Konsumenten. */
           <button
             type="button"
             onClick={onClear}
             className="icon-btn danger"
             aria-label={`${label} entfernen`}
             title={`${label} entfernen`}
-            style={{ flexShrink: 0, alignSelf: "center" }}
+            style={{ width: 44, height: 44, minHeight: 44, flexShrink: 0, alignSelf: "center" }}
           >
             <X size={14} strokeWidth={2.5} />
           </button>

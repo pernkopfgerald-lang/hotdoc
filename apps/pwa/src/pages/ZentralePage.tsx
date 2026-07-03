@@ -360,10 +360,14 @@ function entscheideAbschlussPfad(p: {
   busy: boolean;
   blockiert: boolean;
   istBrand: boolean;
+  /** U-04: Übungen durchlaufen NIE den Brand-Statistik-Wizard — eine
+   *  Brand-ÜBUNG ist kein Brand-Einsatz und liefert keine syBOS-Brand-
+   *  Statistik. Direkt zum Abschluss-Confirm. */
+  istUebung: boolean;
   hatBrandStatistik: boolean;
 }): AbschlussPfad {
   if (p.schreibschutz || !p.hatEinsatzId || p.busy || p.blockiert) return "blocked";
-  if (p.istBrand && !p.hatBrandStatistik) return "wizard";
+  if (p.istBrand && !p.istUebung && !p.hatBrandStatistik) return "wizard";
   return "confirm";
 }
 
@@ -505,8 +509,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   schreibschutzRef.current = aktiverEinsatz?.schreibschutz === true;
   /** AUDIT-01 (1): immer die FRISCHESTE saveEditor-Closure — wird nach der
    *  saveEditor-Definition bei jedem Render zugewiesen. Behebt die
-   *  Stale-Closure beim Strg+S-Handler und ermoeglicht den 15-s-Retry. */
-  const saveEditorRef = useRef<() => Promise<void>>(async () => undefined);
+   *  Stale-Closure beim Strg+S-Handler und ermoeglicht den 15-s-Retry.
+   *  Z-07: liefert jetzt Promise<boolean> (true = Save erfolgreich). */
+  const saveEditorRef = useRef<() => Promise<boolean>>(async () => false);
   /** AUDIT-01 (2): Cross-Save-Sperre — fuer WELCHEN Einsatz ist der Editor
    *  dirty? Nur wenn diese ID mit aktiverEinsatzId uebereinstimmt, darf ein
    *  Auto-Save laufen. Damit kann KEIN Pfad mehr Editor-Daten von Einsatz A
@@ -546,8 +551,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           ) {
             return;
           }
-          void saveEditorRef.current();
-          setSavedToastAt(Date.now());
+          // Z-07: Toast NICHT mehr blind nach dem Aufruf — frueher stand
+          // "Gespeichert" auch bei fehlgeschlagenem Save (Funkloch/423).
+          // saveEditor liefert Promise<boolean>; Toast nur bei true, im
+          // Fehlerfall zeigt der Auto-Save-Toast den saveErr-Klartext.
+          void saveEditorRef.current().then((ok) => {
+            if (ok) setSavedToastAt(Date.now());
+          });
         }
       }
     }
@@ -598,6 +608,42 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     const t = setTimeout(() => setSavedToastAt(null), 3000);
     return () => clearTimeout(t);
   }, [savedToastAt]);
+
+  // Z-08: "Gespeichert"-Toast nach 4 s automatisch ausblenden — er klebte
+  // frueher bis zur naechsten Tipparbeit. saveErr bleibt bewusst STEHEN
+  // (Fehler muss der User aktiv wahrnehmen, naechster Save raeumt ihn weg).
+  useEffect(() => {
+    if (saveOk === null) return;
+    const t = setTimeout(() => setSaveOk(null), 4000);
+    return () => clearTimeout(t);
+  }, [saveOk]);
+
+  // A-08: Boot-Sweep — Editor-Drafts (hotdoc.zentrale-draft.*) aelter als
+  // 7 Tage aus dem localStorage entfernen. Drafts abgeschlossener oder
+  // verworfener Einsaetze blieben sonst ewig liegen (Quota-Fresser).
+  // Zeitstempel-Format: { editor, savedAt: ISO } — siehe Draft-Mirror oben.
+  useEffect(() => {
+    try {
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const stale: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith("hotdoc.zentrale-draft.")) continue;
+        try {
+          const raw = localStorage.getItem(key);
+          const draft = raw ? (JSON.parse(raw) as { savedAt?: string }) : null;
+          const ts = draft?.savedAt ? new Date(draft.savedAt).getTime() : NaN;
+          if (!Number.isFinite(ts) || ts < cutoff) stale.push(key);
+        } catch {
+          // Korrupter Draft — mit ausmisten.
+          stale.push(key);
+        }
+      }
+      for (const key of stale) localStorage.removeItem(key);
+    } catch {
+      // Storage nicht verfuegbar (Private-Mode) — Sweep ist Best-Effort.
+    }
+  }, []);
   // Abschluss-Workflow: separater State-Slot, damit der Confirm-Dialog
   // unabhängig vom normalen Save funktioniert und der Einsatzleiter eine
   // explizite Bestätigung sehen muss bevor der Schreibschutz aktiviert wird.
@@ -652,6 +698,23 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     return () => clearTimeout(t);
   }, [lotsendienstAngelegtAt]);
   const lotsendienstGesperrt = lotsendienstAngelegtAt !== null;
+  /** Z-06 (ING-04-Zentrale): Multi-Device-Erkennung — Server-geaendertAm des
+   *  letzten EIGENEN Saves (aus dem Doc-Reload nach dem PUT; geaendertAm=null
+   *  wenn der Reload fehlschlug → dann greift die 2-s-Heuristik ueber ts).
+   *  Der Einsatz-Poll vergleicht damit, ob ein ANDERES Geraet den Einsatz
+   *  zwischenzeitlich veraendert hat. */
+  const lastOwnSaveRef = useRef<{
+    einsatzId: string;
+    geaendertAm: string | null;
+    ts: number;
+  } | null>(null);
+  /** Z-06: pro Einsatz nur EINMAL warnen — kein Banner-Geflacker im Poll. */
+  const multiDeviceWarnedRef = useRef<Set<string>>(new Set());
+  const [multiDeviceWarnung, setMultiDeviceWarnung] = useState(false);
+  // Z-06: Warnung gilt genau fuer EINEN Einsatz — beim Wechsel zuruecksetzen.
+  useEffect(() => {
+    setMultiDeviceWarnung(false);
+  }, [aktiverEinsatzId]);
   /** Modal-State fuer Neuer-Einsatz-Anlage in der Florianstation. */
   const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
   const [archivOpenFlorian, setArchivOpenFlorian] = useState(false);
@@ -688,6 +751,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       void saveEditorRef.current();
       setEditorDirty(false);
     }
+    // Z-08: "Gespeichert"-Toast gehoert zum ALTEN Einsatz — nicht in den
+    // neuen mitnehmen (sah dort wie eine frische Bestaetigung aus).
+    setSaveOk(null);
     setAktiverEinsatzId(fullId);
   }
 
@@ -730,6 +796,36 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         // als Hauptbericht in der Florian-Zentrale. Lotsendienst lebt
         // ausschliesslich als Fahrzeugbericht (KDO/TLF). → vor Anzeige filtern.
         const filtered = r.items.filter((e) => e.einsatzTyp !== "lotsendienst");
+        // Z-06 (ING-04-Zentrale): Multi-Device-Erkennung. Waehrend HIER
+        // editiert wird (editorDirty) UND das gepollte geaendertAm juenger
+        // ist als der letzte EIGENE Save, hat ein anderes Geraet
+        // geschrieben — der eigene Auto-Save wuerde das beim naechsten PUT
+        // ueberschreiben (last-write-wins). Konservativ: ohne bekannten
+        // eigenen Save KEINE Warnung (sonst Fehlalarm direkt nach dem
+        // Draft-Restore/Seed); pro Einsatz nur einmal.
+        const aktId = aktiverEinsatzIdRef.current;
+        const eigenerSave = lastOwnSaveRef.current;
+        if (
+          aktId &&
+          editorDirtyRef.current &&
+          eigenerSave &&
+          eigenerSave.einsatzId === aktId &&
+          !multiDeviceWarnedRef.current.has(aktId)
+        ) {
+          const gepollt = filtered.find((e2) => e2._id === aktId);
+          const gepolltAm = gepollt?.geaendertAm
+            ? new Date(gepollt.geaendertAm).getTime()
+            : 0;
+          const fremdGeaendert = eigenerSave.geaendertAm
+            ? gepolltAm > new Date(eigenerSave.geaendertAm).getTime()
+            : // Heuristik-Fallback (Doc-Reload nach PUT fehlgeschlagen):
+              // erst 2 s NACH dem eigenen Save als fremde Aenderung werten.
+              gepolltAm > eigenerSave.ts + 2000;
+          if (gepolltAm > 0 && fremdGeaendert) {
+            multiDeviceWarnedRef.current.add(aktId);
+            setMultiDeviceWarnung(true);
+          }
+        }
         setAktiveEinsaetze(filtered);
         // Auto-Select: wenn aktuell ausgewaehlter Einsatz nicht mehr in der Liste
         // (z. B. abgeschlossen oder gewipt) → auf den ersten verbleibenden umschalten.
@@ -1020,14 +1116,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     });
   }, [aktiverEinsatz, editorDirty]);
 
-  async function saveEditor(): Promise<void> {
+  // Z-07: Rueckgabe Promise<boolean> — true nur bei erfolgreichem PUT.
+  // Der Strg+S-Handler zeigt den "Gespeichert"-Toast damit nicht mehr
+  // bei fehlgeschlagenem Save an.
+  async function saveEditor(): Promise<boolean> {
     if (!aktiverEinsatzId) {
       setSaveErr("Kein aktiver Einsatz ausgewählt — Speichern nicht möglich.");
-      return;
+      return false;
     }
     if (schreibschutz) {
       setSaveErr("Bericht ist abgeschlossen (schreibgeschützt). Erst reaktivieren.");
-      return;
+      return false;
     }
     setSaveBusy(true);
     setSaveErr(null);
@@ -1115,7 +1214,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       // Block bei reinen technischen Einsaetzen NIE — der Sachbearbeiter
       // editiert die Werte ueber mehrere Saves hinweg.
       const istTechnisch =
-        kategorieFuer(aktiverEinsatz?.einsatzart) === "technisch";
+        kategorieFuer(aktiverEinsatz?.einsatzart) === "technisch" &&
+        // U-04: Übungen bekommen KEINE syBOS-Technisch-Statistik — der
+        // Block wird bei Übungen weder angezeigt noch persistiert (eine
+        // Übung landet nie als Technisch-Einsatz in der syBOS-Statistik).
+        aktiverEinsatz?.einsatzTyp !== "uebung";
       if (istTechnisch) {
         const ursacheFinal =
           editor.tsUrsacheFreitext.trim() || editor.tsUrsache || undefined;
@@ -1142,6 +1245,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         method: "PUT",
         body,
       });
+      // Z-06: eigenen Save-Zeitpunkt merken — geaendertAm wird nach dem
+      // Doc-Reload unten praezisiert; schlaegt der Reload fehl, greift im
+      // Einsatz-Poll die 2-s-Heuristik ueber diesen ts.
+      lastOwnSaveRef.current = {
+        einsatzId: aktiverEinsatzId,
+        geaendertAm: null,
+        ts: Date.now(),
+      };
       // AUDIT-01 (4): dirty nur loeschen wenn der Editor seit dem Snapshot
       // unveraendert ist (Referenzvergleich genuegt). Sonst bleibt dirty —
       // die Nacharbeit wird vom Debounce/Retry nachgespeichert.
@@ -1161,12 +1272,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
         );
         setAktiveEinsaetze((prev) => prev.map((e) => (e._id === reloaded._id ? reloaded : e)));
+        // Z-06: praezise Referenz fuer die Multi-Device-Erkennung — das
+        // Server-geaendertAm dieses EIGENEN Saves.
+        lastOwnSaveRef.current = {
+          einsatzId: aktiverEinsatzId,
+          geaendertAm: reloaded.geaendertAm ?? null,
+          ts: Date.now(),
+        };
       } catch {
         // egal — der Save war erfolgreich, nächster Poll holt es
       }
+      return true;
     } catch (e) {
       // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
       setSaveErr(`Speichern fehlgeschlagen: ${describeApiError(e)}`);
+      return false;
     } finally {
       setSaveBusy(false);
     }
@@ -1248,7 +1368,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       // Fahrzeugberichte cascadiert.
       const body: Record<string, unknown> = {};
       if (overrideGrund) body.abschlussOverrideHinweis = overrideGrund;
-      if (abschlussVerrechenbar) {
+      // U-05: Eine Übung ist NIE verrechenbar — selbst wenn der State
+      // (z. B. per Seeding aus einem Alt-Doc) true traegt, wird
+      // verrechenbar bei Übungen nicht mitgeschickt.
+      if (abschlussVerrechenbar && aktiverEinsatz?.einsatzTyp !== "uebung") {
         body.verrechenbar = true;
         if (abschlussRechnungsadresse.trim()) {
           body.rechnungsadresse = abschlussRechnungsadresse.trim();
@@ -1598,12 +1721,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     const id = (eDoc._id ?? "").replace(/^einsatz:/, "");
     const art = eDoc.einsatzart ?? eDoc.einsatzartFreitext ?? eDoc.alarmierungText ?? "Einsatz";
     const ort = eDoc.einsatzort ?? "";
+    // Z-05: Typ fuer Icon + Farbton des Tabs (EinsatzTabs) — unbekannte
+    // oder fehlende Werte fallen auf "alarm" zurueck.
+    const typ: "alarm" | "manuell" | "uebung" | "lotsendienst" =
+      eDoc.einsatzTyp === "manuell" ||
+      eDoc.einsatzTyp === "uebung" ||
+      eDoc.einsatzTyp === "lotsendienst"
+        ? eDoc.einsatzTyp
+        : "alarm";
     return {
       id,
       einsatzart: art,
       einsatzort: ort,
       status: "aktiv" as const,
-      manuell: eDoc.einsatzTyp === "manuell" || eDoc.einsatzTyp === "uebung" || eDoc.einsatzTyp === "lotsendienst",
+      manuell: typ !== "alarm",
+      einsatzTyp: typ,
     };
   });
 
@@ -1616,6 +1748,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const aggregateMannschaft = fahrzeugStatus.reduce((sum, f) => sum + f.mannschaft, 0);
   const abgeschlossenCount = fahrzeugStatus.filter((f) => f.status === "abgeschlossen").length;
   const aktivCount = fahrzeugStatus.filter((f) => f.status === "im_einsatz").length;
+  // Z-11: Header-Nenner. Bei manuellen Typen (Übung/Lotsendienst/manuell)
+  // zaehlen nur BETEILIGTE Fahrzeuge (nicht-wartend, gleiche Logik wie im
+  // Abschluss-Hint) — "1/4 fertig" suggerierte sonst 3 fehlende Berichte,
+  // obwohl bei einer Übung nur 1 Fahrzeug beteiligt war. Math.max(…,1)
+  // verhindert "0/0", solange noch kein Fahrzeugbericht existiert.
+  const nennerFahrzeuge = istManuellerTyp
+    ? Math.max(fahrzeugStatus.filter((f) => f.status !== "wartend").length, 1)
+    : fahrzeugStatus.length;
 
   // AS-Trupps: Atemschutz-Personen in 2er-Trupps. Eine ungerade Anzahl wird
   // aufgerundet (sicherheitskritisch — fünfter AS heißt: ein dritter Trupp
@@ -2007,7 +2147,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 <div className="lbl">Fahrzeuge aktiv</div>
                 <div className="val">
                   {aktivCount}
-                  <span className="unit">/ {fahrzeugStatus.length}</span>
+                  <span className="unit">/ {nennerFahrzeuge}</span>
                 </div>
               </div>
               <div className="cell">
@@ -2021,16 +2161,463 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 <div className="lbl">Berichte</div>
                 <div className="val">
                   {abgeschlossenCount}
-                  <span className="unit">/ {fahrzeugStatus.length} fertig</span>
+                  <span className="unit">/ {nennerFahrzeuge} fertig</span>
                 </div>
               </div>
             </div>
+
+            {/* Z-04: Juengste Chronik-Meldung direkt im Header — der EL sieht
+                die letzte Lage-Info, ohne zur Chronik scrollen zu muessen.
+                chronik ist aufsteigend sortiert → letztes Element = juengstes. */}
+            {(() => {
+              const letzteMeldung =
+                chronik.length > 0 ? chronik[chronik.length - 1] : undefined;
+              if (!letzteMeldung) return null;
+              return (
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 15.5,
+                    color: "var(--fg-2)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "var(--fg-3)",
+                    }}
+                  >
+                    Letzte Meldung
+                  </span>
+                  {" · "}
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                    {formatTime(letzteMeldung.zeitstempel)}
+                  </span>
+                  {" · "}
+                  <strong>{letzteMeldung.funkrufname}</strong>
+                  {": "}
+                  {letzteMeldung.text}
+                </div>
+              );
+            })()}
           </section>
         )}
 
-        {/* Editor-Bereich ist nur sichtbar bei aktivem Einsatz — Idle = Karte + Übergabe-Sektion ausgeblendet, Stammdaten machen ohne Einsatz keinen Sinn. */}
+        {/* Z-06 (ING-04-Zentrale): Multi-Device-Warnung — ein anderes Geraet
+            hat diesen Einsatz waehrend lokaler Tipparbeit geaendert. Der
+            eigene Auto-Save gewinnt (last-write-wins); der EL soll das VOR
+            dem naechsten Save wissen. Einmal pro Einsatz, verschwindet beim
+            Einsatz-Wechsel. Muster: lotsendienstHinweis oben. */}
+        {multiDeviceWarnung ? (
+          <section
+            role="alert"
+            style={{
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--warn-tint)",
+              border: "1px solid var(--warn-border)",
+              color: "var(--warn)",
+              fontSize: 16.5,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span style={{ flex: 1 }}>
+              Dieser Einsatz wurde auf einem anderen Geraet geaendert - eigener
+              Stand ueberschreibt beim Speichern.
+            </span>
+            <button
+              type="button"
+              onClick={() => setMultiDeviceWarnung(false)}
+              aria-label="Warnung schließen"
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "inherit",
+                cursor: "pointer",
+                padding: 4,
+                minHeight: 0,
+                display: "inline-flex",
+              }}
+            >
+              <X size={14} />
+            </button>
+          </section>
+        ) : null}
+
+        {/* Z-01: LAGEBILD ZUERST — Fahrzeug-Status, Karte und Chronik direkt
+            unter dem Alarm-Header. Waehrend des laufenden Einsatzes schaut
+            der EL hierher; alle Formular-Sektionen folgen darunter. */}
         {!istIdle && (
           <>
+        <SectionHead title="Fahrzeuge im Einsatz" />
+        <section className="card">
+          <div className="card-head">
+            <div className="card-title">
+              <Truck size={20} />
+              Status pro Fahrzeug
+            </div>
+            <span className="card-meta">
+              <span className="num">{aktivCount}</span> im Einsatz · <span className="num">{abgeschlossenCount}</span> abgeschlossen
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {fahrzeugStatus.map((f) => {
+              const fz = FAHRZEUGE[f.id];
+              const badge =
+                f.status === "abgeschlossen"
+                  ? { cls: "ok", label: "Abgeschlossen", Icon: CheckCircle2 }
+                  : f.status === "im_einsatz"
+                    ? { cls: "warn", label: "Im Einsatz", Icon: Activity }
+                    : { cls: "neutral", label: "Wartend", Icon: Lock };
+              const Icon = badge.Icon;
+              const isSelected = selectedFahrzeugId === f.id;
+              const isClickable = f.status !== "wartend";
+              const toggleSelect = (): void => {
+                if (!isClickable) return;
+                const next = isSelected ? null : f.id;
+                setSelectedFahrzeugId(next);
+                // Wenn ausgewaehlt: kurz zur Karte runterscrollen damit der
+                // pulsierende Marker im Sichtfeld ist (smoothes UX).
+                if (next) {
+                  setTimeout(() => {
+                    const mapEl = document.querySelector(
+                      "[data-florian-map-anchor]",
+                    );
+                    mapEl?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }, 80);
+                }
+              };
+              return (
+                <div
+                  key={f.id}
+                  style={{ display: "flex", flexDirection: "column", gap: 0 }}
+                >
+                  <div
+                    className="crew-row filled"
+                    onClick={toggleSelect}
+                    role={isClickable ? "button" : undefined}
+                    tabIndex={isClickable ? 0 : undefined}
+                    onKeyDown={
+                      isClickable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              toggleSelect();
+                            }
+                          }
+                        : undefined
+                    }
+                    style={{
+                      cursor: isClickable ? "pointer" : "default",
+                      borderRadius: isSelected ? "10px 10px 0 0" : undefined,
+                      transition: "background 160ms ease",
+                      ...(isSelected
+                        ? {
+                            background:
+                              "color-mix(in srgb, var(--warn) 14%, transparent)",
+                            outline: "1px solid var(--warn)",
+                          }
+                        : {}),
+                    }}
+                    aria-pressed={isClickable ? isSelected : undefined}
+                  >
+                    <div
+                      className="crew-num"
+                      style={{ width: 64, fontFamily: "var(--font-mono)" }}
+                    >
+                      {shortCode(f.id)}
+                    </div>
+                    <div className="crew-name" style={{ flex: "0 1 auto" }}>
+                      {fz.funkrufname}
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 14,
+                        color: "var(--fg-3)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        fontWeight: 600,
+                        marginLeft: 12,
+                      }}
+                    >
+                      {f.kdt ?? "—"} · {f.mannschaft} Pers.
+                    </div>
+                    <div className="crew-meta" style={{ marginLeft: "auto" }}>
+                      <span className={`badge ${badge.cls}`} style={{ gap: 4 }}>
+                        <Icon size={11} />
+                        {badge.label}
+                      </span>
+                    </div>
+                  </div>
+                  {isSelected ? (
+                    <div
+                      style={{
+                        padding: "10px 16px 12px 80px",
+                        background:
+                          "color-mix(in srgb, var(--warn) 8%, transparent)",
+                        border: "1px solid var(--warn)",
+                        borderTop: "none",
+                        borderRadius: "0 0 10px 10px",
+                        display: "grid",
+                        gridTemplateColumns:
+                          "minmax(110px, max-content) 1fr",
+                        rowGap: 4,
+                        columnGap: 12,
+                        fontSize: 15.5,
+                        animation:
+                          "glass-reveal 180ms var(--ease-decel) both",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 12.5,
+                          color: "var(--fg-3)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          alignSelf: "center",
+                        }}
+                      >
+                        Fahrer
+                      </span>
+                      <strong>{f.fahrer ?? "—"}</strong>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 12.5,
+                          color: "var(--fg-3)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          alignSelf: "center",
+                        }}
+                      >
+                        Fahrzeug-Kdt.
+                      </span>
+                      <strong>{f.kdt ?? "—"}</strong>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 12.5,
+                          color: "var(--fg-3)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Mannschaft
+                      </span>
+                      <div>
+                        {f.mannschaftNamen.length > 0 ? (
+                          <ul
+                            style={{
+                              margin: 0,
+                              paddingLeft: 16,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {f.mannschaftNamen.map((name, i) => (
+                              <li key={i}>{name}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span style={{ color: "var(--fg-3)" }}>
+                            (noch keine Mannschaft erfasst)
+                          </span>
+                        )}
+                      </div>
+                      {f.asAktiv > 0 ? (
+                        <>
+                          <span
+                            style={{
+                              fontFamily: "var(--font-mono)",
+                              fontSize: 12.5,
+                              color: "var(--warn)",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                              alignSelf: "center",
+                            }}
+                          >
+                            Atemschutz
+                          </span>
+                          <strong style={{ color: "var(--warn)" }}>
+                            {f.asAktiv} Pers. aktiv
+                          </strong>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+          </>
+        )}
+
+        {/* Z-01: Karte bleibt auch im Idle sichtbar (Standort-Übersicht). */}
+        <SectionHead title="Karte · Live-Positionen" />
+        <section className="card" data-florian-map-anchor>
+          <div className="card-head">
+            <div className="card-title">
+              <MapIcon size={20} />
+              Lagekarte
+            </div>
+            <span className="card-meta">
+              {aktiverEinsatz?.koordinaten ? "Auto-Center auf Einsatzort" : "Standort Eberstalzell"}
+            </span>
+          </div>
+          <FlorianMap
+            {...(aktiverEinsatz?.koordinaten
+              ? {
+                  einsatzort: {
+                    lat: aktiverEinsatz.koordinaten.lat,
+                    lng: aktiverEinsatz.koordinaten.lng,
+                    label: einsatzort,
+                  },
+                }
+              : {})}
+            // EL-08 (Audit-Folge): bei Mehrfach-Lagen die Einsatzorte ALLER
+            // parallelen Einsätze als halbtransparente Pins mitzeigen —
+            // der EL sieht das gesamte Lagebild, der aktive Einsatz bleibt
+            // der kräftige Pin. (aktiveEinsaetze ist bereits Lotsendienst-
+            // bereinigt, #165.)
+            weitereEinsatzorte={aktiveEinsaetze.flatMap((eDoc) => {
+              if (eDoc._id === aktiverEinsatzId || !eDoc.koordinaten) return [];
+              const label = eDoc.einsatzort ?? eDoc.einsatzart;
+              return [
+                {
+                  lat: eDoc.koordinaten.lat,
+                  lng: eDoc.koordinaten.lng,
+                  ...(label ? { label } : {}),
+                },
+              ];
+            })}
+            fahrzeuge={buildFleetForFlorianMap(positions, fahrzeugStatus)}
+            zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
+            selectedFahrzeugId={selectedFahrzeugId}
+            onSelectFahrzeug={(id) =>
+              setSelectedFahrzeugId(id as FahrzeugId | null)
+            }
+            mannschaftByFahrzeug={Object.fromEntries(
+              fahrzeugStatus.map((f) => [
+                f.id,
+                {
+                  fahrzeugId: f.id,
+                  ...(f.fahrer ? { fahrer: f.fahrer } : {}),
+                  ...(f.kdt ? { kdt: f.kdt } : {}),
+                  mannschaft: f.mannschaftNamen,
+                },
+              ]),
+            )}
+            enablePopOut
+            defaultHeight={500}
+          />
+        </section>
+
+        {/* Editor-Bereich ist nur sichtbar bei aktivem Einsatz — Idle = nur
+            Bereit-Karte + Lagekarte; Chronik und Formulare machen ohne
+            Einsatz keinen Sinn. */}
+        {!istIdle && (
+          <>
+        {/* Z-01/Z-02: Chronik als Teil des Lagebilds direkt unter der Karte —
+            Eingabe ZUOBERST, neueste Meldung zuerst. */}
+        <SectionHead title="Einsatzbericht / Chronologie" />
+        <section className="card">
+          <div className="card-head">
+            <div className="card-title">
+              <Clipboard size={20} />
+              Einsatzbericht / Chronologie
+            </div>
+            <span className="card-meta">
+              {aktiverEinsatzId
+                ? "Live · Funkverkehr + Meldung Einsatzleiter"
+                : "kein aktiver Einsatz"}
+            </span>
+          </div>
+          {/* Z-02: Eingabe VOR der Timeline — die Zentrale tippt laufend;
+              der Weg zum Eingabefeld darf nicht mit der Chronik-Laenge
+              wachsen. */}
+          <FlorianChronikInput
+            einsatzId={aktiverEinsatzId}
+            // AUDIT-09/EL-03-UI: bei Schreibschutz gesperrt + Hinweis statt
+            // Eingaben, die der Server ohnehin mit 423 ablehnt.
+            schreibschutz={schreibschutz}
+            onAdded={(eintrag) =>
+              setChronik((prev) =>
+                [...prev, eintrag].sort(
+                  (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
+                ),
+              )
+            }
+            // AUDIT-09/EL-03-UI: Server hat den Eintrag endgueltig abgelehnt
+            // (404/423) → optimistischen Eintrag wieder entfernen.
+            onRejected={(entryId) =>
+              setChronik((prev) => prev.filter((c) => c.id !== entryId))
+            }
+          />
+          {/* Issue 6 (Einsatz-Test 2026-06-02): Florianstation darf ALLE
+              Eintraege bearbeiten (zentrale Korrekturstelle — Funktionaer
+              tippt am PC schneller als der Kdt am Tablet). Sperre: nur
+              wenn der Einsatz nicht abgeschlossen ist (Schreibschutz
+              kommt sonst vom Backend mit 423 zurueck). */}
+          <ChronikTimeline
+            // Z-02: Neueste Meldung ZUOBERST — absteigend sortierte KOPIE
+            // uebergeben; der chronik-State selbst bleibt aufsteigend
+            // (Poll-Diff und Header-Zeile verlassen sich darauf) und die
+            // ChronikTimeline bleibt sortier-neutral (BerichtPage nutzt
+            // sie weiterhin aufsteigend).
+            eintraege={[...chronik].sort(
+              (a, b) =>
+                new Date(b.zeitstempel).getTime() -
+                new Date(a.zeitstempel).getTime(),
+            )}
+            // AUDIT-09/EL-07: Tablet-Fotos auch in der Zentrale anzeigen —
+            // laedt GET /fotos einmal pro Einsatz (Cache, siehe loadFotoFlorian).
+            loadFoto={loadFotoFlorian}
+            canEdit={() => !aktiverEinsatz?.schreibschutz}
+            onSaveEdit={async (entryId, newText) => {
+              if (!aktiverEinsatzId) return false;
+              try {
+                await apiCall(
+                  `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/chronik/${encodeURIComponent(entryId)}`,
+                  { method: "PUT", body: { text: newText } },
+                );
+                const now = new Date().toISOString();
+                setChronik((prev) =>
+                  prev.map((c) =>
+                    c.id === entryId
+                      ? {
+                          ...c,
+                          text: newText,
+                          editiertAm: now,
+                          editiertVon: "Florian Eberstalzell",
+                        }
+                      : c,
+                  ),
+                );
+                return true;
+              } catch {
+                return false;
+              }
+            }}
+          />
+        </section>
+
             <SectionHead title="Einsatzdaten" />
         <section className="card">
           <div className="card-head">
@@ -2146,7 +2733,145 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Einsatzauftrag" />
+        <SectionHead title="Zeitmarken" />
+        <section className="card">
+          <div className="card-head">
+            {/* Z-10: Titel nennt beide Inhalte — die Karte traegt neben den
+                Zeitmarken auch die Verrechenbar-Checkbox. */}
+            <div className="card-title">
+              <Clock size={20} />
+              Zeitmarken &amp; Verrechnung
+            </div>
+            <span className="card-meta">
+              {alarmierungZeit
+                ? `Basis-Datum ${datumStr}`
+                : "kein Datum"}
+            </span>
+          </div>
+          <div className="grid-3" style={{ gap: 14 }}>
+            <div className="field">
+              <label className="caption">Lage unter Kontrolle</label>
+              <input
+                type="time"
+                className="input"
+                value={editor.lageUnterKontrolleHHMM}
+                disabled={schreibschutz}
+                onChange={(e) =>
+                  patchEditor({ lageUnterKontrolleHHMM: e.target.value })
+                }
+              />
+            </div>
+            <div className="field">
+              <label className="caption">Brand aus</label>
+              <input
+                type="time"
+                className="input"
+                value={editor.brandAusHHMM}
+                disabled={schreibschutz}
+                onChange={(e) => patchEditor({ brandAusHHMM: e.target.value })}
+              />
+            </div>
+            {/* U-05: Eine Übung ist NIE verrechenbar — Checkbox bei Übungen
+                gar nicht anbieten (analog #171 im Abschluss-Confirm). */}
+            {einsatzTyp !== "uebung" ? (
+              <div className="field">
+                <label className="caption">Verrechenbar</label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingTop: 12,
+                    fontSize: 17.5,
+                    cursor: schreibschutz ? "not-allowed" : "pointer",
+                    opacity: schreibschutz ? 0.55 : 1,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={editor.verrechenbar}
+                    disabled={schreibschutz}
+                    onChange={(e) => patchEditor({ verrechenbar: e.target.checked })}
+                    style={{ accentColor: "var(--info)" }}
+                  />
+                  Einsatz ist verrechenbar
+                </label>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <SectionHead title="Fahrzeug-Disposition" />
+        <section className="card">
+          <div className="card-head">
+            <div className="card-title">
+              <Truck size={20} />
+              Welche Fahrzeuge bearbeiten diesen Einsatz?
+            </div>
+            <span className="card-meta">
+              {editor.zugewieseneFahrzeuge.length === 0
+                ? "Default: alle Fahrzeuge sehen den Einsatz"
+                : `${editor.zugewieseneFahrzeuge.length} zugewiesen`}
+            </span>
+          </div>
+
+          <p style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
+            Keine Auswahl → alle Fahrzeug-Tablets sehen den Einsatz (Default bei
+            BlaulichtSMS-Alarm). Auswahl filtert die Sichtbarkeit auf die markierten
+            Fahrzeuge — nuetzlich bei Sturm um Adressen aufzuteilen.
+          </p>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => {
+              const aktiv = editor.zugewieseneFahrzeuge.includes(id);
+              const fz = FAHRZEUGE[id];
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={schreibschutz}
+                  onClick={() =>
+                    patchEditor({
+                      zugewieseneFahrzeuge: aktiv
+                        ? editor.zugewieseneFahrzeuge.filter((x) => x !== id)
+                        : [...editor.zugewieseneFahrzeuge, id],
+                    })
+                  }
+                  className={`chip${aktiv ? " active" : ""}`}
+                  style={{
+                    padding: "10px 16px",
+                    fontSize: 16.5,
+                    fontWeight: 600,
+                    background: aktiv ? "var(--info)" : "var(--surface)",
+                    color: aktiv ? "#fff" : "var(--fg)",
+                    border: `1px solid ${aktiv ? "var(--info)" : "var(--border)"}`,
+                    borderRadius: 10,
+                    cursor: schreibschutz ? "not-allowed" : "pointer",
+                    opacity: schreibschutz ? 0.5 : 1,
+                  }}
+                >
+                  {fz.funkrufname}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Z-03: 2-Phasen-Editor — ab hier beginnt die ABSCHLUSS-Phase.
+            Waehrend des laufenden Einsatzes zaehlen Lagebild, Chronik und
+            Stammdaten (oben, alle offen); die folgenden Sektionen fuellt
+            der Sachbearbeiter beim Abschluss — alle default zugeklappt,
+            der Auf/Zu-Zustand wird je Geraet gemerkt (storageKeys). */}
+        <SectionHead title="Abschluss & Statistik" />
+
+        <SectionHead
+          // Z-03: Abschluss-Phase — default zugeklappt (neuer storageKey,
+          // die Sektion war vorher nicht kollabierbar).
+          title="Einsatzauftrag"
+          collapsible
+          defaultClosed
+          storageKey="einsatzauftrag"
+        />
         <section className="card">
           <div className="card-head">
             <div className="card-title">
@@ -2201,74 +2926,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Zeitmarken" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Clock size={20} />
-              Lage unter Kontrolle · Brand aus
-            </div>
-            <span className="card-meta">
-              {alarmierungZeit
-                ? `Basis-Datum ${datumStr}`
-                : "kein Datum"}
-            </span>
-          </div>
-          <div className="grid-3" style={{ gap: 14 }}>
-            <div className="field">
-              <label className="caption">Lage unter Kontrolle</label>
-              <input
-                type="time"
-                className="input"
-                value={editor.lageUnterKontrolleHHMM}
-                disabled={schreibschutz}
-                onChange={(e) =>
-                  patchEditor({ lageUnterKontrolleHHMM: e.target.value })
-                }
-              />
-            </div>
-            <div className="field">
-              <label className="caption">Brand aus</label>
-              <input
-                type="time"
-                className="input"
-                value={editor.brandAusHHMM}
-                disabled={schreibschutz}
-                onChange={(e) => patchEditor({ brandAusHHMM: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label className="caption">Verrechenbar</label>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  paddingTop: 12,
-                  fontSize: 17.5,
-                  cursor: schreibschutz ? "not-allowed" : "pointer",
-                  opacity: schreibschutz ? 0.55 : 1,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={editor.verrechenbar}
-                  disabled={schreibschutz}
-                  onChange={(e) => patchEditor({ verrechenbar: e.target.checked })}
-                  style={{ accentColor: "var(--info)" }}
-                />
-                Einsatz ist verrechenbar
-              </label>
-            </div>
-          </div>
-        </section>
-
-        {/* U-18: Pflicht-Sektion default geoeffnet — wird im jedem zweiten
-            Einsatz gebraucht (Rettung, andere FF). Schluss mit "wo war der
-            Tab nochmal" beim Anklicken. */}
+        {/* Z-03: Abschluss-Phase — default zugeklappt (ersetzt U-18 "default
+            offen"; die 2-Phasen-Gliederung haelt die Live-Ansicht schlank).
+            Bestehender storageKey bleibt — wer die Sektion bewusst geoeffnet
+            hat, behaelt seine Wahl. */}
         <SectionHead
           title="Beteiligte Stellen & Sonstige FF"
           collapsible
+          defaultClosed
           storageKey="beteiligte-stellen"
         />
         <section className="card">
@@ -2376,9 +3041,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         </section>
 
         <SectionHead
-          // U-18: Oelbindemittel ist Pflichtfeld bei Verkehrsunfaellen — default offen.
+          // Z-03: Abschluss-Phase — default zugeklappt (storageKey bleibt).
           title="Ölbindemittel"
           collapsible
+          defaultClosed
           storageKey="oelbindemittel"
         />
         <section className="card">
@@ -2409,6 +3075,31 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               wenn die Anzahl &gt; 0 ist.
             </p>
           </div>
+          {/* Z-09: Aggregat aus den Fahrzeugberichten SICHTBAR machen — der
+              Sachbearbeiter sieht, was die Fahrzeuge gemeldet haben, bevor
+              er den Gesamt-Override tippt. */}
+          {(() => {
+            const oelMelder = fahrzeugStatus.filter((f) => f.oelSaecke > 0);
+            const oelSumme = oelMelder.reduce((s, f) => s + f.oelSaecke, 0);
+            return (
+              <p
+                style={{
+                  margin: "10px 0 0",
+                  fontSize: 15,
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--fg-3)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Fahrzeuge melden:{" "}
+                {oelMelder.length > 0
+                  ? `${oelMelder
+                      .map((f) => `${shortCode(f.id)} ${f.oelSaecke}`)
+                      .join(" · ")} · Summe ${oelSumme}`
+                  : "keine"}
+              </p>
+            );
+          })()}
         </section>
 
         {/* Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik.
@@ -2417,11 +3108,17 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             Erfassung beim Abschluss. Default-Closed weil viele Einsaetze
             nur kurze syBOS-Eintraege brauchen und der Sachbearbeiter sich
             die Bloecke nur bei Bedarf aufklappt. */}
-        {kategorieFuer(aktiverEinsatz?.einsatzart) === "technisch" && (
+        {/* U-04: zusaetzlicher Typ-Guard — bei ÜBUNGEN keine Technisch-
+            Statistik anbieten (eine Übung landet nie in der syBOS-Einsatz-
+            Statistik; saveEditor persistiert den Block ebenfalls nicht). */}
+        {kategorieFuer(aktiverEinsatz?.einsatzart) === "technisch" &&
+          einsatzTyp !== "uebung" && (
           <>
             <SectionHead
+              // Z-03: Abschluss-Phase — default zugeklappt (storageKey bleibt).
               title="syBOS Technisch-Statistik"
               collapsible
+              defaultClosed
               storageKey="ts-tech-statistik"
             />
             <section className="card">
@@ -2834,8 +3531,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         )}
 
         <SectionHead
+          // Z-03: Abschluss-Phase — default zugeklappt (storageKey bleibt).
           title="Sachbearbeiter & Reserve"
           collapsible
+          defaultClosed
           storageKey="reserve-bearbeiter"
         />
         <section className="card">
@@ -2987,405 +3686,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Fahrzeug-Disposition" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Truck size={20} />
-              Welche Fahrzeuge bearbeiten diesen Einsatz?
-            </div>
-            <span className="card-meta">
-              {editor.zugewieseneFahrzeuge.length === 0
-                ? "Default: alle Fahrzeuge sehen den Einsatz"
-                : `${editor.zugewieseneFahrzeuge.length} zugewiesen`}
-            </span>
-          </div>
-
-          <p style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
-            Keine Auswahl → alle Fahrzeug-Tablets sehen den Einsatz (Default bei
-            BlaulichtSMS-Alarm). Auswahl filtert die Sichtbarkeit auf die markierten
-            Fahrzeuge — nuetzlich bei Sturm um Adressen aufzuteilen.
-          </p>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => {
-              const aktiv = editor.zugewieseneFahrzeuge.includes(id);
-              const fz = FAHRZEUGE[id];
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={schreibschutz}
-                  onClick={() =>
-                    patchEditor({
-                      zugewieseneFahrzeuge: aktiv
-                        ? editor.zugewieseneFahrzeuge.filter((x) => x !== id)
-                        : [...editor.zugewieseneFahrzeuge, id],
-                    })
-                  }
-                  className={`chip${aktiv ? " active" : ""}`}
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: 16.5,
-                    fontWeight: 600,
-                    background: aktiv ? "var(--info)" : "var(--surface)",
-                    color: aktiv ? "#fff" : "var(--fg)",
-                    border: `1px solid ${aktiv ? "var(--info)" : "var(--border)"}`,
-                    borderRadius: 10,
-                    cursor: schreibschutz ? "not-allowed" : "pointer",
-                    opacity: schreibschutz ? 0.5 : 1,
-                  }}
-                >
-                  {fz.funkrufname}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <SectionHead title="Fahrzeuge im Einsatz" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Truck size={20} />
-              Status pro Fahrzeug
-            </div>
-            <span className="card-meta">
-              <span className="num">{aktivCount}</span> im Einsatz · <span className="num">{abgeschlossenCount}</span> abgeschlossen
-            </span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {fahrzeugStatus.map((f) => {
-              const fz = FAHRZEUGE[f.id];
-              const badge =
-                f.status === "abgeschlossen"
-                  ? { cls: "ok", label: "Abgeschlossen", Icon: CheckCircle2 }
-                  : f.status === "im_einsatz"
-                    ? { cls: "warn", label: "Im Einsatz", Icon: Activity }
-                    : { cls: "neutral", label: "Wartend", Icon: Lock };
-              const Icon = badge.Icon;
-              const isSelected = selectedFahrzeugId === f.id;
-              const isClickable = f.status !== "wartend";
-              const toggleSelect = (): void => {
-                if (!isClickable) return;
-                const next = isSelected ? null : f.id;
-                setSelectedFahrzeugId(next);
-                // Wenn ausgewaehlt: kurz zur Karte runterscrollen damit der
-                // pulsierende Marker im Sichtfeld ist (smoothes UX).
-                if (next) {
-                  setTimeout(() => {
-                    const mapEl = document.querySelector(
-                      "[data-florian-map-anchor]",
-                    );
-                    mapEl?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
-                  }, 80);
-                }
-              };
-              return (
-                <div
-                  key={f.id}
-                  style={{ display: "flex", flexDirection: "column", gap: 0 }}
-                >
-                  <div
-                    className="crew-row filled"
-                    onClick={toggleSelect}
-                    role={isClickable ? "button" : undefined}
-                    tabIndex={isClickable ? 0 : undefined}
-                    onKeyDown={
-                      isClickable
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              toggleSelect();
-                            }
-                          }
-                        : undefined
-                    }
-                    style={{
-                      cursor: isClickable ? "pointer" : "default",
-                      borderRadius: isSelected ? "10px 10px 0 0" : undefined,
-                      transition: "background 160ms ease",
-                      ...(isSelected
-                        ? {
-                            background:
-                              "color-mix(in srgb, var(--warn) 14%, transparent)",
-                            outline: "1px solid var(--warn)",
-                          }
-                        : {}),
-                    }}
-                    aria-pressed={isClickable ? isSelected : undefined}
-                  >
-                    <div
-                      className="crew-num"
-                      style={{ width: 64, fontFamily: "var(--font-mono)" }}
-                    >
-                      {shortCode(f.id)}
-                    </div>
-                    <div className="crew-name" style={{ flex: "0 1 auto" }}>
-                      {fz.funkrufname}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 14,
-                        color: "var(--fg-3)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                        fontWeight: 600,
-                        marginLeft: 12,
-                      }}
-                    >
-                      {f.kdt ?? "—"} · {f.mannschaft} Pers.
-                    </div>
-                    <div className="crew-meta" style={{ marginLeft: "auto" }}>
-                      <span className={`badge ${badge.cls}`} style={{ gap: 4 }}>
-                        <Icon size={11} />
-                        {badge.label}
-                      </span>
-                    </div>
-                  </div>
-                  {isSelected ? (
-                    <div
-                      style={{
-                        padding: "10px 16px 12px 80px",
-                        background:
-                          "color-mix(in srgb, var(--warn) 8%, transparent)",
-                        border: "1px solid var(--warn)",
-                        borderTop: "none",
-                        borderRadius: "0 0 10px 10px",
-                        display: "grid",
-                        gridTemplateColumns:
-                          "minmax(110px, max-content) 1fr",
-                        rowGap: 4,
-                        columnGap: 12,
-                        fontSize: 15.5,
-                        animation:
-                          "glass-reveal 180ms var(--ease-decel) both",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 12.5,
-                          color: "var(--fg-3)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          alignSelf: "center",
-                        }}
-                      >
-                        Fahrer
-                      </span>
-                      <strong>{f.fahrer ?? "—"}</strong>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 12.5,
-                          color: "var(--fg-3)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          alignSelf: "center",
-                        }}
-                      >
-                        Fahrzeug-Kdt.
-                      </span>
-                      <strong>{f.kdt ?? "—"}</strong>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 12.5,
-                          color: "var(--fg-3)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                        }}
-                      >
-                        Mannschaft
-                      </span>
-                      <div>
-                        {f.mannschaftNamen.length > 0 ? (
-                          <ul
-                            style={{
-                              margin: 0,
-                              paddingLeft: 16,
-                              fontWeight: 500,
-                            }}
-                          >
-                            {f.mannschaftNamen.map((name, i) => (
-                              <li key={i}>{name}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <span style={{ color: "var(--fg-3)" }}>
-                            (noch keine Mannschaft erfasst)
-                          </span>
-                        )}
-                      </div>
-                      {f.asAktiv > 0 ? (
-                        <>
-                          <span
-                            style={{
-                              fontFamily: "var(--font-mono)",
-                              fontSize: 12.5,
-                              color: "var(--warn)",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.06em",
-                              alignSelf: "center",
-                            }}
-                          >
-                            Atemschutz
-                          </span>
-                          <strong style={{ color: "var(--warn)" }}>
-                            {f.asAktiv} Pers. aktiv
-                          </strong>
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
           </>
         )}
 
-        <SectionHead title="Karte · Live-Positionen" />
-        <section className="card" data-florian-map-anchor>
-          <div className="card-head">
-            <div className="card-title">
-              <MapIcon size={20} />
-              Lagekarte
-            </div>
-            <span className="card-meta">
-              {aktiverEinsatz?.koordinaten ? "Auto-Center auf Einsatzort" : "Standort Eberstalzell"}
-            </span>
-          </div>
-          <FlorianMap
-            {...(aktiverEinsatz?.koordinaten
-              ? {
-                  einsatzort: {
-                    lat: aktiverEinsatz.koordinaten.lat,
-                    lng: aktiverEinsatz.koordinaten.lng,
-                    label: einsatzort,
-                  },
-                }
-              : {})}
-            // EL-08 (Audit-Folge): bei Mehrfach-Lagen die Einsatzorte ALLER
-            // parallelen Einsätze als halbtransparente Pins mitzeigen —
-            // der EL sieht das gesamte Lagebild, der aktive Einsatz bleibt
-            // der kräftige Pin. (aktiveEinsaetze ist bereits Lotsendienst-
-            // bereinigt, #165.)
-            weitereEinsatzorte={aktiveEinsaetze.flatMap((eDoc) => {
-              if (eDoc._id === aktiverEinsatzId || !eDoc.koordinaten) return [];
-              const label = eDoc.einsatzort ?? eDoc.einsatzart;
-              return [
-                {
-                  lat: eDoc.koordinaten.lat,
-                  lng: eDoc.koordinaten.lng,
-                  ...(label ? { label } : {}),
-                },
-              ];
-            })}
-            fahrzeuge={buildFleetForFlorianMap(positions, fahrzeugStatus)}
-            zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
-            selectedFahrzeugId={selectedFahrzeugId}
-            onSelectFahrzeug={(id) =>
-              setSelectedFahrzeugId(id as FahrzeugId | null)
-            }
-            mannschaftByFahrzeug={Object.fromEntries(
-              fahrzeugStatus.map((f) => [
-                f.id,
-                {
-                  fahrzeugId: f.id,
-                  ...(f.fahrer ? { fahrer: f.fahrer } : {}),
-                  ...(f.kdt ? { kdt: f.kdt } : {}),
-                  mannschaft: f.mannschaftNamen,
-                },
-              ]),
-            )}
-            enablePopOut
-            defaultHeight={500}
-          />
-        </section>
-
-        {/* Aggregations + Chronik + Uebergabe nur sichtbar mit aktivem Einsatz. */}
+        {/* Abschluss & PDF nur sichtbar mit aktivem Einsatz. */}
         {!istIdle && (
           <>
             {/* "Zusammenfassung Mannschaft"-Section entfernt — die Werte stehen
                 schon im Top-Header der Einsatz-Karte (Mannschaft, Berichte). */}
-
-        <SectionHead title="Einsatzbericht / Chronologie" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Clipboard size={20} />
-              Einsatzbericht / Chronologie
-            </div>
-            <span className="card-meta">
-              {aktiverEinsatzId
-                ? "Live · Funkverkehr + Meldung Einsatzleiter"
-                : "kein aktiver Einsatz"}
-            </span>
-          </div>
-          {/* Issue 6 (Einsatz-Test 2026-06-02): Florianstation darf ALLE
-              Eintraege bearbeiten (zentrale Korrekturstelle — Funktionaer
-              tippt am PC schneller als der Kdt am Tablet). Sperre: nur
-              wenn der Einsatz nicht abgeschlossen ist (Schreibschutz
-              kommt sonst vom Backend mit 423 zurueck). */}
-          <ChronikTimeline
-            eintraege={chronik}
-            // AUDIT-09/EL-07: Tablet-Fotos auch in der Zentrale anzeigen —
-            // laedt GET /fotos einmal pro Einsatz (Cache, siehe loadFotoFlorian).
-            loadFoto={loadFotoFlorian}
-            canEdit={() => !aktiverEinsatz?.schreibschutz}
-            onSaveEdit={async (entryId, newText) => {
-              if (!aktiverEinsatzId) return false;
-              try {
-                await apiCall(
-                  `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/chronik/${encodeURIComponent(entryId)}`,
-                  { method: "PUT", body: { text: newText } },
-                );
-                const now = new Date().toISOString();
-                setChronik((prev) =>
-                  prev.map((c) =>
-                    c.id === entryId
-                      ? {
-                          ...c,
-                          text: newText,
-                          editiertAm: now,
-                          editiertVon: "Florian Eberstalzell",
-                        }
-                      : c,
-                  ),
-                );
-                return true;
-              } catch {
-                return false;
-              }
-            }}
-          />
-          <FlorianChronikInput
-            einsatzId={aktiverEinsatzId}
-            // AUDIT-09/EL-03-UI: bei Schreibschutz gesperrt + Hinweis statt
-            // Eingaben, die der Server ohnehin mit 423 ablehnt.
-            schreibschutz={schreibschutz}
-            onAdded={(eintrag) =>
-              setChronik((prev) =>
-                [...prev, eintrag].sort(
-                  (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
-                ),
-              )
-            }
-            // AUDIT-09/EL-03-UI: Server hat den Eintrag endgueltig abgelehnt
-            // (404/423) → optimistischen Eintrag wieder entfernen.
-            onRejected={(entryId) =>
-              setChronik((prev) => prev.filter((c) => c.id !== entryId))
-            }
-          />
-        </section>
 
         {/* AUDIT-12/EL-04: Sektion heisst jetzt "Abschluss & PDF" und startet
             OFFEN (kein defaultClosed mehr) — der rote Abschluss-CTA und der
@@ -3511,6 +3819,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               busy: abschlussBusy,
               blockiert,
               istBrand: kategorieFuer(aktiverEinsatz?.einsatzart) === "brand",
+              // U-04: Übung nie in den Brand-Wizard.
+              istUebung: einsatzTyp === "uebung",
               hatBrandStatistik: !!aktiverEinsatz?.brandStatistik,
             });
             const abschlussBlocked = abschlussPfad === "blocked";
@@ -3757,6 +4067,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             busy: abschlussBusy,
             blockiert: !istManuell && offeneBerichte.length > 0,
             istBrand: kategorieFuer(zielDoc?.einsatzart) === "brand",
+            // U-04: Übung nie in den Brand-Wizard — auch am Tab-X-Pfad.
+            istUebung: zielDoc?.einsatzTyp === "uebung",
             hatBrandStatistik: !!zielDoc?.brandStatistik,
           });
           setAbschlussErr(null);
@@ -4231,11 +4543,37 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         // sichtbar (exakt das bewaehrte onCreated-Muster) — vorher wartete
         // der EL bis zu 10 s auf den naechsten Poll und reaktivierte im
         // Zweifel ein zweites Mal.
+        //
+        // U-07: AUSNAHME Lotsendienst — der erscheint wegen #165 NIE als
+        // Florian-Hauptbericht; ein Auto-Switch liefe ins Leere (leerer
+        // Editor, Poll wirft ihn gleich wieder raus). Stattdessen Hinweis-
+        // Banner (Muster EL-06). Der Callback liefert nur die ID, deshalb
+        // wird der Typ einmal per GET nachgeladen (ArchivTabletModal
+        // bleibt unveraendert).
         onReaktiviert={(id) => {
-          justCreatedRef.current = { id, ts: Date.now() };
-          wechsleAktivenEinsatz(id);
-          reloadAktiveEinsaetzeRef.current();
           setArchivOpenFlorian(false);
+          void (async () => {
+            let typ: string | undefined;
+            try {
+              const doc = await apiCall<EinsatzApiDoc>(
+                `/api/einsaetze/${encodeURIComponent(id)}`,
+              );
+              typ = doc.einsatzTyp;
+            } catch {
+              // Doc nicht ladbar (Netz-Wackler) — Standard-Pfad; der
+              // #165-Poll-Filter haelt Lotsendienst ohnehin aus der Leiste.
+            }
+            if (typ === "lotsendienst") {
+              setLotsendienstHinweis(
+                "Lotsendienst reaktiviert - Bearbeitung erfolgt am Fahrzeug-Tablet.",
+              );
+              reloadAktiveEinsaetzeRef.current();
+              return;
+            }
+            justCreatedRef.current = { id, ts: Date.now() };
+            wechsleAktivenEinsatz(id);
+            reloadAktiveEinsaetzeRef.current();
+          })();
         }}
       />
 

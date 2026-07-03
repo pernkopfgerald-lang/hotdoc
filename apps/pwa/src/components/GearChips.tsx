@@ -50,6 +50,10 @@ export function GearChips({ items, selected, oelbindemittelSaecke, onToggle, onO
               type="button"
               onClick={() => onToggle(it.id)}
               className={`chip${selected.has(it.id) ? " selected" : ""}`}
+              /* T-06 (Audit 2026-07): 44px Touch-Target per Inline-Override —
+                 die .chip-Klasse NICHT anfassen (andere Konsumenten, z. B.
+                 kompakte Pillen im NeuerEinsatzTabletModal). */
+              style={{ minHeight: 44 }}
             >
               {selected.has(it.id) ? (
                 <span className="dot" />
@@ -88,7 +92,8 @@ function OelSmartChip({
 
   if (!aktiv) {
     return (
-      <button type="button" onClick={toggleActive} className="chip">
+      /* T-06 (Audit 2026-07): 44px Touch-Target, siehe Chip-Liste oben. */
+      <button type="button" onClick={toggleActive} className="chip" style={{ minHeight: 44 }}>
         <span className="plus">+</span>
         Ölbindemittel
       </button>

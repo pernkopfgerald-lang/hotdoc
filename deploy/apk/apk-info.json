@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.24",
-  "apkUrl": "/hotdoc-v0.1.24-release.apk",
-  "releaseNotes": "v0.1.24 — Zwei-Geräte-Warnung & schnellerer Abgleich\n\n• Bearbeiten zwei Geräte denselben Fahrzeugbericht, warnt ein einmaliger Hinweis-Dialog mit klarer Absprache-Anweisung — kein stilles Überschreiben mehr.\n• Der 5-Sekunden-Abgleich überträgt nur noch die benötigten Felder — weniger Datenvolumen und Akkulast im mobilen Netz.\n\n— Enthält parallele Einsatzorte auf der Lagekarte (v0.1.23), das große Robustheits-Update (v0.1.22) und alle Neuerungen aus v0.1.10–v0.1.21.",
-  "publishedAt": "2026-06-12T16:00:00+00:00",
+  "currentVersion": "0.1.25",
+  "apkUrl": "/hotdoc-v0.1.25-release.apk",
+  "releaseNotes": "v0.1.25 — Intensiv-Audit: klare Logik, aufgeräumte Oberfläche, harte Robustheit\n\n• 1-Stunden-Regel: Ein Alarm-Einsatz ohne jede Eingabe schließt sich nach 1 Stunde automatisch — ohne Berichtsnummer zu verbrauchen. Jede echte Eingabe stoppt die Regel.\n• Klare Trennung Einsatz/Übung: eigener U-Nummernkreis für Übungen, nie verrechenbar, kein Brand-Wizard, eigene Statistik-Zählung.\n• Florian-Zentrale: Lagebild (Fahrzeuge, Karte, Chronik) jetzt ganz oben, letzte Meldung im Kopf, Abschluss-Papierkram zusammengeklappt.\n• Eindeutige Farben je Typ in Tabs und Fahrzeug-Ansicht: Einsatz rot, Übung grün, Lotsendienst bernstein, manuell blau.\n• Ehrliches Speichern, entschärfter Abschluss-Dialog, 44-Pixel-Touchziele, 'AS aus' statt zweitem Minus.\n• Robustheit: Doppel-Abschluss, hängende Anfragen und Datenverlust beim Auto-Schließen behoben.\n\n— Enthält Zwei-Geräte-Warnung (v0.1.24), parallele Einsatzorte (v0.1.23) und alle Neuerungen aus v0.1.10–v0.1.22.",
+  "publishedAt": "2026-07-03T06:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

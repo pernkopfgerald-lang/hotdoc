@@ -21,6 +21,21 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.25",
+    date: "2026-07-03",
+    title: "Intensiv-Audit: klare Logik, aufgeräumte Oberfläche, harte Robustheit",
+    bullets: [
+      "Neue 1-Stunden-Regel: Ein Alarm-Einsatz, in den niemand etwas einträgt, schließt sich nach 1 Stunde automatisch wieder — ohne eine Berichtsnummer zu verbrauchen. Jede echte Eingabe (Chronik, Mannschaft, Geräte …) stoppt die Regel; danach gilt wie bisher der 6-Stunden-Inaktivitätsschutz.",
+      "Klare Trennung Einsatz/Übung: Übungen bekommen einen eigenen Nummernkreis (U26-001) statt der offiziellen Einsatz-Nummern, sind nie 'verrechenbar', laufen nie in den Brand-Statistik-Wizard und zählen in der Statistik nicht mehr als Einsätze. Vorab angelegte Übungen fallen erst nach 24 h Inaktivität zu.",
+      "Florian-Zentrale neu gegliedert: Das Live-Lagebild (Fahrzeuge, Karte, Chronik mit Eingabefeld oben und neuester Meldung zuerst) steht jetzt ganz oben, die 'Letzte Meldung' direkt im Kopf — der Abschluss-Papierkram ist unter 'Abschluss & Statistik' zusammengeklappt.",
+      "Eindeutige Tabs & Karten: Einsatz (rot), Übung (grün), Lotsendienst (bernstein) und manuell angelegte Einsätze (blau) sind jetzt in Tab-Leiste und Fahrzeug-Ansicht farblich klar unterscheidbar; das Schließen-X gibt es nur noch am aktiven Tab.",
+      "Ehrliches Speichern: 'Gespeichert' erscheint nur noch, wenn wirklich gespeichert wurde, und verschwindet nach 4 Sekunden; die Zentrale warnt jetzt ebenfalls, wenn ein anderes Gerät denselben Einsatz ändert.",
+      "Abschluss-Dialog entschärft: Die Zusatz-Option 'Einsatz ebenfalls schließen' ist bei jedem Öffnen frisch abgewählt, der rote Warntext erscheint nur noch dort, wo wirklich der ganze Einsatz geschlossen würde, und Lotsendienste prüfen jetzt den Auftraggeber vor dem Abschluss.",
+      "Griffigere Bedienung mit Handschuhen: Geräte-/Auftrags-Chips, Lösch-Kreuze und Personen-Buttons auf 44-Pixel-Touchziele vergrößert, 'AS aus' statt zweitem Minus-Symbol beim Atemschutz, App-eigene Dialoge statt Browser-Popups.",
+      "Robustheit unter der Haube: Gleichzeitige Abschlüsse von zwei Geräten, hängende Anfragen bei Datenbank-Störungen und verlorene Eingaben beim automatischen Schließen sind behoben; der Server beantwortet Poll-Anfragen der Tablets jetzt aus einem Kurzzeit-Cache.",
+    ],
+  },
+  {
     version: "0.1.24",
     date: "2026-06-12",
     title: "Zwei-Geräte-Warnung & schnellerer Abgleich",

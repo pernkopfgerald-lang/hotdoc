@@ -105,10 +105,15 @@ export function AbschlussModal({
               {canConfirm ? <Lock size={16} /> : <AlertTriangle size={16} />}
             </span>
             <div className="flex flex-col leading-tight">
-              <h2 className="font-condensed text-[18px] font-bold tracking-tight text-text-1">
+              {/* T-04 (Audit 2026-07): Schriftgroessen x1,25 — dieses Modal
+                  nutzt Tailwind-Arbitrary-Klassen (text-[..px]) und wurde vom
+                  v0.1.20-Bump-Skript (CSS font-size + inline fontSize)
+                  uebersehen. Werte analog Type-Scale 10→12.5, 13→16.5,
+                  14→17.5, 18→22.5. */}
+              <h2 className="font-condensed text-[22.5px] font-bold tracking-tight text-text-1">
                 Bericht abschließen
               </h2>
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-text-3">
+              <span className="font-mono text-[12.5px] font-semibold uppercase tracking-[0.16em] text-text-3">
                 {funkrufname} · {canConfirm ? "alle Pflichtfelder erfüllt" : `${offene.length} offen · trotzdem schließen?`}
               </span>
             </div>
@@ -140,7 +145,7 @@ export function AbschlussModal({
                 <AlertTriangle size={15} className="shrink-0 text-amber" />
               )}
               <span
-                className="flex-1 text-[13px] font-medium"
+                className="flex-1 text-[16.5px] font-medium"
                 style={{ color: c.ok ? "var(--emerald)" : "var(--amber)" }}
               >
                 {c.label}
@@ -164,10 +169,10 @@ export function AbschlussModal({
                 borderTop: i >= 2 ? "1px solid var(--border)" : undefined,
               }}
             >
-              <dt className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-text-3">
+              <dt className="font-mono text-[11.5px] font-semibold uppercase tracking-[0.18em] text-text-3">
                 {s.label}
               </dt>
-              <dd className="m-0 mt-0.5 text-[14px] font-bold tabular-nums text-text-1">{s.value}</dd>
+              <dd className="m-0 mt-0.5 text-[17.5px] font-bold tabular-nums text-text-1">{s.value}</dd>
             </div>
           ))}
         </div>
@@ -191,12 +196,12 @@ export function AbschlussModal({
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
-                className="text-[13px] font-semibold"
+                className="text-[16.5px] font-semibold"
                 style={{ color: alsoCloseEinsatz ? "var(--info)" : "var(--fg)" }}
               >
                 Einsatzbericht ebenfalls jetzt abschließen
               </div>
-              <div className="text-[11px] mt-0.5" style={{ color: "var(--fg-3)" }}>
+              <div className="text-[14px] mt-0.5" style={{ color: "var(--fg-3)" }}>
                 Für Solo-Einsätze wo nur dieses Fahrzeug beteiligt war und Florian Eberstalzell keinen Hauptbericht nachträgt. Setzt den Schreibschutz auch auf den Einsatz selbst.
               </div>
             </div>
@@ -208,7 +213,7 @@ export function AbschlussModal({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-m border px-3 py-2.5 text-sm font-semibold text-text-2 transition hover:text-text-1"
+            className="flex-1 rounded-m border px-3 py-2.5 text-[17.5px] font-semibold text-text-2 transition hover:text-text-1"
             style={{ borderColor: "var(--border-strong)", background: "var(--surface-2)" }}
           >
             Zurück bearbeiten
@@ -216,7 +221,7 @@ export function AbschlussModal({
           <button
             type="button"
             onClick={() => onConfirm(alsoCloseEinsatz)}
-            className="flex-1 rounded-m px-3 py-2.5 text-sm font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
+            className="flex-1 rounded-m px-3 py-2.5 text-[17.5px] font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
             style={{
               background: canConfirm
                 ? "linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%)"

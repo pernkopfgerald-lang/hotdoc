@@ -617,8 +617,13 @@ const KATEGORIEN: Kategorie[] = [
           "  · Einsatz ohne Alarm — z. B. Türöffnung, Tierrettung\n" +
           "  · Lotsendienst — Begleitung für Polizei/Rettung\n" +
           "  · Übung — interne Schulung mit Atemschutz-Zeiten\n\n" +
-          "Anschließend Adresse eintragen oder GPS übernehmen, optional Stichwort, fertig.",
-        tags: ["neu", "manuell", "plus", "anlegen", "blaulichtsms"],
+          "Anschließend Adresse eintragen oder GPS übernehmen, optional Stichwort, fertig.\n\n" +
+          // U-11 (Audit 2026-07): Typ ist nach dem Anlegen fix — Weg bei
+          // Falschanlage dokumentieren (verwerfen + neu anlegen; EL-Backoffice).
+          "Wichtig: Der Typ lässt sich nach dem Anlegen nicht mehr ändern. Falscher Typ gewählt? " +
+          "Bericht über das X am Tab mit 'Ohne Speichern verwerfen' schließen und mit dem richtigen " +
+          "Typ neu anlegen — der Einsatzleiter kann eine Falschanlage zusätzlich im Backoffice löschen.",
+        tags: ["neu", "manuell", "plus", "anlegen", "blaulichtsms", "typ", "falsch angelegt"],
       },
       {
         frage: "Wie wähle ich das Einsatz-Stichwort?",

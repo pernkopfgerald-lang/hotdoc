@@ -1,5 +1,5 @@
 import { STICHWORT_STUFEN, type StichwortStufe } from "@hotdoc/shared";
-import { GraduationCap, MapPin, Play, Siren } from "lucide-react";
+import { GraduationCap, MapPin, Play, Plus, Siren } from "lucide-react";
 
 export interface AlarmDaten {
   alarmId: string;
@@ -24,27 +24,66 @@ interface Props {
 }
 
 /**
+ * T-08/U-01 (Audit 2026-07): Typ-Optik zentral — das frühere istUebung-
+ * Sonderfall-Muster (#164) verallgemeinert auf ALLE Nicht-Alarm-Typen.
+ * Nur "alarm" behält das rote Theme mit Siren + "Aktiver Alarm"; manuell
+ * angelegte Einsätze (blau/Plus), Lotsendienste (amber/MapPin) und Übungen
+ * (grün/GraduationCap) sind auf einen Blick als "kein BlaulichtSMS-Alarm"
+ * erkennbar.
+ */
+const TYP_OPTIK = {
+  uebung: {
+    tag: "Übung",
+    Icon: GraduationCap,
+    farbe: "var(--ok)",
+    tint: "var(--ok-tint)",
+    border: "var(--ok-border)",
+    glow: "var(--glow-ok)",
+    bannerShadow: "0 4px 12px -4px rgba(4,120,87,0.45)",
+  },
+  manuell: {
+    tag: "Manuell angelegt",
+    Icon: Plus,
+    farbe: "var(--info)",
+    tint: "var(--info-tint)",
+    border: "var(--blue-border)",
+    glow: "var(--glow-info)",
+    bannerShadow: "0 4px 12px -4px rgba(29,78,216,0.45)",
+  },
+  lotsendienst: {
+    tag: "Lotsendienst",
+    Icon: MapPin,
+    farbe: "var(--warn)",
+    tint: "var(--warn-tint)",
+    border: "var(--warn-border)",
+    glow: "var(--glow-warn)",
+    bannerShadow: "0 4px 12px -4px rgba(180,83,9,0.45)",
+  },
+} as const;
+
+/**
  * AlarmCard — 1:1 portiert aus claude.ai/design HotDoc Fahrzeugbericht.html.
  * Nutzt die .alarm/.alarm-top/.alarm-icon/.alarm-meta-Klassen aus design.css.
  */
 export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
-  const istUebung = einsatzTyp === "uebung";
+  const optik =
+    einsatzTyp && einsatzTyp !== "alarm" ? TYP_OPTIK[einsatzTyp] : null;
+  const TypIcon = optik ? optik.Icon : Siren;
   return (
     <section
       className="alarm"
       style={
-        istUebung
+        optik
           ? {
-              // Grüne Übungs-Optik überschreibt das rote Alarm-Theme.
-              background:
-                "linear-gradient(135deg, var(--surface) 0%, var(--ok-tint) 55%, color-mix(in srgb, var(--ok) 16%, transparent) 100%)",
-              borderColor: "var(--ok-border)",
-              boxShadow: "var(--glow-ok)",
+              // Typ-Optik überschreibt das rote Alarm-Theme.
+              background: `linear-gradient(135deg, var(--surface) 0%, ${optik.tint} 55%, color-mix(in srgb, ${optik.farbe} 16%, transparent) 100%)`,
+              borderColor: optik.border,
+              boxShadow: optik.glow,
             }
           : undefined
       }
     >
-      {istUebung && (
+      {optik && (
         <div
           style={{
             display: "inline-flex",
@@ -52,7 +91,7 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
             gap: 8,
             padding: "4px 12px",
             borderRadius: "var(--radius-pill)",
-            background: "var(--ok)",
+            background: optik.farbe,
             color: "#fff",
             fontFamily: "var(--font-mono)",
             fontWeight: 800,
@@ -60,36 +99,32 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
             letterSpacing: "var(--tracking-caps)",
             textTransform: "uppercase",
             marginBottom: 12,
-            boxShadow: "0 4px 12px -4px rgba(4,120,87,0.45)",
+            boxShadow: optik.bannerShadow,
           }}
         >
-          <GraduationCap size={14} strokeWidth={2.4} />
-          Übung
+          <TypIcon size={14} strokeWidth={2.4} />
+          {optik.tag}
         </div>
       )}
       <div className="alarm-top">
         <div className="alarm-left">
           <div
             className="alarm-icon"
-            style={istUebung ? { background: "var(--ok)" } : undefined}
+            style={optik ? { background: optik.farbe } : undefined}
           >
-            {istUebung ? (
-              <GraduationCap size={30} color="#fff" strokeWidth={2} />
-            ) : (
-              <Siren size={30} color="#fff" strokeWidth={2} />
-            )}
+            <TypIcon size={30} color="#fff" strokeWidth={2} />
           </div>
           <div>
             <div className="alarm-tags">
               <span
                 className="alarm-tag"
-                style={istUebung ? { color: "var(--ok)" } : undefined}
+                style={optik ? { color: optik.farbe } : undefined}
               >
                 <span
                   className="dot"
-                  style={istUebung ? { background: "var(--ok)" } : undefined}
+                  style={optik ? { background: optik.farbe } : undefined}
                 />
-                {istUebung ? "Übung" : "Aktiver Alarm"}
+                {optik ? optik.tag : "Aktiver Alarm"}
               </span>
               <span className="alarm-tag muted">
                 · {alarm.alarmierungAuthor}
@@ -118,21 +153,21 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
         </button>
       ) : null}
 
-      <div className="alarm-meta">
-        <div className="cell">
+      {/* T-07 (Audit 2026-07): Die toten "Ausgerückt/Eingerückt – – : – –"-
+          Zellen sind ersatzlos raus — die Zeiten wurden nirgends befüllt und
+          gaukelten ein Feature vor. Grid per Inline-Style auf 2 Spalten
+          (die .alarm-meta-Klasse mit 4 Spalten hat weitere Konsumenten);
+          borderBottom: 0 neutralisiert die Mobile-Zweizeilen-Regel
+          (nth-child(-n+2)), die mit nur einer Zeile einen Streu-Border
+          zeichnen würde. */}
+      <div className="alarm-meta" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+        <div className="cell" style={{ borderBottom: 0 }}>
           <div className="lbl">Alarmiert</div>
           <div className="val red">{formatTime(alarm.alarmierungZeit)}</div>
         </div>
-        <div className="cell">
-          <div className="lbl">Ausgerückt</div>
-          <div className="val muted">– – : – –</div>
-        </div>
-        <div className="cell">
-          <div className="lbl">Eingerückt</div>
-          <div className="val muted">– – : – –</div>
-        </div>
         <div
           className="cell"
+          style={{ borderBottom: 0 }}
           title={
             alarm.stichwort
               ? STICHWORT_STUFEN[alarm.stichwort]

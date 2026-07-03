@@ -118,21 +118,31 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
             AS
           </button>
         )}
-        {/* Mit aktivem AS: Minus = AS beenden. Sonst: roter X = Slot leeren
+        {/* Mit aktivem AS: "AS aus" = AS beenden. Sonst: roter X = Slot leeren
             (Person raus). Versehentlich gewaehlt war frueher ein Wechsel-
             Button mit Plus-Icon — das war irrefuehrend und der Slot liess
             sich nicht mehr leeren wenn die Person gar nicht mitgefahren ist.
             KDT-09 (Audit 2026-06-12): beide auf 44x44 + >=12px Abstand zum
             AS-Button daneben; das X bleibt visuell Ghost (transparent),
-            die Touch-Flaeche ist voll. */}
+            die Touch-Flaeche ist voll.
+            T-03 (Audit 2026-07): Mono-Text "AS aus" statt nacktem Minus-Icon
+            — das Minus war neben dem AS-Dauer-Stepper (ebenfalls Minus) nicht
+            als "Atemschutz beenden" lesbar. Optik wie der "AS"-Aktivieren-
+            Button, rote Textfarbe signalisiert die beendende Aktion. */}
         {data.atemschutzAktiv ? (
           <button
             type="button"
             className="icon-btn"
-            aria-label="AS beenden"
+            aria-label="Atemschutz beenden"
             onClick={onToggleAs}
             title="Atemschutz beenden"
             style={{
+              fontFamily: "var(--font-mono)",
+              fontWeight: 700,
+              fontSize: 12.5,
+              lineHeight: 1.15,
+              letterSpacing: "0.04em",
+              color: "var(--red)",
               width: 44,
               height: 44,
               minWidth: 44,
@@ -140,7 +150,7 @@ export function MannschaftSlot({ data, onPickPerson, onToggleAs, onChangeAs, onC
               marginLeft: 12,
             }}
           >
-            <Minus size={15} strokeWidth={2.5} />
+            AS aus
           </button>
         ) : (
           <button

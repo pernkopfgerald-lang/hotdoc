@@ -562,6 +562,21 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           })}
         </div>
 
+        {/* U-11 (Audit 2026-07): Der Typ ist nach dem Anlegen fix — er
+            steuert Nummernkreis, PDF-Formular und Statistik. Das sagen wir
+            VOR dem Anlegen; eine Falschanlage muss verworfen und neu
+            angelegt werden (siehe HilfeSheet). */}
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 14,
+            color: "var(--fg-3)",
+            lineHeight: 1.4,
+          }}
+        >
+          Typ kann nach dem Anlegen nicht mehr geaendert werden.
+        </div>
+
         {/* Einsatzart-Pillen — NUR bei "Neuer Einsatz" (manuell) sichtbar.
             U-08: Such-Input + "Haeufig"-Sektion mit den letzten 5 Auswahlen. */}
         {typ === "manuell" ? (

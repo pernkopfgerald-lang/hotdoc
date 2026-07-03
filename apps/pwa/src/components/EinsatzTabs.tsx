@@ -1,4 +1,13 @@
-import { CheckCircle2, ChevronDown, Lock, Plus, Siren, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  GraduationCap,
+  Lock,
+  MapPin,
+  Plus,
+  Siren,
+  X,
+} from "lucide-react";
 
 export interface EinsatzTabSummary {
   id: string;
@@ -6,6 +15,10 @@ export interface EinsatzTabSummary {
   einsatzort: string;
   status: "aktiv" | "abgeschlossen";
   manuell: boolean;
+  /** Z-05 (Audit 2026-07-03): Einsatz-Typ fuer Icon + Farbton des Tabs.
+   *  Optional — Callsites ohne Typ-Info fallen auf die bisherige
+   *  manuell/alarm-Unterscheidung (Plus/Siren) zurueck. */
+  einsatzTyp?: "alarm" | "manuell" | "uebung" | "lotsendienst";
 }
 
 interface Props {
@@ -86,6 +99,19 @@ function EinsatzTab({
   onClose?: () => void;
 }) {
   const closed = tab.status === "abgeschlossen";
+  // Z-05: Icon + Farbton je Einsatz-Typ — Übung grün (--ok), Alarm rot
+  // (--red, wie bisher), manuell blau (--info), Lotsendienst orange (--warn).
+  // Fallback fuer Callsites ohne einsatzTyp: manuell-Flag wie frueher.
+  const typ = tab.einsatzTyp ?? (tab.manuell ? "manuell" : "alarm");
+  const typStil =
+    typ === "uebung"
+      ? { Icon: GraduationCap, farbe: "var(--ok)", tint: "var(--ok-tint)" }
+      : typ === "manuell"
+        ? { Icon: Plus, farbe: "var(--info)", tint: "var(--info-tint)" }
+        : typ === "lotsendienst"
+          ? { Icon: MapPin, farbe: "var(--warn)", tint: "var(--warn-tint)" }
+          : { Icon: Siren, farbe: "var(--red)", tint: "var(--red-tint)" };
+  const TypIcon = typStil.Icon;
   return (
     <div
       role="button"
@@ -114,15 +140,14 @@ function EinsatzTab({
       <span
         className="grid h-6 w-6 place-items-center rounded-md"
         style={{
-          background: closed
-            ? "var(--ok-tint)"
-            : active
-              ? "var(--red-tint)"
-              : "var(--surface-3)",
-          color: closed ? "var(--ok)" : active ? "var(--red)" : "var(--fg-3)",
+          // Z-05: Typ-Farbe auch am INAKTIVEN Tab (frueher neutrales
+          // --surface-3) — der Funktionaer erkennt Übung/Lotsendienst
+          // in der Leiste, ohne den Tab aktivieren zu muessen.
+          background: closed ? "var(--ok-tint)" : typStil.tint,
+          color: closed ? "var(--ok)" : typStil.farbe,
         }}
       >
-        {closed ? <CheckCircle2 size={13} /> : tab.manuell ? <Plus size={13} /> : <Siren size={13} />}
+        {closed ? <CheckCircle2 size={13} /> : <TypIcon size={13} />}
       </span>
       {/* D-14: Status-Icon (CheckCircle/Plus/Siren) reicht — die Sub-Label
           "Aktiv"/"Folgeauftrag" sind redundant zum Icon. Nur die
@@ -159,7 +184,10 @@ function EinsatzTab({
         ) : null}
       </div>
       {active ? <ChevronDown size={12} className="ml-1 opacity-50" /> : null}
-      {onClose && (
+      {/* Z-12: X nur am AKTIVEN Tab — auf inaktiven Tabs war das X direkt
+          neben der Klickflaeche zum Wechseln und wurde versehentlich
+          getroffen (Schliessen-Dialog statt Tab-Wechsel). */}
+      {onClose && active && (
         /* KDT-13b (Audit 2026-06-12): X-Button auf echte 44x44. Der alte
            U-19-Kommentar ("32x32 + padding 8 = 48x48") war falsch — durch
            Tailwind-Preflight gilt box-sizing:border-box, das padding zählt

@@ -421,7 +421,7 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
 
   const einsaetze = await db.list({
     startkey: "einsatz:",
-    endkey: "einsatz:￯",
+    endkey: "einsatz:￰",
     include_docs: true,
   });
 

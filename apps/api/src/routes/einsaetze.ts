@@ -433,7 +433,7 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), ah(asy
     }
     throw err;
   }
-}) as RequestHandler);
+}));
 
 // ─── POST /api/einsaetze/:id/abschluss ─── FR-6 ─────────────
 // Mannschaft-Rolle reicht — Solo-Tablet-Einsaetze (kein Florian, nur
@@ -449,8 +449,13 @@ const AbschlussBodySchema = z.object({
   abschlussOverrideHinweis: z.string().optional(),
   verrechenbar: z.boolean().optional(),
   rechnungsadresse: z.string().optional(),
+  /** L-08 (Audit 2026-07): Zeitstempel des Abschluss-Dialogs am Client.
+   *  Wurde der Einsatz NACH diesem Zeitpunkt reaktiviert, ist der Abschluss-
+   *  Wunsch veraltet (er wuerde die Nach-Reaktivierungs-Arbeit ungesehen
+   *  wegsperren) → 409 stale_abschluss. Optional fuer Backwards-Compat. */
+  clientTs: z.string().datetime().optional(),
 });
-einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), (async (req, res) => {
+einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const session = req.session!;
   const bodyParsed = AbschlussBodySchema.safeParse(req.body ?? {});
@@ -458,14 +463,34 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     res.status(400).json({ error: "invalid_body", details: bodyParsed.error.flatten() });
     return;
   }
-  const { verrechenbar, rechnungsadresse, abschlussOverrideHinweis: overrideHinweisFromBody } =
-    bodyParsed.data;
+  const { abschlussOverrideHinweis: overrideHinweisFromBody, clientTs } = bodyParsed.data;
   const doc = await getEinsatzOr404(id, res);
   if (!doc) return;
   if (doc.status === "abgeschlossen") {
     res.status(409).json({ error: "already_closed" });
     return;
   }
+  // L-08: Stale-Abschluss-Erkennung — gibt es eine Reaktivierung die JUENGER
+  // ist als der Abschluss-Dialog des Clients, lehnen wir ab. Der Client laedt
+  // dann den frischen Stand und der User entscheidet neu.
+  if (clientTs) {
+    const clientMs = new Date(clientTs).getTime();
+    const reakts = (doc.reaktivierungen as Array<{ am?: string }> | undefined) ?? [];
+    const staleAbschluss = reakts.some((r) => {
+      const amMs = typeof r.am === "string" ? new Date(r.am).getTime() : Number.NaN;
+      return Number.isFinite(amMs) && Number.isFinite(clientMs) && amMs > clientMs;
+    });
+    if (staleAbschluss) {
+      res.status(409).json({ error: "stale_abschluss" });
+      return;
+    }
+  }
+  // U-05-Backend (Audit 2026-07): Uebungen kennen keine Verrechnung —
+  // verrechenbar/rechnungsadresse aus dem Body werden ignoriert (nicht
+  // persistiert, keine Verrechnungs-Kaskade auf die Fahrzeugberichte).
+  const istUebung = doc.einsatzTyp === "uebung";
+  const verrechenbar = istUebung ? undefined : bodyParsed.data.verrechenbar;
+  const rechnungsadresse = istUebung ? undefined : bodyParsed.data.rechnungsadresse;
   // Abschluss-Override-Hinweis: wenn noch nicht alle Fahrzeugberichte
   // abgeschlossen sind aber der Einsatzleiter trotzdem abschliesst (z. B.
   // Kdt hat das Tablet noch nicht zurueckgegeben, Funktionaer braucht den
@@ -528,9 +553,11 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   let berichtNummer = doc.berichtNummer as string | undefined;
   if (!berichtNummer) {
     try {
+      // U-03: einsatzTyp mitgeben — Uebungen ziehen aus dem "U"-Nummernkreis.
       berichtNummer = await vergebeBerichtNummer(
         doc.einsatzart as string | undefined,
         doc.alarmierungZeit as string | undefined,
+        doc.einsatzTyp as string | undefined,
       );
     } catch (err) {
       logger.warn(
@@ -539,19 +566,41 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       );
     }
   }
-  const updated = {
-    ...doc,
+  // L-03 (Audit 2026-07): Abschluss-Patch als Funktion ueber dem Basis-Doc —
+  // so kann der 409-Retry-Pfad denselben Patch auf den FRISCHEN Stand neu
+  // applizieren statt mit stalem doc-Spread fremde Aenderungen zu verlieren.
+  const abschlussPatch = (basis: Record<string, unknown>): Record<string, unknown> => ({
+    ...basis,
     status: "abgeschlossen",
     schreibschutz: true,
     einsatzende: new Date().toISOString(),
-    bearbeiterPersonId: doc.bearbeiterPersonId,
     oelbindemittel: oelbindemittelAggregiert,
     verrechnung: verrechnungUpdated,
     geaendertAm: new Date().toISOString(),
     ...(finalOverrideHinweis ? { abschlussOverrideHinweis: finalOverrideHinweis } : {}),
     ...(berichtNummer ? { berichtNummer } : {}),
-  };
-  const result = await db.insert(updated);
+  });
+  let result: Awaited<ReturnType<typeof db.insert>>;
+  try {
+    result = await db.insert(abschlussPatch(doc));
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    // L-03: 409 — parallel hat jemand geschrieben (Doppel-Klick, zweites
+    // Geraet, Florian). Frisch laden: ist der Zielzustand schon erreicht,
+    // melden wir already_closed inkl. bereits vergebener Nummer; sonst
+    // genau 1 Retry mit frischer _rev + neu appliziertem Patch.
+    const fresh = await getEinsatzOr404(id, res);
+    if (!fresh) return;
+    if (fresh.status === "abgeschlossen") {
+      res.status(409).json({
+        error: "already_closed",
+        ...(fresh.berichtNummer ? { berichtNummer: fresh.berichtNummer } : {}),
+      });
+      return;
+    }
+    result = await db.insert(abschlussPatch(fresh));
+  }
+  invalidateEinsatzCache();
   logger.info({ id, by: session.username, berichtNummer }, "Einsatz abgeschlossen");
 
   // F3: Cascade-Abschluss aller noch offenen Fahrzeugberichte.
@@ -566,17 +615,25 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   // nicht nur die offenen. So bleibt der Verrechnungs-Stand konsistent.
   if (verrechenbar !== undefined || rechnungsadresse !== undefined) {
     const verrechnungCascadeNow = new Date().toISOString();
-    const allFzgWithVerrechnung = fzgDocs.map((f) => ({
-      ...(f as Record<string, unknown>),
+    // A-07: Verrechnungs-Patch als Funktion ueber dem Basis-Doc — im
+    // Conflict-Fall appliziert bulkUpdateWithRetry ihn auf den FRISCHEN
+    // Stand (fremde Aenderungen am fzgber bleiben erhalten).
+    const verrechnungPatch = (basis: Record<string, unknown>): Record<string, unknown> => ({
       verrechnung: {
-        ...((f as { verrechnung?: object }).verrechnung ?? {}),
+        ...((basis as { verrechnung?: object }).verrechnung ?? {}),
         ...(verrechenbar !== undefined ? { verrechenbar } : {}),
         ...(rechnungsadresse !== undefined ? { rechnungsadresse } : {}),
       },
       geaendertAm: verrechnungCascadeNow,
+    });
+    const allFzgWithVerrechnung = fzgDocs.map((f) => ({
+      ...(f as Record<string, unknown>),
+      ...verrechnungPatch(f as Record<string, unknown>),
     }));
     try {
-      await bulkUpdateWithRetry(allFzgWithVerrechnung, logger);
+      await bulkUpdateWithRetry(allFzgWithVerrechnung, logger, (_docId, fresh) =>
+        verrechnungPatch(fresh),
+      );
       logger.info(
         { id, cascadeCount: allFzgWithVerrechnung.length, verrechenbar, rechnungsadresse },
         "Verrechnungs-Cascade auf alle Fahrzeugberichte",
@@ -590,16 +647,23 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   }
   if (offeneFzgber.length > 0) {
     const cascadeNow = new Date().toISOString();
-    const cascadeDocs = offeneFzgber.map((f) => ({
-      ...(f as Record<string, unknown>),
+    // A-07: Kaskaden-Patch (Auto-Abschluss-Marker) als konstante Absicht —
+    // im Conflict-Fall wird er auf den frischen fzgber-Stand appliziert,
+    // parallel eingetragene Mannschaft/KM/Taetigkeitsbericht bleiben so
+    // erhalten statt vom stalen sourceDoc ueberschrieben zu werden.
+    const cascadePatch: Record<string, unknown> = {
       status: "abgeschlossen" as const,
       autoAbgeschlossen: true,
       autoAbgeschlossenAm: cascadeNow,
       autoAbgeschlossenGrund: "hauptauftrag-geschlossen" as const,
       geaendertAm: cascadeNow,
+    };
+    const cascadeDocs = offeneFzgber.map((f) => ({
+      ...(f as Record<string, unknown>),
+      ...cascadePatch,
     }));
     try {
-      const { ok, failed } = await bulkUpdateWithRetry(cascadeDocs, logger);
+      const { ok, failed } = await bulkUpdateWithRetry(cascadeDocs, logger, () => cascadePatch);
       logger.info(
         {
           id,
@@ -623,6 +687,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
             cascade_failed_ids: failed,
             geaendertAm: new Date().toISOString(),
           } as Parameters<typeof db.insert>[0]);
+          invalidateEinsatzCache();
         } catch (markErr) {
           logger.warn(
             { err: markErr, id },
@@ -652,7 +717,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   // AUDIT-11: berichtNummer in der Response mitliefern — bestehende Felder
   // bleiben unveraendert, Clients ohne berichtNummer-Auswertung sind kompatibel.
   res.json({ ok: true, id, rev: result.rev, ...(berichtNummer ? { berichtNummer } : {}) });
-}) as RequestHandler);
+}));
 
 // ─── POST /api/einsaetze/:id/verwerfen ──────────────────────
 // "Schließen ohne Speichern" — der Bericht wird abgeschlossen, aber mit
@@ -667,7 +732,7 @@ const VerwerfenBodySchema = z.object({
 einsaetzeRouter.post(
   "/api/einsaetze/:id/verwerfen",
   requireAuth("mannschaft"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const parsed = VerwerfenBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -682,8 +747,9 @@ einsaetzeRouter.post(
       return;
     }
     const now = new Date().toISOString();
-    const updated = {
-      ...doc,
+    // L-03 (Audit 2026-07): Verwerfen-Patch als konstante Absicht — der
+    // 409-Retry-Pfad appliziert ihn auf den FRISCHEN Stand neu.
+    const verwerfenPatch: Record<string, unknown> = {
       status: "abgeschlossen",
       schreibschutz: true,
       verworfen: true,
@@ -697,7 +763,25 @@ einsaetzeRouter.post(
         : "Bericht ohne Speichern verworfen.",
       geaendertAm: now,
     };
-    const result = await db.insert(updated);
+    let result: Awaited<ReturnType<typeof db.insert>>;
+    try {
+      result = await db.insert({ ...doc, ...verwerfenPatch });
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+      // L-03: 409 — frisch laden; Zielzustand schon erreicht → already_closed
+      // (inkl. ggf. vergebener Nummer), sonst genau 1 Retry mit frischer _rev.
+      const fresh = await getEinsatzOr404(id, res);
+      if (!fresh) return;
+      if (fresh.status === "abgeschlossen") {
+        res.status(409).json({
+          error: "already_closed",
+          ...(fresh.berichtNummer ? { berichtNummer: fresh.berichtNummer } : {}),
+        });
+        return;
+      }
+      result = await db.insert({ ...fresh, ...verwerfenPatch });
+    }
+    invalidateEinsatzCache();
 
     // Cascade: offene Fahrzeugberichte mit verwerfen-Marker schließen
     const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
@@ -735,6 +819,7 @@ einsaetzeRouter.post(
               cascade_failed_ids: failed,
               geaendertAm: new Date().toISOString(),
             } as Parameters<typeof db.insert>[0]);
+            invalidateEinsatzCache();
           } catch (markErr) {
             logger.warn(
               { err: markErr, id },
@@ -764,7 +849,7 @@ einsaetzeRouter.post(
       },
     });
     res.json({ ok: true, id, rev: result.rev, verworfen: true });
-  }) as RequestHandler,
+  }),
 );
 
 // ─── POST /api/einsaetze/:id/reaktivieren ─── FR-14 ─────────
@@ -785,7 +870,7 @@ einsaetzeRouter.post(
   // bleibt unveraendert, sodass die Reaktivierung weiterhin nachvollziehbar
   // ist.
   requireAuth("mannschaft"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const parsed = ReaktivierenBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -799,13 +884,19 @@ einsaetzeRouter.post(
       res.status(409).json({ error: "not_closed" });
       return;
     }
-    const reaktivierungen = (doc.reaktivierungen as unknown[] | undefined) ?? [];
-    const updated = {
-      ...doc,
+    // L-03/L-04 (Audit 2026-07): Reaktivierungs-Patch als Funktion ueber dem
+    // Basis-Doc — der 409-Retry appliziert ihn auf den FRISCHEN Stand neu
+    // (inkl. dessen reaktivierungen-Historie). L-04: Stale-Marker vom
+    // frueheren Abschluss/Verwerfen werden EXPLIZIT entfernt (undefined →
+    // JSON.stringify laesst die Keys weg) — sonst truege der reaktivierte
+    // Einsatz weiter verworfen/autoAbgeschlossen/einsatzende & Co. und
+    // PDF/Archiv/Worker wuerden ihn falsch einordnen.
+    const reaktivierenPatch = (basis: Record<string, unknown>): Record<string, unknown> => ({
+      ...basis,
       status: "aktiv",
       schreibschutz: false,
       reaktivierungen: [
-        ...reaktivierungen,
+        ...((basis.reaktivierungen as unknown[] | undefined) ?? []),
         {
           vonBenutzerId: session.sub,
           am: new Date().toISOString(),
@@ -813,9 +904,35 @@ einsaetzeRouter.post(
           vonStatus: "abgeschlossen",
         },
       ],
+      verworfen: undefined,
+      verwerfungsGrund: undefined,
+      autoAbgeschlossen: undefined,
+      autoAbgeschlossenAm: undefined,
+      autoAbgeschlossenGrund: undefined,
+      abschlussOverrideHinweis: undefined,
+      einsatzende: undefined,
+      cascade_failed: undefined,
+      cascade_failed_ids: undefined,
       geaendertAm: new Date().toISOString(),
-    };
-    const result = await db.insert(updated);
+    });
+    let result: Awaited<ReturnType<typeof db.insert>>;
+    try {
+      result = await db.insert(reaktivierenPatch(doc));
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+      // L-03: 409 — frisch laden; ist der Einsatz inzwischen schon aktiv
+      // (paralleles Reaktivieren), antworten wir idempotent 200 ok. Sonst
+      // genau 1 Retry mit frischer _rev + neu appliziertem Patch.
+      const fresh = await getEinsatzOr404(id, res);
+      if (!fresh) return;
+      if (fresh.status === "aktiv") {
+        invalidateEinsatzCache();
+        res.json({ ok: true, id, rev: fresh._rev, idempotent: true });
+        return;
+      }
+      result = await db.insert(reaktivierenPatch(fresh));
+    }
+    invalidateEinsatzCache();
     logger.warn(
       { id, by: session.username, grund: parsed.data.grund },
       "Einsatz REAKTIVIERT — Audit-Trail aktualisiert",
@@ -876,7 +993,7 @@ einsaetzeRouter.post(
       details: { grund: parsed.data.grund },
     });
     res.json({ ok: true, id, rev: result.rev });
-  }) as RequestHandler,
+  }),
 );
 
 // ─── DELETE /api/einsaetze/:id ─── Issue 2 (Einsatz-Test 2026-06-02) ───
@@ -902,7 +1019,7 @@ const DeleteEinsatzBodySchema = z.object({
 einsaetzeRouter.delete(
   "/api/einsaetze/:id",
   requireAuth("einsatzleiter"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const parsed = DeleteEinsatzBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -946,7 +1063,12 @@ einsaetzeRouter.delete(
     // (`cascade_failed`) + im Audit-Event, statt still verschluckt zu werden.
     let failed: string[];
     try {
-      ({ failed } = await bulkUpdateWithRetry(bulkDocs, logger));
+      // A-07: patchFor liefert die Loesch-Absicht — im Conflict-Fall wird
+      // `{ ...fresh, _deleted: true }` inserted (valider Tombstone auf der
+      // frischen _rev) statt des stalen sourceDoc-Stands.
+      ({ failed } = await bulkUpdateWithRetry(bulkDocs, logger, () => ({
+        _deleted: true,
+      })));
     } catch (err) {
       logger.error(
         { err, id, count: bulkDocs.length },
@@ -955,6 +1077,7 @@ einsaetzeRouter.delete(
       res.status(500).json({ error: "delete_failed", message: String(err) });
       return;
     }
+    invalidateEinsatzCache();
 
     logger.warn(
       {
@@ -988,7 +1111,7 @@ einsaetzeRouter.delete(
       cascade_fzgber: cascadeIds.length,
       ...(failed.length > 0 ? { cascade_failed: failed } : {}),
     });
-  }) as RequestHandler,
+  }),
 );
 
 // ─── PUT /api/einsaetze/:id ─── Allg. Update (mit Schreibschutz-Check) ─
@@ -1053,7 +1176,7 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
 // eigentlichen Schutzmechanismen; die Rolle filtert nur ob ueberhaupt
 // jemand schreiben darf (jeder Aufgaben-Mitarbeiter ja, nur Read-only
 // Backoffice-User nein).
-einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), (async (req, res) => {
+einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const current = await getEinsatzOr404(id, res);
   if (!current) return;
@@ -1133,6 +1256,9 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), (async (req
       throw retryErr;
     }
   }
+  // A-03a: erfolgreicher Schreibzugriff — Liste-Cache invalidieren, damit
+  // die Aenderung fuer alle Poller sofort sichtbar ist.
+  invalidateEinsatzCache();
   // Audit-Trail: wenn sich die Fahrzeug-Zuweisung geaendert hat → eigenes
   // Event schreiben. Sicherheits-relevant: aendert die Sichtbarkeit eines
   // Einsatzes auf den Fahrzeug-Tablets.
@@ -1164,13 +1290,13 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), (async (req
     });
   }
   res.json({ ok: true, id, rev: result.rev });
-}) as RequestHandler);
+}));
 
 // ─── PUT /api/einsaetze/:id/fahrzeugbericht/:fzgId ─────────────
 einsaetzeRouter.put(
   "/api/einsaetze/:id/fahrzeugbericht/:fzgId",
   requireAuth(),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const einsatzId = decodeURIComponent(String(req.params.id));
     const fahrzeugId = decodeURIComponent(String(req.params.fzgId));
     const docId = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:${fahrzeugId}`;
@@ -1194,6 +1320,16 @@ einsaetzeRouter.put(
     }
 
     const now = new Date().toISOString();
+    // A-05 (Audit 2026-07): Body-Keys mit "_"-Praefix VOR dem Merge strippen.
+    // Sonst koennte der Client CouchDB-Metafelder injizieren (_rev → gezielter
+    // Conflict/Overwrite, _deleted → Doc-Tombstone, _id → Umleitung) — die
+    // Zeilen unterhalb setzen _id/_rev zwar explizit, aber nur gegen die
+    // bekannten Felder; _deleted & Co. ruetschten ungefiltert durch.
+    const bodyRaw = (req.body ?? {}) as Record<string, unknown>;
+    const body: Record<string, unknown> = {};
+    for (const key of Object.keys(bodyRaw)) {
+      if (!key.startsWith("_")) body[key] = bodyRaw[key];
+    }
     const merged = {
       ...(existing ?? {
         type: "fahrzeugbericht" as const,
@@ -1209,7 +1345,7 @@ einsaetzeRouter.put(
         status: "in_arbeit" as const,
         erstelltAm: now,
       }),
-      ...req.body,
+      ...body,
       _id: docId,
       ...(existing?._rev ? { _rev: existing._rev } : {}),
       type: "fahrzeugbericht" as const,
@@ -1263,7 +1399,7 @@ einsaetzeRouter.put(
         throw retryErr;
       }
     }
-  }) as RequestHandler,
+  }),
 );
 
 // ─── POST /api/einsaetze/:id/chronik ──────────────────────────
@@ -1286,7 +1422,7 @@ const ChronikEintragBodySchema = z.object({
   fotoId: z.string().optional(),
 });
 
-einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), (async (req, res) => {
+einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   const parsed = ChronikEintragBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -1330,13 +1466,52 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), (async (req, r
     chronik: [...chronik, parsed.data],
     geaendertAm: new Date().toISOString(),
   };
-  const result = await db.insert(updated);
+  let result: Awaited<ReturnType<typeof db.insert>>;
+  let totalNach = chronik.length + 1;
+  try {
+    result = await db.insert(updated);
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    // A-02 (Audit 2026-07): 409 — ein paralleler Chronik-Broadcast (anderes
+    // Fahrzeug/Florian) hat zwischen unserem get und insert geschrieben.
+    // Frisch laden, Eintrag auf den FRISCHEN Stand applizieren (inkl.
+    // erneutem Dedupe-Check), genau 1 Retry. Zweiter 409 → 409
+    // conflict_retry_failed, der Client synct beim naechsten Poll nach.
+    const fresh = (await db.get(id)) as Record<string, unknown>;
+    const freshChronik = ((fresh.chronik as unknown[] | undefined) ?? []) as Array<{
+      id: string;
+    }>;
+    if (freshChronik.some((e) => e.id === parsed.data.id)) {
+      res.json({ ok: true, deduped: true, total: freshChronik.length });
+      return;
+    }
+    const retryUpdated = {
+      ...fresh,
+      chronik: [...freshChronik, parsed.data],
+      geaendertAm: new Date().toISOString(),
+    };
+    try {
+      result = await db.insert(retryUpdated);
+      totalNach = freshChronik.length + 1;
+    } catch (retryErr) {
+      if ((retryErr as { statusCode?: number }).statusCode === 409) {
+        logger.warn({ id }, "POST chronik: Retry erneut 409 — conflict_retry_failed");
+        res.status(409).json({
+          error: "conflict_retry_failed",
+          hint: "Chronik wurde zwischenzeitlich von anderer Seite geaendert. Bitte erneut versuchen.",
+        });
+        return;
+      }
+      throw retryErr;
+    }
+  }
+  invalidateEinsatzCache();
   logger.info(
     { id, source: parsed.data.source, fzg: parsed.data.fahrzeugId },
     "Chronik-Eintrag broadcast",
   );
-  res.json({ ok: true, rev: result.rev, total: chronik.length + 1 });
-}) as RequestHandler);
+  res.json({ ok: true, rev: result.rev, total: totalNach });
+}));
 
 // ─── PUT /api/einsaetze/:id/chronik/:entryId ─────────────────
 // Issue 6 (Einsatz-Test 2026-06-02): Chronik-Eintraege editierbar.
@@ -1353,7 +1528,7 @@ const ChronikEditBodySchema = z.object({
 einsaetzeRouter.put(
   "/api/einsaetze/:id/chronik/:entryId",
   requireAuth("mannschaft"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const entryId = decodeURIComponent(String(req.params.entryId));
     const parsed = ChronikEditBodySchema.safeParse(req.body);
@@ -1403,7 +1578,24 @@ einsaetzeRouter.put(
     // 8s-Polling + Florianstation + bis zu 4 Fahrzeugen ist ein Conflict
     // realistisch wenn zwei Editoren gleichzeitig denselben Einsatz
     // schreiben. bulkUpdateWithRetry holt frische _rev und retried einmal.
-    const { ok, failed } = await bulkUpdateWithRetry([updated], logger);
+    // A-07: patchFor appliziert den Text-Edit auf das FRISCHE chronik-Array —
+    // parallel eingetroffene Eintraege anderer Fahrzeuge bleiben erhalten.
+    // Ist der Eintrag im frischen Stand verschwunden → null → failed → 409.
+    const { ok, failed } = await bulkUpdateWithRetry([updated], logger, (_docId, fresh) => {
+      const freshChronik = ((fresh.chronik as unknown[] | undefined) ?? []) as Array<
+        Record<string, unknown>
+      >;
+      const fi = freshChronik.findIndex((e) => (e as { id?: string }).id === entryId);
+      if (fi < 0) return null;
+      const nextFresh = [...freshChronik];
+      nextFresh[fi] = {
+        ...freshChronik[fi],
+        text: parsed.data.text,
+        editiertAm: now,
+        editiertVon: session.username,
+      };
+      return { chronik: nextFresh, geaendertAm: new Date().toISOString() };
+    });
     if (failed.length > 0 || ok === 0) {
       res.status(409).json({
         error: "conflict_retry_failed",
@@ -1411,6 +1603,7 @@ einsaetzeRouter.put(
       });
       return;
     }
+    invalidateEinsatzCache();
     logger.info(
       { id, entryId, by: session.username },
       "Chronik-Eintrag editiert",
@@ -1425,14 +1618,14 @@ einsaetzeRouter.put(
       details: { entryId },
     });
     res.json({ ok: true, id, entryId, total: nextChronik.length });
-  }) as RequestHandler,
+  }),
 );
 
 // ─── GET /api/einsaetze/:id/chronik ───────────────────────────
 // Liefert nur die chronik-Sub-Liste. Tablets pollen das alle 8s und
 // vergleichen mit ihrem lokalen Set — neue Einträge werden lokal
 // angehängt, Duplikate über entry.id gefiltert.
-einsaetzeRouter.get("/api/einsaetze/:id/chronik", requireAuth(), (async (req, res) => {
+einsaetzeRouter.get("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as Record<string, unknown>;
@@ -1445,13 +1638,13 @@ einsaetzeRouter.get("/api/einsaetze/:id/chronik", requireAuth(), (async (req, re
     }
     throw err;
   }
-}) as RequestHandler);
+}));
 
 // ─── GET /api/einsaetze/:id/fahrzeugberichte ───────────────────
 einsaetzeRouter.get(
   "/api/einsaetze/:id/fahrzeugberichte",
   requireAuth(),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const einsatzId = decodeURIComponent(String(req.params.id));
     const prefix = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:`;
     const list = await db.list({
@@ -1463,7 +1656,7 @@ einsaetzeRouter.get(
       .map((r) => r.doc)
       .filter((d): d is NonNullable<typeof d> => d !== undefined);
     res.json({ ok: true, items: docs });
-  }) as RequestHandler,
+  }),
 );
 
 // ─── GET /api/fahrzeugberichte/meine ───────────────────────────
@@ -1471,10 +1664,16 @@ einsaetzeRouter.get(
 // den Einsatz-Stammdaten (Stichwort/Adresse/Datum) als zusammengefasste
 // Items fuer das Tablet-Archiv. Default-Filter: status=abgeschlossen, damit
 // nur fertig gearbeitete Berichte erscheinen. Sortierung nach Alarmzeit DESC.
+// A-03a (Audit 2026-07): limit-Param gegen unbegrenzt wachsende Antwort —
+// das Tablet-Archiv braucht nur die juengsten Berichte, nicht Jahre an
+// Historie. Gekappt wird nach geaendertAm absteigend (die zuletzt
+// bearbeiteten Berichte bleiben erhalten).
+const MEINE_DEFAULT_LIMIT = 100;
+const MEINE_MAX_LIMIT = 500;
 einsaetzeRouter.get(
   "/api/fahrzeugberichte/meine",
   requireAuth(),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const fahrzeugId =
       typeof req.query.fahrzeugId === "string" ? req.query.fahrzeugId : "";
     if (!fahrzeugId) {
@@ -1483,6 +1682,11 @@ einsaetzeRouter.get(
     }
     const statusFilter =
       typeof req.query.status === "string" ? req.query.status : "abgeschlossen";
+    const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(rawLimit, MEINE_MAX_LIMIT)
+        : MEINE_DEFAULT_LIMIT;
     const list = await db.list({
       startkey: "fzgber:",
       endkey: "fzgber:￰",
@@ -1588,11 +1792,20 @@ einsaetzeRouter.get(
         ...(doc.geaendertAm ? { geaendertAm: doc.geaendertAm } : {}),
       });
     }
+    // A-03a: erst nach geaendertAm absteigend kappen (die juengst
+    // bearbeiteten Berichte ueberleben), dann fuer die Ausgabe wie bisher
+    // nach Alarmzeit DESC sortieren — Konsumenten sehen dieselbe Ordnung.
     items.sort((a, b) => {
+      const ta = new Date(a.geaendertAm ?? 0).getTime();
+      const tb = new Date(b.geaendertAm ?? 0).getTime();
+      return tb - ta;
+    });
+    const capped = items.slice(0, limit);
+    capped.sort((a, b) => {
       const ta = new Date(a.alarmierungZeit ?? 0).getTime();
       const tb = new Date(b.alarmierungZeit ?? 0).getTime();
       return tb - ta;
     });
-    res.json({ ok: true, items });
-  }) as RequestHandler,
+    res.json({ ok: true, items: capped });
+  }),
 );

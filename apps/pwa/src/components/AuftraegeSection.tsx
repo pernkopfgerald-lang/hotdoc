@@ -54,6 +54,9 @@ export function AuftraegeSection({ auftraege, verfuegbareTypen, onAdd, onRemove 
               type="button"
               onClick={() => (selected && match ? onRemove(match.id) : onAdd(typ))}
               className={`chip task${selected ? " selected" : ""}`}
+              /* T-06 (Audit 2026-07): 44px Touch-Target per Inline-Override —
+                 die .chip-Klasse NICHT anfassen (andere Konsumenten). */
+              style={{ minHeight: 44 }}
             >
               {selected ? <span className="dot" /> : <span className="plus">+</span>}
               {typ}
