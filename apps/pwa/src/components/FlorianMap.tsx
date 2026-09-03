@@ -180,11 +180,10 @@ export function FlorianMap({
   const weitereMarkerRef = useRef<L.Marker[]>([]);
   const weitere = weitereEinsatzorte ?? [];
   // Loeschwasser-Layer (2026-07): wasserkarte.info-Import, siehe
-  // lib/wasserquellen.ts. Default AUS -- die Lagekarte wurde gerade erst
-  // entruempelt (Z-01..Z-03), 346 zusaetzliche Marker sollen Opt-in bleiben.
+  // lib/wasserquellen.ts. Default AN (User-Wunsch nach erstem Test).
   const wasserLayerRef = useRef<L.LayerGroup | null>(null);
   const [wasserquellen, setWasserquellen] = useState<Wasserquelle[]>([]);
-  const [waterOn, setWaterOn] = useState(false);
+  const [waterOn, setWaterOn] = useState(true);
   useEffect(() => {
     let cancelled = false;
     loadWasserquellen().then((liste) => {
@@ -1079,9 +1078,11 @@ function weitererEinsatzIcon(): L.DivIcon {
 function wasserquelleIcon(id: string): L.Icon {
   return L.icon({
     iconUrl: wasserquelleIconUrl(id),
-    iconSize: [22, 40],
-    iconAnchor: [11, 40],
-    popupAnchor: [0, -38],
+    // User-Feedback nach erstem Test: 30% groesser als der urspruengliche
+    // Entwurf (22x40 -> 29x52), Anker/Popup-Offset proportional mitskaliert.
+    iconSize: [29, 52],
+    iconAnchor: [15, 52],
+    popupAnchor: [0, -50],
   });
 }
 

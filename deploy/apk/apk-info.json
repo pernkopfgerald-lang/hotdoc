@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.27",
-  "apkUrl": "/hotdoc-v0.1.27-release.apk",
-  "releaseNotes": "v0.1.27 — Löschwasser-Layer jetzt auch in Florian-Zentrale + im Backoffice pflegbar\n\n• Löschwasser-Button jetzt auch auf der Lagekarte in Florian Eberstalzell (bisher nur am Fahrzeug-Tablet) — Original wasserkarte.info-Symbole inkl. Zufluss (l/min) und Nennweite direkt auf dem Icon.\n• Neu im Backoffice unter Verwaltung → Stammdaten → Löschwasser: KML-Datei von wasserkarte.info hochladen ersetzt den kompletten Datenbestand selbstständig — keine erneute Entwickler-Anfrage mehr nötig, wenn sich Entnahmestellen ändern.\n• Datenstand wird jetzt zentral in der Datenbank verwaltet statt in der App-Version eingebacken.\n• Anzeige-Datum im Fußzeilen-Stand korrigiert (war seit v0.1.13 eingefroren).\n\n— Enthält das große Intensiv-Audit (v0.1.25), Zwei-Geräte-Warnung (v0.1.24), parallele Einsatzorte (v0.1.23) und alle Neuerungen aus v0.1.10–v0.1.22.",
-  "publishedAt": "2026-07-03T11:00:00+00:00",
+  "currentVersion": "0.1.28",
+  "apkUrl": "/hotdoc-v0.1.28-release.apk",
+  "releaseNotes": "v0.1.28 — Löschwasser-Symbole größer + standardmäßig an\n\n• Löschwasser-Entnahmestellen werden jetzt standardmäßig angezeigt (Fahrzeug-Tablet UND Florian-Zentrale), nicht mehr erst nach Antippen des Buttons.\n• Symbole 30% größer — Zufluss (l/min) und Nennweite auf dem Icon sind dadurch besser lesbar.\n\n— Enthält den Löschwasser-Layer (v0.1.27), das große Intensiv-Audit (v0.1.25) und alle Neuerungen aus v0.1.10–v0.1.26.",
+  "publishedAt": "2026-07-03T13:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

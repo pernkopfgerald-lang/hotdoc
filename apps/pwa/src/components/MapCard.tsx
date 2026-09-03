@@ -858,9 +858,11 @@ function hydrantIcon(h: Hydrant): L.Icon | L.DivIcon {
   if (h.iconUrl) {
     return L.icon({
       iconUrl: h.iconUrl,
-      iconSize: [24, 44],
-      iconAnchor: [12, 44],
-      popupAnchor: [0, -42],
+      // User-Feedback nach erstem Test: 30% groesser als der urspruengliche
+      // Entwurf (24x44 -> 31x57), Anker/Popup-Offset proportional mitskaliert.
+      iconSize: [31, 57],
+      iconAnchor: [16, 57],
+      popupAnchor: [0, -55],
     });
   }
   return L.divIcon({
