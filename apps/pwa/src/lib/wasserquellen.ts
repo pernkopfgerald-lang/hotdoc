@@ -1,14 +1,17 @@
 /**
- * Loeschwasser-Entnahmestellen (Hydranten, Behaelter, Teiche, Saugstellen...)
- * -- einmalig aus wasserkarte.info importiert (siehe
- * scripts/import-wasserkarte-kml.mjs), lokal als statische Datei gebuendelt.
+ * Löschwasser-Entnahmestellen (Hydranten, Behaelter, Teiche, Saugstellen...)
+ * -- aus wasserkarte.info importiert und im Backoffice (Verwaltung >
+ * Stammdaten > Löschwasser) verwaltet. Datenquelle: CouchDB ueber die API,
+ * NICHT live von wasserkarte.info -- siehe apps/api/src/services/
+ * wasserkarte-import.ts fuer den Hintergrund (keine oeffentliche Live-API).
  *
- * wasserkarte.info bietet keine oeffentliche Live-API/kein Embed (nur eine
- * kuratierte Partner-Schnittstelle fuer benannte Alarmierungssysteme; Detail-
- * Seiten verlangen Login). Diese Daten sind daher ein STAND -- nicht live.
- * Bei Aenderungen an den Wasserentnahmestellen: KML neu exportieren und das
- * Import-Skript erneut laufen lassen.
+ * Bei Aenderungen an den Entnahmestellen exportiert der Funktionaer eine
+ * frische KML bei wasserkarte.info und laedt sie im Backoffice hoch --
+ * ersetzt den kompletten Datenbestand.
  */
+
+import { apiCall } from "./api";
+import { resolveApiUrl } from "./api";
 
 export interface Wasserquelle {
   id: string;
@@ -21,22 +24,52 @@ export interface Wasserquelle {
   anschluss: string;
   lat: number;
   lng: number;
-  /** Dateiname unter /wasserkarte/icons/ -- offizielles wasserkarte.info-Symbol
-   *  inkl. gerenderter Kennzahlen (Zufluss l/min, Nennweite, Kapazitaet ...). */
-  icon: string;
+}
+
+interface WasserquellenResponse {
+  ok: boolean;
+  count: number;
+  importedAm: string | null;
+  items: Wasserquelle[];
 }
 
 let cache: Promise<Wasserquelle[]> | null = null;
 
-/** Laedt die statische Wasserquellen-Liste einmalig -- Ergebnis wird
- *  modulweit gecacht, alle Karten-Komponenten teilen sich einen Fetch. */
+/** Laedt die Wasserquellen-Liste einmalig -- Ergebnis wird modulweit
+ *  gecacht, alle Karten-Komponenten teilen sich einen Fetch. */
 export function loadWasserquellen(): Promise<Wasserquelle[]> {
-  cache ??= fetch("/wasserkarte/quellen.json")
-    .then((res) => (res.ok ? (res.json() as Promise<Wasserquelle[]>) : []))
+  cache ??= apiCall<WasserquellenResponse>("/api/wasserquellen")
+    .then((res) => res.items)
     .catch(() => []);
   return cache;
 }
 
-export function wasserquelleIconUrl(icon: string): string {
-  return `/wasserkarte/icons/${icon}`;
+/** Absolute URL des offiziellen wasserkarte.info-Icons (oeffentlich, kein
+ *  Auth-Header noetig -- wird direkt in einem Leaflet-L.icon/<img> genutzt). */
+export function wasserquelleIconUrl(id: string): string {
+  return resolveApiUrl(`/api/wasserquellen/icons/${id}`);
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Gemeinsamer Popup-Inhalt fuer Leaflet-Marker (MapCard + FlorianMap). */
+export function wasserquellePopupHtml(q: {
+  name: string;
+  typLabel?: string;
+  anschluss?: string;
+}): string {
+  const lines = [
+    `<strong>${escapeHtml(q.name)}</strong>`,
+    q.typLabel ? escapeHtml(q.typLabel) : "",
+    q.anschluss ? `Anschlüsse: ${escapeHtml(q.anschluss)}` : "",
+    '<span style="font-size:11px;color:#64748b;">Quelle: wasserkarte.info (Stand Import)</span>',
+  ].filter(Boolean);
+  return lines.join("<br/>");
 }

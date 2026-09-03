@@ -1,4 +1,4 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, Download, Trash2, Info } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, Download, Trash2, Info, Droplets, Upload } from "lucide-react";
 import { AboutPanel } from "../components/AboutPanel";
 import {
   listDevices,
@@ -8,7 +8,7 @@ import {
   type DeviceListItem,
   type AppVersionConfig,
 } from "../api/devices";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiCall, clearToken, fetchAndOpenBlob } from "../api/client";
 import {
   getConfig,
@@ -21,6 +21,7 @@ import {
   type StringListData,
 } from "../api/config";
 import { listEinsaetze, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
+import { getWasserquellen, importWasserquellenKml, type WasserquellenImportResponse } from "../api/wasserquellen";
 import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
@@ -199,6 +200,7 @@ type Tab =
   | "nummerierung"
   | "personal"
   | "geraete"
+  | "wasserquellen"
   | "auftragstypen"
   | "beteiligte-stellen"
   | "sonstige-ff"
@@ -264,6 +266,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
       tabs: [
         { key: "personal", label: "Personal", icon: <Users size={15} /> },
         { key: "geraete", label: "Geräte", icon: <Wrench size={15} /> },
+        { key: "wasserquellen", label: "Löschwasser", icon: <Droplets size={15} /> },
         { key: "nummerierung", label: "Nummerierung", icon: <Hash size={15} /> },
         { key: "stammdaten", label: "Stammdaten", icon: <Settings size={15} /> },
       ],
@@ -413,6 +416,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "nummerierung" && <NummerierungPanel />}
         {tab === "personal" && <PersonalPanel />}
         {tab === "geraete" && <GeraetePanel onDirtyChange={setPanelDirty} />}
+        {tab === "wasserquellen" && <WasserquellenPanel />}
         {tab === "auftragstypen" && <AuftragstypenPanel onDirtyChange={setPanelDirty} />}
         {tab === "beteiligte-stellen" && (
           <StringListPanel
@@ -1778,6 +1782,185 @@ function NumExample({ label, prefix, yy, numbers, tone }: { label: string; prefi
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Löschwasser-Entnahmestellen (2026-07): wasserkarte.info bietet keine
+ * Live-API fuer Fremdsysteme (siehe apps/api/src/services/wasserkarte-
+ * import.ts) — der Funktionaer exportiert manuell eine KML und laedt sie
+ * hier hoch. Der Import ERSETZT den kompletten Datenbestand (nicht mehr
+ * enthaltene Stellen werden geloescht) — genau wie vom User gewuenscht,
+ * damit er in ein paar Monaten einfach die frische KML nachziehen kann.
+ */
+function WasserquellenPanel() {
+  interface Status {
+    count: number;
+    importedAm: string | null;
+    byType: Array<[string, number]>;
+  }
+  const [status, setStatus] = useState<Status | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [result, setResult] = useState<WasserquellenImportResponse | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const r = await getWasserquellen();
+      const byTypeMap = new Map<string, number>();
+      for (const q of r.items) {
+        byTypeMap.set(q.typLabel, (byTypeMap.get(q.typLabel) ?? 0) + 1);
+      }
+      const byType = [...byTypeMap.entries()].sort((a, b) => b[1] - a[1]);
+      setStatus({ count: r.count, importedAm: r.importedAm, byType });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function onImport(): Promise<void> {
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    if (
+      status &&
+      status.count > 0 &&
+      !window.confirm(
+        `Bestehende ${status.count} Wasserquellen werden ersetzt — nicht mehr in der Datei enthaltene Stellen werden gelöscht. Fortfahren?`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const text = await file.text();
+      const res = await importWasserquellenKml(text, file.name);
+      setResult(res);
+      if (fileRef.current) fileRef.current.value = "";
+      setFileName(null);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <Droplets size={20} />
+          Löschwasser-Entnahmestellen (wasserkarte.info)
+        </div>
+        <span className="card-meta">
+          <span className="num">{status?.count ?? 0}</span> Stellen
+        </span>
+      </div>
+      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
+        wasserkarte.info bietet keine Live-Schnittstelle für Fremdsysteme wie
+        HotDoc — dieser Datenbestand ist ein <strong>Stand</strong>, kein
+        Live-Abgleich. Bei Änderungen an den Entnahmestellen: bei
+        wasserkarte.info eine aktuelle KML exportieren und hier hochladen.
+        Der Import <strong>ersetzt den kompletten Datenbestand</strong> —
+        nicht mehr enthaltene Stellen werden entfernt.
+      </p>
+      {err ? <ErrorBanner msg={err} /> : null}
+      {result ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            border: "1px solid var(--border)",
+            borderRadius: 14,
+            background: "var(--ok-tint)",
+          }}
+        >
+          <p style={{ fontSize: 14, margin: 0, color: "var(--ok)" }}>
+            Import abgeschlossen: {result.anzahl} Stellen
+            {result.entfernt > 0 ? `, ${result.entfernt} entfernt` : ""}
+            {result.iconsFehlend > 0
+              ? `, ${result.iconsFehlend} ohne Icon (Fallback-Symbol)`
+              : ""}
+            .
+          </p>
+        </div>
+      ) : null}
+      {status ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            border: "1px solid var(--border)",
+            borderRadius: 14,
+            background: "var(--surface-2)",
+          }}
+        >
+          {status.count === 0 ? (
+            <p style={{ fontSize: 14, color: "var(--fg-3)", margin: 0 }}>
+              Noch keine Daten importiert.
+            </p>
+          ) : (
+            <>
+              <p style={{ fontSize: 14, margin: "0 0 8px 0" }}>
+                Zuletzt importiert:{" "}
+                <strong>
+                  {status.importedAm
+                    ? new Date(status.importedAm).toLocaleString("de-AT")
+                    : "—"}
+                </strong>
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {status.byType.map(([typ, n]) => (
+                  <span
+                    key={typ}
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12,
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {n}× {typ}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <p style={{ color: "var(--fg-3)", fontSize: 13 }}>lade …</p>
+      )}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".kml,application/vnd.google-earth.kml+xml"
+          onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+          style={{ fontSize: 13 }}
+        />
+        <button
+          type="button"
+          className="cta"
+          onClick={() => void onImport()}
+          disabled={busy || !fileName}
+          style={{ width: "auto", padding: "8px 14px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 8 }}
+        >
+          <Upload size={15} />
+          {busy ? "Importiert … (kann 30 s dauern)" : "KML importieren"}
+        </button>
+      </div>
+    </section>
   );
 }
 

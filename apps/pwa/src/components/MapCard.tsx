@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MAP_TILES, haversineKm, type MapTileChoice } from "@hotdoc/shared";
+import { wasserquellePopupHtml } from "../lib/wasserquellen";
 
 // Issue 25 (Einsatz-Test 2026-06-02): Geteilter localStorage-Key zwischen
 // FlorianMap und MapCard, damit der Funktionaer einmal auswaehlt und auf
@@ -343,13 +344,13 @@ export function MapCard({
         : `Löschwasser ${h.typ === "H" ? "Hydrant" : h.typ === "S" ? "Saugstelle" : "Tieflöschwasser"}`;
       const marker = L.marker([h.lat, h.lng], { icon: hydrantIcon(h), title }).addTo(layer);
       if (h.name) {
-        const lines = [
-          `<strong>${escapeHtml(h.name)}</strong>`,
-          h.typLabel ? escapeHtml(h.typLabel) : "",
-          h.anschluss ? `Anschlüsse: ${escapeHtml(h.anschluss)}` : "",
-          '<span style="font-size:11px;color:#64748b;">Quelle: wasserkarte.info (Stand Export)</span>',
-        ].filter(Boolean);
-        marker.bindPopup(lines.join("<br/>"));
+        marker.bindPopup(
+          wasserquellePopupHtml({
+            name: h.name,
+            ...(h.typLabel ? { typLabel: h.typLabel } : {}),
+            ...(h.anschluss ? { anschluss: h.anschluss } : {}),
+          }),
+        );
       }
     }
   }, [hydranten, waterOn]);
@@ -868,15 +869,6 @@ function hydrantIcon(h: Hydrant): L.Icon | L.DivIcon {
     iconSize: [18, 18],
     iconAnchor: [9, 9],
   });
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 // OPT-1 (Audit 2026-06-03): lokale haversineKm-Kopie entfernt, jetzt aus

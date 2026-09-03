@@ -2,6 +2,7 @@ import L, { type LatLngBoundsExpression, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   Crosshair,
+  Droplets,
   ExternalLink,
   Layers,
   Maximize,
@@ -12,6 +13,12 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { FLORIAN_POSITION, MAP_TILES, type MapTileChoice } from "@hotdoc/shared";
+import {
+  loadWasserquellen,
+  wasserquelleIconUrl,
+  wasserquellePopupHtml,
+  type Wasserquelle,
+} from "../lib/wasserquellen";
 
 // Issue 25 (Einsatz-Test 2026-06-02): localStorage-Key fuer die User-
 // Auswahl des Layers. Wird beim Mount geladen + bei Klick gesetzt.
@@ -172,6 +179,21 @@ export function FlorianMap({
   // neu gesetzt werden.
   const weitereMarkerRef = useRef<L.Marker[]>([]);
   const weitere = weitereEinsatzorte ?? [];
+  // Loeschwasser-Layer (2026-07): wasserkarte.info-Import, siehe
+  // lib/wasserquellen.ts. Default AUS -- die Lagekarte wurde gerade erst
+  // entruempelt (Z-01..Z-03), 346 zusaetzliche Marker sollen Opt-in bleiben.
+  const wasserLayerRef = useRef<L.LayerGroup | null>(null);
+  const [wasserquellen, setWasserquellen] = useState<Wasserquelle[]>([]);
+  const [waterOn, setWaterOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    loadWasserquellen().then((liste) => {
+      if (!cancelled) setWasserquellen(liste);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const weitereKey = weitere
     .map((w) => `${w.lat.toFixed(5)},${w.lng.toFixed(5)},${w.label ?? ""}`)
     .join(";");
@@ -208,6 +230,10 @@ export function FlorianMap({
     // Issue 25 (Einsatz-Test 2026-06-02): basemap.at-Tiles statt OSM.
     // Bessere Aufloesung in Oesterreich + Foto/Hybrid-Layer verfuegbar.
     applyTileLayer(map, tileChoice, tileLayersRef.current);
+
+    // Loeschwasser-Layer (2026-07): eigene LayerGroup, damit sie unabhaengig
+    // von Fahrzeug-/Einsatzort-Markern ein-/ausgeblendet werden kann.
+    wasserLayerRef.current = L.layerGroup().addTo(map);
 
     // Auto-Follow pausieren wenn der User selbst pannt/zoomt — das
     // anschliessende auto-fit-bounds koennte sonst ungewollt zurueckspringen.
@@ -264,6 +290,7 @@ export function FlorianMap({
       map.remove();
       mapRef.current = null;
       tileLayersRef.current = { base: null, overlay: null };
+      wasserLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -348,6 +375,22 @@ export function FlorianMap({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weitereKey]);
+
+  // Loeschwasser-Layer (2026-07): komplett neu aufbauen bei Toggle oder
+  // Datenwechsel — 346 statische Punkte, kein Live-Update noetig.
+  useEffect(() => {
+    const layer = wasserLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!waterOn) return;
+    for (const q of wasserquellen) {
+      const marker = L.marker([q.lat, q.lng], {
+        icon: wasserquelleIcon(q.id),
+        title: `${q.typLabel} · ${q.name}`,
+      }).addTo(layer);
+      marker.bindPopup(wasserquellePopupHtml(q));
+    }
+  }, [wasserquellen, waterOn]);
 
   const [tickNow, setTickNow] = useState(() => Date.now());
   useEffect(() => {
@@ -542,6 +585,7 @@ export function FlorianMap({
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch Karte/Foto/Hybrid */}
             <TileLayerSwitch choice={tileChoice} onChange={handleTileChange} />
+            <WaterToggleButton active={waterOn} onToggle={() => setWaterOn((v) => !v)} />
             <ZoomButtons
               onGesamt={zoomGesamt}
               onLagebild={zoomLagebild}
@@ -591,6 +635,7 @@ export function FlorianMap({
             {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch oberhalb der
                 Zoom-Buttons — User-Wahl wird via localStorage gemerkt. */}
             <TileLayerSwitch choice={tileChoice} onChange={handleTileChange} />
+            <WaterToggleButton active={waterOn} onToggle={() => setWaterOn((v) => !v)} />
             <ZoomButtons
               onGesamt={zoomGesamt}
               onLagebild={zoomLagebild}
@@ -870,6 +915,36 @@ function TileLayerSwitch({
  * Drei-Tasten-Gruppe für die Zoom-Modi: Lagebild (Detail), Gesamt
  * (alles im Frame), Recenter (zurück auf Standard).
  */
+/**
+ * Loeschwasser-Layer-Toggle (2026-07) — gleiche Optik wie der aktive
+ * Zustand von TileLayerSwitch (info-Tint), Default AUS (siehe Ref oben).
+ */
+function WaterToggleButton({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      onClick={onToggle}
+      aria-pressed={active}
+      aria-label="Löschwasser-Entnahmestellen ein-/ausblenden"
+      title="Löschwasser (wasserkarte.info)"
+      style={
+        active
+          ? { color: "var(--info)", background: "var(--info-tint)" }
+          : undefined
+      }
+    >
+      <Droplets size={14} />
+    </button>
+  );
+}
+
 function ZoomButtons({
   onGesamt,
   onLagebild,
@@ -992,6 +1067,21 @@ function weitererEinsatzIcon(): L.DivIcon {
       </svg>`,
     iconSize: [26, 34],
     iconAnchor: [13, 32],
+  });
+}
+
+/**
+ * Loeschwasser-Marker: das offizielle wasserkarte.info-Icon (Original-
+ * Seitenverhaeltnis 40:74, hier verkleinert damit 346 Marker die Lagekarte
+ * nicht zupflastern) — traegt Zufluss (l/min) + Nennweite bereits als
+ * Pixel-Grafik im Symbol.
+ */
+function wasserquelleIcon(id: string): L.Icon {
+  return L.icon({
+    iconUrl: wasserquelleIconUrl(id),
+    iconSize: [22, 40],
+    iconAnchor: [11, 40],
+    popupAnchor: [0, -38],
   });
 }
 

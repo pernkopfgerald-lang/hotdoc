@@ -24,6 +24,9 @@ import { fotosRouter } from "./routes/fotos.js";
 import { pdfRouter } from "./routes/pdf.js";
 import { positionsRouter } from "./routes/positions.js";
 import { routingRouter } from "./routes/routing.js";
+// Loeschwasser-Layer (2026-07): wasserkarte.info-KML-Import, siehe
+// services/wasserkarte-import.ts fuer den Hintergrund (keine Live-API).
+import { wasserquellenRouter } from "./routes/wasserquellen.js";
 import { bootstrapInitialAdminIfMissing } from "./services/auth/bootstrap.js";
 import { shutdownPdfGenerator } from "./services/pdf/generator.js";
 import { stopEviction } from "./services/positions-state.js";
@@ -126,6 +129,7 @@ async function main(): Promise<void> {
   app.use(einsaetzeRouter);
   // Issue 17 (Einsatz-Test 2026-06-02): Objekt-Datenbank-Routes.
   app.use(objekteRouter);
+  app.use(wasserquellenRouter);
   // Foto-Funktion (2026-06-03): Einsatz-Foto-Upload/-Liste.
   app.use(fotosRouter);
   app.use(pdfRouter);

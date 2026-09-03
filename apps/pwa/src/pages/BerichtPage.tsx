@@ -323,7 +323,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           name: q.name,
           typLabel: q.typLabel,
           anschluss: q.anschluss,
-          iconUrl: wasserquelleIconUrl(q.icon),
+          iconUrl: wasserquelleIconUrl(q.id),
         })),
       );
     });

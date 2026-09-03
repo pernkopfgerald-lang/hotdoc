@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.26",
-  "apkUrl": "/hotdoc-v0.1.26-release.apk",
-  "releaseNotes": "v0.1.26 — Löschwasser-Layer (wasserkarte.info)\n\n• Neue Kartenebene am Fahrzeug-Tablet: alle 346 Löschwasser-Entnahmestellen der FF Eberstalzell (Hydranten, Behälter, Teiche, Saugstellen) als Button 'Löschwasser' auf der Anfahrtskarte ein-/ausblendbar.\n• Original wasserkarte.info-Symbole inkl. Zufluss (l/min) und Nennweite direkt auf dem Icon, Popup mit Name und Anschlüssen (z. B. '2xC 1xB').\n• Stand: einmaliger Export — wasserkarte.info bietet keine Live-Schnittstelle für Fremdsysteme; bei Änderungen an den Entnahmestellen wird die Liste erneut importiert.\n\n— Enthält das große Intensiv-Audit (v0.1.25), Zwei-Geräte-Warnung (v0.1.24), parallele Einsatzorte (v0.1.23) und alle Neuerungen aus v0.1.10–v0.1.22.",
-  "publishedAt": "2026-07-03T09:00:00+00:00",
+  "currentVersion": "0.1.27",
+  "apkUrl": "/hotdoc-v0.1.27-release.apk",
+  "releaseNotes": "v0.1.27 — Löschwasser-Layer jetzt auch in Florian-Zentrale + im Backoffice pflegbar\n\n• Löschwasser-Button jetzt auch auf der Lagekarte in Florian Eberstalzell (bisher nur am Fahrzeug-Tablet) — Original wasserkarte.info-Symbole inkl. Zufluss (l/min) und Nennweite direkt auf dem Icon.\n• Neu im Backoffice unter Verwaltung → Stammdaten → Löschwasser: KML-Datei von wasserkarte.info hochladen ersetzt den kompletten Datenbestand selbstständig — keine erneute Entwickler-Anfrage mehr nötig, wenn sich Entnahmestellen ändern.\n• Datenstand wird jetzt zentral in der Datenbank verwaltet statt in der App-Version eingebacken.\n• Anzeige-Datum im Fußzeilen-Stand korrigiert (war seit v0.1.13 eingefroren).\n\n— Enthält das große Intensiv-Audit (v0.1.25), Zwei-Geräte-Warnung (v0.1.24), parallele Einsatzorte (v0.1.23) und alle Neuerungen aus v0.1.10–v0.1.22.",
+  "publishedAt": "2026-07-03T11:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

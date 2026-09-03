@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.27",
+    date: "2026-07-03",
+    title: "Löschwasser-Layer in Florian-Zentrale + Backoffice-Pflege",
+    bullets: [
+      "Löschwasser-Button jetzt auch auf der Lagekarte in Florian Eberstalzell (bisher nur am Fahrzeug-Tablet), standardmäßig ausgeblendet — Antippen zeigt alle Entnahmestellen mit Original-Symbol, Zufluss (l/min) und Nennweite direkt auf dem Icon.",
+      "Neu im Backoffice unter Verwaltung → Stammdaten → Löschwasser: eine frisch bei wasserkarte.info exportierte KML-Datei hochladen ersetzt den kompletten Datenbestand — der Funktionär kann Änderungen an den Entnahmestellen jetzt selbstständig nachziehen, ohne eine Code-Änderung anzustoßen.",
+      "Datenstand liegt jetzt zentral in der Datenbank statt in der App-Version eingebacken — Icons und Koordinaten werden serverseitig aus der KML gezogen, inklusive Löschen nicht mehr vorhandener Stellen.",
+    ],
+  },
+  {
     version: "0.1.26",
     date: "2026-07-03",
     title: "Löschwasser-Layer (wasserkarte.info)",
