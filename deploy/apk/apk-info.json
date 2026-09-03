@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.25",
-  "apkUrl": "/hotdoc-v0.1.25-release.apk",
-  "releaseNotes": "v0.1.25 — Intensiv-Audit: klare Logik, aufgeräumte Oberfläche, harte Robustheit\n\n• 1-Stunden-Regel: Ein Alarm-Einsatz ohne jede Eingabe schließt sich nach 1 Stunde automatisch — ohne Berichtsnummer zu verbrauchen. Jede echte Eingabe stoppt die Regel.\n• Klare Trennung Einsatz/Übung: eigener U-Nummernkreis für Übungen, nie verrechenbar, kein Brand-Wizard, eigene Statistik-Zählung.\n• Florian-Zentrale: Lagebild (Fahrzeuge, Karte, Chronik) jetzt ganz oben, letzte Meldung im Kopf, Abschluss-Papierkram zusammengeklappt.\n• Eindeutige Farben je Typ in Tabs und Fahrzeug-Ansicht: Einsatz rot, Übung grün, Lotsendienst bernstein, manuell blau.\n• Ehrliches Speichern, entschärfter Abschluss-Dialog, 44-Pixel-Touchziele, 'AS aus' statt zweitem Minus.\n• Robustheit: Doppel-Abschluss, hängende Anfragen und Datenverlust beim Auto-Schließen behoben.\n\n— Enthält Zwei-Geräte-Warnung (v0.1.24), parallele Einsatzorte (v0.1.23) und alle Neuerungen aus v0.1.10–v0.1.22.",
-  "publishedAt": "2026-07-03T06:00:00+00:00",
+  "currentVersion": "0.1.26",
+  "apkUrl": "/hotdoc-v0.1.26-release.apk",
+  "releaseNotes": "v0.1.26 — Löschwasser-Layer (wasserkarte.info)\n\n• Neue Kartenebene am Fahrzeug-Tablet: alle 346 Löschwasser-Entnahmestellen der FF Eberstalzell (Hydranten, Behälter, Teiche, Saugstellen) als Button 'Löschwasser' auf der Anfahrtskarte ein-/ausblendbar.\n• Original wasserkarte.info-Symbole inkl. Zufluss (l/min) und Nennweite direkt auf dem Icon, Popup mit Name und Anschlüssen (z. B. '2xC 1xB').\n• Stand: einmaliger Export — wasserkarte.info bietet keine Live-Schnittstelle für Fremdsysteme; bei Änderungen an den Entnahmestellen wird die Liste erneut importiert.\n\n— Enthält das große Intensiv-Audit (v0.1.25), Zwei-Geräte-Warnung (v0.1.24), parallele Einsatzorte (v0.1.23) und alle Neuerungen aus v0.1.10–v0.1.22.",
+  "publishedAt": "2026-07-03T09:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.26",
+    date: "2026-07-03",
+    title: "Löschwasser-Layer (wasserkarte.info)",
+    bullets: [
+      "Neue Kartenebene auf der Anfahrtskarte am Fahrzeug-Tablet: Button 'Löschwasser' blendet alle 346 Entnahmestellen der FF Eberstalzell ein — Hydranten, Löschwasserbehälter, Teiche und Saugstellen, jeweils mit dem Original-Symbol von wasserkarte.info inklusive Zufluss (l/min) und Nennweite direkt auf dem Icon.",
+      "Antippen zeigt Name, Typ und Anschlüsse (z. B. '2xC 1xB'). Die Kennzahl 'Hydranten 250 m' auf der Karte zählt jetzt echte Entnahmestellen statt immer 0.",
+      "Datenstand ist ein einmaliger Export — wasserkarte.info bietet aktuell keine Live-Schnittstelle für Fremdsysteme wie HotDoc. Bei Änderungen an den Entnahmestellen wird die Liste erneut importiert.",
+    ],
+  },
+  {
     version: "0.1.25",
     date: "2026-07-03",
     title: "Intensiv-Audit: klare Logik, aufgeräumte Oberfläche, harte Robustheit",

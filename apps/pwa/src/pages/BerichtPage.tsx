@@ -24,7 +24,7 @@ import {
   emptySlot,
   type MannschaftSlotData,
 } from "../components/MannschaftSlot";
-import { MapCard, type MapPosition, type RouteData } from "../components/MapCard";
+import { MapCard, type Hydrant, type MapPosition, type RouteData } from "../components/MapCard";
 import { NeuerEinsatzTabletModal, PLATZHALTER_ORT_REGEX, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { PersonButton } from "../components/PersonButton";
@@ -55,6 +55,7 @@ import {
   saveReportState,
 } from "../lib/report-state";
 import { describeFailure, transcribeAudio } from "../lib/transcribe";
+import { loadWasserquellen, wasserquelleIconUrl } from "../lib/wasserquellen";
 import { FAHRZEUGE, FLORIAN_POSITION, type FahrzeugId } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
@@ -305,6 +306,31 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   // Live-Fleet aus /api/positions — wird unten alle 3 s gepollt. Eigener Eintrag
   // wird per Ping hochgeladen, Florianstation und alle Tablets teilen die Sicht.
   const [fleet, setFleet] = useState<MapPosition[]>([]);
+  // Loeschwasser-Entnahmestellen (wasserkarte.info-Import, statisch — siehe
+  // lib/wasserquellen.ts). Einmaliger Boot-Fetch, kein Poll: die Stellen
+  // aendern sich nicht waehrend eines Einsatzes.
+  const [wasserquellen, setWasserquellen] = useState<Hydrant[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    loadWasserquellen().then((liste) => {
+      if (cancelled) return;
+      setWasserquellen(
+        liste.map((q) => ({
+          id: q.id,
+          typ: q.typ,
+          lat: q.lat,
+          lng: q.lng,
+          name: q.name,
+          typLabel: q.typLabel,
+          anschluss: q.anschluss,
+          iconUrl: wasserquelleIconUrl(q.icon),
+        })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const active = einsaetze.find((e) => e.id === activeId) ?? null;
 
@@ -2965,8 +2991,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               einsatzPos={active.einsatzPos}
               einsatzAdresse={active.alarm.einsatzort}
               fleet={fleet}
-              hydranten={[]}
-              showLoeschwasser={false}
+              hydranten={wasserquellen}
+              showLoeschwasser={wasserquellen.length > 0}
               {...(route ? { route } : {})}
             />
 

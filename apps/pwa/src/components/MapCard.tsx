@@ -94,6 +94,16 @@ export interface Hydrant {
   typ: "H" | "S" | "T";
   lat: number;
   lng: number;
+  /**
+   * wasserkarte.info-Anreicherung (optional, siehe lib/wasserquellen.ts).
+   * Wenn iconUrl vorhanden, wird das echte wasserkarte.info-Symbol gerendert
+   * (inkl. gerenderter Kennzahlen Zufluss l/min + Nennweite als Pixel-Grafik)
+   * statt der generischen H/S/T-Badge.
+   */
+  name?: string;
+  typLabel?: string;
+  anschluss?: string;
+  iconUrl?: string;
 }
 
 export interface RouteData {
@@ -328,10 +338,19 @@ export function MapCard({
     layer.clearLayers();
     if (!waterOn) return;
     for (const h of hydranten) {
-      L.marker([h.lat, h.lng], {
-        icon: hydrantIcon(h.typ),
-        title: `Löschwasser ${h.typ === "H" ? "Hydrant" : h.typ === "S" ? "Saugstelle" : "Tieflöschwasser"}`,
-      }).addTo(layer);
+      const title = h.name
+        ? `${h.typLabel ?? "Löschwasser"} · ${h.name}`
+        : `Löschwasser ${h.typ === "H" ? "Hydrant" : h.typ === "S" ? "Saugstelle" : "Tieflöschwasser"}`;
+      const marker = L.marker([h.lat, h.lng], { icon: hydrantIcon(h), title }).addTo(layer);
+      if (h.name) {
+        const lines = [
+          `<strong>${escapeHtml(h.name)}</strong>`,
+          h.typLabel ? escapeHtml(h.typLabel) : "",
+          h.anschluss ? `Anschlüsse: ${escapeHtml(h.anschluss)}` : "",
+          '<span style="font-size:11px;color:#64748b;">Quelle: wasserkarte.info (Stand Export)</span>',
+        ].filter(Boolean);
+        marker.bindPopup(lines.join("<br/>"));
+      }
     }
   }, [hydranten, waterOn]);
 
@@ -827,13 +846,37 @@ function fzgIcon(f: MapPosition, staleMin: number | null): L.DivIcon {
   });
 }
 
-function hydrantIcon(typ: "H" | "S" | "T"): L.DivIcon {
+/**
+ * Wenn eine echte wasserkarte.info-Iconquelle vorhanden ist, wird das
+ * offizielle Symbol gerendert (Original-Seitenverhaeltnis 40:74, hier
+ * verkleinert damit 346 Marker die Karte nicht zupflastern). Ohne Icon
+ * (z. B. manuell nachgetragene Quelle ohne wasserkarte.info-Import):
+ * Fallback auf die generische H/S/T-Kreis-Badge.
+ */
+function hydrantIcon(h: Hydrant): L.Icon | L.DivIcon {
+  if (h.iconUrl) {
+    return L.icon({
+      iconUrl: h.iconUrl,
+      iconSize: [24, 44],
+      iconAnchor: [12, 44],
+      popupAnchor: [0, -42],
+    });
+  }
   return L.divIcon({
     className: "hydrant-marker",
-    html: `<div class="hydrant-pin">${typ}</div>`,
+    html: `<div class="hydrant-pin">${h.typ}</div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
   });
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // OPT-1 (Audit 2026-06-03): lokale haversineKm-Kopie entfernt, jetzt aus
