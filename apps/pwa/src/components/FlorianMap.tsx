@@ -16,7 +16,6 @@ import { FLORIAN_POSITION, MAP_TILES, type MapTileChoice } from "@hotdoc/shared"
 import {
   loadWasserquellen,
   wasserquelleIconUrl,
-  wasserquellePopupHtml,
   type Wasserquelle,
 } from "../lib/wasserquellen";
 
@@ -184,6 +183,10 @@ export function FlorianMap({
   const wasserLayerRef = useRef<L.LayerGroup | null>(null);
   const [wasserquellen, setWasserquellen] = useState<Wasserquelle[]>([]);
   const [waterOn, setWaterOn] = useState(true);
+  // Detail-Panel fuer Wasserquellen (2026-07, User-Wunsch): gleiches Muster
+  // wie die Fahrzeug-Auswahl (rechts oben) — mit Fahrzeug-Auswahl exklusiv,
+  // damit sich die beiden Panels nicht ueberlappen.
+  const [selectedWasserquelleId, setSelectedWasserquelleId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     loadWasserquellen().then((liste) => {
@@ -387,8 +390,12 @@ export function FlorianMap({
         icon: wasserquelleIcon(q.id),
         title: `${q.typLabel} · ${q.name}`,
       }).addTo(layer);
-      marker.bindPopup(wasserquellePopupHtml(q));
+      marker.on("click", () => {
+        setSelectedId(null);
+        setSelectedWasserquelleId(q.id);
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wasserquellen, waterOn]);
 
   const [tickNow, setTickNow] = useState(() => Date.now());
@@ -416,6 +423,7 @@ export function FlorianMap({
         m.on("click", () => {
           const next = selectedId === f.fahrzeugId ? null : f.fahrzeugId;
           setSelectedId(next);
+          setSelectedWasserquelleId(null);
           if (next) map.flyTo(pos, Math.max(map.getZoom(), 16), { duration: 0.5 });
         });
         markersRef.current.set(f.fahrzeugId, m);
@@ -443,7 +451,10 @@ export function FlorianMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const onMapClick = (): void => setSelectedId(null);
+    const onMapClick = (): void => {
+      setSelectedId(null);
+      setSelectedWasserquelleId(null);
+    };
     map.on("click", onMapClick);
     return () => {
       map.off("click", onMapClick);
@@ -453,6 +464,9 @@ export function FlorianMap({
 
   const selectedFzg = selectedId
     ? fahrzeuge.find((f) => f.fahrzeugId === selectedId) ?? null
+    : null;
+  const selectedWasserquelle = selectedWasserquelleId
+    ? wasserquellen.find((q) => q.id === selectedWasserquelleId) ?? null
     : null;
   const selectedMannschaft = selectedId
     ? mannschaftByFahrzeug?.[selectedId] ?? null
@@ -829,6 +843,93 @@ export function FlorianMap({
                 ) : null}
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {/* Loeschwasser-Detail-Panel (2026-07, User-Wunsch): gleiche Optik +
+            Position wie das Fahrzeug-Panel oben — Anschluesse statt Status,
+            Koordinaten fuer die Vor-Ort-Suche. Exklusiv zum Fahrzeug-Panel. */}
+        {!selectedFzg && selectedWasserquelle ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 410,
+              minWidth: 250,
+              maxWidth: 320,
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: "color-mix(in srgb, var(--surface) 94%, transparent)",
+              border: "1px solid var(--border-strong)",
+              backdropFilter: "blur(10px) saturate(150%)",
+              WebkitBackdropFilter: "blur(10px) saturate(150%)",
+              boxShadow: "0 12px 28px -8px rgba(15,23,42,0.32)",
+              animation: "glass-reveal 180ms var(--ease-decel) both",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginTop: 44,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <strong style={{ fontSize: 17.5 }}>{selectedWasserquelle.name}</strong>
+              <button
+                type="button"
+                onClick={() => setSelectedWasserquelleId(null)}
+                aria-label="Schließen"
+                style={{
+                  appearance: "none",
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                  color: "var(--fg-3)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 17.5,
+                  fontWeight: 700,
+                  minHeight: 0,
+                  padding: "2px 6px",
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
+              {selectedWasserquelle.typLabel}
+            </span>
+            <div
+              style={{
+                fontSize: 14,
+                color: "var(--fg-3)",
+                fontFamily: "var(--font-mono)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              <span>
+                Anschlüsse:{" "}
+                <strong style={{ color: "var(--fg-2)" }}>
+                  {selectedWasserquelle.anschluss || "—"}
+                </strong>
+              </span>
+              <span>
+                Position:{" "}
+                <strong style={{ color: "var(--fg-2)" }}>
+                  {selectedWasserquelle.lat.toFixed(5)}, {selectedWasserquelle.lng.toFixed(5)}
+                </strong>
+              </span>
+            </div>
           </div>
         ) : null}
 

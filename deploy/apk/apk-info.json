@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.28",
-  "apkUrl": "/hotdoc-v0.1.28-release.apk",
-  "releaseNotes": "v0.1.28 — Löschwasser-Symbole größer + standardmäßig an\n\n• Löschwasser-Entnahmestellen werden jetzt standardmäßig angezeigt (Fahrzeug-Tablet UND Florian-Zentrale), nicht mehr erst nach Antippen des Buttons.\n• Symbole 30% größer — Zufluss (l/min) und Nennweite auf dem Icon sind dadurch besser lesbar.\n\n— Enthält den Löschwasser-Layer (v0.1.27), das große Intensiv-Audit (v0.1.25) und alle Neuerungen aus v0.1.10–v0.1.26.",
-  "publishedAt": "2026-07-03T13:00:00+00:00",
+  "currentVersion": "0.1.29",
+  "apkUrl": "/hotdoc-v0.1.29-release.apk",
+  "releaseNotes": "v0.1.29 — Löschwasser: Info-Panel + größere, standardmäßig sichtbare Symbole\n\n• Löschwasser-Entnahmestellen werden jetzt standardmäßig angezeigt (Fahrzeug-Tablet UND Florian-Zentrale), Symbole 30% größer.\n• Antippen einer Entnahmestelle in der Florian-Zentrale öffnet ein Info-Panel rechts oben — wie beim Fahrzeug-Klick, nur mit Anschlüssen statt Status. Koordinaten stehen ebenfalls drin, praktisch zum genauen Auffinden vor Ort.\n\n— Enthält den Löschwasser-Layer (v0.1.27), das große Intensiv-Audit (v0.1.25) und alle Neuerungen aus v0.1.10–v0.1.26.",
+  "publishedAt": "2026-07-03T14:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

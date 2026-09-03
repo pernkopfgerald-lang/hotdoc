@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.29",
+    date: "2026-07-03",
+    title: "Löschwasser: Info-Panel + größere, standardmäßig sichtbare Symbole",
+    bullets: [
+      "Löschwasser-Entnahmestellen werden jetzt standardmäßig angezeigt — am Fahrzeug-Tablet UND in der Florian-Zentrale — statt erst nach Antippen des Buttons. Symbole 30% größer.",
+      "Antippen einer Entnahmestelle in der Florian-Zentrale öffnet ein Info-Panel rechts oben — wie beim Fahrzeug-Klick, nur mit Anschlüssen statt Status. Koordinaten stehen ebenfalls drin, praktisch zum genauen Auffinden vor Ort.",
+    ],
+  },
+  {
     version: "0.1.28",
     date: "2026-07-03",
     title: "Löschwasser-Symbole größer + standardmäßig an",
