@@ -3133,12 +3133,13 @@ function DevicesPanel() {
   }, [refreshTick]);
 
   async function handleDelete(d: DeviceListItem): Promise<void> {
-    if (!confirm(`Eintrag wirklich loeschen?\n${d.model} (${d.fahrzeugId})`)) return;
+    // E-16 (Audit R3): sichtbare Texte mit echten Umlauten.
+    if (!confirm(`Eintrag wirklich löschen?\n${d.model} (${d.fahrzeugId})`)) return;
     try {
       await deleteDevice(d._id);
       setRefreshTick((t) => t + 1);
     } catch (e) {
-      alert("Loeschen fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)));
+      alert("Löschen fehlgeschlagen: " + (e instanceof Error ? e.message : String(e)));
     }
   }
 

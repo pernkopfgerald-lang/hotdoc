@@ -1,5 +1,5 @@
 import { STICHWORT_STUFEN, type StichwortStufe } from "@hotdoc/shared";
-import { GraduationCap, MapPin, Play, Plus, Siren } from "lucide-react";
+import { AlertTriangle, GraduationCap, MapPin, Play, Plus, Siren } from "lucide-react";
 
 export interface AlarmDaten {
   alarmId: string;
@@ -7,7 +7,12 @@ export interface AlarmDaten {
   einsatzort: string;
   alarmierungZeit: string;
   alarmierungAuthor: string;
-  koordinaten: { lat: number; lng: number };
+  /**
+   * N-07 (Audit 2026-09): null = (noch) keine Koordinaten bekannt — manuell
+   * ohne Adresse angelegt oder BlaulichtSMS ohne Geocode-Treffer. Vorher
+   * wurde still das Feuerwehrhaus eingesetzt und als Einsatzort synchronisiert.
+   */
+  koordinaten: { lat: number; lng: number } | null;
   distanzKm: number;
   audioSecs?: number;
   /** Klassifizierungs-Stufe — siehe STICHWORT_STUFEN für Tooltips. */
@@ -21,6 +26,17 @@ interface Props {
    *  + "ÜBUNG"-Banner statt rotem "Aktiver Alarm" — auch in der Fahrzeug-
    *  Ansicht muss sofort klar sein, dass es kein echter Einsatz ist. */
   einsatzTyp?: "alarm" | "manuell" | "lotsendienst" | "uebung";
+  /**
+   * N-07 (Audit 2026-09): weder Koordinaten noch eine echte Adresse bekannt
+   * → amber Hinweis mit Handlungsanweisung (Adresse tippen / GPS vor Ort).
+   */
+  einsatzortFehlt?: boolean;
+  /**
+   * S-14 (Audit 2026-09): der BlaulichtSMS-Poller hat diesen Einsatz als
+   * möglichen Doppelalarm markiert (moeglichesDuplikatVon gesetzt) — die
+   * Florianstation prüft und führt ggf. zusammen. Amber Hinweis.
+   */
+  moeglichesDuplikat?: boolean;
 }
 
 /**
@@ -65,10 +81,21 @@ const TYP_OPTIK = {
  * AlarmCard — 1:1 portiert aus claude.ai/design HotDoc Fahrzeugbericht.html.
  * Nutzt die .alarm/.alarm-top/.alarm-icon/.alarm-meta-Klassen aus design.css.
  */
-export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
+export function AlarmCard({
+  alarm,
+  onPlayAudio,
+  einsatzTyp,
+  einsatzortFehlt,
+  moeglichesDuplikat,
+}: Props) {
   const optik =
     einsatzTyp && einsatzTyp !== "alarm" ? TYP_OPTIK[einsatzTyp] : null;
   const TypIcon = optik ? optik.Icon : Siren;
+  // E-05/E-06 (Audit 2026-09): Nur ein echter BlaulichtSMS-Alarm hat einen
+  // Alarm-Author ("BWST"), ein Stichwort (B-1 …) und eine Alarm-Nummer.
+  // Bei Übung/Lotsendienst/manuell waren das leere bzw. irreführende
+  // Zellen ("BWST", "Stichwort —", "#manuell-…").
+  const istAlarm = optik === null;
   return (
     <section
       className="alarm"
@@ -126,10 +153,12 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
                 />
                 {optik ? optik.tag : "Aktiver Alarm"}
               </span>
-              <span className="alarm-tag muted">
-                · {alarm.alarmierungAuthor}
-                {alarm.stichwort ? ` · ${alarm.stichwort}` : ""}
-              </span>
+              {istAlarm ? (
+                <span className="alarm-tag muted">
+                  · {alarm.alarmierungAuthor}
+                  {alarm.stichwort ? ` · ${alarm.stichwort}` : ""}
+                </span>
+              ) : null}
             </div>
             <div className="alarm-title">{alarm.einsatzart}</div>
             <div className="alarm-addr">
@@ -138,8 +167,18 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
             </div>
           </div>
         </div>
-        <div className="alarm-no">#{alarm.alarmId}</div>
+        {istAlarm ? <div className="alarm-no">#{alarm.alarmId}</div> : null}
       </div>
+
+      {/* S-14 + N-07 (Audit 2026-09): amber Hinweise — sichtbar, nicht
+          blockierend. Doppelalarm: Florian prüft/führt zusammen. Kein
+          Einsatzort: der Kdt tippt die Adresse oder nimmt vor Ort GPS. */}
+      {moeglichesDuplikat ? (
+        <AmberHinweis text="Möglicher Doppelalarm — Florian prüft" />
+      ) : null}
+      {einsatzortFehlt ? (
+        <AmberHinweis text="Kein Einsatzort — Adresse tippen oder GPS vor Ort" />
+      ) : null}
 
       {alarm.audioSecs ? (
         <button
@@ -160,25 +199,61 @@ export function AlarmCard({ alarm, onPlayAudio, einsatzTyp }: Props) {
           borderBottom: 0 neutralisiert die Mobile-Zweizeilen-Regel
           (nth-child(-n+2)), die mit nur einer Zeile einen Streu-Border
           zeichnen würde. */}
-      <div className="alarm-meta" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+      {/* E-05 (Audit 2026-09): "Alarmiert" + Stichwort nur beim Alarm —
+          ein manuell angelegter Bericht wurde "angelegt", und ein
+          Stichwort hat er nie. */}
+      <div
+        className="alarm-meta"
+        style={{ gridTemplateColumns: istAlarm ? "repeat(2, 1fr)" : "1fr" }}
+      >
         <div className="cell" style={{ borderBottom: 0 }}>
-          <div className="lbl">Alarmiert</div>
-          <div className="val red">{formatTime(alarm.alarmierungZeit)}</div>
+          <div className="lbl">{istAlarm ? "Alarmiert" : "Angelegt"}</div>
+          <div className={istAlarm ? "val red" : "val"}>
+            {formatTime(alarm.alarmierungZeit)}
+          </div>
         </div>
-        <div
-          className="cell"
-          style={{ borderBottom: 0 }}
-          title={
-            alarm.stichwort
-              ? STICHWORT_STUFEN[alarm.stichwort]
-              : "Klassifizierungs-Stufe (B-1/B-2/B-3 Brand · T-1/T-2/T-3 Technisch)"
-          }
-        >
-          <div className="lbl">Stichwort</div>
-          <div className="val">{alarm.stichwort ?? "—"}</div>
-        </div>
+        {istAlarm ? (
+          <div
+            className="cell"
+            style={{ borderBottom: 0 }}
+            title={
+              alarm.stichwort
+                ? STICHWORT_STUFEN[alarm.stichwort]
+                : "Klassifizierungs-Stufe (B-1/B-2/B-3 Brand · T-1/T-2/T-3 Technisch)"
+            }
+          >
+            <div className="lbl">Stichwort</div>
+            <div className="val">{alarm.stichwort ?? "—"}</div>
+          </div>
+        ) : null}
       </div>
     </section>
+  );
+}
+
+/** Amber Hinweiszeile in der AlarmCard (S-14 Doppelalarm, N-07 Einsatzort). */
+function AmberHinweis({ text }: { text: string }) {
+  return (
+    <div
+      role="status"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 10,
+        padding: "8px 12px",
+        borderRadius: "var(--radius-s)",
+        border: "1px solid var(--amber-border)",
+        background: "var(--amber-soft)",
+        color: "var(--amber)",
+        fontSize: 16,
+        fontWeight: 600,
+        lineHeight: 1.35,
+      }}
+    >
+      <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+      <span>{text}</span>
+    </div>
   );
 }
 

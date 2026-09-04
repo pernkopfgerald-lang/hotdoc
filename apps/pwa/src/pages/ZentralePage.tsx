@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { APP_BUILD, APP_VERSION } from "../version";
+import { APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
@@ -30,7 +30,6 @@ import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
-import { FxToggle } from "../components/FxToggle";
 import { HandoffBanner } from "../components/HandoffBanner";
 import { HandoffModal } from "../components/HandoffModal";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
@@ -384,6 +383,61 @@ function entscheideAbschlussPfad(p: {
 }
 
 /**
+ * S-08 (Audit R3): Status eines Fahrzeugs aus Sicht des AKTIVEN Einsatzes.
+ * "anderswo" = kein Bericht hier, aber ein offener Bericht (in_arbeit) bei
+ * einem parallelen aktiven Einsatz — das Fahrzeug ist gebunden, nicht
+ * "wartend" (Sturm-Lage: KDO schreibt an Adresse B, waehrend Florian
+ * Adresse A anschaut).
+ */
+interface FahrzeugStatusEintrag {
+  id: FahrzeugId;
+  status: "wartend" | "im_einsatz" | "abgeschlossen" | "anderswo";
+  mannschaft: number;
+  fahrer?: string;
+  kdt?: string;
+  mannschaftNamen: string[];
+  asAktiv: number;
+  oelSaecke: number;
+  /** Nur bei status "anderswo": Einsatzort + ID des parallelen Einsatzes. */
+  anderswoOrt?: string;
+  anderswoEinsatzId?: string;
+}
+
+/** S-08: beteiligt = hat HIER einen Fahrzeugbericht (offen oder fertig). */
+function istBeteiligt(f: FahrzeugStatusEintrag): boolean {
+  return f.status === "im_einsatz" || f.status === "abgeschlossen";
+}
+
+/**
+ * S-11 (Audit R3): Nummernkreis eines Einsatzes — Prefix (U fuer Uebung,
+ * sonst B/T via kategorieFuer) + Jahr der Alarmierung. Muss der Vergabe-
+ * Logik in services/bericht-nummer.ts entsprechen.
+ */
+function nummernKreis(doc: EinsatzApiDoc): string {
+  const prefix =
+    doc.einsatzTyp === "uebung"
+      ? "U"
+      : kategorieFuer(doc.einsatzart) === "brand"
+        ? "B"
+        : "T";
+  const t = doc.alarmierungZeit ? new Date(doc.alarmierungZeit) : new Date();
+  const jahr = Number.isNaN(t.getTime()) ? new Date().getFullYear() : t.getFullYear();
+  return `${prefix}${jahr}`;
+}
+
+/**
+ * S-05 (Audit R3): Worker-Auto-Abschluss-Grund in Klartext. Nur die
+ * bekannten Muster werden uebersetzt, Unbekanntes bleibt roh sichtbar.
+ */
+function autoAbschlussGrundText(grund: string | undefined): string | null {
+  if (!grund) return null;
+  if (grund === "unbefuellt-1h") return "1 h ohne Eingaben";
+  const m = /^inaktiv-(\d+)h$/.exec(grund);
+  if (m) return `${m[1]} h ohne Aktivität`;
+  return grund;
+}
+
+/**
  * Florianstation / Einsatzzentrale — Hauptbericht-Layout (Anhang B des
  * Spec). Aggregiert Fahrzeugberichte aus dem Einsatz, zeigt Status
  * pro Fahrzeug und übernimmt die Übergabe an den Bearbeiter (PDF +
@@ -419,7 +473,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const reloadAktiveEinsaetzeRef = useRef<() => void>(() => undefined);
   const aktiverEinsatz: EinsatzApiDoc | null =
     aktiveEinsaetze.find((e) => e._id === aktiverEinsatzId) ?? null;
-  const [fahrzeugberichte, setFahrzeugberichte] = useState<FahrzeugberichtApiDoc[]>([]);
+  /** S-08 (Audit R3): Fahrzeugberichte ALLER aktiven Einsaetze (Key =
+   *  Einsatz-Doc-ID). Der aktive Einsatz liest seine Liste daraus; die
+   *  uebrigen liefern die "anderswo"-Info (Fahrzeug schreibt gerade bei
+   *  einem parallelen Einsatz) und den Fleet-Status der Lagekarte. */
+  const [fzgberByEinsatz, setFzgberByEinsatz] = useState<
+    Record<string, FahrzeugberichtApiDoc[]>
+  >({});
+  const fahrzeugberichte: FahrzeugberichtApiDoc[] = aktiverEinsatzId
+    ? (fzgberByEinsatz[aktiverEinsatzId] ?? [])
+    : [];
   /**
    * Wenn der Funktionaer auf eine Status-Card klickt, markiert das den
    * Fahrzeug-Marker auf der FlorianMap mit dem Pulse-Ring + oeffnet das
@@ -761,6 +824,78 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     return () => clearTimeout(t);
   }, [lotsendienstAngelegtAt]);
   const lotsendienstGesperrt = lotsendienstAngelegtAt !== null;
+  /** S-05 (Audit R3): Einsaetze, die aus der Aktiv-Liste fallen, ohne dass
+   *  DIESES Geraet sie abgeschlossen/verworfen hat (Worker-Auto-Abschluss,
+   *  Backoffice, anderes Tablet) — 12-s-Banner statt stillem Verschwinden.
+   *  bekannteAktiveRef = Stand des letzten erfolgreichen Polls (Docs, damit
+   *  der Ort auch ohne Nachladen benannt werden kann); eigenGeschlossenRef =
+   *  IDs, die hier per Abschluss/Verwerfen geschlossen wurden. */
+  const bekannteAktiveRef = useRef<Map<string, EinsatzApiDoc>>(new Map());
+  const eigenGeschlossenRef = useRef<Set<string>>(new Set());
+  const [fremdGeschlossenHinweis, setFremdGeschlossenHinweis] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!fremdGeschlossenHinweis) return;
+    const t = setTimeout(() => setFremdGeschlossenHinweis(null), 12_000);
+    return () => clearTimeout(t);
+  }, [fremdGeschlossenHinweis]);
+  /** S-09 (Audit R3): Doppelalarm-Banner pro Einsatz wegklickbar. */
+  const [duplikatHinweisWeg, setDuplikatHinweisWeg] = useState<Set<string>>(
+    () => new Set(),
+  );
+  /** S-10 (Audit R3): 15-s-Undo nach "Verwerfen" — POST /reaktivieren. */
+  const [verwerfenUndo, setVerwerfenUndo] = useState<{
+    id: string;
+    ort: string;
+    busy: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!verwerfenUndo || verwerfenUndo.busy) return;
+    const t = setTimeout(() => setVerwerfenUndo(null), 15_000);
+    return () => clearTimeout(t);
+  }, [verwerfenUndo]);
+
+  /**
+   * S-05: Verschwundene Einsaetze nachladen und in Klartext melden. Der
+   * frische Doc-Stand entscheidet ueber die Formulierung (verworfen /
+   * Worker-Auto-Abschluss mit Grund / auf anderem Geraet abgeschlossen);
+   * ist er nicht lesbar, bleibt es beim generischen "geschlossen".
+   */
+  async function meldeFremdGeschlossen(docs: EinsatzApiDoc[]): Promise<void> {
+    const saetze: string[] = [];
+    for (const alt of docs) {
+      const ort = alt.einsatzort ?? alt.einsatzart ?? alt._id.replace(/^einsatz:/, "");
+      let fresh: EinsatzApiDoc | null = null;
+      try {
+        fresh = await apiCall<EinsatzApiDoc>(
+          `/api/einsaetze/${encodeURIComponent(alt._id)}`,
+        );
+      } catch {
+        // Doc nicht lesbar (Netz) — generischer Text unten.
+      }
+      if (fresh?.verworfen === true) {
+        saetze.push(
+          `Einsatz ${ort} wurde auf einem anderen Gerät verworfen — im Archiv reaktivierbar.`,
+        );
+      } else if (fresh?.autoAbgeschlossenGrund) {
+        const grund = autoAbschlussGrundText(fresh.autoAbgeschlossenGrund);
+        saetze.push(
+          `Einsatz ${ort} wurde automatisch geschlossen${grund ? ` (${grund})` : ""} — im Archiv reaktivierbar.`,
+        );
+      } else if (fresh?.status === "abgeschlossen") {
+        saetze.push(
+          `Einsatz ${ort} wurde auf einem anderen Gerät abgeschlossen — im Archiv reaktivierbar.`,
+        );
+      } else if (fresh) {
+        // Noch/wieder aktiv (Poll-Luecke, Typ-Wechsel) — kein Banner.
+        continue;
+      } else {
+        saetze.push(`Einsatz ${ort} wurde geschlossen — im Archiv reaktivierbar.`);
+      }
+    }
+    if (saetze.length > 0) setFremdGeschlossenHinweis(saetze.join(" "));
+  }
   /** Z-06 (ING-04-Zentrale): Multi-Device-Erkennung — Server-geaendertAm des
    *  letzten EIGENEN Saves (aus dem Doc-Reload nach dem PUT; geaendertAm=null
    *  wenn der Reload fehlschlug → dann greift die 2-s-Heuristik ueber ts).
@@ -835,6 +970,32 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     setAktiverEinsatzId(fullId);
   }
 
+  /**
+   * S-06 (Audit R3): Ungespeicherte Tipparbeit VOR einer verlassenden
+   * Aktion (Abschluss, Handoff, Fahrzeug-Wechsel) flushen. Der Draft wird
+   * vorab SYNCHRON in den localStorage geschrieben — schlaegt der PUT fehl
+   * (Funkloch, 409), ueberlebt die Eingabe Reload/Logout und der Seed-
+   * Effekt bietet sie wieder an. Ein bereits laufender Save wird kurz
+   * abgewartet (max. ~6 s), damit kein zweiter paralleler PUT startet.
+   * Rueckgabe true = nichts zu speichern ODER Save erfolgreich; false =
+   * Save fehlgeschlagen (Aufrufer entscheidet: Abschluss abbrechen bzw.
+   * mit Draft im Storage trotzdem weitergehen).
+   */
+  async function flushEditorVorAktion(): Promise<boolean> {
+    for (let i = 0; i < 30 && saveBusyRef.current; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const id = aktiverEinsatzIdRef.current;
+    if (!id || !editorDirtyRef.current) return true;
+    // Cross-Save-Sperre (AUDIT-01 (2)): dirty fuer einen ANDEREN Einsatz
+    // → nichts flushen, die Daten gehoeren nicht zu diesem Doc.
+    if (dirtyEinsatzIdRef.current !== id) return true;
+    if (schreibschutzRef.current) return true;
+    schreibeDraftSynchron(id);
+    // saveEditor raeumt den Draft bei Erfolg selbst weg (Snapshot-Vergleich).
+    return saveEditorRef.current();
+  }
+
   // AUDIT-07/EL-10: kein Abschluss-State-Leak zwischen Einsaetzen —
   // Verrechenbar/Rechnungsadresse/Override-Grund gehoeren immer genau zu
   // EINEM Einsatz und werden beim Wechsel zurueckgesetzt.
@@ -904,6 +1065,22 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             setMultiDeviceWarnung(true);
           }
         }
+        // S-05 (Audit R3): Einsaetze, die seit dem letzten Poll aus der
+        // Aktiv-Liste gefallen sind, ohne dass DIESES Geraet sie
+        // abgeschlossen/verworfen hat → Banner. Beim allerersten Poll ist
+        // die Bekannt-Map leer → kein Fehlalarm. Taucht eine eigene
+        // geschlossene ID wieder auf (Reaktivierung), verliert sie den
+        // "eigen"-Marker, damit ein spaeterer Fremd-Abschluss gemeldet wird.
+        const vorher = bekannteAktiveRef.current;
+        const jetztIds = new Set(filtered.map((x) => x._id));
+        const verschwunden = [...vorher.values()].filter(
+          (d) => !jetztIds.has(d._id) && !eigenGeschlossenRef.current.has(d._id),
+        );
+        for (const id of jetztIds) {
+          if (!vorher.has(id)) eigenGeschlossenRef.current.delete(id);
+        }
+        bekannteAktiveRef.current = new Map(filtered.map((x) => [x._id, x]));
+        if (verschwunden.length > 0) void meldeFremdGeschlossen(verschwunden);
         setAktiveEinsaetze(filtered);
         // Auto-Select: wenn aktuell ausgewaehlter Einsatz nicht mehr in der Liste
         // (z. B. abgeschlossen oder gewipt) → auf den ersten verbleibenden umschalten.
@@ -919,7 +1096,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           return filtered[0]?._id ?? null;
         });
         if (filtered.length === 0) {
-          setFahrzeugberichte([]);
+          setFzgberByEinsatz({});
         }
       } catch {
         // Backend nicht erreichbar — bleibt beim aktuellen Stand (kein
@@ -944,32 +1121,68 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       cancelled = true;
       clearInterval(t);
     };
+    // S-05: meldeFremdGeschlossen liest nur Refs/Setter — bewusst kein Dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fahrzeugberichte aller Fahrzeuge zum aktiven Einsatz pollen.
-  // Refresht alle 15 s — schneller als der Einsatz-Poll, damit der
-  // Einsatzleiter sieht wenn ein Tablet einen Bericht abschließt.
+  // S-08 (Audit R3): Fahrzeugberichte ALLER aktiven Einsaetze pollen (15 s,
+  // schneller als der Einsatz-Poll, damit der EL sieht, wenn ein Tablet
+  // einen Bericht abschliesst) — nicht nur die des aktiven Einsatzes. So
+  // sieht der EL, wenn ein Fahrzeug gerade bei einem PARALLELEN Einsatz
+  // schreibt ("anderswo"), und die Lagekarte faerbt es als "im Einsatz".
   //
-  // WICHTIG: beim ID-Wechsel SOFORT auf [] leeren, sonst zeigt die UI
-  // bis zum ersten Call (~hunderte ms bis zu 15 s) die fahrzeugberichte
-  // vom VORIGEN Einsatz an — und wenn der vorige Einsatz schon einen
-  // abgeschlossenen KDO-Bericht hatte, denkt der User "der neue Einsatz
-  // hat sofort KDO als abgeschlossen gesetzt" (echter Bug-Report).
+  // Key = Einsatz-Doc-ID: beim Einsatz-Wechsel kann damit KEIN Stand des
+  // vorigen Einsatzes durchscheinen (frueherer Bug-Report: "der neue
+  // Einsatz hat sofort KDO als abgeschlossen gesetzt"). Der aktive Einsatz
+  // ist immer enthalten — auch wenn der Aktiv-Poll ihn noch nicht kennt
+  // (gerade angelegt/reaktiviert); der Wechsel loest sofort einen Tick aus.
+  const aktiveIdsKey = aktiveEinsaetze
+    .map((x) => x._id)
+    .sort()
+    .join("|");
   useEffect(() => {
-    if (!aktiverEinsatzId) {
-      setFahrzeugberichte([]);
+    const ids = new Set(aktiveIdsKey ? aktiveIdsKey.split("|") : []);
+    if (aktiverEinsatzId) ids.add(aktiverEinsatzId);
+    if (ids.size === 0) {
+      setFzgberByEinsatz({});
       return;
     }
     let cancelled = false;
-    setFahrzeugberichte([]);
+    let inFlight = false;
     const load = async () => {
+      // Laufenden Tick nicht ueberholen (Request-Stau bei Funkloch).
+      if (inFlight) return;
+      inFlight = true;
       try {
-        const r = await apiCall<{ items: FahrzeugberichtApiDoc[] }>(
-          `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/fahrzeugberichte`,
+        const ergebnisse = await Promise.all(
+          [...ids].map(async (id) => {
+            try {
+              const r = await apiCall<{ items: FahrzeugberichtApiDoc[] }>(
+                `/api/einsaetze/${encodeURIComponent(id)}/fahrzeugberichte`,
+              );
+              return { id, items: r.items };
+            } catch {
+              // 404/401/Netz → voriger Stand bleibt, UI rendert "Wartend".
+              return null;
+            }
+          }),
         );
-        if (!cancelled) setFahrzeugberichte(r.items);
-      } catch {
-        // 404 oder 401 → bleibt leer, UI rendert "Wartend" für alle
+        if (cancelled) return;
+        setFzgberByEinsatz((prev) => {
+          const next: Record<string, FahrzeugberichtApiDoc[]> = {};
+          // Nicht mehr aktive Einsaetze fallen raus, Fehlschlaege behalten
+          // den vorigen Stand.
+          for (const id of ids) {
+            const alt = prev[id];
+            if (alt) next[id] = alt;
+          }
+          for (const erg of ergebnisse) {
+            if (erg) next[erg.id] = erg.items;
+          }
+          return next;
+        });
+      } finally {
+        inFlight = false;
       }
     };
     void load();
@@ -981,7 +1194,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       cancelled = true;
       clearInterval(t);
     };
-  }, [aktiverEinsatzId]);
+  }, [aktiveIdsKey, aktiverEinsatzId]);
 
   // Live-Positions-Polling. Tablet-Pings landen in einem In-Memory-State
   // im Backend (services/positions-state). Wir pollen alle 3 s — Fahrzeuge
@@ -1528,6 +1741,32 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     }
     setDraftAngebot(null);
   }
+
+  /**
+   * S-10 (Audit R3): "Rückgängig" aus dem Verwerfen-Toast — POST
+   * /reaktivieren mit festem Grund, danach Liste neu laden und auf den
+   * Einsatz zurueckschalten (Muster: onReaktiviert des Archivs).
+   */
+  async function verwerfenRueckgaengig(): Promise<void> {
+    if (!verwerfenUndo || verwerfenUndo.busy) return;
+    const { id } = verwerfenUndo;
+    setVerwerfenUndo({ ...verwerfenUndo, busy: true });
+    try {
+      await apiCall(`/api/einsaetze/${encodeURIComponent(id)}/reaktivieren`, {
+        method: "POST",
+        body: { grund: "Verwerfen rückgängig" },
+      });
+      setVerwerfenUndo(null);
+      justCreatedRef.current = { id, ts: Date.now() };
+      wechsleAktivenEinsatz(id);
+      reloadAktiveEinsaetzeRef.current();
+    } catch (err) {
+      setVerwerfenUndo(null);
+      setSaveErr(
+        `Rückgängig fehlgeschlagen: ${describeApiError(err)} — im Archiv reaktivierbar.`,
+      );
+    }
+  }
   // AUDIT-01 (1): Zuweisung bei JEDEM Render — saveEditorRef zeigt immer auf
   // die frischeste Closure (aktueller editor + aktiverEinsatz). KEIN useEffect
   // noetig; Strg+S, 15-s-Retry und Tab-Wechsel-Flush greifen darauf zu.
@@ -1595,6 +1834,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     setAbschlussErr(null);
     setAbschlussOk(null);
     try {
+      // S-06 (Audit R3): ungespeicherte Editor-Eingaben ZUERST flushen —
+      // der Abschluss setzt Schreibschutz, danach liefe der Auto-Save in
+      // ein 423 und die letzten Sekunden Tipparbeit waeren weg.
+      const geflusht = await flushEditorVorAktion();
+      if (!geflusht) {
+        setAbschlussErr(
+          "Ungespeicherte Eingaben konnten nicht gespeichert werden — Abschluss abgebrochen.",
+        );
+        return false;
+      }
       // U-17: bei Override-Pfad den Grund als Body mitschicken — Backend
       // kann ihn in den Audit-Trail/PDF uebernehmen. Der bestehende
       // Endpoint akzeptiert leeren Body, zusaetzliche Felder werden
@@ -1634,6 +1883,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       } catch {
         // Falls Reload nicht klappt — nächster Poll holt es. Nicht blockieren.
       }
+      // S-05: eigener Abschluss — kein "fremd geschlossen"-Banner dafuer.
+      eigenGeschlossenRef.current.add(aktiverEinsatzId);
       setAbschlussConfirmOpen(false);
       setAbschlussOk(
         `Einsatz abgeschlossen · ${new Date().toLocaleTimeString("de-AT")} · Bericht ist jetzt schreibgeschützt`,
@@ -1670,6 +1921,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         } catch {
           // egal
         }
+        // S-05: Ziel "Einsatz ist zu" erreicht — hier nicht als fremd melden.
+        eigenGeschlossenRef.current.add(aktiverEinsatzId);
         setAbschlussConfirmOpen(false);
         setAbschlussOk("Einsatz war bereits abgeschlossen.");
         setLetzterAbschluss({
@@ -1890,18 +2143,43 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    * kdt-Name wird über personenMap aus syBosId aufgelöst (Fallback "—").
    */
   const FAHRZEUG_ORDER: FahrzeugId[] = ["kdo", "tlf-a-4000", "lfa-b", "mtf"];
-  const fahrzeugStatus: {
-    id: FahrzeugId;
-    status: "wartend" | "im_einsatz" | "abgeschlossen";
-    mannschaft: number;
-    fahrer?: string;
-    kdt?: string;
-    mannschaftNamen: string[];
-    asAktiv: number;
-    oelSaecke: number;
-  }[] = FAHRZEUG_ORDER.map((id) => {
+  /**
+   * S-08 (Audit R3): Schreibt das Fahrzeug gerade bei einem ANDEREN aktiven
+   * Einsatz (offener Fahrzeugbericht dort)? Liefert Einsatz-ID + Ort.
+   */
+  function findeAnderswo(fzgId: FahrzeugId): { einsatzId: string; ort: string } | null {
+    for (const eDoc of aktiveEinsaetze) {
+      if (eDoc._id === aktiverEinsatzId) continue;
+      const liste = fzgberByEinsatz[eDoc._id] ?? [];
+      const offen = liste.some(
+        (b) => b.fahrzeugId === fzgId && b.status !== "abgeschlossen",
+      );
+      if (offen) {
+        return {
+          einsatzId: eDoc._id,
+          ort: eDoc.einsatzort ?? eDoc.einsatzart ?? eDoc._id.replace(/^einsatz:/, ""),
+        };
+      }
+    }
+    return null;
+  }
+  const fahrzeugStatus: FahrzeugStatusEintrag[] = FAHRZEUG_ORDER.map((id) => {
     const bericht = fahrzeugberichte.find((b) => b.fahrzeugId === id);
     if (!bericht) {
+      // S-08: kein Bericht HIER — aber gebunden bei einem parallelen Einsatz?
+      const anderswo = findeAnderswo(id);
+      if (anderswo) {
+        return {
+          id,
+          status: "anderswo" as const,
+          mannschaft: 0,
+          asAktiv: 0,
+          oelSaecke: 0,
+          mannschaftNamen: [],
+          anderswoOrt: anderswo.ort,
+          anderswoEinsatzId: anderswo.einsatzId,
+        };
+      }
       return {
         id,
         status: "wartend" as const,
@@ -1971,27 +2249,103 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  markiert werden (Phantom-Cleanup übernimmt die leeren nach 2 h). */
   const istManuellerTyp = einsatzTyp !== "alarm";
 
-  const tabs: EinsatzTabSummary[] = aktiveEinsaetze.map((eDoc) => {
-    const id = (eDoc._id ?? "").replace(/^einsatz:/, "");
-    const art = eDoc.einsatzart ?? eDoc.einsatzartFreitext ?? eDoc.alarmierungText ?? "Einsatz";
-    const ort = eDoc.einsatzort ?? "";
-    // Z-05: Typ fuer Icon + Farbton des Tabs (EinsatzTabs) — unbekannte
-    // oder fehlende Werte fallen auf "alarm" zurueck.
-    const typ: "alarm" | "manuell" | "uebung" | "lotsendienst" =
-      eDoc.einsatzTyp === "manuell" ||
-      eDoc.einsatzTyp === "uebung" ||
-      eDoc.einsatzTyp === "lotsendienst"
-        ? eDoc.einsatzTyp
-        : "alarm";
-    return {
-      id,
-      einsatzart: art,
-      einsatzort: ort,
-      status: "aktiv" as const,
-      manuell: typ !== "alarm",
-      einsatzTyp: typ,
-    };
-  });
+  // S-11 (Audit R3): Tabs AUFSTEIGEND nach Alarmierungszeit — der aelteste
+  // Einsatz steht links; die Reihenfolge passt damit zur Nummernvergabe.
+  const tabs: EinsatzTabSummary[] = [...aktiveEinsaetze]
+    .sort(
+      (a, b) =>
+        new Date(a.alarmierungZeit ?? 0).getTime() -
+        new Date(b.alarmierungZeit ?? 0).getTime(),
+    )
+    .map((eDoc) => {
+      const id = (eDoc._id ?? "").replace(/^einsatz:/, "");
+      const art =
+        eDoc.einsatzart ?? eDoc.einsatzartFreitext ?? eDoc.alarmierungText ?? "Einsatz";
+      const ort = eDoc.einsatzort ?? "";
+      // Z-05: Typ fuer Icon + Farbton des Tabs (EinsatzTabs) — unbekannte
+      // oder fehlende Werte fallen auf "alarm" zurueck.
+      const typ: "alarm" | "manuell" | "uebung" | "lotsendienst" =
+        eDoc.einsatzTyp === "manuell" ||
+        eDoc.einsatzTyp === "uebung" ||
+        eDoc.einsatzTyp === "lotsendienst"
+          ? eDoc.einsatzTyp
+          : "alarm";
+      return {
+        id,
+        einsatzart: art,
+        einsatzort: ort,
+        status: "aktiv" as const,
+        manuell: typ !== "alarm",
+        einsatzTyp: typ,
+      };
+    });
+
+  // S-11 (Audit R3): aeltere, noch offene Einsaetze im SELBEN Nummernkreis
+  // ohne Nummer — wird dieser Einsatz zuerst abgeschlossen, zieht er die
+  // kleinere Nummer und die Reihenfolge ist nicht mehr chronologisch.
+  // Reaktivierte Einsaetze tragen ihre Nummer schon → kein Hinweis.
+  const aeltereOffene: EinsatzApiDoc[] = (() => {
+    if (!e || e.berichtNummer) return [];
+    const t = new Date(e.alarmierungZeit ?? 0).getTime();
+    if (!(t > 0)) return [];
+    const kreis = nummernKreis(e);
+    return aktiveEinsaetze
+      .filter((x) => x._id !== e._id && !x.berichtNummer && x.schreibschutz !== true)
+      .filter((x) => nummernKreis(x) === kreis)
+      .filter((x) => {
+        const tx = new Date(x.alarmierungZeit ?? 0).getTime();
+        return tx > 0 && tx < t;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.alarmierungZeit ?? 0).getTime() -
+          new Date(b.alarmierungZeit ?? 0).getTime(),
+      );
+  })();
+  const aeltereOffeneText =
+    aeltereOffene.length > 0
+      ? `${aeltereOffene.length} ${aeltereOffene.length === 1 ? "älterer Einsatz" : "ältere Einsätze"} noch offen — Nummer wäre nicht chronologisch (zuerst: ${aeltereOffene[0]?.einsatzort ?? aeltereOffene[0]?.einsatzart ?? "unbekannt"})`
+      : null;
+
+  // S-09 (Audit R3): Poller-Hinweis auf einen wahrscheinlichen Doppelalarm —
+  // nur solange der aeltere Einsatz selbst noch aktiv ist (sonst ist er
+  // bereits verworfen/abgeschlossen und der Hinweis gegenstandslos).
+  const duplikatVon: EinsatzApiDoc | null = e?.moeglichesDuplikatVon
+    ? (aktiveEinsaetze.find((x) => x._id === e.moeglichesDuplikatVon) ?? null)
+    : null;
+  const duplikatSchreiber: string[] = duplikatVon
+    ? (fzgberByEinsatz[duplikatVon._id] ?? [])
+        .filter((b) => b.status !== "abgeschlossen")
+        .map((b) =>
+          (FAHRZEUG_ORDER as string[]).includes(b.fahrzeugId)
+            ? shortCode(b.fahrzeugId as FahrzeugId)
+            : b.fahrzeugId,
+        )
+    : [];
+
+  // S-08 (Audit R3): Fleet-Status fuer die Lagekarte — "im_einsatz", sobald
+  // das Fahrzeug IRGENDWO (aktiver ODER paralleler Einsatz) einen offenen
+  // Fahrzeugbericht hat; "abgeschlossen" nur aus Sicht des aktiven Einsatzes.
+  const fleetStatus: Array<{ id: FahrzeugId; status: FahrzeugPos["status"] }> =
+    FAHRZEUG_ORDER.map((id) => {
+      const irgendwoOffen =
+        fahrzeugberichte.some((b) => b.fahrzeugId === id && b.status !== "abgeschlossen") ||
+        aktiveEinsaetze.some((eDoc) =>
+          (fzgberByEinsatz[eDoc._id] ?? []).some(
+            (b) => b.fahrzeugId === id && b.status !== "abgeschlossen",
+          ),
+        );
+      const hier = fahrzeugStatus.find((f) => f.id === id);
+      return {
+        id,
+        status: irgendwoOffen
+          ? "im_einsatz"
+          : hier?.status === "abgeschlossen"
+            ? "abgeschlossen"
+            : "wartend",
+      };
+    });
+  const anderswoFzg = fahrzeugStatus.filter((f) => f.status === "anderswo");
 
   // Datum nur wenn echter Einsatz vorhanden — sonst Invalid Date.
   const datum = alarmierungZeit ? new Date(alarmierungZeit) : null;
@@ -2007,8 +2361,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // Abschluss-Hint) — "1/4 fertig" suggerierte sonst 3 fehlende Berichte,
   // obwohl bei einer Übung nur 1 Fahrzeug beteiligt war. Math.max(…,1)
   // verhindert "0/0", solange noch kein Fahrzeugbericht existiert.
+  // S-08: "anderswo" gebundene Fahrzeuge sind hier NICHT beteiligt.
   const nennerFahrzeuge = istManuellerTyp
-    ? Math.max(fahrzeugStatus.filter((f) => f.status !== "wartend").length, 1)
+    ? Math.max(fahrzeugStatus.filter(istBeteiligt).length, 1)
     : fahrzeugStatus.length;
 
   // AS-Trupps: Atemschutz-Personen in 2er-Trupps. Eine ungerade Anzahl wird
@@ -2081,6 +2436,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         showHilfe
         onSwitchVehicle={() => setVehicleSwitcherOpen(true)}
         onHandoff={() => setHandoffOpen(true)}
+        // E-09 (Audit R3): "Über HotDoc" im Mehr-Menue — Darstellung (FX-
+        // Toggle) und Tablet-Reset wohnen im AboutModal.
+        onAbout={() => setAboutOpen(true)}
       />
 
       <EinsatzTabs
@@ -2464,6 +2822,145 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </section>
         )}
 
+        {/* S-09 (Audit R3): Doppelalarm-Hinweis — der BlaulichtSMS-Poller hat
+            diesen Einsatz als wahrscheinliches Duplikat eines aelteren
+            aktiven Einsatzes markiert. Der EL prueft, wo die Fahrzeuge schon
+            schreiben, und verwirft den anderen. Pro Einsatz wegklickbar. */}
+        {e && duplikatVon && !duplikatHinweisWeg.has(e._id) ? (
+          <section
+            role="alert"
+            style={{
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--warn-tint)",
+              border: "1px solid var(--warn-border)",
+              color: "var(--warn)",
+              fontSize: 16.5,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 220 }}>
+              Möglicher Doppelalarm zu{" "}
+              <strong>
+                {duplikatVon.einsatzort ??
+                  duplikatVon.einsatzart ??
+                  duplikatVon._id.replace(/^einsatz:/, "")}
+              </strong>{" "}
+              — prüfen, ob Fahrzeuge dort schon schreiben, dann einen verwerfen.
+              {duplikatSchreiber.length > 0
+                ? ` Dort schreibt bereits: ${duplikatSchreiber.join(" · ")}.`
+                : ""}
+            </span>
+            <button
+              type="button"
+              onClick={() => wechsleAktivenEinsatz(duplikatVon._id)}
+              style={{
+                background: "var(--warn)",
+                color: "#fff",
+                border: 0,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 15.5,
+                cursor: "pointer",
+                minHeight: 40,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              Zum anderen Einsatz <ArrowRight size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setDuplikatHinweisWeg((prev) => new Set(prev).add(e._id))
+              }
+              aria-label="Hinweis schließen"
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "inherit",
+                cursor: "pointer",
+                padding: 4,
+                minHeight: 0,
+                display: "inline-flex",
+              }}
+            >
+              <X size={14} />
+            </button>
+          </section>
+        ) : null}
+
+        {/* S-05 (Audit R3): Ein Einsatz ist aus der Aktiv-Liste gefallen,
+            ohne dass DIESES Geraet ihn geschlossen hat (Worker-Auto-Abschluss
+            "unbefuellt-1h"/"inaktiv-6h", Backoffice, anderes Tablet). 12 s
+            sichtbar, Einstieg ins Archiv zum Reaktivieren. */}
+        {fremdGeschlossenHinweis ? (
+          <section
+            role="status"
+            style={{
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--warn-tint)",
+              border: "1px solid var(--warn-border)",
+              color: "var(--warn)",
+              fontSize: 16.5,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <Archive size={18} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 220 }}>{fremdGeschlossenHinweis}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setFremdGeschlossenHinweis(null);
+                setArchivOpenFlorian(true);
+              }}
+              style={{
+                background: "var(--surface)",
+                color: "var(--warn)",
+                border: "1px solid var(--warn-border)",
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 15.5,
+                cursor: "pointer",
+                minHeight: 40,
+              }}
+            >
+              Archiv öffnen
+            </button>
+            <button
+              type="button"
+              onClick={() => setFremdGeschlossenHinweis(null)}
+              aria-label="Hinweis schließen"
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "inherit",
+                cursor: "pointer",
+                padding: 4,
+                minHeight: 0,
+                display: "inline-flex",
+              }}
+            >
+              <X size={14} />
+            </button>
+          </section>
+        ) : null}
+
         {/* Z-06 (ING-04-Zentrale): Multi-Device-Warnung — ein anderes Geraet
             hat diesen Einsatz waehrend lokaler Tipparbeit geaendert. Der
             eigene Auto-Save gewinnt (last-write-wins); der EL soll das VOR
@@ -2488,8 +2985,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           >
             <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
             <span style={{ flex: 1 }}>
-              Dieser Einsatz wurde auf einem anderen Geraet geaendert - eigener
-              Stand ueberschreibt beim Speichern.
+              Dieser Einsatz wurde auf einem anderen Gerät geändert — eigener
+              Stand überschreibt beim Speichern.
             </span>
             <button
               type="button"
@@ -2506,6 +3003,122 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               }}
             >
               <X size={14} />
+            </button>
+          </section>
+        ) : null}
+
+        {/* S-13 (Audit R3): 409 editor_conflict — ein anderes Geraet hat
+            diesen Einsatz seit unserem Seed/letzten Save per Editor
+            gespeichert. Auto-Save + Retry sind gestoppt, die eigene
+            Tipparbeit liegt als Draft im localStorage. "Neu laden" holt den
+            fremden Stand; der Seed-Effekt bietet den Draft danach zur
+            Uebernahme an (Banner darunter). */}
+        {editorKonflikt && editorKonflikt.einsatzId === aktiverEinsatzId ? (
+          <section
+            role="alert"
+            style={{
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--red-tint)",
+              border: "1px solid var(--red-border)",
+              color: "var(--red)",
+              fontSize: 16.5,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 220 }}>
+              Anderes Gerät hat gespeichert — Ansicht neu laden, eigene Eingaben prüfen.
+            </span>
+            <button
+              type="button"
+              onClick={() => void editorKonfliktNeuLaden()}
+              style={{
+                background: "var(--red)",
+                color: "#fff",
+                border: 0,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 15.5,
+                cursor: "pointer",
+                minHeight: 40,
+              }}
+            >
+              Neu laden
+            </button>
+          </section>
+        ) : null}
+
+        {/* S-03/S-13 (Audit R3): Lokaler Draft, dessen Basis NICHT mehr dem
+            Server-Stand entspricht — nicht stumm verwerfen, sondern dem EL
+            zur Entscheidung anbieten. "Übernehmen" legt die lokalen Eingaben
+            ueber den frischen Stand (der naechste Auto-Save schreibt sie mit
+            der aktuellen Basis), "Verwerfen" loescht den Draft. */}
+        {draftAngebot && draftAngebot.einsatzId === aktiverEinsatzId ? (
+          <section
+            role="status"
+            style={{
+              marginBottom: 14,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--warn-tint)",
+              border: "1px solid var(--warn-border)",
+              color: "var(--warn)",
+              fontSize: 16.5,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 220 }}>
+              Lokaler Entwurf
+              {draftAngebot.savedAt ? ` von ${formatTime(draftAngebot.savedAt)}` : ""}
+              {" "}gefunden — der Einsatz wurde inzwischen auf einem anderen Gerät
+              gespeichert. Entwurf übernehmen (ersetzt den fremden Stand beim
+              nächsten Speichern) oder verwerfen?
+            </span>
+            <button
+              type="button"
+              onClick={draftAngebotUebernehmen}
+              style={{
+                background: "var(--warn)",
+                color: "#fff",
+                border: 0,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 15.5,
+                cursor: "pointer",
+                minHeight: 40,
+              }}
+            >
+              Entwurf übernehmen
+            </button>
+            <button
+              type="button"
+              onClick={draftAngebotVerwerfen}
+              style={{
+                background: "transparent",
+                color: "inherit",
+                border: "1px solid var(--warn-border)",
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontWeight: 600,
+                fontSize: 15.5,
+                cursor: "pointer",
+                minHeight: 40,
+              }}
+            >
+              Verwerfen
             </button>
           </section>
         ) : null}
@@ -2534,10 +3147,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   ? { cls: "ok", label: "Abgeschlossen", Icon: CheckCircle2 }
                   : f.status === "im_einsatz"
                     ? { cls: "warn", label: "Im Einsatz", Icon: Activity }
-                    : { cls: "neutral", label: "Wartend", Icon: Lock };
+                    : f.status === "anderswo"
+                      ? // S-08: gebunden bei einem parallelen Einsatz — bernstein,
+                        // nicht klickbar (Mannschaft gehoert zum anderen Einsatz).
+                        {
+                          cls: "warn",
+                          label: `Im Einsatz bei ${f.anderswoOrt ?? "anderem Einsatz"}`,
+                          Icon: Activity,
+                        }
+                      : { cls: "neutral", label: "Wartend", Icon: Lock };
               const Icon = badge.Icon;
               const isSelected = selectedFahrzeugId === f.id;
-              const isClickable = f.status !== "wartend";
+              const isClickable = istBeteiligt(f);
               const toggleSelect = (): void => {
                 if (!isClickable) return;
                 const next = isSelected ? null : f.id;
@@ -2761,7 +3382,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 },
               ];
             })}
-            fahrzeuge={buildFleetForFlorianMap(positions, fahrzeugStatus)}
+            // S-08: Fleet-Status ueber ALLE aktiven Einsaetze (im_einsatz,
+            // sobald das Fahrzeug irgendwo einen offenen Bericht hat).
+            fahrzeuge={buildFleetForFlorianMap(positions, fleetStatus)}
             zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
             selectedFahrzeugId={selectedFahrzeugId}
             onSelectFahrzeug={(id) =>
@@ -3072,7 +3695,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           <p style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
             Keine Auswahl → alle Fahrzeug-Tablets sehen den Einsatz (Default bei
             BlaulichtSMS-Alarm). Auswahl filtert die Sichtbarkeit auf die markierten
-            Fahrzeuge — nuetzlich bei Sturm um Adressen aufzuteilen.
+            Fahrzeuge — nützlich bei Sturm um Adressen aufzuteilen.
           </p>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -4061,7 +4684,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                komplett im Bereitschaftsdienst lief ohne Tablets.
           */}
           {(() => {
-            const beteiligte = fahrzeugStatus.filter((f) => f.status !== "wartend");
+            // S-08: "anderswo" gebundene Fahrzeuge zaehlen hier weder als
+            // beteiligt noch als wartend — eigene Hinweiszeile unten.
+            const beteiligte = fahrzeugStatus.filter(istBeteiligt);
             const offene = beteiligte.filter((f) => f.status === "im_einsatz");
             const wartende = fahrzeugStatus.filter((f) => f.status === "wartend");
             const blockiert = !istManuellerTyp && offene.length > 0;
@@ -4156,7 +4781,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           minHeight: 0,
                         }}
                       >
-                        Trotzdem abschliessen (mit Grund)
+                        Trotzdem abschließen (mit Grund)
                       </button>
                     </>
                   ) : istManuellerTyp && beteiligte.length === 0 ? (
@@ -4190,6 +4815,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     <>Alle Fahrzeugberichte vollständig — bereit zur Übergabe.</>
                   )}
                 </div>
+                {/* S-08: Fahrzeuge, die bei einem PARALLELEN Einsatz schreiben. */}
+                {anderswoFzg.length > 0 ? (
+                  <div className="cta-hint" style={{ color: "var(--warn)" }}>
+                    {anderswoFzg
+                      .map(
+                        (f) =>
+                          `${FAHRZEUGE[f.id].bezeichnung} im Einsatz bei ${f.anderswoOrt ?? "anderem Einsatz"}`,
+                      )
+                      .join(" · ")}{" "}
+                    — zählt hier nicht als beteiligt.
+                  </div>
+                ) : null}
               </>
             );
           })()}
@@ -4198,32 +4835,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         )}
       </main>
 
-      {/* U-12: Fusszeile reduziert auf {Version, Funkrufname, FX-Toggle}.
-          Handoff, Fahrzeug wechseln, Setup wandern in Topbar/About-Modal. */}
+      {/* E-09/E-11 (Audit R3): Fusszeile nur noch {Über HotDoc, Version}.
+          Der FX-Toggle wohnt im AboutModal (E-10), der Funkrufname steht
+          bereits in der Topbar (Doppelung raus). Build-Datum + Release-
+          Notes stehen im AboutModal. */}
       <div className="appfoot">
-        HotDoc
-        <span className="sep">·</span>
         <button
           type="button"
+          className="foot-link"
           onClick={() => setAboutOpen(true)}
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "inherit",
-            font: "inherit",
-            cursor: "pointer",
-            textDecoration: "underline",
-            minHeight: 0,
-            padding: 0,
-          }}
-          title="Über HotDoc · Entwickler · Lizenz · Release-Notes · Tablet-Reset"
+          title="Über HotDoc · Entwickler · Lizenz · Release-Notes · Darstellung · Tablet-Reset"
         >
-          {APP_VERSION} · {APP_BUILD}
+          Über HotDoc
         </button>
         <span className="sep">·</span>
-        {fahrzeug.funkrufname}
-        <span className="sep">·</span>
-        <FxToggle />
+        {APP_VERSION}
       </div>
 
       {/* U-21: Strg+S Save-Toast — kurzes Banner unten rechts, 3s sichtbar. */}
@@ -4251,13 +4877,83 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         </div>
       )}
 
+      {/* S-10 (Audit R3): Verwerfen-Undo-Toast — 15 s sichtbar, "Rückgängig"
+          reaktiviert den Einsatz (POST /reaktivieren) und schaltet zurueck. */}
+      {verwerfenUndo ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 28,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 3000,
+            padding: "10px 14px",
+            background: "var(--fg)",
+            color: "var(--bg)",
+            borderRadius: 10,
+            fontSize: 16.5,
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 12,
+            maxWidth: "min(640px, calc(100% - 32px))",
+          }}
+        >
+          <span
+            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {verwerfenUndo.ort} verworfen
+          </span>
+          <button
+            type="button"
+            onClick={() => void verwerfenRueckgaengig()}
+            disabled={verwerfenUndo.busy}
+            style={{
+              background: "var(--warn)",
+              color: "#fff",
+              border: 0,
+              padding: "6px 12px",
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 15.5,
+              cursor: verwerfenUndo.busy ? "wait" : "pointer",
+              minHeight: 36,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {verwerfenUndo.busy ? "…" : "Rückgängig"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setVerwerfenUndo(null)}
+            aria-label="Hinweis schließen"
+            style={{
+              background: "transparent",
+              border: 0,
+              color: "inherit",
+              cursor: "pointer",
+              padding: 4,
+              minHeight: 0,
+              display: "inline-flex",
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
+
       <HandoffModal
         open={handoffOpen}
         onClose={() => setHandoffOpen(false)}
         {...(aktiverEinsatzId ? { einsatzId: aktiverEinsatzId } : {})}
         onClaimed={() => {
           setHandoffOpen(false);
-          onHandoffLogout();
+          // S-06 (Audit R3): Tipparbeit flushen, BEVOR das Tablet sich
+          // ausloggt — schlaegt der Save fehl, liegt sie als Draft im
+          // localStorage (Seed-Effekt bietet sie nach dem naechsten Login an).
+          void flushEditorVorAktion().finally(() => onHandoffLogout());
         }}
       />
 
@@ -4266,7 +4962,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         current="zentrale"
         onSelect={(id) => {
           setVehicleSwitcherOpen(false);
-          onSwitchFahrzeug(id);
+          // S-06 (Audit R3): erst flushen (Fehler → Draft bleibt synchron im
+          // Storage), dann wechseln — der Wechsel laedt die Seite neu.
+          void flushEditorVorAktion().finally(() => onSwitchFahrzeug(id));
         }}
         onClose={() => setVehicleSwitcherOpen(false)}
       />
@@ -4281,7 +4979,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       <CloseTabConfirmModal
         open={tabToClose !== null}
         tabLabel={tabToClose?.label ?? ""}
-        warnText="Achtung: Schliesst den gesamten Einsatz fuer ALLE Fahrzeuge."
+        warnText="Achtung: Schließt den gesamten Einsatz für ALLE Fahrzeuge."
         onClose={() => setTabToClose(null)}
         onConfirmAbschluss={async () => {
           if (!tabToClose) return;
@@ -4357,14 +5055,25 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         }}
         onConfirmVerwerfen={async (grund) => {
           if (!tabToClose) return;
+          const zielId = tabToClose.id;
+          const zielDoc = aktiveEinsaetze.find((e2) => e2._id === zielId);
           await apiCall(
-            `/api/einsaetze/${encodeURIComponent(tabToClose.id)}/verwerfen`,
+            `/api/einsaetze/${encodeURIComponent(zielId)}/verwerfen`,
             { method: "POST", body: { grund } },
           );
-          if (tabToClose.id === aktiverEinsatzId) {
+          // S-05: eigene Aktion — kein "fremd geschlossen"-Banner dafuer.
+          eigenGeschlossenRef.current.add(zielId);
+          if (zielId === aktiverEinsatzId) {
             setAktiverEinsatzId(null);
           }
           reloadAktiveEinsaetzeRef.current();
+          // S-10 (Audit R3): 15-s-Undo — ein Fehlklick auf "Verwerfen" war
+          // sonst nur ueber das Archiv (mit Grund-Dialog) rueckholbar.
+          setVerwerfenUndo({
+            id: zielId,
+            ort: zielDoc?.einsatzort ?? zielDoc?.einsatzart ?? tabToClose.label,
+            busy: false,
+          });
         }}
       />
 
@@ -4522,6 +5231,26 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               </div>
             </div>
 
+            {/* S-11 (Audit R3): Nummern-Hinweis — aeltere offene Einsaetze im
+                selben Nummernkreis bekaemen eine spaetere (hoehere) Nummer.
+                Nur Hinweis, kein Block. */}
+            {aeltereOffeneText ? (
+              <div
+                role="note"
+                style={{
+                  fontSize: 15.5,
+                  lineHeight: 1.5,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "var(--info-tint)",
+                  border: "1px solid var(--info-border)",
+                  color: "var(--fg-2)",
+                }}
+              >
+                {aeltereOffeneText}
+              </div>
+            ) : null}
+
             {/* Issue 8 (Einsatz-Test 2026-06-02): Verrechnungs-Toggle. */}
             <div
               style={{
@@ -4665,14 +5394,31 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <AlertTriangle size={20} style={{ color: "var(--warn)" }} />
               <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
-                Trotzdem abschliessen
+                Trotzdem abschließen
               </h3>
             </div>
             <p style={{ margin: 0, fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
               Es sind noch Fahrzeugberichte offen. Du kannst den Hauptbericht
-              trotzdem schliessen — bitte einen Grund angeben (mind. 10 Zeichen).
+              trotzdem schließen — bitte einen Grund angeben (mind. 10 Zeichen).
               Der Grund wandert ins Audit-Log und auf das PDF.
             </p>
+            {/* S-11: Nummern-Hinweis auch am Override-Pfad. */}
+            {aeltereOffeneText ? (
+              <div
+                role="note"
+                style={{
+                  fontSize: 15.5,
+                  lineHeight: 1.5,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "var(--info-tint)",
+                  border: "1px solid var(--info-border)",
+                  color: "var(--fg-2)",
+                }}
+              >
+                {aeltereOffeneText}
+              </div>
+            ) : null}
             <textarea
               rows={3}
               value={abschlussOverrideGrund}
@@ -4752,7 +5498,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   minHeight: 44,
                 }}
               >
-                {abschlussBusy ? "Schliesst ab …" : "Trotzdem abschliessen"}
+                {abschlussBusy ? "Schließt ab …" : "Trotzdem abschließen"}
               </button>
             </div>
           </div>
@@ -4763,8 +5509,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         open={neuerEinsatzOpen !== null}
         initialTyp={neuerEinsatzOpen ?? "manuell"}
         onClose={() => setNeuerEinsatzOpen(null)}
-        onCreated={(einsatzId, typ) => {
+        onCreated={(result) => {
           setNeuerEinsatzOpen(null);
+          const { typ } = result;
           // AUDIT-09/EL-06: Lotsendienst erscheint hier bewusst NIE als
           // Hauptbericht (#165-Filter) — statt Auto-Switch ins Leere ein
           // Erfolgsbanner + 30-s-Doppel-Anlage-Guard. KEIN justCreatedRef/
@@ -4774,6 +5521,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               "Lotsendienst angelegt — Dokumentation läuft am Fahrzeug-Tablet (KDO/TLF). Der Bericht erscheint später im Archiv.",
             );
             setLotsendienstAngelegtAt(Date.now());
+            return;
+          }
+          // Anlage lag offline in der Outbox (kein id) — kein Auto-Switch
+          // moeglich; der Poll bringt den Einsatz, sobald die Outbox durch ist.
+          const einsatzId = result.id;
+          if (!einsatzId) {
+            setLotsendienstHinweis(
+              "Einsatz offline angelegt — erscheint automatisch, sobald die Verbindung wieder steht.",
+            );
+            reloadAktiveEinsaetzeRef.current();
             return;
           }
           // Auto-Switch auf den neu angelegten Einsatz — robust gegen den

@@ -46,18 +46,38 @@ interface ManuellAnlageBody {
   idempotencyKey: string;
 }
 
+/**
+ * S-01 (Audit 2026-09): Ergebnis der Anlage.
+ *  - `id`: Doc-ID vom Server (nur online). Offline fehlt sie — der Einsatz
+ *    liegt dann in der Outbox und bekommt beim Flush die ID nach Server-
+ *    Muster `einsatz:<typ>-<idempotencyKey>` (routes/einsaetze.ts, POST
+ *    /manuell). Der Aufrufer kann die Ziel-ID daraus VORAB ableiten und
+ *    Vererbungen (Personal, Übungs-Setup) exakt an diese ID binden.
+ *  - `idempotencyKey`: UUID, die auch der Outbox-Replay mitschickt.
+ */
+export interface NeuerEinsatzResult {
+  id?: string;
+  idempotencyKey: string;
+  typ: EinsatzTyp;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Nach erfolgreicher Anlage wird die neue Einsatz-ID zurückgeliefert.
+  /** Nach erfolgreicher Anlage (online ODER in die Outbox gelegt).
    *  `extras` trägt die Übungs-Vorauswahl (Übungsleiter-Person + Übungstyp)
    *  damit das Fahrzeug-Tablet sie als Kdt + Auftrag vorbelegen kann (#155/#162). */
   onCreated: (
-    einsatzId: string,
-    typ: EinsatzTyp,
+    result: NeuerEinsatzResult,
     extras?: { uebungsleiterPerson?: PickPerson | null; uebungsTyp?: string },
   ) => void;
-  /** Initial-Typ-Auswahl (wenn der User von einer Quick-Action kommt). */
+  /**
+   * Initial-Typ-Auswahl (wenn der User von einer Quick-Action kommt).
+   * E-03 (Audit 2026-09): Ist der Typ vorgewählt, zeigt das Modal ihn als
+   * getroffene Wahl ("Typ: Übung — ändern") statt der Drei-Kacheln-Auswahl.
+   * Ohne initialTyp (z. B. "+ Neuer Bericht" in der Tab-Leiste) bleibt
+   * die volle Auswahl sichtbar.
+   */
   initialTyp?: EinsatzTyp;
 }
 
@@ -74,27 +94,43 @@ const UEBUNGS_TYPEN = [
 
 // U-06: einfachere Labels. "Manuell" ist Tech-Jargon — "Einsatz ohne Alarm"
 // trifft, was es wirklich ist (im Gegensatz zum BlaulichtSMS-Alarm).
+// E-03 (Audit 2026-09): Modal-Titel + CTA typabhängig ("Übung anlegen"),
+// Subtexte als Beispiele — gleiches Vokabular wie IdleView/Abgeschlossen.
 const TYP_META: Record<
   EinsatzTyp,
-  { label: string; sub: string; icon: typeof Wrench; color: string; glow: string }
+  {
+    label: string;
+    sub: string;
+    titel: string;
+    cta: string;
+    icon: typeof Wrench;
+    color: string;
+    glow: string;
+  }
 > = {
   manuell: {
     label: "Einsatz ohne Alarm",
-    sub: "Bericht ohne BlaulichtSMS-Alarm",
+    sub: "z. B. Türöffnung, Tierrettung",
+    titel: "Neuer Einsatz ohne Alarm",
+    cta: "Einsatz anlegen",
     icon: Wrench,
     color: "var(--info)",
     glow: "var(--glow-info)",
   },
   lotsendienst: {
     label: "Lotsendienst",
-    sub: "Polizei / Rettung · meist verrechenbar",
+    sub: "Begleitung für Polizei/Rettung",
+    titel: "Neuer Lotsendienst",
+    cta: "Lotsendienst anlegen",
     icon: MapPin,
     color: "var(--warn)",
     glow: "var(--glow-warn)",
   },
   uebung: {
     label: "Übung",
-    sub: "Training · zählt für AS-Stunden",
+    sub: "Schulung, Atemschutz-Training",
+    titel: "Neue Übung",
+    cta: "Übung anlegen",
     icon: GraduationCap,
     color: "var(--ok)",
     glow: "var(--glow-ok)",
@@ -185,6 +221,9 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
    *  Muss VOR den useEffect-Hooks deklariert sein, damit der Loader-Effekt
    *  darauf zugreifen kann (block-scoped variable order). */
   const [personen, setPersonen] = useState<PickPerson[]>([]);
+  /** E-03: Drei-Kacheln-Typauswahl sichtbar? Bei vorgewähltem Typ zu —
+   *  "ändern" klappt sie auf. */
+  const [typAuswahlOffen, setTypAuswahlOffen] = useState(!initialTyp);
 
   // ─── State-Sync: bei jedem Öffnen den Initial-Typ frisch setzen ───
   // Bug-Fix: useState(initialTyp ?? "manuell") läuft NUR beim ersten Mount.
@@ -193,6 +232,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
   useEffect(() => {
     if (open) {
       setTyp(initialTyp ?? "manuell");
+      setTypAuswahlOffen(!initialTyp);
       // U-08: Recent-Liste beim Oeffnen frisch laden + Suche leeren.
       setRecentEinsatzarten(loadRecentEinsatzarten());
       setEinsatzartSuche("");
@@ -376,11 +416,25 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     }
     if (typ === "uebung") {
       body.uebungThema = uebungThema.trim();
+      // E-04 (Audit 2026-09): Das Thema IST die Beschreibung — es geht
+      // zusätzlich als einsatzartFreitext mit, damit AlarmCard/Tab-Leiste/
+      // Archiv den Übungstitel zeigen statt der generischen "Übung".
+      // (Das separate "Beschreibung"-Feld ist bei Übungen ausgeblendet.)
+      if (uebungThema.trim()) body.einsatzartFreitext = uebungThema.trim();
+      else delete body.einsatzartFreitext;
       if (uebungsleiterPerson) {
         body.uebungsleiter = `${uebungsleiterPerson.nachname} ${uebungsleiterPerson.vorname}`.trim();
       }
       if (uebungsTyp) body.uebungsTyp = uebungsTyp;
     }
+    // Vorauswahl VOR resetAll sichern, damit das Fahrzeug-Tablet sie
+    // als Kdt + Auftrag vorbelegen kann (#155/#162) — auch im Offline-
+    // Pfad (S-01: die Ziel-ID ist vorab bekannt, die Vererbung bindet
+    // exakt daran).
+    const extras =
+      typ === "uebung"
+        ? { uebungsleiterPerson, uebungsTyp }
+        : undefined;
     try {
       const result = await apiCall<{ ok: true; id: string }>(
         "/api/einsaetze/manuell",
@@ -391,14 +445,8 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       if (typ === "manuell" && einsatzart) {
         pushRecentEinsatzart(einsatzart);
       }
-      // Vorauswahl VOR resetAll sichern, damit das Fahrzeug-Tablet sie
-      // als Kdt + Auftrag vorbelegen kann (#155/#162).
-      const extras =
-        typ === "uebung"
-          ? { uebungsleiterPerson, uebungsTyp }
-          : undefined;
       resetAll();
-      onCreated(result.id, typ, extras);
+      onCreated({ id: result.id, idempotencyKey, typ }, extras);
     } catch (e) {
       // Schema-Fehler / 4xx → kein Outbox-Eintrag, Bug zeigen
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
@@ -413,7 +461,9 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         // Wir signalisieren Erfolg mit Hinweis dass der Sync laeuft. Auto-Open
         // kommt sobald der Outbox-Worker im Hintergrund den Einsatz beim
         // Backend angelegt hat (max 30 s + naechster Bericht-Poll).
-        onCreated(`outbox:einsatz:${idempotencyKey}`, typ);
+        // S-01: keine id → der Aufrufer leitet die Ziel-ID aus typ +
+        // idempotencyKey ab (Server-Muster).
+        onCreated({ idempotencyKey, typ }, extras);
       } catch (outboxErr) {
         const msg = outboxErr instanceof Error ? outboxErr.message : String(outboxErr);
         setErr(`Anlage UND lokale Speicherung fehlgeschlagen: ${msg}`);
@@ -501,7 +551,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 letterSpacing: "var(--tracking-tight)",
               }}
             >
-              Neuen Bericht anlegen
+              {TYP_META[typ].titel}
             </h2>
             <div
               style={{
@@ -527,7 +577,45 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           </button>
         </header>
 
-        {/* Type-Selector */}
+        {/* Type-Selector.
+            E-03 (Audit 2026-09): Kommt der User von einer Quick-Action
+            (initialTyp), ist die Wahl schon getroffen — eine Zeile
+            "Typ: Übung — ändern" statt drei konkurrierender Kacheln. */}
+        {!typAuswahlOffen ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 12px",
+              borderRadius: "var(--radius-s)",
+              border: `1px solid ${TYP_META[typ].color}`,
+              background: `color-mix(in srgb, ${TYP_META[typ].color} 12%, var(--glass-2))`,
+            }}
+          >
+            <ActiveIcon size={18} strokeWidth={2.2} color={TYP_META[typ].color} />
+            <span style={{ flex: 1, fontSize: 17, fontWeight: 600 }}>
+              Typ: {TYP_META[typ].label}
+            </span>
+            <button
+              type="button"
+              onClick={() => setTypAuswahlOffen(true)}
+              style={{
+                minHeight: 40,
+                padding: "0 14px",
+                borderRadius: "var(--radius-s)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--fg-2)",
+                fontSize: 15.5,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ändern
+            </button>
+          </div>
+        ) : (
         <div className="grid-3" style={{ gap: 8 }}>
           {(["manuell", "lotsendienst", "uebung"] as EinsatzTyp[]).map((t) => {
             const Icon = TYP_META[t].icon;
@@ -561,6 +649,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             );
           })}
         </div>
+        )}
 
         {/* U-11 (Audit 2026-07): Der Typ ist nach dem Anlegen fix — er
             steuert Nummernkreis, PDF-Formular und Statistik. Das sagen wir
@@ -574,7 +663,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             lineHeight: 1.4,
           }}
         >
-          Typ kann nach dem Anlegen nicht mehr geaendert werden.
+          Typ kann nach dem Anlegen nicht mehr geändert werden.
         </div>
 
         {/* Einsatzart-Pillen — NUR bei "Neuer Einsatz" (manuell) sichtbar.
@@ -595,7 +684,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 <button
                   type="button"
                   onClick={() => setEinsatzartSuche("")}
-                  aria-label="Suche loeschen"
+                  aria-label="Suche löschen"
                   className="icon-btn"
                   style={{ width: 30, height: 30, minHeight: 30 }}
                 >
@@ -618,7 +707,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                     marginBottom: 6,
                   }}
                 >
-                  Haeufig
+                  Häufig
                 </div>
                 <div
                   style={{
@@ -820,23 +909,25 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             </div>
           ) : null}
         </div>
-        <div className="field">
-          <label className="caption">
-            {typ === "uebung"
-              ? "Beschreibung (optional)"
-              : typ === "manuell"
+        {/* E-04 (Audit 2026-09): Bei einer Übung gibt es KEIN separates
+            "Beschreibung"-Feld mehr — das Thema unten übernimmt diese Rolle
+            und geht als einsatzartFreitext mit (zwei Felder für dieselbe
+            Sache haben verwirrt). */}
+        {typ !== "uebung" ? (
+          <div className="field">
+            <label className="caption">
+              {typ === "manuell"
                 ? "Stichwort / Freitext (falls oben nichts passt)"
                 : "Stichwort / Freitext"}
-          </label>
-          <input
-            className="input"
-            value={einsatzartFreitext}
-            onChange={(e) => setEinsatzartFreitext(e.target.value)}
-            placeholder={
-              typ === "uebung" ? "z. B. Innenangriff Übungshaus" : "z. B. Türöffnung Wohnung"
-            }
-          />
-        </div>
+            </label>
+            <input
+              className="input"
+              value={einsatzartFreitext}
+              onChange={(e) => setEinsatzartFreitext(e.target.value)}
+              placeholder="z. B. Türöffnung Wohnung"
+            />
+          </div>
+        ) : null}
 
         {/* Typ-spezifische Felder */}
         {typ === "lotsendienst" ? (
@@ -1060,7 +1151,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
             style={{ flex: 1, padding: "16px 18px", fontSize: 19 }}
           >
             <Plus size={20} />
-            {busy ? "Lege an …" : "Bericht anlegen"}
+            {busy ? "Lege an …" : TYP_META[typ].cta}
           </button>
         </div>
       </div>

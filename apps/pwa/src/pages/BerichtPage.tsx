@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, MapPin, RotateCcw, Save, UploadCloud, Users } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, Map as MapIcon, MapPin, RotateCcw, Save, UploadCloud, Users } from "lucide-react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { APP_BUILD, APP_VERSION } from "../version";
+import { APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
 import { IdleView } from "../components/IdleView";
@@ -12,12 +12,10 @@ import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
 import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { StatusBanner } from "../components/StatusBanner";
-import { DictateButton, type DictateResult } from "../components/DictateButton";
 import { FotoButton } from "../components/FotoButton";
 import { captureFoto, getLocalFotoDataUrl } from "../lib/foto";
 import { CloseTabConfirmModal } from "../components/CloseTabConfirmModal";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
-import { FxToggle } from "../components/FxToggle";
 import { GearChips } from "../components/GearChips";
 import {
   MannschaftSlot,
@@ -31,16 +29,21 @@ import { PersonButton } from "../components/PersonButton";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
+import { lazyRetry } from "../lib/lazy-retry";
 // VorschauModal nur on-demand laden — wird erst beim Klick auf
 // „Vorschau" gebraucht und zieht das gesamte PDF-Layout in den Speicher.
 // Spart First-Paint-Kosten auf Fahrzeug-Tablets.
-const VorschauModal = lazy(() =>
+// I-08 (Audit 2026-09): via lazyRetry — nach einem Deploy fehlt der alte
+// Chunk-Hash; ein Reload holt die frische Shell statt ErrorBoundary.
+const VorschauModal = lazyRetry(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
 import { useGeraete } from "../lib/geraete-config";
 import { getDeviceId } from "../lib/device-id";
+import type { HotdocAlarmDetail } from "../lib/device-register";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
+import { setKeepAwake } from "../lib/platform";
 import { enqueueRequest, unblockRequests } from "../lib/request-outbox";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
@@ -54,7 +57,6 @@ import {
   saveDraft,
   saveReportState,
 } from "../lib/report-state";
-import { describeFailure, transcribeAudio } from "../lib/transcribe";
 import { loadWasserquellen, wasserquelleIconUrl } from "../lib/wasserquellen";
 import { FAHRZEUGE, FLORIAN_POSITION, type FahrzeugId } from "@hotdoc/shared";
 
@@ -83,8 +85,33 @@ const DEFAULT_AUFTRAG_TYPEN: readonly string[] = [
 interface EinsatzInstance {
   id: string;
   alarm: AlarmDaten;
-  einsatzPos: { lat: number; lng: number };
+  /**
+   * N-07 (Audit 2026-09): null = (noch) kein Einsatzort mit Koordinaten.
+   * Vorher wurde still das Feuerwehrhaus (HOME_POS) eingesetzt — Karte
+   * zeigte eine falsche Anfahrt, KM-Auto-Wert war 0 und der Adress-Sync
+   * schickte das Feuerwehrhaus als Einsatz-Koordinate an die Zentrale.
+   */
+  einsatzPos: { lat: number; lng: number } | null;
   manuell: boolean;
+  /**
+   * N-06 (Audit 2026-09): Zeitpunkt der Alarm-Annahme (vom Server, per
+   * Poll). Gesetzt = irgendein Gerät hat den Alarm schon angenommen — dann
+   * schickt dieses Tablet beim Öffnen keine zweite Annahme.
+   */
+  angenommenAm?: string;
+  /**
+   * S-14 (Audit 2026-09): Der BlaulichtSMS-Poller hat diesen Einsatz als
+   * möglichen Doppelalarm eines anderen Einsatzes markiert (Doc-ID des
+   * Originals). AlarmCard zeigt einen amber Hinweis, das Pop-Up ebenfalls.
+   */
+  moeglichesDuplikatVon?: string;
+  /**
+   * S-12 (Audit 2026-09): Uhrzeit (HH:MM), zu der der Kdt diesen Bericht
+   * zuletzt per Tab-Wechsel verlassen hat — das AbschlussModal bietet sie
+   * als "Uhrzeit bis" an, wenn das Feld beim Abschluss noch leer ist.
+   * Nur Session-State (nicht im Draft).
+   */
+  verlassenAmHHMM?: string;
   /** #164: Einsatz-Typ — steuert u.a. die grüne Übungs-Optik der AlarmCard. */
   einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung";
   fahrer: PickPerson | null;
@@ -123,10 +150,11 @@ interface EinsatzInstance {
 interface Props {
   fahrzeugId: FahrzeugId;
   onSwitchFahrzeug: (id: FahrzeugId) => void;
-  /** Wird vom Caller bereitgestellt aber von BerichtPage selbst aktuell
-   *  nicht mehr direkt genutzt — der Reset-Button lebt im Setup/About-Flow.
-   *  Bleibt im Interface damit App.tsx bei der Verkabelung typensicher bleibt
-   *  und ein spaeterer Reset-Knopf hier wieder eingebunden werden kann. */
+  /**
+   * Tablet-Reset (Setup wieder öffnen). E-12 (Audit 2026-09): wird an das
+   * AboutModal durchgereicht — dort sitzt der Reset hinter zwei Confirm-
+   * Klicks. Vorher hing der Knopf im About-Modal funktionslos in der Luft.
+   */
   onResetSetup: () => void;
   /** Single-Device-Logout nach erfolgreichem QR-Handoff. */
   onHandoffLogout: () => void;
@@ -186,7 +214,7 @@ function mergeDraftIntoInstance(
  * Mannschaftsplätze und Geräteliste kommen aus der Fahrzeugkonfiguration.
  * Für Zentrale gibt es eine eigene Page (Hauptbericht, Anhang B des Spec).
  */
-export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onResetSetup, onHandoffLogout }: Props) {
+export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE[fahrzeugId];
   // BUG-Fix: Geräte-Liste aus der LIVE-Backoffice-Konfig (config:geraete)
   // statt der hartkodierten Default-Liste — sonst zeigen Fahrzeugbericht und
@@ -199,8 +227,26 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const [abschlussModalOpen, setAbschlussModalOpen] = useState(false);
   const [vorschauOpen, setVorschauOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
-  /** Modal-State für Neuer-Einsatz-Anlage vom Tablet, mit Typ-Vorwahl. */
-  const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<EinsatzTyp | null>(null);
+  /**
+   * Modal-State für Neuer-Einsatz-Anlage vom Tablet. E-03 (Audit 2026-09):
+   * `typ` gesetzt = Quick-Action mit Vorwahl (Modal zeigt "Typ: Übung —
+   * ändern"); null = "+ Neuer Bericht" aus der Tab-Leiste (volle Auswahl).
+   */
+  const [neuerEinsatzOpen, setNeuerEinsatzOpen] = useState<{ typ: EinsatzTyp | null } | null>(null);
+  /**
+   * E-13 (Audit 2026-09): Bei einer Übung ist die Karte standardmäßig
+   * zugeklappt (Anfahrt spielt keine Rolle, die Karte kostet Platz + Akku).
+   * Merkt sich die Einsatz-ID, für die der Kdt sie aufgeklappt hat.
+   */
+  const [karteOffenFuer, setKarteOffenFuer] = useState<string | null>(null);
+  /**
+   * C-12 (Audit 2026-09): Zeitpunkt, seit dem der Live-Sync scheitert
+   * (null = letzter Sync ok). Footer zeigt dann amber "Nicht synchronisiert
+   * seit HH:MM — lokal gesichert" statt des grünen Auto-Save-Status.
+   */
+  const [syncErrAt, setSyncErrAt] = useState<number | null>(null);
+  /** C-11 (Audit 2026-09): Reaktivierung läuft — AbgeschlossenView sperrt den Button. */
+  const [reaktivBusy, setReaktivBusy] = useState(false);
   /** Read-only Archiv-Modal. */
   const [archivOpen, setArchivOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -215,6 +261,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     id: string;
     einsatzart: string;
     einsatzort: string;
+    /** N-08: Titel typabhängig — BlaulichtSMS-Alarm vs. Anlage am Florian. */
+    istAlarm: boolean;
+    /** S-14: weitere neue Einsätze im selben Poll-Tick (liegen in der Tab-Leiste). */
+    weitere: number;
+    /** S-14: Server-Markierung "möglicher Doppelalarm". */
+    duplikat: boolean;
   } | null>(null);
   /**
    * ING-04 (4-Personas-Audit, 2026-06-12): Fremdschreib-Hinweis. Ein
@@ -255,6 +307,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     | { kind: "queued" }
     | { kind: "error"; msg: string }
   >({ kind: "idle" });
+  // N-02 (Audit 2026-09): Live-Zugriff auf uploadState aus dem einmal
+  // gebundenen Poll-Closure (Phase 3 prüft, ob der Upload für einen remote
+  // abgeschlossenen Einsatz bestätigt ist).
+  const uploadStateRef = useRef(uploadState);
+  useEffect(() => {
+    uploadStateRef.current = uploadState;
+  }, [uploadState]);
 
   // AUDIT-03 (2026-06-12): aggregierter Outbox-Status für das persistente
   // Sync-Badge unter der Topbar (wartend = nur Netz fehlt, blockiert =
@@ -292,8 +351,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     einsatzId: string;
     prev: {
       einsatzort: string;
-      koordinaten: { lat: number; lng: number };
-      einsatzPos: { lat: number; lng: number };
+      koordinaten: { lat: number; lng: number } | null;
+      einsatzPos: { lat: number; lng: number } | null;
     };
     neu: string;
   } | null>(null);
@@ -336,11 +395,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
 
   // Folge-Auftrag-Vererbung: wenn der Funktionaer auf "Neuer Einsatz" klickt
   // waehrend ein nicht-abgeschlossener Einsatz aktiv ist, parken wir das
-  // Personal in diesem Ref. Sobald der neue Einsatz im naechsten Poll
-  // auftaucht, wird sein leerer Mannschafts-Block aus diesem Ref vorbefuellt.
+  // Personal in diesem Ref. Sobald der neue Einsatz im Poll auftaucht, wird
+  // sein leerer Mannschafts-Block aus diesem Ref vorbefuellt.
   // Hintergrund: Lotsendienst nach Brandeinsatz, Folge-Ubung etc. — dieselbe
   // Besatzung, derselbe Wagen, der Kdt soll nicht alles neu tippen.
+  // S-01 (Audit 2026-09): `zielId` bindet die Vererbung an GENAU den
+  // angelegten Einsatz (Server-ID bzw. vorab berechnete Outbox-Ziel-ID).
+  // Vorher galt "erster neuer Einsatz binnen 30 s" — ein zufällig
+  // dazwischenkommender BlaulichtSMS-Alarm erbte dann fremdes Personal.
   interface InheritedPersonal {
+    zielId: string;
     fahrer: PickPerson | null;
     kdt: PickPerson | null;
     mannschaft: MannschaftSlotData[];
@@ -348,13 +412,24 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const inheritPersonalRef = useRef<InheritedPersonal | null>(null);
 
   // #155/#162 (Test 2026-06-03): Übungs-Vorauswahl puffern — wenn beim Anlegen
-  // ein Übungsleiter + Übungstyp gewählt wurde, übernimmt der erste neu
-  // erkannte Übungs-Einsatz den Übungsleiter als Kdt + den Übungstyp als
-  // Auftrag. Auto-Clear nach 30 s (analog inheritPersonalRef).
+  // ein Übungsleiter + Übungstyp gewählt wurde, übernimmt der Übungs-Einsatz
+  // mit dieser zielId den Übungsleiter als Kdt + den Übungstyp als Auftrag.
   const pendingUebungSetupRef = useRef<{
+    zielId: string;
     uebungsleiterPerson?: PickPerson | null;
     uebungsTyp?: string;
   } | null>(null);
+  // N-06 (Audit 2026-09): Einsatz-IDs, für die dieses Tablet die Alarm-
+  // Annahme (angenommenVon/-Am) bereits geschickt hat — einmal pro Einsatz.
+  const angenommenGesendetRef = useRef<Set<string>>(new Set());
+  // C-11 (Audit 2026-09): Doppel-Tipp-Guard für Reaktivieren.
+  const reaktivInFlightRef = useRef(false);
+  // S-02/N-09: Tab-Wechsel-Funktion für einmal gebundene Listener (Push-Tipp).
+  const switchActiveRef = useRef<(id: string) => void>(() => {});
+  // N-09: Einsatz-ID aus einem Push-Tipp, die lokal noch unbekannt war —
+  // sobald der Poll sie bringt, wird sie OHNE Pop-Up geöffnet (der Kdt hat
+  // ja ausdrücklich auf die Benachrichtigung getippt).
+  const pushOpenRef = useRef<string | null>(null);
   // #154: Sofort-Reload-Hook — onCreated triggert runPoll direkt, statt aufs
   // 5-s-Polling zu warten (Auto-Open ohne spürbare Verzögerung).
   const runPollRef = useRef<(() => void) | null>(null);
@@ -395,6 +470,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             atemschutzGueltig?: boolean;
             aktiv?: boolean;
           }>;
+          /** Zeitpunkt des letzten erfolgreichen syBOS-Syncs (N-04). */
+          standVom?: string | null;
         }>("/api/admin/personen");
         if (cancelled) return;
         const list: PickPerson[] = r.items
@@ -408,8 +485,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             atemschutzGueltig: p.atemschutzGueltig === true,
           }))
           .sort((a, b) => a.nachname.localeCompare(b.nachname));
+        // N-04 (Audit 2026-09): Eine LEERE Liste (syBOS-Sync noch nie
+        // gelaufen / Tabelle nach Re-Deploy leer) darf weder den State noch
+        // den Cache überschreiben — der letzte gute Stand bleibt.
+        if (list.length === 0) {
+          const cached = loadPersonenCache();
+          if (cached) setPersonen((cur) => (cur.length > 0 ? cur : cached));
+          return;
+        }
         setPersonen(list);
-        savePersonenCache(list);
+        savePersonenCache(list, r.standVom ?? null);
       } catch {
         // Backend nicht erreichbar — gecachte Liste als Fallback laden
         // (leicht veraltet ist tausendmal besser als leer). Der 30-s-Retry
@@ -544,13 +629,15 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       if (!Number.isFinite(alarmZeit) || Date.now() - alarmZeit > 24 * 60 * 60 * 1000) {
         continue;
       }
+      // N-07: ohne Koordinaten im Draft bleibt es null — kein Feuerwehrhaus-
+      // Fallback mehr.
       const koord =
         alarmRaw &&
         alarmRaw.koordinaten &&
         typeof (alarmRaw.koordinaten as { lat?: unknown }).lat === "number" &&
         typeof (alarmRaw.koordinaten as { lng?: unknown }).lng === "number"
           ? (alarmRaw.koordinaten as { lat: number; lng: number })
-          : HOME_POS;
+          : null;
       const alarm: AlarmDaten = {
         alarmId:
           alarmRaw && typeof alarmRaw.alarmId === "string"
@@ -653,6 +740,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       alarmierungAuthor?: string;
       koordinaten?: { lat: number; lng: number };
       stichwort?: string;
+      /** N-06: Alarm-Annahme (irgendein Gerät) — Teil der Poll-Projektion. */
+      angenommenAm?: string;
+      /** S-14: Server-Markierung "möglicher Doppelalarm" (Doc-ID des Originals). */
+      moeglichesDuplikatVon?: string;
     }
 
     const buildEinsatzFromApi = (api: ApiEinsatzListItem): EinsatzInstance => {
@@ -676,7 +767,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         einsatzort: api.einsatzort ?? "",
         alarmierungZeit: api.alarmierungZeit ?? new Date().toISOString(),
         alarmierungAuthor: api.alarmierungAuthor ?? "BWST",
-        koordinaten: api.koordinaten ?? HOME_POS,
+        // N-07: kein Feuerwehrhaus-Fallback — null heißt "kein Einsatzort".
+        koordinaten: api.koordinaten ?? null,
         distanzKm: 0,
       };
       if (api.stichwort) {
@@ -685,7 +777,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       const fresh: EinsatzInstance = {
         id: api._id,
         alarm,
-        einsatzPos: api.koordinaten ?? HOME_POS,
+        einsatzPos: api.koordinaten ?? null,
+        ...(api.angenommenAm ? { angenommenAm: api.angenommenAm } : {}),
+        ...(api.moeglichesDuplikatVon
+          ? { moeglichesDuplikatVon: api.moeglichesDuplikatVon }
+          : {}),
         manuell: api.einsatzTyp === "manuell" || api.einsatzTyp === "uebung" || api.einsatzTyp === "lotsendienst",
         einsatzTyp:
           api.einsatzTyp === "manuell" ||
@@ -767,18 +863,22 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         // doppelt feuern liess.
         const prevList = einsaetzeRef.current;
         const knownIds = new Set(prevList.map((e) => e.id));
+        const listIds = new Set(list.items.map((it) => it._id));
         const additions: EinsatzInstance[] = [];
         let firstNewId: string | null = null;
         for (const target of list.items) {
           if (knownIds.has(target._id)) continue;
           const fresh = buildEinsatzFromApi(target);
-          // Folge-Auftrag-Vererbung: das erste neu erkannte Einsatz-Doc
-          // bekommt das gepuffert Personal — alle weiteren bleiben leer.
+          // Folge-Auftrag-Vererbung — S-01 (Audit 2026-09): NUR das Einsatz-
+          // Doc mit der beim Anlegen gemerkten zielId bekommt das gepufferte
+          // Personal; alle anderen (z. B. ein parallel eintreffender Alarm)
+          // bleiben leer. Kein Zeitfenster mehr — der Puffer wartet, bis
+          // genau dieser Einsatz auftaucht (auch nach Offline-Flush).
           // Wir markieren die ID auch im hydratedRef, damit der spaetere
           // Hydrate-Sweep nichts vom Backend drueberzieht (Backend hat noch
           // keinen Fahrzeugbericht fuer den neuen Einsatz).
           const inherit = inheritPersonalRef.current;
-          if (inherit && !firstNewId) {
+          if (inherit && inherit.zielId === target._id) {
             fresh.fahrer = inherit.fahrer;
             fresh.kdt = inherit.kdt;
             fresh.mannschaft = inherit.mannschaft.map((m, i) => ({
@@ -788,10 +888,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             inheritPersonalRef.current = null;
             hydratedIdsRef.current.add(target._id);
           }
-          // #155/#162: Übungs-Vorauswahl auf den ersten neuen Übungs-Einsatz
-          // anwenden — Übungsleiter → Fahrzeug-Kdt, Übungstyp → erster Auftrag.
+          // #155/#162: Übungs-Vorauswahl auf GENAU den angelegten Übungs-
+          // Einsatz anwenden — Übungsleiter → Fahrzeug-Kdt, Übungstyp →
+          // erster Auftrag (S-01: zielId-Abgleich statt "erster neuer").
           const uebSetup = pendingUebungSetupRef.current;
-          if (uebSetup && !firstNewId && fresh.einsatzTyp === "uebung") {
+          if (uebSetup && uebSetup.zielId === target._id && fresh.einsatzTyp === "uebung") {
             if (uebSetup.uebungsleiterPerson) {
               fresh.kdt = uebSetup.uebungsleiterPerson;
             }
@@ -827,7 +928,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
             const ortChanged = fresh.einsatzort !== e.alarm.einsatzort;
             const artChanged = fresh.einsatzart !== e.alarm.einsatzart;
             const stwChanged = (fresh.stichwort ?? null) !== (e.alarm.stichwort ?? null);
-            if (!ortChanged && !artChanged && !stwChanged) return e;
+            // N-06 / S-14: Annahme-Zeitpunkt und Doppelalarm-Markierung
+            // nachziehen (setzt ein anderes Gerät bzw. der Poller).
+            const angChanged = (api.angenommenAm ?? null) !== (e.angenommenAm ?? null);
+            const dupChanged =
+              (api.moeglichesDuplikatVon ?? null) !== (e.moeglichesDuplikatVon ?? null);
+            if (!ortChanged && !artChanged && !stwChanged && !angChanged && !dupChanged) {
+              return e;
+            }
             const nextAlarm: AlarmDaten = {
               ...e.alarm,
               einsatzart: fresh.einsatzart,
@@ -839,7 +947,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               delete nextAlarm.stichwort;
             }
             const nextEinsatzPos = api.koordinaten ?? e.einsatzPos;
-            return { ...e, alarm: nextAlarm, einsatzPos: nextEinsatzPos };
+            const next: EinsatzInstance = { ...e, alarm: nextAlarm, einsatzPos: nextEinsatzPos };
+            if (api.angenommenAm) next.angenommenAm = api.angenommenAm;
+            else delete next.angenommenAm;
+            if (api.moeglichesDuplikatVon) next.moeglichesDuplikatVon = api.moeglichesDuplikatVon;
+            else delete next.moeglichesDuplikatVon;
+            return next;
           });
           // Bei Reruns (Strict-Mode) kann prev bereits die Additions enthalten —
           // dedupen damit wir keine Dubletten anhaengen.
@@ -865,9 +978,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           // KDT-14 (AUDIT-02, 2026-06-12): auch eigene Chronik-Eintraege und
           // ein manueller KM-Override zaehlen als "echte Arbeit" — vorher
           // riss ein neuer Alarm den Kdt trotzdem aus der Eingabe.
+          // N-08 (Audit 2026-09): "echte Arbeit" zaehlt NUR, wenn der Server
+          // den lokalen Einsatz noch als aktiv listet — ein Zombie-Tab
+          // (remote laengst abgeschlossen, Phase 3 hat ihn noch nicht
+          // eingeholt) darf den Auto-Open eines echten Alarms nicht blocken.
           const hasActiveWork =
             cur &&
             !cur.abgeschlossen &&
+            listIds.has(cur.id) &&
             (cur.fahrer ||
               cur.kdt ||
               cur.mannschaft.some((m) => m.person) ||
@@ -876,8 +994,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               cur.auftraege.length > 0 ||
               cur.chronik.some((c) => c.fahrzeugId === fahrzeugId) ||
               cur.kmManualOverride !== null);
-          if (hasActiveWork) {
+          // N-09: Push-Tipp auf genau einen dieser neuen Einsaetze → direkt
+          // oeffnen, kein Pop-Up (bewusste Entscheidung des Kdt).
+          const pushZiel = pushOpenRef.current;
+          if (pushZiel && additions.some((a) => a.id === pushZiel)) {
+            pushOpenRef.current = null;
+            setActiveId(pushZiel);
+          } else if (hasActiveWork) {
             // Pop-Up triggern — Werte aus der frisch erkannten Einsatz-Doc.
+            // S-14: weitere neue Einsaetze im selben Tick + Doppelalarm-
+            // Markierung mitgeben; N-08: Titel typabhaengig.
             const target = list.items.find((it) => it._id === firstNewId);
             if (target) {
               setNewEinsatzPopup({
@@ -885,6 +1011,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 einsatzart:
                   target.einsatzart ?? target.einsatzartFreitext ?? "Neuer Einsatz",
                 einsatzort: target.einsatzort ?? "",
+                istAlarm:
+                  target.einsatzTyp !== "manuell" &&
+                  target.einsatzTyp !== "uebung" &&
+                  target.einsatzTyp !== "lotsendienst",
+                weitere: additions.length - 1,
+                duplikat: !!target.moeglichesDuplikatVon,
               });
             }
           } else {
@@ -982,8 +1114,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         // verworfen. HARTE REGEL: Dieser Block laeuft NUR, wenn der Listen-
         // Request oben netzwerkseitig erfolgreich war (wir sind im try-Block
         // NACH Erhalt von list) — ein Netzfehler darf geseedete Einsaetze
-        // NIE killen.
-        const listIds = new Set(list.items.map((it) => it._id));
+        // NIE killen. (listIds ist oben in Phase 1 berechnet.)
         const offeneLokal = einsaetzeRef.current.filter(
           (e) => !e.abgeschlossen && !listIds.has(e.id),
         );
@@ -997,10 +1128,34 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               // KM wie bisher berechnen: manueller Override gewinnt, sonst
               // Luftlinie x Strassenfaktor x 2 (die GraphHopper-Route gehoert
               // zum gerade aktiven Einsatz und ist hier nicht verfuegbar).
+              // N-07: ohne Einsatzort-Koordinaten bleibt es bei 0.
               const km =
                 typeof lokal.kmManualOverride === "number"
                   ? lokal.kmManualOverride
-                  : haversineKm(HOME_POS, lokal.einsatzPos) * ROAD_FACTOR * 2;
+                  : lokal.einsatzPos
+                    ? haversineKm(HOME_POS, lokal.einsatzPos) * ROAD_FACTOR * 2
+                    : 0;
+              // N-02 (Audit 2026-09): Der Einsatz wurde remote versiegelt,
+              // waehrend hier noch Eingaben stehen, deren Upload NICHT
+              // bestaetigt ist → das darf nicht wie ein sauberer Abschluss
+              // aussehen. Roter Upload-Status mit Handlungsanweisung; die
+              // Outbox reicht nach der Reaktivierung automatisch nach.
+              const hatLokaleDaten =
+                !!lokal.fahrer ||
+                !!lokal.kdt ||
+                lokal.mannschaft.some((m) => m.person) ||
+                lokal.gearSelected.size > 0 ||
+                lokal.oelSaecke > 0 ||
+                lokal.auftraege.length > 0 ||
+                lokal.chronik.some((c) => c.fahrzeugId === fahrzeugId);
+              const up = uploadStateRef.current;
+              const uploadBestaetigt = up.kind === "ok" && up.einsatzId === lokal.id;
+              if (hatLokaleDaten && !uploadBestaetigt) {
+                setUploadState({
+                  kind: "error",
+                  msg: "Eingaben noch nicht übertragen — Reaktivieren, dann wird nachgereicht",
+                });
+              }
               setEinsaetze((prev) =>
                 prev.map((e) =>
                   e.id === lokal.id && !e.abgeschlossen
@@ -1712,6 +1867,29 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     entry: Parameters<typeof broadcastChronikEntry>[1],
   ): void {
     void broadcastChronikEntry(einsatzId, entry).then((ergebnis) => {
+      // N-03/C-04 (Audit 2026-09): 'failed' = weder gesendet noch in der
+      // Outbox geparkt (PouchDB-Fehler). Der Eintrag bleibt lokal als
+      // "pending" sichtbar (nicht loeschen — er ist der einzige Stand) +
+      // roter Toast, damit der Kdt weiss, dass ihn kein anderes Geraet sieht.
+      if (ergebnis === "failed") {
+        setEinsaetze((prev) =>
+          prev.map((e) =>
+            e.id === einsatzId
+              ? {
+                  ...e,
+                  chronik: e.chronik.map((c) =>
+                    c.id === entry.id ? { ...c, pending: true } : c,
+                  ),
+                }
+              : e,
+          ),
+        );
+        setFehlerToast({
+          at: Date.now(),
+          text: "Chronik-Eintrag konnte nicht gesendet werden — er bleibt nur auf diesem Gerät. Bitte später erneut eintragen.",
+        });
+        return;
+      }
       if (ergebnis !== "rejected") return;
       setEinsaetze((prev) =>
         prev.map((e) =>
@@ -1776,8 +1954,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     }
   }
 
-  // #Test 2026-06-03: Chronik-Eintrag per Texteingabe (Diktat vorerst raus).
-  // Spiegelt den Speech-Pfad von onDictateResult: lokal anhängen + broadcasten.
+  // #Test 2026-06-03: Chronik-Eintrag per Texteingabe. E-07 (Audit 2026-09):
+  // Der geparkte Diktat-Pfad (DictateButton + Whisper/Speech-Logik) ist
+  // ersatzlos raus — er war seit Juni hinter {false && …} tot und hat nur
+  // Bundle + Lesbarkeit gekostet. Lokal anhängen + broadcasten.
   function addChronikText(textRaw: string) {
     const text = textRaw.trim();
     if (!text || !active || active.abgeschlossen) return;
@@ -1793,97 +1973,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     };
     patchActive((e) => ({ ...e, chronik: [...e.chronik, entry] }));
     sendeChronikEintrag(activeId, entry);
-  }
-
-  function onDictateResult(result: DictateResult) {
-    const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const zeitstempel = new Date().toISOString();
-    const dauer = formatDuration(result.durationMs);
-
-    if (result.kind === "speech") {
-      // ─── Pfad A: Web-Speech-API direktes Transkript ───
-      const text = result.text.trim();
-      const finalText = text || `🎤 Audio · ${dauer} · (keine Sprache erkannt)`;
-      // Issue 6 (Einsatz-Test 2026-06-02): fahrzeugId lokal mitfuehren
-      // damit der Edit-Button in der Chronik den Eintrag als "eigen"
-      // erkennt (canEdit-Predikat in der ChronikTimeline).
-      patchActive((e) => ({
-        ...e,
-        chronik: [
-          ...e.chronik,
-          {
-            id,
-            zeitstempel,
-            funkrufname: fahrzeug.funkrufname,
-            fahrzeugId,
-            source: "fahrzeug",
-            text: finalText,
-          },
-        ],
-      }));
-      sendeChronikEintrag(activeId, {
-        id,
-        zeitstempel,
-        funkrufname: fahrzeug.funkrufname,
-        fahrzeugId,
-        source: "fahrzeug",
-        text: finalText,
-      });
-      return;
-    }
-
-    // ─── Pfad B: Audio-Blob → Whisper-Backend (iOS-Safari / Firefox) ───
-    const pendingText = `🎤 Audio · ${dauer} · transkribiere …`;
-    // Issue 6 (Einsatz-Test 2026-06-02): fahrzeugId mitfuehren — siehe oben.
-    patchActive((e) => ({
-      ...e,
-      chronik: [
-        ...e.chronik,
-        {
-          id,
-          zeitstempel,
-          funkrufname: fahrzeug.funkrufname,
-          fahrzeugId,
-          source: "fahrzeug",
-          pending: true,
-          text: pendingText,
-        },
-      ],
-    }));
-    sendeChronikEintrag(activeId, {
-      id,
-      zeitstempel,
-      funkrufname: fahrzeug.funkrufname,
-      fahrzeugId,
-      source: "fahrzeug",
-      pending: true,
-      text: pendingText,
-    });
-
-    void (async () => {
-      const outcome = await transcribeAudio(result.blob, { lang: "de" });
-      const finalText = outcome.ok
-        ? outcome.text.trim() || `🎤 Audio · ${dauer} · (leer)`
-        : `🎤 Audio · ${dauer} — ${describeFailure(outcome.reason)}`;
-
-      patchActive((e) => ({
-        ...e,
-        chronik: e.chronik.map((entry) =>
-          entry.id === id
-            ? { ...entry, pending: false, text: finalText }
-            : entry,
-        ),
-      }));
-      sendeChronikEintrag(activeId, {
-        id,
-        zeitstempel,
-        funkrufname: fahrzeug.funkrufname,
-        fahrzeugId,
-        source: "fahrzeug",
-        pending: false,
-        text: finalText,
-      });
-    })();
   }
 
   function addAuftrag(text: string) {
@@ -1972,6 +2061,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     if (kmRoute && kmRoute.distanceM > 0) {
       return (kmRoute.distanceM / 1000) * 2;
     }
+    // N-07: ohne Einsatzort-Koordinaten gibt es keinen Auto-Wert (0 — die
+    // UI zeigt "— km · Einsatzort fehlt", der Kdt traegt die Strecke selbst ein).
+    if (!active.einsatzPos) return 0;
     const luftlinie = haversineKm(HOME_POS, active.einsatzPos);
     return luftlinie * ROAD_FACTOR * 2;
   }
@@ -2163,6 +2255,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
    * Outbox-Items freigeben → der 30-s-Worker reicht sie automatisch nach.
    */
   async function reaktivieren(einsatz: EinsatzInstance): Promise<void> {
+    // C-11 (Audit 2026-09): Doppel-Tipp-Guard — der zweite Tipp waehrend
+    // des laufenden POST loeste vorher einen zweiten Reaktivieren-Request
+    // (+ zweiten Audit-Trail-Eintrag) aus.
+    if (reaktivInFlightRef.current) return;
+    reaktivInFlightRef.current = true;
+    setReaktivBusy(true);
     const einsatzId = einsatz.id;
     const enc = encodeURIComponent(einsatzId);
     try {
@@ -2174,7 +2272,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         if (doc.status === "abgeschlossen" || doc.schreibschutz === true) {
           await apiCall(`/api/einsaetze/${enc}/reaktivieren`, {
             method: "POST",
-            body: { grund: "Reaktivierung am Fahrzeug-Tablet" },
+            // S-07 (Audit R3): nur den Bericht DIESES Fahrzeugs wieder
+            // oeffnen — die anderen Fahrzeugberichte bleiben abgeschlossen.
+            body: { grund: "Reaktivierung am Fahrzeug-Tablet", nurFahrzeugId: fahrzeugId },
           });
         }
       } catch (err) {
@@ -2204,6 +2304,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         at: Date.now(),
         text: `Reaktivieren fehlgeschlagen: ${describeApiError(err)}`,
       });
+    } finally {
+      reaktivInFlightRef.current = false;
+      setReaktivBusy(false);
     }
   }
 
@@ -2212,12 +2315,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
    * Aufträge, ÖL) als status="in_arbeit"-Fahrzeugbericht ins Backend.
    * Dadurch sieht die Florianstation den Personal-Stand live (alle ~15 s
    * per Poll), ohne dass der Kdt manuell „Senden" druecken muss.
-   * Silent — kein UI-Feedback; Fehler nur in der Konsole. Der Abschluss-
-   * Upload hat eigene UI-Statusbadge.
+   * N-02 + C-12 (Audit 2026-09): Scheitert der PUT netz-/serverseitig
+   * (kein Netz, Timeout, 5xx, 423 Schreibschutz), landet der Stand in der
+   * persistenten Outbox (dedupeKey wie der Abschluss-PUT — die Outbox
+   * behaelt den juengsten Body) und der Footer zeigt amber "Nicht
+   * synchronisiert seit HH:MM — lokal gesichert". Vorher war der Fehler
+   * nur in der Konsole und die Zentrale sah stundenlang einen alten Stand.
    */
   async function syncBerichtLive(einsatz: EinsatzInstance): Promise<void> {
+    const putPath = `/api/einsaetze/${encodeURIComponent(einsatz.id)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`;
+    let body: Record<string, unknown> | null = null;
     try {
-      const body = {
+      body = {
         zeit: {
           von: einsatz.alarm.alarmierungZeit,
           ...(einsatz.uhrzeitBisHHMM
@@ -2271,17 +2380,154 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         // 5-s-Poll, dass hier ein Fremdschreiber aktiv ist.
         lastWriterDeviceId: getDeviceId(),
       };
-      await apiCall(
-        `/api/einsaetze/${encodeURIComponent(einsatz.id)}/fahrzeugbericht/${encodeURIComponent(fahrzeugId)}`,
-        { method: "PUT", body },
-      );
+      await apiCall(putPath, { method: "PUT", body });
       // Erfolgreichen Save für UI-Status merken — Footer zeigt dezent
       // "Auto-gespeichert · HH:MM". Stress-Sicherheit für den Funktionär.
       setLastAutoSavedAt(Date.now());
+      setSyncErrAt(null);
     } catch (err) {
       console.warn("[live-sync] Fahrzeugbericht konnte nicht synchronisiert werden:", err);
+      const status = err instanceof ApiError ? err.status : null;
+      const istTimeout = err instanceof ApiError && err.message === "timeout";
+      // Retry-wuerdig: Nicht-API-Fehler, kein Netz (0/Timeout), 5xx, 423.
+      // Echte Client-Fehler (400/404/409/422) NICHT queuen — der Body wuerde
+      // identisch wieder abgelehnt.
+      const retryWuerdig =
+        !(err instanceof ApiError) ||
+        status === 0 ||
+        istTimeout ||
+        (status !== null && status >= 500) ||
+        status === 423;
+      // Guard: ist der Bericht inzwischen lokal abgeschlossen, darf der
+      // in_arbeit-Body den gequeueten Abschluss-PUT (gleicher dedupeKey)
+      // NICHT ueberschreiben.
+      const inzwischenAbgeschlossen = !!einsaetzeRef.current.find(
+        (e) => e.id === einsatz.id,
+      )?.abgeschlossen;
+      if (retryWuerdig && body && !inzwischenAbgeschlossen) {
+        await enqueueRequest(1, `fzgber:${einsatz.id}:${fahrzeugId}`, "PUT", putPath, body).catch(
+          () => {
+            /* PouchDB-Fehler → der localStorage-Draft bleibt als letzter Schutz */
+          },
+        );
+      }
+      if (status === 423) {
+        // S-02: der Bericht ist auf der Zentrale abgeschlossen — der Kdt
+        // muss das sehen, sonst tippt er in einen versiegelten Bericht.
+        setFehlerToast({
+          at: Date.now(),
+          text: "Bericht ist bei der Zentrale abgeschlossen — Eingaben nicht übertragen. Wieder öffnen, dann wird nachgereicht.",
+        });
+      }
+      setSyncErrAt((cur) => cur ?? Date.now());
     }
   }
+
+  /**
+   * S-02 (Audit 2026-09): Tab-Wechsel. Der bisher aktive, nicht
+   * abgeschlossene Bericht wird VOR dem Wechsel sofort synchronisiert (der
+   * 2,5-s-Debounce-Effekt wird beim Wechsel abgeraeumt — ein Tipp kurz vor
+   * dem Wechsel ging sonst erst beim naechsten Tipp raus) und merkt sich die
+   * Verlassen-Uhrzeit (S-12: Angebot fuer "Uhrzeit bis" beim Abschluss).
+   */
+  function switchActive(nextId: string): void {
+    if (nextId === activeId) return;
+    const prev = active;
+    if (prev && !prev.abgeschlossen) {
+      void syncBerichtLive(prev);
+      const jetzt = new Date();
+      const hhmm = `${pad(jetzt.getHours())}:${pad(jetzt.getMinutes())}`;
+      setEinsaetze((cur) =>
+        cur.map((e) => (e.id === prev.id ? { ...e, verlassenAmHHMM: hhmm } : e)),
+      );
+    }
+    setActiveId(nextId);
+  }
+  // Frische Closure fuer den einmal gebundenen Push-Listener (unten).
+  useEffect(() => {
+    switchActiveRef.current = switchActive;
+  });
+
+  // N-06 (Audit 2026-09): Alarm-Annahme. Beim ERSTEN Oeffnen eines
+  // BlaulichtSMS-Einsatzes auf diesem Tablet geht PUT { angenommenVon,
+  // angenommenAm } an den Einsatz — die Zentrale sieht, welches Fahrzeug
+  // den Alarm wann zur Kenntnis genommen hat. Einmal pro Einsatz; wenn der
+  // Server schon eine Annahme traegt (anderes Geraet), nichts senden.
+  // Fehler → Outbox (Prio 1, dedupeKey "angenommen:<id>").
+  useEffect(() => {
+    if (!active || active.abgeschlossen || active.einsatzTyp !== "alarm") return;
+    if (active.angenommenAm || angenommenGesendetRef.current.has(active.id)) return;
+    angenommenGesendetRef.current.add(active.id);
+    const id = active.id;
+    const path = `/api/einsaetze/${encodeURIComponent(id)}`;
+    const body = { angenommenVon: fahrzeugId, angenommenAm: new Date().toISOString() };
+    void apiCall(path, { method: "PUT", body }).catch((err) => {
+      if (err instanceof ApiError && err.status === 404) return; // Einsatz weg
+      void enqueueRequest(1, `angenommen:${id}`, "PUT", path, body).catch(() => {
+        /* PouchDB-Fehler — die Annahme ist Komfort, kein Datenverlust */
+      });
+    });
+  }, [active?.id, active?.abgeschlossen, active?.einsatzTyp, active?.angenommenAm, fahrzeugId]);
+
+  // N-09 (Audit 2026-09): Display wach halten, solange ein offener Bericht
+  // aktiv ist — sonst friert Android nach dem Display-Timeout die JS-Engine
+  // ein (Poll, GPS-Push, Outbox stehen). Browser: Screen-Wake-Lock (muss
+  // nach jedem Sichtbarwerden neu geholt werden — der Sentinel wird beim
+  // Verstecken vom System freigegeben). Native: KeepAwake-Plugin.
+  const wachHalten = !!active && !active.abgeschlossen;
+  useEffect(() => {
+    if (!wachHalten) return;
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const anfordern = async () => {
+      try {
+        if (document.visibilityState !== "visible") return;
+        const lock = await navigator.wakeLock?.request("screen");
+        if (!lock) return;
+        if (cancelled) {
+          void lock.release().catch(() => {});
+          return;
+        }
+        sentinel = lock;
+      } catch {
+        // Nicht verfuegbar (alte WebView, Akku-Sparmodus) — kein Muss.
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void anfordern();
+    };
+    void anfordern();
+    void setKeepAwake(true);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (sentinel) void sentinel.release().catch(() => {});
+      void setKeepAwake(false);
+    };
+  }, [wachHalten]);
+
+  // N-09: Tipp auf die Push-Benachrichtigung (device-register schickt
+  // "hotdoc:alarm" mit { einsatzId }) → sofort pollen + den Einsatz oeffnen.
+  // Ist er lokal noch unbekannt, bringt ihn der Poll und der Auto-Open
+  // (Phase 1) schaltet um.
+  useEffect(() => {
+    const onAlarm = (ev: Event) => {
+      const detail = (ev as CustomEvent<HotdocAlarmDetail>).detail;
+      runPollRef.current?.();
+      const einsatzId = detail && typeof detail.einsatzId === "string" ? detail.einsatzId : null;
+      if (!einsatzId) return;
+      if (einsaetzeRef.current.some((e) => e.id === einsatzId)) {
+        switchActiveRef.current(einsatzId);
+      } else {
+        // Noch unbekannt → der laufende Poll bringt ihn; Phase 1 oeffnet
+        // ihn dann direkt (pushOpenRef), ohne Pop-Up.
+        pushOpenRef.current = einsatzId;
+      }
+    };
+    window.addEventListener("hotdoc:alarm", onAlarm);
+    return () => window.removeEventListener("hotdoc:alarm", onAlarm);
+  }, []);
 
   const tabs: EinsatzTabSummary[] = einsaetze.map((e) => ({
     id: e.id,
@@ -2304,19 +2550,37 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const personenAnzahl = mannschaftCount + (active?.fahrer ? 1 : 0) + (active?.kdt ? 1 : 0);
   const fahrerKdtCount = (active?.fahrer ? 1 : 0) + (active?.kdt ? 1 : 0);
   const kmRound = computeKm();
-  const kmDisplay = `${kmRound.toFixed(1).replace(".", ",")} km`;
+  // N-07: ohne Koordinaten und ohne manuelle Eingabe gibt es keine Strecke.
+  const kmUnbekannt =
+    !!active && !active.einsatzPos && typeof active.kmManualOverride !== "number";
+  const kmDisplay = kmUnbekannt ? "—" : `${kmRound.toFixed(1).replace(".", ",")} km`;
 
   // KDT-11 (AUDIT-10, 2026-06-12): Platzhalter-Adressen ("GPS …", "Ort noch
   // nicht erfasst", "Übungsort folgt") zaehlen NICHT als gesetzte Adresse —
   // vorher war der Check gruen, obwohl im PDF ein Platzhalter stand.
   const ortTrimmed = active?.alarm.einsatzort.trim() ?? "";
   const ortGesetzt = !!ortTrimmed && !PLATZHALTER_ORT_REGEX.test(ortTrimmed);
+  // N-07 (Audit 2026-09): "Einsatzort fehlt" = weder Koordinaten noch eine
+  // echte Adresse. Harter (roter) Hinweis in AlarmCard + AbschlussModal —
+  // bleibt ueberschreibbar ("Trotzdem schliessen").
+  const einsatzortFehlt = !!active && !active.einsatzPos && !ortGesetzt;
+  // S-12 (Audit 2026-09): Ist der Alarm > 2 h her und "Uhrzeit bis" leer,
+  // wuerde der Abschluss still "jetzt" eintragen — der Kdt soll das bewusst
+  // pruefen (Check erscheint nur dann).
+  const alarmAlterMs = active ? Date.now() - Date.parse(active.alarm.alarmierungZeit) : 0;
+  const uhrzeitBisPruefen =
+    !!active && Number.isFinite(alarmAlterMs) && alarmAlterMs > 2 * 60 * 60 * 1000;
 
   const checks: AbschlussCheck[] = [
     { ok: !!active?.fahrer, label: "Fahrer eingetragen" },
     { ok: !!active?.kdt, label: "Fahrzeug-Kommandant eingetragen" },
     { ok: mannschaftCount >= 1, label: `Mindestens 1 Mannschaftsplatz besetzt (aktuell ${mannschaftCount})` },
-    { ok: ortGesetzt, label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" },
+    ...(einsatzortFehlt
+      ? [{ ok: false, label: "Einsatzort fehlt", tone: "red" as const }]
+      : [{ ok: ortGesetzt, label: "Einsatzadresse gesetzt (für Strecken-Berechnung)" }]),
+    ...(uhrzeitBisPruefen
+      ? [{ ok: !!active?.uhrzeitBisHHMM, label: "Uhrzeit bis geprüft (sonst = jetzt)" }]
+      : []),
     // #153-Zusage: bei einer Uebung muss vor dem Abschluss ein Thema/Typ
     // erfasst sein (als Auftrag ODER als konkrete Einsatzart).
     ...(active?.einsatzTyp === "uebung"
@@ -2344,12 +2608,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
     // EL/SF-Plausibilitaet: unter 1 km Gesamtstrecke ist bei gesetzter
     // Adresse fast immer ein Rechenfehler/fehlendes Routing — kein harter
     // Blocker, "Trotzdem schliessen" bleibt moeglich.
-    { ok: kmRound >= 1 || !ortGesetzt, label: `KM plausibel (aktuell ${kmDisplay})` },
+    // N-07: ohne Koordinaten gibt es keinen Auto-Wert — dann zaehlt nur
+    // eine manuell eingetragene Strecke.
+    kmUnbekannt
+      ? { ok: false, label: "Strecke fehlt — kein Kartenpunkt, bitte manuell eintragen" }
+      : { ok: kmRound >= 1 || !ortGesetzt, label: `Strecke plausibel (aktuell ${kmDisplay})` },
   ];
 
+  // E-15 (Audit 2026-09): "Strecke" statt "KM (auto)" — der Wert kann
+  // auch manuell sein, und "auto" sagt dem Kdt nichts.
   const abschlussSummary = [
     { label: "Mannschaft", value: `${personenAnzahl} Pers.` },
-    { label: "KM (auto)", value: kmDisplay },
+    { label: "Strecke", value: kmDisplay },
     { label: "Geräte", value: String(active?.gearSelected.size ?? 0) },
     { label: "Aufträge", value: String(active?.auftraege.length ?? 0) },
   ];
@@ -2357,22 +2627,35 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
   const datum = active ? new Date(active.alarm.alarmierungZeit) : new Date();
   const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
   const zeitStr = `${pad(datum.getHours())}:${pad(datum.getMinutes())}`;
+  // E-05 (Audit 2026-09): Vokabular typabhaengig — nur ein BlaulichtSMS-
+  // Alarm wurde "alarmiert", alles andere wurde "angelegt".
+  const istAlarmTyp = active?.einsatzTyp === "alarm";
+  const autoPillTitle = istAlarmTyp
+    ? "Automatisch aus der Alarmierung übernommen"
+    : "Automatisch beim Anlegen gesetzt";
+  // E-13: Karte bei Übung nur auf Wunsch (pro Einsatz gemerkt).
+  const karteSichtbar =
+    !!active && (active.einsatzTyp !== "uebung" || karteOffenFuer === active.id);
 
   return (
     <div>
+      {/* E-06 (Audit 2026-09): keine Bericht-Nr mehr in der Topbar — die
+          Alarm-ID sagt dem Kdt nichts und stand bei manuellen Einsaetzen
+          als kryptische UUID da. E-10: "Über HotDoc" + Hilfe im Mehr-Menue. */}
       <Topbar
         funkrufname={fahrzeug.funkrufname}
-        {...(active ? { einsatzNr: active.alarm.alarmId } : {})}
         geo={geo}
         onSwitchVehicle={() => setVehicleSwitcherOpen(true)}
         onHandoff={() => setHandoffOpen(true)}
+        onAbout={() => setAboutOpen(true)}
+        showHilfe
       />
 
       <EinsatzTabs
         tabs={tabs}
         activeId={activeId}
-        onSelect={setActiveId}
-        onNew={() => setNeuerEinsatzOpen("manuell")}
+        onSelect={switchActive}
+        onNew={() => setNeuerEinsatzOpen({ typ: null })}
         onCloseTab={(id) => {
           const tab = tabs.find((t) => t.id === id);
           setTabToClose({
@@ -2384,7 +2667,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         }}
       />
 
-      <StatusBanner />
+      {/* I-06: im OK-Fall kein gruenes Dauerband — nur wenn etwas hakt. */}
+      <StatusBanner quietWhenOk />
       <HandoffBanner onReleased={onHandoffLogout} />
 
       {/* AUDIT-03 (2026-06-12): persistentes Sync-Badge — die Outbox arbeitet
@@ -2447,22 +2731,27 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               active.abgeschlossen &&
               void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)
             }
-            onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
+            onNeuerBericht={(typ) => setNeuerEinsatzOpen({ typ })}
             onArchiv={() => setArchivOpen(true)}
-            onSwitchFahrzeug={() => setVehicleSwitcherOpen(true)}
             onReaktivieren={() => void reaktivieren(active)}
+            busy={reaktivBusy}
           />
         ) : istIdle || !active ? (
           <IdleView
             funkrufname={fahrzeug.funkrufname}
-            onNeuerBericht={(typ) => setNeuerEinsatzOpen(typ)}
+            onNeuerBericht={(typ) => setNeuerEinsatzOpen({ typ })}
             onArchiv={() => setArchivOpen(true)}
             syncState={uploadState}
             onRetryUpload={() => active?.abgeschlossen && void uploadFahrzeugbericht(active, active.abgeschlossen.kmGefahren)}
           />
         ) : (
           <>
-            <AlarmCard alarm={active.alarm} einsatzTyp={active.einsatzTyp} />
+            <AlarmCard
+              alarm={active.alarm}
+              einsatzTyp={active.einsatzTyp}
+              einsatzortFehlt={einsatzortFehlt}
+              moeglichesDuplikat={!!active.moeglichesDuplikatVon}
+            />
 
             <SectionHead title="Einsatzdaten" />
             <section className="card">
@@ -2471,10 +2760,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   <Calendar size={20} />
                   Datum &amp; Zeitraum
                 </div>
-                {/* T-09 (Audit 2026-07): Funkrufname hier ergaenzt — die
-                    redundante "Fahrzeug"-Karte weiter unten ist entfernt. */}
+                {/* E-05/E-10 (Audit 2026-09): Funkrufname raus (steht in der
+                    Topbar); Herkunft der Auto-Werte typabhaengig. */}
                 <span className="card-meta">
-                  <span className="num">{fahrzeug.funkrufname}</span> · Auto-Übernahme aus Alarm
+                  {istAlarmTyp ? "automatisch aus dem Alarm übernommen" : "automatisch beim Anlegen gesetzt"}
                 </span>
               </div>
               <div className="grid-3" style={{ gap: 14 }}>
@@ -2486,14 +2775,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   <label className="caption">Datum</label>
                   <div className="input-row filled">
                     <input value={datumStr} readOnly />
-                    <AutoPill title="Automatisch aus der Alarmierung übernommen" />
+                    <AutoPill title={autoPillTitle} />
                   </div>
                 </div>
                 <div className="field">
                   <label className="caption">Uhrzeit von</label>
                   <div className="input-row filled">
                     <input value={zeitStr} readOnly className="num" />
-                    <AutoPill title="Automatisch aus der Alarmierung übernommen" />
+                    <AutoPill title={autoPillTitle} />
                   </div>
                 </div>
                 <div className="field">
@@ -2534,7 +2823,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                             whiteSpace: "nowrap",
                           }}
                         >
-                          manuell ueberschrieben
+                          manuell überschrieben
                         </span>
                         <button
                           type="button"
@@ -2568,8 +2857,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     }}
                   >
                     {active.uhrzeitBisHHMM
-                      ? "Wird beim Abschluss nicht mehr ueberschrieben."
-                      : "leer = aktuelle Zeit beim Abschluss uebernehmen"}
+                      ? "Wird beim Abschluss nicht mehr überschrieben."
+                      : "leer = aktuelle Zeit beim Abschluss übernehmen"}
                   </div>
                 </div>
               </div>
@@ -2679,7 +2968,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                         ? String(active.kmManualOverride)
                         : ""
                     }
-                    placeholder={`${computeKmAuto().toFixed(1).replace(".", ",")} km · Auto`}
+                    placeholder={
+                      active.einsatzPos
+                        ? `${computeKmAuto().toFixed(1).replace(".", ",")} km · Auto`
+                        : "— km · Einsatzort fehlt"
+                    }
                     onChange={(e) => {
                       const v = e.target.value.trim();
                       patchActive((x) => ({
@@ -2815,8 +3108,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                     }
                     style={{ accentColor: "var(--info)" }}
                   />
+                  {/* E-05: bei einer Übung heisst die Rolle Übungsleiter. */}
                   <span style={{ fontSize: 16.5, fontWeight: 600, color: "var(--fg)" }}>
-                    {active.kdt.nachname} {active.kdt.vorname} ist Einsatzleiter
+                    {active.kdt.nachname} {active.kdt.vorname}{" "}
+                    {active.einsatzTyp === "uebung" ? "ist Übungsleiter" : "ist Einsatzleiter"}
                   </span>
                 </label>
               ) : null}
@@ -2865,8 +3160,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   <Clipboard size={20} />
                   Einsatzchronik
                 </div>
-                {/* OPT-4 (Audit 2026-06-03): Klarsprache statt "Whisper". */}
-                <span className="card-meta">Spracherkennung · offline</span>
+                {/* E-07 (Audit 2026-09): Diktat ist raus — es gibt Text und Foto. */}
+                <span className="card-meta">Text oder Foto</span>
               </div>
               {/* Issue 6 (Einsatz-Test 2026-06-02): Chronik-Eintraege koennen
                   nachtraeglich vom Fahrzeugkdt korrigiert werden — aber nur
@@ -2908,11 +3203,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   }
                 }}
               />
-              {/* Test 2026-06-03: Diktat VORERST deaktiviert (kommt evtl. wieder)
-                  → hinter {false && …} geparkt, damit die Whisper-/Speech-Logik
-                  + onDictateResult erhalten bleiben (nur Flag umlegen zum
-                  Reaktivieren). Stattdessen Texteingabe mit Browser-Autokorrektur. */}
-              {false && <DictateButton onResult={onDictateResult} />}
+              {/* Texteingabe mit Browser-Autokorrektur (Diktat seit E-07 entfernt). */}
               <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "stretch" }}>
                 <input
                   className="input"
@@ -2985,16 +3276,52 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
               onRemove={removeAuftrag}
             />
 
-            <SectionHead title="Anfahrt & Position-Sharing" />
-            <MapCard
-              selfPos={selfPos}
-              einsatzPos={active.einsatzPos}
-              einsatzAdresse={active.alarm.einsatzort}
-              fleet={fleet}
-              hydranten={wasserquellen}
-              showLoeschwasser={wasserquellen.length > 0}
-              {...(route ? { route } : {})}
+            {/* E-13/E-14 (Audit 2026-09): "Anfahrt & Karte" statt "Position-
+                Sharing"; bei einer Übung standardmäßig zugeklappt — die
+                Anfahrt spielt keine Rolle, die Karte kostet Platz + Akku. */}
+            <SectionHead
+              title="Anfahrt & Karte"
+              action={
+                active.einsatzTyp === "uebung" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setKarteOffenFuer((cur) => (cur === active.id ? null : active.id))
+                    }
+                    aria-expanded={karteSichtbar}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minHeight: 40,
+                      padding: "0 12px",
+                      borderRadius: "var(--radius-s)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--fg-2)",
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <MapIcon size={15} />
+                    {karteSichtbar ? "Karte ausblenden" : "Karte anzeigen"}
+                  </button>
+                ) : null
+              }
             />
+            {karteSichtbar ? (
+              <MapCard
+                selfPos={selfPos}
+                einsatzPos={active.einsatzPos}
+                einsatzAdresse={active.alarm.einsatzort}
+                fleet={fleet}
+                hydranten={wasserquellen}
+                showLoeschwasser={wasserquellen.length > 0}
+                {...(route ? { route } : {})}
+              />
+            ) : null}
 
             <div className="cta-wrap">
               <div className="cta-secondary">
@@ -3008,13 +3335,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 Fahrzeugbericht abschließen
                 <ArrowRight size={22} />
               </button>
-              <div className="cta-hint">
-                Übergibt den Bericht an die Zentrale <strong>„Florian Eberstalzell"</strong>.
-              </div>
+              {/* E-02 (Audit 2026-09): kurz + klar. */}
+              <div className="cta-hint">Bericht geht an die Zentrale.</div>
               {/* Dezenter Auto-Save-Status — ersetzt den frueheren funktionslosen
                   "Entwurf speichern"-Button (Audit U-01). Auto-Save laeuft im
-                  Hintergrund alle 2,5 s nach Eingaben. */}
+                  Hintergrund alle 2,5 s nach Eingaben.
+                  C-12 (Audit 2026-09): scheitert der Live-Sync, wird daraus
+                  ein amber "Nicht synchronisiert seit HH:MM — lokal gesichert"
+                  — vorher blieb still das alte gruene "gespeichert" stehen. */}
               <div
+                role={syncErrAt ? "status" : undefined}
                 style={{
                   marginTop: 6,
                   fontFamily: "var(--font-mono)",
@@ -3022,7 +3352,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   fontWeight: 600,
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
-                  color: lastAutoSavedAt ? "var(--ok)" : "var(--fg-3)",
+                  color: syncErrAt ? "var(--amber)" : lastAutoSavedAt ? "var(--ok)" : "var(--fg-3)",
                   textAlign: "center",
                   display: "inline-flex",
                   alignItems: "center",
@@ -3031,38 +3361,38 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   width: "100%",
                 }}
               >
-                <Save size={11} strokeWidth={2.4} />
-                {lastAutoSavedAt
-                  ? `Automatisch gespeichert · ${new Date(lastAutoSavedAt).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })}`
-                  : "Auto-Speichern aktiv"}
+                {syncErrAt ? (
+                  <>
+                    <AlertTriangle size={11} strokeWidth={2.4} />
+                    {`Nicht synchronisiert seit ${new Date(syncErrAt).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })} — lokal gesichert`}
+                  </>
+                ) : (
+                  <>
+                    <Save size={11} strokeWidth={2.4} />
+                    {lastAutoSavedAt
+                      ? `Automatisch gespeichert · ${new Date(lastAutoSavedAt).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })}`
+                      : "Auto-Speichern aktiv"}
+                  </>
+                )}
               </div>
             </div>
           </>
         )}
       </main>
 
-      {/* U-12: Fusszeile reduziert auf {Version, Funkrufname, FX-Toggle}.
-          - "An Handy uebergeben" ist in der Topbar.
-          - "Fahrzeug wechseln" ist in der Topbar + in der Fahrzeug-Karte.
-          - "Setup" war ein Tablet-Reset-Schalter direkt im Footer — zu
-            gefaehrlich (Tablet-Reset bei versehentlichem Klick). Wer das
-            wirklich braucht, kann es jetzt ueber AboutModal aufrufen
-            (Klick auf Version). */}
+      {/* E-10/E-11 (Audit 2026-09): Fusszeile auf EINEN Link reduziert —
+          "Über HotDoc · vX". Der FxToggle wohnt jetzt im AboutModal
+          ("Darstellung"), der Funkrufname steht in der Topbar, der Tablet-
+          Reset bleibt hinter zwei Confirm-Klicks im AboutModal. */}
       <div className="appfoot">
-        HotDoc
-        <span className="sep">·</span>
         <button
           type="button"
           onClick={() => setAboutOpen(true)}
           className="foot-link"
-          title="Über HotDoc · Entwickler · Lizenz · Release-Notes · Tablet-Reset"
+          title="Über HotDoc · Darstellung · Release-Notes · Tablet-Reset"
         >
-          {APP_VERSION} · {APP_BUILD}
+          Über HotDoc · {APP_VERSION}
         </button>
-        <span className="sep">·</span>
-        {fahrzeug.funkrufname}
-        <span className="sep">·</span>
-        <FxToggle />
       </div>
 
       <HandoffModal
@@ -3107,11 +3437,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
            Backend). Beim AKTIVEN Tab fuehrt der Confirm lediglich ins
            AbschlussModal (Pflicht-Tor mit Checks) — dort wuerde die
            Cascade-Warnung faelschlich Angst machen. */
-        warnText={
-          tabToClose && tabToClose.id === activeId
-            ? "Es folgt die Abschluss-Pruefung - noch nichts wird geschlossen."
-            : "Achtung: Schließt den GESAMTEN Einsatz für ALLE Fahrzeuge und die Zentrale — noch offene Fahrzeugberichte werden automatisch mit dem aktuellen Zwischenstand versiegelt."
-        }
+        {...(tabToClose && tabToClose.id === activeId
+          ? {
+              // E-08 (Audit 2026-09): beim AKTIVEN Tab fuehrt der Confirm nur
+              // ins AbschlussModal — Button + Hint sagen genau das, und der
+              // rote Cascade-Warntext bleibt weg.
+              primaryLabel: "Weiter zur Abschluss-Prüfung",
+              primaryHint: "Es wird noch nichts geschlossen.",
+            }
+          : {
+              warnText:
+                "Achtung: Schließt den GESAMTEN Einsatz für ALLE Fahrzeuge und die Zentrale — noch offene Fahrzeugberichte werden automatisch mit dem aktuellen Zwischenstand versiegelt.",
+            })}
         onClose={() => setTabToClose(null)}
         onConfirmAbschluss={async () => {
           if (!tabToClose) return;
@@ -3152,6 +3489,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           beide Buttons ("+ Neuer Einsatz" oben im Tab-Header und unten in der
           IdleView) öffnen jetzt das gleiche Modal. */}
 
+      {/* E-02: Typ fuer das Checkbox-Vokabular; S-12: Verlassen-Uhrzeit als
+          Ein-Klick-Angebot fuer "Uhrzeit bis", solange das Feld leer ist. */}
       <AbschlussModal
         showCloseEinsatzOption
         open={abschlussModalOpen}
@@ -3160,6 +3499,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         summary={abschlussSummary}
         onConfirm={abschliessen}
         onCancel={() => setAbschlussModalOpen(false)}
+        {...(active ? { einsatzTyp: active.einsatzTyp } : {})}
+        {...(active && !active.uhrzeitBisHHMM && active.verlassenAmHHMM
+          ? {
+              verlassenAmHHMM: active.verlassenAmHHMM,
+              onUebernehmeVerlassenAm: (hhmm: string) =>
+                patchActive((x) => ({ ...x, uhrzeitBisHHMM: hhmm })),
+            }
+          : {})}
       />
 
       {/* VorschauModal ist lazy — wir rendern es ueberhaupt nur wenn der
@@ -3193,50 +3540,50 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
       {/* ─── Neuer Einsatz/Übung/Lotsendienst ─── */}
       <NeuerEinsatzTabletModal
         open={neuerEinsatzOpen !== null}
-        initialTyp={neuerEinsatzOpen ?? "manuell"}
+        {...(neuerEinsatzOpen?.typ ? { initialTyp: neuerEinsatzOpen.typ } : {})}
         onClose={() => setNeuerEinsatzOpen(null)}
-        onCreated={(einsatzId, typ, extras) => {
+        onCreated={(result, extras) => {
           setNeuerEinsatzOpen(null);
-          // ING-08 (AUDIT-03, 2026-06-12): Offline-Anlage erkennen — die ID
-          // beginnt dann mit "outbox:einsatz:". In dem Fall (a) stehender
-          // Banner statt nur Vibration, (b) die 30-s-Auto-Clears der Vererbungs-
-          // Refs NICHT starten: die Refs werden erst geleert, wenn sie beim
-          // (deutlich spaeteren) Auftauchen des Einsatzes angewendet wurden.
-          const offlineAngelegt = einsatzId.startsWith("outbox:einsatz:");
+          const { typ } = result;
+          // ING-08 (AUDIT-03, 2026-06-12): Offline-Anlage erkennen — dann
+          // fehlt die Server-ID. Stehender Banner statt nur Vibration.
+          const offlineAngelegt = !result.id;
           if (offlineAngelegt) {
             setOfflineAnlageToastAt(Date.now());
           }
+          // S-01 (Audit 2026-09): Ziel-ID des neuen Einsatzes — online die
+          // Server-ID, offline nach dem Server-Muster aus POST /manuell
+          // (`einsatz:<typ>-<idempotencyKey>`, routes/einsaetze.ts). Die
+          // Vererbungs-Refs binden an GENAU diese ID; kein 30-s-Fenster
+          // mehr, das ein fremder Alarm "erben" konnte.
+          const zielId = result.id ?? `einsatz:${typ}-${result.idempotencyKey}`;
           // #155/#162: Übungs-Vorauswahl (Übungsleiter + Übungstyp) puffern —
-          // wird beim Auftauchen des neuen Übungs-Einsatzes als Kdt + Auftrag
-          // angewendet (siehe buildEinsatzFromApi-Loop). Auto-Clear nach 30 s
-          // NUR im Online-Fall.
+          // wird beim Auftauchen GENAU dieses Übungs-Einsatzes als Kdt +
+          // Auftrag angewendet (siehe buildEinsatzFromApi-Loop).
           if (typ === "uebung" && (extras?.uebungsleiterPerson || extras?.uebungsTyp)) {
             pendingUebungSetupRef.current = {
+              zielId,
               ...(extras.uebungsleiterPerson
                 ? { uebungsleiterPerson: extras.uebungsleiterPerson }
                 : {}),
               ...(extras.uebungsTyp ? { uebungsTyp: extras.uebungsTyp } : {}),
             };
-            if (!offlineAngelegt) {
-              setTimeout(() => {
-                pendingUebungSetupRef.current = null;
-              }, 30_000);
-            }
+          } else {
+            pendingUebungSetupRef.current = null;
           }
           // Folge-Auftrag-Personal puffern: wenn der aktuelle Einsatz noch
           // laeuft und Personal eingetragen hat, uebernehmen wir es in den
-          // neuen Einsatz sobald der vom Backend zurueckkommt. Diese Logik
-          // greift NUR fuer manuell/uebung/lotsendienst — BlaulichtSMS-Alarme
-          // bekommen ihre eigene Besatzung weil die typisch frisch alarmiert
-          // werden. Wenn das Tablet im Idle ist (active=null), ist ohnehin
-          // nichts zu vererben.
+          // neuen Einsatz sobald der vom Backend zurueckkommt. Das Modal legt
+          // nur manuell/uebung/lotsendienst an — BlaulichtSMS-Alarme kommen
+          // nie hier durch und bekommen ihre eigene Besatzung. Wenn das
+          // Tablet im Idle ist (active=null), ist ohnehin nichts zu vererben.
           if (
             active &&
             !active.abgeschlossen &&
-            (typ === "manuell" || typ === "uebung" || typ === "lotsendienst") &&
             (active.fahrer || active.kdt || active.mannschaft.some((m) => m.person))
           ) {
             inheritPersonalRef.current = {
+              zielId,
               fahrer: active.fahrer,
               kdt: active.kdt,
               // Deep-Copy damit der alte Bericht nicht mitvergreift wenn der
@@ -3246,17 +3593,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 person: m.person ?? null,
               })),
             };
-            // Auto-Clear nach 30 s: falls der neue Einsatz wider Erwarten nicht
-            // auftaucht (z. B. Backend-Fehler) und ein viel spaeterer, ganz
-            // anderer BlaulichtSMS-Alarm reinkommt, soll der nicht das alte
-            // Personal erben. Der Poll laeuft alle 5 s — 30 s ist grosszuegig.
-            // ING-08: im Offline-Fall NICHT starten — der Einsatz taucht erst
-            // nach dem Outbox-Flush auf, lange nach 30 s.
-            if (!offlineAngelegt) {
-              setTimeout(() => {
-                inheritPersonalRef.current = null;
-              }, 30_000);
-            }
+          } else {
+            inheritPersonalRef.current = null;
           }
           // Vibration als haptisches Feedback bei erfolgreichem Anlegen.
           try {
@@ -3267,7 +3605,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
           // #154: Sofort-Poll statt 5-s-Wartezeit — der neue Einsatz/die Übung
           // taucht binnen ~300 ms auf (Auto-Open ohne spürbare Verzögerung).
           runPollRef.current?.();
-          console.info("[neuer-einsatz] angelegt:", { einsatzId, typ, inherit: !!inheritPersonalRef.current });
+          console.info("[neuer-einsatz] angelegt:", {
+            zielId,
+            typ,
+            offline: offlineAngelegt,
+            inherit: !!inheritPersonalRef.current,
+          });
         }}
       />
 
@@ -3280,9 +3623,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
         fahrzeugName={fahrzeug.funkrufname}
       />
 
+      {/* E-12: Tablet-Reset durchreichen — sitzt im AboutModal hinter zwei
+          Confirm-Klicks. */}
       <AboutModal
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
+        onResetSetup={onResetSetup}
       />
 
       {/* ─── Pop-Up: Neuer Einsatz waehrend laufender Bearbeitung.
@@ -3516,7 +3862,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 marginBottom: 12,
               }}
             >
-              ⚠ Neuer Einsatz von der Florianstation
+              {/* N-08: Titel typabhaengig — ein BlaulichtSMS-Alarm ist etwas
+                  anderes als ein am Florian angelegter Einsatz. */}
+              ⚠ {newEinsatzPopup.istAlarm ? "BlaulichtSMS-ALARM" : "Neuer Einsatz von der Florianstation"}
             </div>
             <h2
               id="new-einsatz-popup-title"
@@ -3532,6 +3880,28 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 </>
               ) : null}
             </h2>
+            {/* S-14: Doppelalarm-Markierung + weitere neue Einsaetze sichtbar
+                machen — sonst liegen sie unbemerkt in der Tab-Leiste. */}
+            {newEinsatzPopup.duplikat ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                  padding: "8px 12px",
+                  borderRadius: "var(--radius-s)",
+                  border: "1px solid var(--amber-border)",
+                  background: "var(--amber-soft)",
+                  color: "var(--amber)",
+                  fontSize: 16,
+                  fontWeight: 600,
+                }}
+              >
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                Möglicher Doppelalarm — Florian prüft
+              </div>
+            ) : null}
             <div
               style={{
                 fontSize: "var(--font-md)",
@@ -3540,8 +3910,20 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 lineHeight: 1.5,
               }}
             >
-              Aktueller Bericht bleibt offen — du erreichst ihn ueber die
+              Aktueller Bericht bleibt offen — du erreichst ihn über die
               Tab-Leiste oben.
+              {newEinsatzPopup.weitere > 0 ? (
+                <>
+                  <br />
+                  <strong>
+                    +{newEinsatzPopup.weitere}{" "}
+                    {newEinsatzPopup.weitere === 1
+                      ? "weiterer neuer Einsatz"
+                      : "weitere neue Einsätze"}{" "}
+                    in der Tab-Leiste
+                  </strong>
+                </>
+              ) : null}
             </div>
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button
@@ -3556,7 +3938,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  setActiveId(newEinsatzPopup.id);
+                  // S-02: ueber switchActive — synchronisiert den bisherigen
+                  // Bericht vor dem Wechsel und merkt die Verlassen-Zeit.
+                  switchActive(newEinsatzPopup.id);
                   setNewEinsatzPopup(null);
                 }}
                 style={{
@@ -3673,7 +4057,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup: _onRes
                   fontWeight: 700,
                 }}
               >
-                Trotzdem uebernehmen
+                Trotzdem übernehmen
               </button>
             </div>
           </div>
@@ -3808,11 +4192,13 @@ function hhmmToISOAt(alarmierungISO: string, hhmm: string): string {
   }
 }
 
-function SectionHead({ title }: { title: string }) {
+/** Abschnitts-Kopf; `action` (E-13) sitzt rechts — z. B. "Karte anzeigen". */
+function SectionHead({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <div className="section-head">
+    <div className="section-head" style={action ? { alignItems: "center" } : undefined}>
       <span className="h">{title}</span>
       <span className="line" />
+      {action ? <span style={{ marginLeft: 10, flexShrink: 0 }}>{action}</span> : null}
     </div>
   );
 }
@@ -3860,11 +4246,4 @@ function shortCode(id: FahrzeugId): string {
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
-}
-
-function formatDuration(ms: number): string {
-  const total = Math.round(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
 }

@@ -1,7 +1,7 @@
-import { AlertCircle, Lock, Plus, Unlock } from "lucide-react";
+import { AlertCircle, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { listEinsaetze, manuellAnlegen, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
-import { berichtTitel, TypBadge } from "../pages/Verwaltung";
+import { berichtTitel, LifecycleBadges, TypBadge } from "../pages/Verwaltung";
 import { BerichtDetail } from "./BerichtDetail";
 import { ManuellerBerichtModal } from "./ManuellerBerichtModal";
 
@@ -133,7 +133,10 @@ export function BerichteBrowser() {
                     <span className="name" style={{ fontSize: 14 }}>
                       {berichtTitel(it)}
                     </span>
-                    <StatusBadge item={it} />
+                    {/* D-06 (Audit R3): LifecycleBadges (verworfen / Phantom /
+                        auto-geschlossen + Status) aus Verwaltung.tsx — dieselbe
+                        Badge-Reihe wie Archiv und Detail. */}
+                    <LifecycleBadges item={it} />
                   </div>
                   <span style={{ fontSize: 12, color: "var(--fg-2)", textAlign: "left" }}>{it.einsatzort}</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -193,21 +196,6 @@ export function BerichteBrowser() {
 
       <ManuellerBerichtModal open={manuellOpen} onClose={() => setManuellOpen(false)} onSubmit={onManuellAnlegen} />
     </section>
-  );
-}
-
-function StatusBadge({ item }: { item: EinsatzListItem }) {
-  if (item.status === "aktiv") {
-    return (
-      <span className="badge ok" style={{ gap: 4 }}>
-        <Unlock size={9} /> aktiv
-      </span>
-    );
-  }
-  return (
-    <span className="badge neutral" style={{ gap: 4 }}>
-      <Lock size={9} /> geschützt
-    </span>
   );
 }
 

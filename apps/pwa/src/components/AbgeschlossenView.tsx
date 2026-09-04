@@ -19,7 +19,11 @@ interface Props {
   summary: { label: string; value: string }[];
   /** Nur Funktionäre dürfen Reaktivieren — UI-Hint, Server validiert */
   onReaktivieren?: () => void;
-  onSwitchFahrzeug: () => void;
+  /**
+   * C-11 (Audit 2026-09): Reaktivierung läuft gerade — Button gesperrt
+   * ("Reaktiviere …"), damit ein Doppel-Tipp keinen zweiten POST auslöst.
+   */
+  busy?: boolean;
   /** Upload-Status des Berichts ins Backend. */
   syncState?:
     | { kind: "idle" }
@@ -47,7 +51,7 @@ export function AbgeschlossenView({
   durch,
   summary,
   onReaktivieren,
-  onSwitchFahrzeug,
+  busy,
   syncState,
   onRetryUpload,
   onNeuerBericht,
@@ -152,8 +156,9 @@ export function AbgeschlossenView({
           ) : syncState.kind === "ok" ? (
             <>
               <UploadCloud size={14} style={{ color: "var(--emerald)" }} />
+              {/* E-15 (Audit 2026-09): "Zentrale" statt Tech-Jargon "Backend". */}
               <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--emerald)" }}>
-                Im Backend gespeichert · {syncState.at}
+                Bei der Zentrale angekommen · {syncState.at}
               </span>
             </>
           ) : syncState.kind === "queued" ? (
@@ -190,30 +195,40 @@ export function AbgeschlossenView({
         </div>
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          onClick={onSwitchFahrzeug}
-          className="flex-1 rounded-m border px-3 py-2.5 text-sm font-semibold text-text-1 transition active:translate-y-px"
-          style={{ borderColor: "var(--border-strong)", background: "var(--surface-2)" }}
-        >
-          Fahrzeug wechseln
-        </button>
-        {onReaktivieren ? (
+      {/* E-11 (Audit 2026-09): "Fahrzeug wechseln" ist hier raus — die
+          Aktion lebt im Mehr-Menü der Topbar; direkt neben "Wieder öffnen"
+          wurde sie regelmäßig verwechselt.
+          E-15: "Wieder öffnen" statt "Reaktivieren (Funktionär)".
+          C-11: während der Reaktivierung gesperrt + Spinner. */}
+      {onReaktivieren ? (
+        <div className="mt-4 flex">
           <button
             type="button"
             onClick={onReaktivieren}
+            disabled={!!busy}
+            aria-busy={!!busy}
             className="flex flex-1 items-center justify-center gap-2 rounded-m border px-3 py-2.5 text-sm font-semibold transition"
             style={{
               borderColor: "var(--amber-border)",
               background: "var(--amber-soft)",
               color: "var(--amber)",
+              opacity: busy ? 0.6 : 1,
+              cursor: busy ? "wait" : "pointer",
+              minHeight: 44,
             }}
           >
-            <RotateCcw size={15} /> Reaktivieren (Funktionär)
+            {busy ? (
+              <>
+                <Loader2 size={15} className="animate-spin" /> Reaktiviere …
+              </>
+            ) : (
+              <>
+                <RotateCcw size={15} /> Wieder öffnen
+              </>
+            )}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-text-3">
         Der Bericht ist nun bei „Florian Eberstalzell" sichtbar
@@ -243,12 +258,14 @@ export function AbgeschlossenView({
               gap: 10,
             }}
           >
+            {/* E-03 (Audit 2026-09): Subtexte als konkrete Beispiele statt
+                Tech-Jargon — gleiches Vokabular wie in der IdleView. */}
             {onNeuerBericht ? (
               <>
                 <QuickActionCard
                   Icon={Plus}
-                  label="Neuer Einsatz"
-                  sub="manuell · ohne Alarm"
+                  label="Einsatz ohne Alarm"
+                  sub="z. B. Türöffnung, Tierrettung"
                   color="var(--info)"
                   glow="var(--glow-info)"
                   onClick={() => onNeuerBericht("manuell")}
@@ -256,7 +273,7 @@ export function AbgeschlossenView({
                 <QuickActionCard
                   Icon={GraduationCap}
                   label="Übung"
-                  sub="Training · AS-Stunden"
+                  sub="Schulung, Atemschutz-Training"
                   color="var(--ok)"
                   glow="var(--glow-ok)"
                   onClick={() => onNeuerBericht("uebung")}
@@ -264,7 +281,7 @@ export function AbgeschlossenView({
                 <QuickActionCard
                   Icon={MapPin}
                   label="Lotsendienst"
-                  sub="meist verrechenbar"
+                  sub="Begleitung für Polizei/Rettung"
                   color="var(--warn)"
                   glow="var(--glow-warn)"
                   onClick={() => onNeuerBericht("lotsendienst")}
@@ -352,13 +369,13 @@ function QuickActionCard({
       <span style={{ fontSize: 17.5, fontWeight: 700, letterSpacing: "-0.011em" }}>
         {label}
       </span>
+      {/* E-03: Beispiel-Subtexte in Normalschrift — Versalien würden
+          "z. B. Türöffnung" unlesbar machen (Muster: IdleView). */}
       <span
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 12.5,
-          fontWeight: 600,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
+          fontSize: 14,
+          fontWeight: 500,
+          lineHeight: 1.35,
           color: "var(--fg-3)",
         }}
       >

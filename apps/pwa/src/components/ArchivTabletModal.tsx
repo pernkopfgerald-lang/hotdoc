@@ -28,6 +28,10 @@ interface ArchivItem {
   /** Fahrzeug-Bericht-spezifische Felder (nur im Fahrzeug-Modus gefuellt). */
   kmGefahrenKm?: number;
   mannschaftAnzahl?: number;
+  /** S-10 (Audit R3): ohne Speichern verworfen (rotes Pill, nach unten). */
+  verworfen?: boolean;
+  /** S-05/S-10: Worker-Auto-Abschluss-Grund — "unbefuellt-1h" = Phantom. */
+  autoAbgeschlossenGrund?: string;
 }
 
 interface Props {
@@ -103,7 +107,14 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
           const tb = new Date(b.alarmierungZeit ?? 0).getTime();
           return tb - ta;
         });
-        setItems(sorted.slice(0, 50));
+        // S-10 (Audit R3): Verworfene nach unten — keine echten Berichte,
+        // sollen aber (Undo!) reaktivierbar bleiben. Innerhalb der beiden
+        // Gruppen bleibt die Zeit-Sortierung DESC erhalten.
+        const juengste = sorted.slice(0, 50);
+        setItems([
+          ...juengste.filter((i) => i.verworfen !== true),
+          ...juengste.filter((i) => i.verworfen === true),
+        ]);
       } catch (e) {
         if (cancelled) return;
         setErr(e instanceof Error ? e.message : String(e));
@@ -318,8 +329,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
             >
               <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
-                <strong>Verbindung pruefen.</strong> Das Archiv konnte nicht
-                geladen werden — WLAN/Mobilfunk checken und neu oeffnen.
+                <strong>Verbindung prüfen.</strong> Das Archiv konnte nicht
+                geladen werden — WLAN/Mobilfunk checken und neu öffnen.
                 <div
                   style={{
                     marginTop: 6,
@@ -349,7 +360,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
             >
               <Archive size={28} strokeWidth={1.6} style={{ opacity: 0.5 }} />
               <div style={{ fontSize: 17.5, fontWeight: 600, color: "var(--fg-2)" }}>
-                {query ? "Keine Treffer fuer die Suche." : "Keine Berichte im Archiv gefunden."}
+                {query ? "Keine Treffer für die Suche." : "Keine Berichte im Archiv gefunden."}
               </div>
               {!query && (
                 <div style={{ fontSize: 15, opacity: 0.85 }}>
@@ -376,6 +387,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                     cursor: "default",
                     alignItems: "center",
                     gap: 12,
+                    // S-10: verworfene Eintraege optisch zuruecknehmen.
+                    ...(i.verworfen === true ? { opacity: 0.7 } : {}),
                   }}
                 >
                   <span
@@ -438,6 +451,39 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                     >
                       <Calendar size={10} /> {formatDate(i.alarmierungZeit)} ·{" "}
                       <span style={{ color: typ.color }}>{typ.label}</span>
+                      {/* S-10: verworfen → rotes Pill; S-05: Worker-Phantom
+                          ("unbefuellt-1h") → graues Pill. */}
+                      {i.verworfen === true ? (
+                        <>
+                          {" · "}
+                          <span
+                            style={{
+                              padding: "1px 8px",
+                              borderRadius: 999,
+                              background: "var(--red-tint)",
+                              color: "var(--red)",
+                              border: "1px solid var(--red-border)",
+                            }}
+                          >
+                            Verworfen
+                          </span>
+                        </>
+                      ) : i.autoAbgeschlossenGrund === "unbefuellt-1h" ? (
+                        <>
+                          {" · "}
+                          <span
+                            style={{
+                              padding: "1px 8px",
+                              borderRadius: 999,
+                              background: "var(--surface-2)",
+                              color: "var(--fg-3)",
+                              border: "1px solid var(--border)",
+                            }}
+                          >
+                            Phantom (auto)
+                          </span>
+                        </>
+                      ) : null}
                       {fahrzeugId && i.kmGefahrenKm !== undefined ? (
                         <>
                           {" · "}
