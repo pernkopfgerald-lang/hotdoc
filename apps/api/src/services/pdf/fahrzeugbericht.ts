@@ -53,8 +53,16 @@ export interface FahrzeugberichtDaten {
    * Provenienz im Papier-PDF nachvollziehbar bleibt.
    */
   einsatzQuelle?: string;
-  /** ISO-Timestamp Alarmierung / Beginn. */
+  /** ISO-Timestamp Alarmierung des Einsatzes — Datum + Fallback für "Uhrzeit von". */
   alarmierungZeit: string;
+  /**
+   * D-02 (Audit R3): Fahrzeug-eigene Ausrückzeit aus fzgber.zeit.von. Wenn
+   * gesetzt, steht sie in "Uhrzeit von" statt der Einsatz-Alarmierung —
+   * ein Fahrzeug, das erst 20 Minuten nach dem Alarm ausrückt, darf nicht
+   * mit der Alarmzeit im Blatt stehen. Fehlt der Wert (Altdaten): Fallback
+   * auf alarmierungZeit.
+   */
+  zeitVon?: string;
   /** Wenn gesetzt: aus zeit.bis gepflegt — entweder manuell oder beim Abschluss. */
   zeitBis?: string;
   kmGefahren: number;
@@ -96,7 +104,8 @@ export function renderFahrzeugberichtPageHtml(
 ): string {
   const showRueckseiteFooter = opts.showRueckseiteFooter ?? true;
   const datum = formatDate(d.alarmierungZeit);
-  const vonStr = formatTime(d.alarmierungZeit);
+  // D-02: Fahrzeug-eigene Ausrückzeit vor Einsatz-Alarmierung.
+  const vonStr = formatTime(d.zeitVon ?? d.alarmierungZeit);
   const bisStr = d.zeitBis ? formatTime(d.zeitBis) : "";
   const kmStr = d.kmGefahren > 0 ? `${d.kmGefahren.toFixed(1).replace(".", ",")} km` : "";
   const fahrzeugStr = `${d.abk}${d.funkrufname ? ` “${d.funkrufname}”` : ""}`;

@@ -95,6 +95,18 @@ interface EinsatzApiDoc {
   /** AUDIT-01 (6): Server-Aenderungsstand — entscheidet ob ein lokaler
    *  Editor-Draft (localStorage) juenger ist als das Backend-Doc. */
   geaendertAm?: string;
+  /** S-03/S-13 (Audit R3): Stempel des letzten EDITOR-PUTs (Chronik-/
+   *  Fahrzeug-Writes aendern ihn NICHT). Basis fuer Draft-Restore und
+   *  Optimistic Locking (expectedEditorGeaendertAm). */
+  editorGeaendertAm?: string;
+  /** S-09 (Audit R3): Poller-Hinweis auf einen aelteren Einsatz (_id), der
+   *  wahrscheinlich dasselbe Ereignis beschreibt (Doppelalarm). */
+  moeglichesDuplikatVon?: string;
+  /** S-05 (Audit R3): Grund eines Worker-Auto-Abschlusses, z. B.
+   *  "unbefuellt-1h" oder "inaktiv-6h". Nur am abgeschlossenen Doc. */
+  autoAbgeschlossenGrund?: string;
+  /** S-05/S-10: Einsatz wurde ohne Speichern verworfen. */
+  verworfen?: boolean;
   /** AUDIT-07/EL-11a: echte Berichtsnummer (serverseitig beim Abschluss
    *  vergeben) — fuer die Abschluss-Quittung beim already_closed-Pfad. */
   berichtNummer?: string;
@@ -517,6 +529,61 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  Auto-Save laufen. Damit kann KEIN Pfad mehr Editor-Daten von Einsatz A
    *  per PUT auf Einsatz B schreiben. */
   const dirtyEinsatzIdRef = useRef<string | null>(null);
+  /** S-03/S-13 (Audit R3): Editor-BASIS — der editorGeaendertAm-Stand des
+   *  Docs, auf dem die aktuelle Tipparbeit aufsetzt (beim Seed bzw. nach dem
+   *  letzten EIGENEN Save gesetzt). Wandert als expectedEditorGeaendertAm in
+   *  jeden PUT und als basisEditorGeaendertAm in den Draft. null = Basis
+   *  unbekannt (Alt-Doc ohne Stempel / Reload nach PUT fehlgeschlagen) →
+   *  PUT ohne Konflikt-Check. */
+  const editorBasisRef = useRef<{ einsatzId: string; editorGeaendertAm: string | null } | null>(
+    null,
+  );
+  /** S-13: Eigene-PUT-Buchhaltung — laufen zwei eigene PUTs parallel
+   *  (Debounce + Retry/Strg+S), stempelt der erste editorGeaendertAm und der
+   *  zweite bekaeme ein 409 editor_conflict, das KEIN fremdes Geraet ist.
+   *  Zaehler (in Flight) + Sequenz (abgeschlossene PUTs) entlarven das. */
+  const ownPutInFlightRef = useRef(0);
+  const ownPutSeqRef = useRef(0);
+  /** S-13: 409 editor_conflict — ein anderes Geraet hat den Einsatz seit
+   *  unserem Seed/letzten Save per Editor gespeichert. Auto-Save/Retry sind
+   *  gestoppt (editorDirty=false), der Draft bleibt im localStorage. */
+  const [editorKonflikt, setEditorKonflikt] = useState<{ einsatzId: string } | null>(null);
+  /** S-03/S-13: Draft, dessen Basis NICHT mehr dem Server-Stand entspricht
+   *  (anderes Geraet hat inzwischen gespeichert) — wird nicht stumm
+   *  restauriert, sondern dem EL angeboten (Übernehmen / Verwerfen). */
+  const [draftAngebot, setDraftAngebot] = useState<{
+    einsatzId: string;
+    savedAt: string;
+    editor: Partial<EditorState>;
+  } | null>(null);
+  useEffect(() => {
+    // Konflikt-Banner und Draft-Angebot gelten genau fuer EINEN Einsatz.
+    setEditorKonflikt((cur) => (cur && cur.einsatzId !== aktiverEinsatzId ? null : cur));
+    setDraftAngebot((cur) => (cur && cur.einsatzId !== aktiverEinsatzId ? null : cur));
+  }, [aktiverEinsatzId]);
+
+  /**
+   * S-04 (Audit R3): Editor-Draft SYNCHRON in den localStorage schreiben —
+   * fuer die Flush-Pfade (Einsatz-Wechsel, Fahrzeug-Wechsel, Handoff), bei
+   * denen der 700-ms-Debounce des Draft-Mirrors zu spaet kaeme. Format
+   * identisch zum Mirror: { editor, savedAt, basisEditorGeaendertAm }.
+   */
+  function schreibeDraftSynchron(einsatzId: string): void {
+    try {
+      const basis = editorBasisRef.current;
+      localStorage.setItem(
+        `hotdoc.zentrale-draft.${einsatzId}`,
+        JSON.stringify({
+          editor: editorRef.current,
+          savedAt: new Date().toISOString(),
+          basisEditorGeaendertAm:
+            basis && basis.einsatzId === einsatzId ? basis.editorGeaendertAm : null,
+        }),
+      );
+    } catch {
+      // Quota/Private-Mode — Draft ist Best-Effort.
+    }
+  }
 
   // Auto-Save: nach 1,5 s ohne weitere Tipparbeit speichern. Manueller
   // "Speichern"-Button wurde entfernt — der User soll sich nichts merken muessen.
@@ -591,16 +658,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     if (!editorDirty || !aktiverEinsatzId) return;
     const id = aktiverEinsatzId;
     const handle = setTimeout(() => {
-      try {
-        localStorage.setItem(
-          `hotdoc.zentrale-draft.${id}`,
-          JSON.stringify({ editor: editorRef.current, savedAt: new Date().toISOString() }),
-        );
-      } catch {
-        // Quota/Private-Mode — Draft ist Best-Effort, Auto-Save bleibt Pflichtpfad.
-      }
+      // S-03: Draft traegt die Editor-Basis (basisEditorGeaendertAm) — der
+      // Seed-Effekt restauriert ihn nur, wenn der Server-Stand noch derselbe ist.
+      schreibeDraftSynchron(id);
     }, 700);
     return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, editorDirty, aktiverEinsatzId]);
 
   useEffect(() => {
@@ -747,8 +810,23 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    */
   function wechsleAktivenEinsatz(fullId: string): void {
     if (fullId === aktiverEinsatzId) return;
-    if (editorDirty) {
-      void saveEditorRef.current();
+    if (editorDirty && aktiverEinsatzId) {
+      // S-04 (Audit R3): Draft SYNCHRON sichern, BEVOR der Save losgeht —
+      // schlaegt der Flush fehl (Funkloch, 409), liegt die Tipparbeit des
+      // alten Einsatzes im localStorage und der Seed-Effekt bietet sie beim
+      // Rueckwechsel wieder an. Nur ein erfolgreicher Save raeumt ihn weg
+      // (saveEditor selbst kann das nach dem Wechsel nicht mehr, weil der
+      // Snapshot-Vergleich dort am neuen Editor scheitert).
+      const altId = aktiverEinsatzId;
+      schreibeDraftSynchron(altId);
+      void saveEditorRef.current().then((ok) => {
+        if (!ok) return;
+        try {
+          localStorage.removeItem(`hotdoc.zentrale-draft.${altId}`);
+        } catch {
+          // egal — Boot-Sweep raeumt spaeter auf.
+        }
+      });
       setEditorDirty(false);
     }
     // Z-08: "Gespeichert"-Toast gehoert zum ALTEN Einsatz — nicht in den
@@ -998,6 +1076,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     // JUENGER ist als der Server-Stand, hat die lokale Tipparbeit Vorrang
     // (z. B. Reload nach Save-Fehler/Crash). setEditorDirty(true) loest den
     // Auto-Save aus; nach erfolgreichem PUT loescht saveEditor den Draft.
+    // S-03/S-13: Editor-Basis = editorGeaendertAm des Docs, das jetzt
+    // geseedet wird. Jeder folgende PUT schickt diesen Wert als
+    // expectedEditorGeaendertAm mit (Optimistic Locking).
+    editorBasisRef.current = {
+      einsatzId: aktiverEinsatz._id,
+      editorGeaendertAm: aktiverEinsatz.editorGeaendertAm ?? null,
+    };
     if (aktiverEinsatz.schreibschutz !== true) {
       const draftKey = `hotdoc.zentrale-draft.${aktiverEinsatz._id}`;
       try {
@@ -1006,12 +1091,28 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           const draft = JSON.parse(raw) as {
             editor?: Partial<EditorState>;
             savedAt?: string;
+            basisEditorGeaendertAm?: string | null;
           };
-          const draftZeit = draft.savedAt ? new Date(draft.savedAt).getTime() : 0;
-          const docZeit = aktiverEinsatz.geaendertAm
-            ? new Date(aktiverEinsatz.geaendertAm).getTime()
-            : 0;
-          if (draft.editor && draftZeit > docZeit) {
+          // S-03 (Audit R3): Restore-Entscheidung ueber die EDITOR-Basis —
+          // der Draft passt genau dann, wenn seit seinem Seed kein anderer
+          // Editor-PUT stattfand (basisEditorGeaendertAm === Doc-Stempel).
+          // Chronik-/Fahrzeug-Writes bewegen geaendertAm, aber nicht diesen
+          // Stempel — sie verwerfen den Draft also nicht mehr faelschlich.
+          // Fallback fuer Alt-Drafts ohne Basis-Feld: bisherige Zeit-Logik.
+          const hatBasisFeld = "basisEditorGeaendertAm" in draft;
+          let passt: boolean;
+          if (hatBasisFeld) {
+            passt =
+              (draft.basisEditorGeaendertAm ?? null) ===
+              (aktiverEinsatz.editorGeaendertAm ?? null);
+          } else {
+            const draftZeit = draft.savedAt ? new Date(draft.savedAt).getTime() : 0;
+            const docZeit = aktiverEinsatz.geaendertAm
+              ? new Date(aktiverEinsatz.geaendertAm).getTime()
+              : 0;
+            passt = draftZeit > docZeit;
+          }
+          if (draft.editor && passt) {
             // Defensiv ueber EMPTY_EDITOR mergen — ein Draft aus einer
             // aelteren App-Version darf keine Felder fehlen lassen.
             setEditor({ ...EMPTY_EDITOR, ...draft.editor });
@@ -1019,8 +1120,24 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             setEditorDirty(true);
             return;
           }
-          // Veralteter Draft — Server-Stand gewinnt, Draft aufraeumen.
-          localStorage.removeItem(draftKey);
+          if (draft.editor && hatBasisFeld) {
+            // Basis weicht ab → ein anderes Geraet hat inzwischen gespeichert.
+            // Nicht stumm verwerfen: Server-Stand seeden und den Draft dem
+            // EL zur Uebernahme anbieten (S-13 "Draft danach anbieten").
+            const angebot = {
+              einsatzId: aktiverEinsatz._id,
+              savedAt: draft.savedAt ?? "",
+              editor: draft.editor,
+            };
+            // Der Seed laeuft bei jedem Poll erneut — bestehendes Angebot
+            // fuer denselben Einsatz nicht durch ein neues Objekt ersetzen.
+            setDraftAngebot((cur) =>
+              cur && cur.einsatzId === angebot.einsatzId ? cur : angebot,
+            );
+          } else {
+            // Veralteter Alt-Draft — Server-Stand gewinnt, Draft aufraeumen.
+            localStorage.removeItem(draftKey);
+          }
         }
       } catch {
         // Korrupter Draft/Storage-Fehler — ignorieren, Server-Stand seeden.
@@ -1137,6 +1254,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     // erzeugt neue Objekte) → dirty bleibt stehen, der Debounce speichert
     // die Nacharbeit 1,5 s spaeter. Nichts verschwindet mehr.
     const snapshot = editor;
+    // S-13: Editor-Basis SYNCHRON einfrieren — waehrend des Geocode-Awaits
+    // unten koennte ein Einsatz-Wechsel die Ref auf den NEUEN Einsatz
+    // umstellen; der PUT muss aber die Basis des Einsatzes tragen, den er
+    // schreibt. Dazu die Eigene-PUT-Buchhaltung fuer die Own-Race-Erkennung.
+    const basis = editorBasisRef.current;
+    const expectedEditorGeaendertAm =
+      basis && basis.einsatzId === aktiverEinsatzId ? basis.editorGeaendertAm : null;
+    const inFlightBeimStart = ownPutInFlightRef.current;
+    const seqBeimStart = ownPutSeqRef.current;
+    ownPutInFlightRef.current += 1;
     try {
       const refIso = aktiverEinsatz?.alarmierungZeit ?? new Date().toISOString();
       const lage = hhmmToIso(editor.lageUnterKontrolleHHMM, refIso);
@@ -1171,6 +1298,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       }
 
       const body: Record<string, unknown> = {
+        // S-13 (Audit R3): Optimistic Locking — der Server lehnt mit 409
+        // editor_conflict ab, wenn seit dieser Basis ein anderer Editor-PUT
+        // geschrieben hat. Ohne bekannte Basis (Alt-Doc) kein Check.
+        ...(expectedEditorGeaendertAm ? { expectedEditorGeaendertAm } : {}),
         ...(neueKoordinaten ? { koordinaten: neueKoordinaten } : {}),
         // #157: Florian darf den Einsatzort korrigieren (Auto-Übernahme aus
         // BlaulichtSMS liegt manchmal daneben). Nur senden wenn nicht leer
@@ -1245,6 +1376,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         method: "PUT",
         body,
       });
+      // S-13: eigener PUT ist durch — Sequenz hochzaehlen (Own-Race-Erkennung
+      // eines parallel laufenden zweiten eigenen PUTs).
+      ownPutSeqRef.current += 1;
       // Z-06: eigenen Save-Zeitpunkt merken — geaendertAm wird nach dem
       // Doc-Reload unten praezisiert; schlaegt der Reload fehl, greift im
       // Einsatz-Poll die 2-s-Heuristik ueber diesen ts.
@@ -1253,6 +1387,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         geaendertAm: null,
         ts: Date.now(),
       };
+      // S-13: Der Server hat editorGeaendertAm neu gestempelt — bis der
+      // Reload den echten Wert liefert, ist die Basis unbekannt (sonst
+      // liefe der naechste PUT mit der ALTEN Basis in ein Eigen-409).
+      if (editorBasisRef.current?.einsatzId === aktiverEinsatzId) {
+        editorBasisRef.current = { einsatzId: aktiverEinsatzId, editorGeaendertAm: null };
+      }
       // AUDIT-01 (4): dirty nur loeschen wenn der Editor seit dem Snapshot
       // unveraendert ist (Referenzvergleich genuegt). Sonst bleibt dirty —
       // die Nacharbeit wird vom Debounce/Retry nachgespeichert.
@@ -1279,17 +1419,114 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           geaendertAm: reloaded.geaendertAm ?? null,
           ts: Date.now(),
         };
+        // S-13: neue Editor-Basis = Stempel unseres eigenen PUTs. (Grenzfall:
+        // schreibt ein anderes Geraet ZWISCHEN PUT und Reload, uebernehmen
+        // wir dessen Stempel als Basis — der PUT-Endpunkt liefert den
+        // eigenen Stempel nicht mit; Fenster < 1 s.)
+        if (editorBasisRef.current?.einsatzId === aktiverEinsatzId) {
+          editorBasisRef.current = {
+            einsatzId: aktiverEinsatzId,
+            editorGeaendertAm: reloaded.editorGeaendertAm ?? null,
+          };
+        }
       } catch {
         // egal — der Save war erfolgreich, nächster Poll holt es
       }
       return true;
     } catch (e) {
+      // S-13 (Audit R3): 409 editor_conflict — ein ANDERER Editor hat seit
+      // unserer Basis gespeichert. Erst pruefen, ob der "andere" nicht wir
+      // selbst waren (zwei eigene PUTs parallel: der erste hat gestempelt).
+      const istEditorKonflikt =
+        e instanceof ApiError &&
+        e.status === 409 &&
+        typeof e.body === "object" &&
+        e.body !== null &&
+        (e.body as { error?: unknown }).error === "editor_conflict";
+      if (istEditorKonflikt) {
+        const eigenesRennen =
+          inFlightBeimStart > 0 ||
+          ownPutSeqRef.current !== seqBeimStart ||
+          ownPutInFlightRef.current > 1;
+        if (eigenesRennen) {
+          // Eigener Parallel-PUT hat gestempelt → dirty bleibt stehen, der
+          // naechste Versuch laeuft mit der (vom Reload) frischen Basis.
+          setTimeout(() => {
+            if (
+              editorDirtyRef.current &&
+              !saveBusyRef.current &&
+              dirtyEinsatzIdRef.current === aktiverEinsatzIdRef.current
+            ) {
+              void saveEditorRef.current();
+            }
+          }, 800);
+          return false;
+        }
+        // Echter Fremd-Konflikt: Draft sichern, Retry/Auto-Save stoppen
+        // (editorDirty=false), rotes Banner mit "Neu laden".
+        schreibeDraftSynchron(aktiverEinsatzId);
+        if (aktiverEinsatzIdRef.current === aktiverEinsatzId) {
+          setEditorDirty(false);
+          setEditorKonflikt({ einsatzId: aktiverEinsatzId });
+          setSaveErr(null);
+        } else {
+          // Konflikt am ALTEN Einsatz (Flush nach Wechsel) — Draft liegt im
+          // Storage, der Seed-Effekt bietet ihn beim Rueckwechsel an.
+          setSaveErr(
+            "Anderes Gerät hat den vorherigen Einsatz gespeichert — eigene Eingaben dort als Entwurf gesichert.",
+          );
+        }
+        return false;
+      }
       // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
       setSaveErr(`Speichern fehlgeschlagen: ${describeApiError(e)}`);
       return false;
     } finally {
+      ownPutInFlightRef.current = Math.max(0, ownPutInFlightRef.current - 1);
       setSaveBusy(false);
     }
+  }
+
+  /**
+   * S-13: "Neu laden" aus dem Konflikt-Banner — Doc frisch holen und in die
+   * Liste einsetzen. editorDirty ist bereits false, der Seed-Effekt seeded
+   * den fremden Stand und findet den lokalen Draft mit abweichender Basis →
+   * Draft-Angebot (Übernehmen / Verwerfen) statt stummem Restore.
+   */
+  async function editorKonfliktNeuLaden(): Promise<void> {
+    const id = editorKonflikt?.einsatzId ?? aktiverEinsatzId;
+    if (!id) return;
+    try {
+      const reloaded = await apiCall<EinsatzApiDoc>(
+        `/api/einsaetze/${encodeURIComponent(id)}`,
+      );
+      setAktiveEinsaetze((prev) => prev.map((e2) => (e2._id === reloaded._id ? reloaded : e2)));
+      setEditorKonflikt(null);
+    } catch (err) {
+      setSaveErr(`Neu laden fehlgeschlagen: ${describeApiError(err)}`);
+    }
+  }
+
+  /** S-13: Draft-Angebot uebernehmen — lokale Eingaben ueber den frischen
+   *  Server-Stand legen; Basis = aktueller Doc-Stempel, damit der folgende
+   *  Auto-Save durchgeht (bewusste Entscheidung des EL). */
+  function draftAngebotUebernehmen(): void {
+    if (!draftAngebot || draftAngebot.einsatzId !== aktiverEinsatzId) return;
+    setEditor({ ...EMPTY_EDITOR, ...draftAngebot.editor });
+    dirtyEinsatzIdRef.current = draftAngebot.einsatzId;
+    setEditorDirty(true);
+    setSaveOk(null);
+    setDraftAngebot(null);
+  }
+
+  function draftAngebotVerwerfen(): void {
+    if (!draftAngebot) return;
+    try {
+      localStorage.removeItem(`hotdoc.zentrale-draft.${draftAngebot.einsatzId}`);
+    } catch {
+      // egal
+    }
+    setDraftAngebot(null);
   }
   // AUDIT-01 (1): Zuweisung bei JEDEM Render — saveEditorRef zeigt immer auf
   // die frischeste Closure (aktueller editor + aktiverEinsatz). KEIN useEffect
@@ -1486,12 +1723,20 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       setAbschlussErr("Kein aktiver Einsatz ausgewählt.");
       return;
     }
+    // S-13: auch dieser PUT stempelt editorGeaendertAm — in die Eigene-PUT-
+    // Buchhaltung aufnehmen, sonst hielte der naechste Auto-Save den eigenen
+    // Stempel fuer ein fremdes Geraet (falsches Konflikt-Banner).
+    ownPutInFlightRef.current += 1;
     try {
       // 1. Brand-Statistik aufs Einsatz-Doc
       await apiCall<{ ok: true; rev: string }>(
         `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}`,
         { method: "PUT", body: { brandStatistik: bs } },
       );
+      ownPutSeqRef.current += 1;
+      if (editorBasisRef.current?.einsatzId === aktiverEinsatzId) {
+        editorBasisRef.current = { einsatzId: aktiverEinsatzId, editorGeaendertAm: null };
+      }
       // 2. Objekt-Cache pflegen — Hash via Lookup-Endpoint holen (Server
       // hat die kanonische Implementierung von normalizeAdresse). Nur
       // wenn eine Adresse am Einsatz ist.
@@ -1524,6 +1769,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         setAktiveEinsaetze((prev) =>
           prev.map((e) => (e._id === reloaded._id ? reloaded : e)),
         );
+        // S-13: frische Editor-Basis nach dem Statistik-PUT.
+        if (editorBasisRef.current?.einsatzId === aktiverEinsatzId) {
+          editorBasisRef.current = {
+            einsatzId: aktiverEinsatzId,
+            editorGeaendertAm: reloaded.editorGeaendertAm ?? null,
+          };
+        }
       } catch {
         // egal
       }
@@ -1546,6 +1798,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
       setAbschlussErr(`Brand-Statistik speichern fehlgeschlagen: ${describeApiError(e)}`);
       // Wizard offen lassen — User kann nochmal probieren oder cancel
+    } finally {
+      ownPutInFlightRef.current = Math.max(0, ownPutInFlightRef.current - 1);
     }
   }
 

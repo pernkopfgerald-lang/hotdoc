@@ -32,6 +32,12 @@ export interface NormalizedChronikEntry {
   editiertAm?: string;
   editiertVon?: string;
   fotoId?: string;
+  /**
+   * D-11 (Audit R3): Soft-Delete-Marker aus DELETE /chronik/:entryId. Wird
+   * 1:1 durchgereicht, damit der PDF-Pfad gelöschte Einträge ausfiltern
+   * kann — der Adapter selbst filtert NICHT (Renderer entscheidet).
+   */
+  geloescht?: boolean;
 }
 
 /**
@@ -88,5 +94,7 @@ export function normalizeChronikEntry(raw: unknown): NormalizedChronikEntry {
   if (typeof r.editiertAm === "string") out.editiertAm = r.editiertAm;
   if (typeof r.editiertVon === "string") out.editiertVon = r.editiertVon;
   if (typeof r.fotoId === "string") out.fotoId = r.fotoId;
+  // D-11: Soft-Delete-Marker durchreichen.
+  if (typeof r.geloescht === "boolean") out.geloescht = r.geloescht;
   return out;
 }

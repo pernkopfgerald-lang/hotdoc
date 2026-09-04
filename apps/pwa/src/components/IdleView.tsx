@@ -146,7 +146,7 @@ export function IdleView({
             letterSpacing: "var(--tracking-ui)",
           }}
         >
-          Bei BlaulichtSMS-Alarm öffnet sich das Formular automatisch.
+          Bei einem Alarm öffnet sich der Bericht automatisch.
           Sonst kannst du hier selbst einen Bericht starten.
         </p>
       </header>
@@ -279,7 +279,9 @@ export function IdleView({
 
       {/* ─── Quick-Actions ─── 2×2 große Touch-Cards ────
           Tablet-Wunsch (2026-06-03): festes 2×2-Raster statt 1×4-Reihe, jede
-          Kachel doppelt so groß → leichter mit Handschuh zu treffen. */}
+          Kachel doppelt so groß → leichter mit Handschuh zu treffen.
+          E-03 (Audit 2026-09): Subtexte als konkrete Beispiele statt
+          Tech-Jargon ("manuell", "AS-Stunden"). */}
       <div
         style={{
           display: "grid",
@@ -289,8 +291,8 @@ export function IdleView({
       >
         <QuickActionCard
           Icon={Plus}
-          label="Neuer Einsatz"
-          sub="manuell · ohne Alarm"
+          label="Einsatz ohne Alarm"
+          sub="z. B. Türöffnung, Tierrettung"
           color="var(--info)"
           glow="var(--glow-info)"
           onClick={() => onNeuerBericht("manuell")}
@@ -298,7 +300,7 @@ export function IdleView({
         <QuickActionCard
           Icon={GraduationCap}
           label="Übung"
-          sub="Training · AS-Stunden"
+          sub="Schulung, Atemschutz-Training"
           color="var(--ok)"
           glow="var(--glow-ok)"
           onClick={() => onNeuerBericht("uebung")}
@@ -306,7 +308,7 @@ export function IdleView({
         <QuickActionCard
           Icon={MapPin}
           label="Lotsendienst"
-          sub="meist verrechenbar"
+          sub="Begleitung für Polizei/Rettung"
           color="var(--warn)"
           glow="var(--glow-warn)"
           onClick={() => onNeuerBericht("lotsendienst")}
@@ -396,13 +398,13 @@ function QuickActionCard({
       >
         {label}
       </span>
+      {/* E-03: Beispiel-Subtexte in Normalschrift — Versalien wuerden
+          "z. B. Türöffnung" unlesbar machen. */}
       <span
         style={{
-          fontFamily: "var(--font-mono)",
           fontSize: 15,
-          fontWeight: 600,
-          letterSpacing: "var(--tracking-caps)",
-          textTransform: "uppercase",
+          fontWeight: 500,
+          lineHeight: 1.35,
           color: "var(--fg-3)",
         }}
       >

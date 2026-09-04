@@ -83,6 +83,12 @@ export interface BerichtDaten {
    * am Einsatz-Doc. Wird unten in der Einsatzleiter-Box gerendert.
    */
   einsatzleiter?: string;
+  /**
+   * D-08 (Audit R3): syBOS-Id des Einsatzleiters — fuer den Spickzettel
+   * ("Nachname Vorname (syBOS 1234)") und um im Personen-Block den Kdt zu
+   * markieren, der Einsatzleiter ist. Gleiche Quelle wie `einsatzleiter`.
+   */
+  einsatzleiterPersonId?: number;
   meldungEinsatzleitung?: string;
   oelbindemittelSaecke?: number;
   reaktivierungen?: Array<{ am: string; grund: string }>;
@@ -142,9 +148,25 @@ export interface BerichtDaten {
     abk: string;
     status: "in_arbeit" | "abgeschlossen";
     kmGefahren: number;
+    /**
+     * D-02 (Audit R3): Fahrzeug-eigene Zeiten aus fzgber.zeit.von/bis.
+     * Das Fahrzeugblatt zeigt diese statt Einsatz-Alarmierung/-Ende; die
+     * Einsatz-Zeiten sind nur noch Fallback fuer Altdaten ohne zeit.*.
+     */
+    zeitVon?: string;
+    zeitBis?: string;
     fahrer?: string;
     fahrzeugKdt?: string;
-    mannschaft: Array<{ name: string; atemschutzAktiv: boolean; atemschutzDauerMin?: number }>;
+    /** D-08: syBOS-Ids von Fahrer/Kdt fuer den Spickzettel. */
+    fahrerId?: number;
+    kdtId?: number;
+    mannschaft: Array<{
+      name: string;
+      /** D-08: syBOS-Id der Person fuer den Spickzettel. */
+      personId?: number;
+      atemschutzAktiv: boolean;
+      atemschutzDauerMin?: number;
+    }>;
     geraete: string[];
     oelSaecke: number;
     taetigkeitsbericht: string;
@@ -206,7 +228,20 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   const isManuell = d.einsatzTyp === "manuell";
   const datum = formatDate(d.alarmierungZeit);
   const datumZeit = `${datum} · ${formatTime(d.alarmierungZeit)}`;
-  const ende = d.einsatzende ? `${formatDate(d.einsatzende)} · ${formatTime(d.einsatzende)}` : "";
+  // D-01 (Audit R3): Einsatzende kommt ausschliesslich aus dem Doc — KEIN
+  // "jetzt"-Fallback im Template. Fehlt der Wert (Altdaten, laufender
+  // Einsatz), rendert die Einsatzende-Box unten ein "—".
+  const ende =
+    d.einsatzende && formatDate(d.einsatzende)
+      ? `${formatDate(d.einsatzende)} · ${formatTime(d.einsatzende)}`
+      : "";
+  // D-03 (Audit R3): Der rote ABSCHLUSS-HINWEIS-Banner haengt NUR am
+  // Freitext abschlussOverrideHinweis (vergessene offene Fahrzeugberichte
+  // bzw. Override-Grund). Ein autoAbgeschlossenGrund wie
+  // "reaktivierung-wieder-geschlossen" ist ein normaler Verlauf und wird
+  // hier bewusst NICHT als Warnung dargestellt — der Renderer kennt das
+  // Feld gar nicht. Whitespace-only zaehlt als "nicht gesetzt".
+  const abschlussHinweis = d.abschlussOverrideHinweis?.trim() ?? "";
 
   // Brand-konsistente Farbe fuer ausgefuellte Werte (dunkelblau) — matcht
   // die Tablet-UX wo eingegebene Felder ebenfalls dunkelblau dargestellt
@@ -339,7 +374,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 <body>
 <div class="page">
 
-  ${d.abschlussOverrideHinweis ? `<div class="override-warn">⚠️ ABSCHLUSS-HINWEIS: ${escape(d.abschlussOverrideHinweis)}</div>` : ""}
+  ${abschlussHinweis ? `<div class="override-warn">⚠️ ABSCHLUSS-HINWEIS: ${escape(abschlussHinweis)}</div>` : ""}
 
   <div class="hd">
     <div class="hd-l">${renderBrandLogo()}</div>
@@ -590,7 +625,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
           return leiter ? `<span style="color:${FILLED};font-weight:600">${escape(leiter)}</span>` : "";
         })()
       }</td>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : ""}</td>
+      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : `<span style="color:#888">—</span>`}</td>
     </tr>
     <tr>
       <td class="lbl">Bearbeiter</td>
@@ -741,8 +776,13 @@ function renderFotoAnhang(d: BerichtDaten): string {
 function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
   if (!d.fahrzeugberichte || d.fahrzeugberichte.length === 0) return "";
   return d.fahrzeugberichte
-    .map(
-      (f) => /* html */ `
+    .map((f) => {
+      // D-02 (Audit R3): Fahrzeug-eigene Zeiten (fzgber.zeit.von/bis) vor
+      // den Einsatz-Zeiten — Alarmierung/Einsatzende sind nur noch Fallback
+      // fuer Altdaten. Fehlt beides, bleibt "Uhrzeit bis" leer (D-01: kein
+      // "jetzt"-Fallback).
+      const zeitBis = f.zeitBis ?? d.einsatzende;
+      return /* html */ `
 <div class="page">
   ${renderFahrzeugberichtPageHtml(
     {
@@ -754,7 +794,8 @@ function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
       funkrufname: f.funkrufname,
       einsatzort: d.einsatzort,
       alarmierungZeit: d.alarmierungZeit,
-      ...(d.einsatzende ? { zeitBis: d.einsatzende } : {}),
+      ...(f.zeitVon ? { zeitVon: f.zeitVon } : {}),
+      ...(zeitBis ? { zeitBis } : {}),
       kmGefahren: f.kmGefahren,
       ...(f.fahrer ? { fahrer: f.fahrer } : {}),
       ...(f.fahrzeugKdt ? { fahrzeugKdt: f.fahrzeugKdt } : {}),
@@ -785,8 +826,8 @@ function renderFahrzeugberichtSeiten(d: BerichtDaten): string {
          </div>`
       : ""
   }
-</div>`,
-    )
+</div>`;
+    })
     .join("");
 }
 
@@ -814,6 +855,89 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
   // frei erweitert werden.
   const istUebung = d.istUebung === true;
   const istLotsen = d.istLotsendienst === true;
+  // D-08 (Audit R3): Der Spickzettel bekommt dieselben Daten wie das PDF
+  // (buildBerichtDaten in pdf.ts) und listet zusaetzlich alles, was in syBOS
+  // pro Fahrzeug/Person abzutippen ist: Fahrzeuge mit von-bis + km, je
+  // Fahrzeug die Personen mit syBOS-Id/Funktion/AS-Minuten, Einsatzleiter,
+  // Mannschafts-Aggregat und (nur Einsatz, nicht Übung/Lotsendienst) die
+  // syBOS-Statistik-Bloecke aus dem Hauptbericht.
+  const istEinsatz = !istUebung && !istLotsen;
+  const datumAlarm = formatDate(d.alarmierungZeit);
+  // D-01: kein "jetzt"-Fallback — fehlendes Ende wird als "—" abgetippt.
+  const endeStr =
+    d.einsatzende && formatDate(d.einsatzende) ? formatDateTime(d.einsatzende) : "—";
+  const leiter = istUebung ? (d.uebungsleiter ?? d.einsatzleiter) : d.einsatzleiter;
+  const leiterStr = leiter
+    ? `${escape(leiter)}${typeof d.einsatzleiterPersonId === "number" ? ` (syBOS ${d.einsatzleiterPersonId})` : ""}`
+    : "—";
+  // Person: "Nachname Vorname (syBOS 1234) · Funktion · AS 25 min"
+  const personZeile = (
+    name: string,
+    personId: number | undefined,
+    funktion: string,
+    as?: { aktiv: boolean; dauerMin: number | undefined },
+  ): string => {
+    const teile = [
+      `${escape(name)}${typeof personId === "number" ? ` (syBOS ${personId})` : ""}`,
+      escape(funktion),
+    ];
+    if (as?.aktiv) teile.push(typeof as.dauerMin === "number" ? `AS ${as.dauerMin} min` : "AS");
+    return teile.join(" · ");
+  };
+  // "bis": nur Uhrzeit am Alarm-Tag, sonst mit Datum (Nacht-Einsatz).
+  const bisStr = (iso: string | undefined): string => {
+    if (!iso || !formatDate(iso)) return "—";
+    return formatDate(iso) === datumAlarm ? formatTime(iso) : formatDateTime(iso);
+  };
+  const kmStr = (km: number): string =>
+    km > 0 ? `${km.toFixed(1).replace(".", ",")} km` : "—";
+  const fahrzeuge = d.fahrzeugberichte ?? [];
+  const fahrzeugTabelle =
+    fahrzeuge.length === 0
+      ? `<p class="leer">Keine Fahrzeugberichte mit Inhalt.</p>`
+      : `<table class="fz">
+    <tr><th>Fahrzeug</th><th>von – bis</th><th>km</th></tr>
+    ${fahrzeuge
+      .map(
+        (f) => `<tr>
+      <td><b>${escape(f.abk)}</b> <span class="dim">${escape(f.funkrufname)}</span></td>
+      <td>${escape(formatTime(f.zeitVon ?? d.alarmierungZeit) || "—")} – ${escape(bisStr(f.zeitBis ?? d.einsatzende))}</td>
+      <td>${escape(kmStr(f.kmGefahren))}</td>
+    </tr>`,
+      )
+      .join("")}
+  </table>`;
+  const personenBloecke = fahrzeuge
+    .map((f) => {
+      const zeilen: string[] = [];
+      if (f.fahrer) zeilen.push(personZeile(f.fahrer, f.fahrerId, "Fahrer"));
+      if (f.fahrzeugKdt) {
+        const istLeiter =
+          typeof f.kdtId === "number" && f.kdtId === d.einsatzleiterPersonId;
+        const funktion = istLeiter
+          ? `Fahrzeug-Kdt · ${istUebung ? "Übungsleiter" : "Einsatzleiter"}`
+          : "Fahrzeug-Kdt";
+        zeilen.push(personZeile(f.fahrzeugKdt, f.kdtId, funktion));
+      }
+      for (const m of f.mannschaft) {
+        zeilen.push(
+          personZeile(m.name, m.personId, "Mannschaft", {
+            aktiv: m.atemschutzAktiv,
+            dauerMin: m.atemschutzDauerMin,
+          }),
+        );
+      }
+      return `<h3>${escape(f.abk)} <span class="dim">${escape(f.funkrufname)}</span></h3>
+  ${
+    zeilen.length === 0
+      ? `<p class="leer">Keine Personen erfasst.</p>`
+      : `<ul class="pers">${zeilen.map((z) => `<li>${z}</li>`).join("")}</ul>`
+  }`;
+    })
+    .join("");
+  const mannschaftStr = d.mannschaft
+    ? `${d.mannschaft.eingesetzt} ${istUebung ? "Teilnehmer" : "eingesetzt"} · ${d.mannschaft.bereitschaft} Bereitschaft · ${d.mannschaft.sonstige} Sonstige · ${d.mannschaft.atemschutzTrupps} AS-Trupp(s)`
+    : "—";
   return /* html */ `<!doctype html>
 <html lang="de">
 <head>
@@ -823,11 +947,28 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
     @page { size: A4 portrait; margin: 16mm; }
     body { font-family: "Courier New", monospace; font-size: 11pt; color: #000; margin: 0; padding: 0; }
     h1 { font-family: Arial, sans-serif; font-size: 18pt; margin: 0 0 4mm; }
+    h2 { font-family: Arial, sans-serif; font-size: 13pt; margin: 8mm 0 3mm; padding-bottom: 2pt; border-bottom: 1pt solid #000; }
+    h3 { font-family: Arial, sans-serif; font-size: 11pt; margin: 5mm 0 2mm; }
     .sub { font-family: Arial, sans-serif; font-size: 10pt; color: #555; margin-bottom: 8mm; }
+    .dim { font-family: Arial, sans-serif; font-size: 9pt; font-weight: 400; color: #666; }
+    .leer { font-family: Arial, sans-serif; font-size: 10pt; color: #888; font-style: italic; margin: 2mm 0; }
     ol { padding-left: 18pt; }
-    li { margin: 8pt 0; line-height: 1.5; }
-    .val { display: inline-block; background: #fef3c7; padding: 1pt 8pt; border: 0.5pt solid #f59e0b; font-weight: 700; }
+    ol li { margin: 8pt 0; line-height: 1.5; }
+    /* D-08: .val nur in der Abtipp-Liste gelb — die syBOS-Statistik-Tabellen
+       (table.bx) nutzen dieselbe Klasse fuer Zellen und duerfen nicht gelb werden. */
+    ol li .val { display: inline-block; background: #fef3c7; padding: 1pt 8pt; border: 0.5pt solid #f59e0b; font-weight: 700; }
     .nr { font-family: Arial, sans-serif; font-weight: 700; color: #C8102E; }
+    table.fz { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
+    table.fz th, table.fz td { border: 0.5pt solid #000; padding: 3pt 6pt; text-align: left; vertical-align: top; }
+    table.fz th { font-family: Arial, sans-serif; font-size: 9pt; background: #eee; text-transform: uppercase; letter-spacing: 0.05em; }
+    ul.pers { margin: 0; padding-left: 18pt; }
+    ul.pers li { margin: 3pt 0; line-height: 1.4; }
+    /* syBOS-Statistik-Bloecke (renderTechnischeStatistikBlock / renderBrandStatistikBlock)
+       kommen 1:1 aus dem Hauptbericht und erwarten table.bx / .lbl / .val. */
+    table.bx { width: 100%; border-collapse: collapse; border: 1pt solid #000; margin-top: 3mm; font-family: Arial, sans-serif; }
+    table.bx td { border: 0.5pt solid #000; vertical-align: top; padding: 2pt 4pt; }
+    table.bx td.lbl { background: #f0f0f0; font-size: 8pt; font-weight: 600; padding: 1.5pt 4pt; }
+    table.bx td.val { font-size: 10pt; padding: 2pt 4pt 3pt; }
   </style>
 </head>
 <body>
@@ -852,11 +993,20 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
           : `<li>Einsatzart: <span class="val">${escape(d.einsatzart ?? d.einsatzartFreitext ?? "—")}</span></li>`
     }
     ${d.alarmierungAuthor ? `<li>Alarmierungsquelle: <span class="val">${escape(d.alarmierungAuthor)}</span></li>` : ""}
-    ${d.einsatzende ? `<li>${istUebung ? "Übungsende" : "Einsatzende"}: <span class="val">${formatDateTime(d.einsatzende)}</span></li>` : ""}
+    ${istUebung ? "" : `<li>Einsatzleiter: <span class="val">${leiterStr}</span></li>`}
+    <li>${istUebung ? "Übungsende" : "Einsatzende"}: <span class="val">${escape(endeStr)}</span></li>
+    <li>Mannschaft: <span class="val">${escape(mannschaftStr)}</span></li>
     ${d.oelbindemittelSaecke ? `<li>Ölbindemittel: <span class="val">${d.oelbindemittelSaecke} Säcke${istUebung ? "" : " (VERRECHENBAR)"}</span></li>` : ""}
     ${!istUebung && !istLotsen && d.rechnungsadresse ? `<li>Rechnungsadresse: <span class="val">${escape(d.rechnungsadresse)}</span></li>` : ""}
     <li>Bericht-PDF als Anhang an den syBOS-Eintrag hängen.</li>
   </ol>
+
+  <h2>Fahrzeuge</h2>
+  ${fahrzeugTabelle}
+  ${personenBloecke}
+  ${istEinsatz ? renderTechnischeStatistikBlock(d) : ""}
+  ${istEinsatz ? renderBrandStatistikBlock(d) : ""}
+
   <p style="margin-top:18pt;font-size:9pt;color:#888;">
     HotDoc · generiert ${formatDateTime(new Date().toISOString())}
   </p>

@@ -15,6 +15,7 @@
  * unnötig.
  */
 
+import { asTruppsAus } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 
 export type EinsatzTyp = "alarm" | "manuell" | "lotsendienst" | "uebung";
@@ -237,7 +238,9 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
       }
     }
   }
-  totals.asTrupps = Math.ceil(asPersonenGesamt / 2);
+  // D-12 (Audit R3): geteilte Trupp-Definition (Aufrunden, NaN-sicher) —
+  // identisch zu pdf.ts (Hauptbericht) und PWA-Abschluss-Zusammenfassung.
+  totals.asTrupps = asTruppsAus(asPersonenGesamt);
   totals.mannschaftStunden = Math.round(totals.mannschaftStunden * 100) / 100;
   totals.mannschaftStundenEinsatz =
     Math.round(totals.mannschaftStundenEinsatz * 100) / 100;

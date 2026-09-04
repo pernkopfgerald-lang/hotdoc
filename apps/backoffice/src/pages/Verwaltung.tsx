@@ -26,7 +26,7 @@ import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { Florianstation } from "./Florianstation";
-import { FLORIAN_ADDRESS, deriveBerichtNrFromId, type AuthResponse } from "@hotdoc/shared";
+import { FLORIAN_ADDRESS, type AuthResponse } from "@hotdoc/shared";
 
 /** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
 function AddItemForm({ onAdd, placeholder }: { onAdd: (text: string) => void; placeholder: string }) {
@@ -1177,15 +1177,21 @@ function ArchivPanel() {
                   <TypBadge typ={(it.einsatzTyp ?? "alarm") as EinsatzTyp} />
                 </td>
                 <td style={archTd}>
-                  {/* AUDIT-15 (SF-03): echte berichtNummer (vergeben beim
-                      Abschluss, AUDIT-11) mit Ableitungs-Fallback fuer
-                      Altberichte; die Couch-ID nur noch als Tooltip. */}
+                  {/* D-06 (Audit R3): NUR die echte berichtNummer (vergeben
+                      beim Abschluss, AUDIT-11). Die frühere Ableitung aus der
+                      Couch-ID erzeugte Pseudo-Nummern, die wie vergebene
+                      aussahen (Phantom-/verworfene Berichte inklusive) —
+                      ohne Nummer steht jetzt "—", die Couch-ID im Tooltip. */}
                   <span
-                    style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 11 }}
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      fontSize: 11,
+                      color: it.berichtNummer ? "var(--fg)" : "var(--fg-3)",
+                    }}
                     title={it._id}
                   >
-                    {(it as EinsatzListItem & { berichtNummer?: string }).berichtNummer ??
-                      deriveBerichtNrFromId(it._id, it.einsatzart, it.alarmierungZeit)}
+                    {it.berichtNummer ?? "—"}
                   </span>
                 </td>
                 <td style={archTd}>{formatDate(it.alarmierungZeit)}</td>
@@ -1197,11 +1203,10 @@ function ArchivPanel() {
                   {it.einsatzort.length > 32 ? it.einsatzort.slice(0, 32) + "…" : it.einsatzort}
                 </td>
                 <td style={archTd}>
-                  {it.status === "aktiv" ? (
-                    <span className="badge ok" style={{ gap: 4 }}>aktiv</span>
-                  ) : (
-                    <span className="badge neutral" style={{ gap: 4 }}>geschützt</span>
-                  )}
+                  {/* D-06: Status + Lifecycle-Badges (verworfen / Phantom /
+                      auto-geschlossen) — eine Wahrheit fuer Archiv, Browser
+                      und Detail. */}
+                  <LifecycleBadges item={it} />
                 </td>
                 <td style={archTd}>
                   <button
@@ -1260,6 +1265,47 @@ export function berichtTitel(item: {
     return item.lotsendienstAuftraggeber;
   }
   return item.einsatzart ?? item.einsatzartFreitext ?? "—";
+}
+
+/**
+ * D-06 (Audit R3): Lifecycle-Marker eines Berichts als Badge-Reihe.
+ * Reihenfolge = Wichtigkeit: verworfen (rot) schlaegt alles; sonst der
+ * Auto-Abschluss-Grund — "unbefuellt-1h" ist der Phantom-Fall (grau),
+ * jeder andere Worker-Abschluss "auto-geschlossen" (gelb); zuletzt der
+ * normale Status. Exportiert fuer Archiv, BerichteBrowser und BerichtDetail.
+ */
+export function LifecycleBadges({ item }: { item: EinsatzListItem }) {
+  const istPhantom = item.autoAbgeschlossen === true && item.autoAbgeschlossenGrund === "unbefuellt-1h";
+  return (
+    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+      {item.verworfen === true ? (
+        <span className="badge red" style={{ gap: 4 }} title="Vom Phantom-Cleanup als verworfen markiert">
+          verworfen
+        </span>
+      ) : istPhantom ? (
+        <span
+          className="badge neutral"
+          style={{ gap: 4 }}
+          title="Automatisch geschlossen: nach 1 h ohne Eingaben (unbefüllt)"
+        >
+          Phantom (auto)
+        </span>
+      ) : item.autoAbgeschlossen === true ? (
+        <span
+          className="badge warn"
+          style={{ gap: 4 }}
+          title={`Automatisch geschlossen (${item.autoAbgeschlossenGrund ?? "Grund unbekannt"})`}
+        >
+          auto-geschlossen
+        </span>
+      ) : null}
+      {item.status === "aktiv" ? (
+        <span className="badge ok" style={{ gap: 4 }}>aktiv</span>
+      ) : (
+        <span className="badge neutral" style={{ gap: 4 }}>geschützt</span>
+      )}
+    </span>
+  );
 }
 
 /** AUDIT-15: exportiert, damit BerichteBrowser/BerichtDetail dasselbe

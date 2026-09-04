@@ -121,7 +121,13 @@ export interface RouteData {
 
 interface Props {
   selfPos: { lat: number; lng: number };
-  einsatzPos: { lat: number; lng: number };
+  /**
+   * N-07 (Audit 2026-09): null = Einsatzort (noch) ohne Koordinaten — z. B.
+   * manuell ohne Adresse angelegt oder BlaulichtSMS ohne Geocode-Treffer.
+   * Dann: kein Einsatzort-Marker, keine Route, Distanz/ETA "—". Vorher
+   * wurde still das Feuerwehrhaus als Einsatzort gezeichnet.
+   */
+  einsatzPos: { lat: number; lng: number } | null;
   einsatzAdresse: string;
   fleet: MapPosition[];
   hydranten: Hydrant[];
@@ -149,6 +155,9 @@ export function MapCard({
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const hydrantLayerRef = useRef<L.LayerGroup | null>(null);
   const routeRef = useRef<L.Polyline | null>(null);
+  // N-07: Einsatzort-Marker als Ref — wird im Sync-Effekt angelegt/versetzt/
+  // entfernt, sobald einsatzPos kommt, wandert (GPS-Uebernahme) oder fehlt.
+  const einsatzMarkerRef = useRef<L.Marker | null>(null);
   const autoFollowRef = useRef(true);
   // S-1 (Audit KISS): letzte Position, auf die auto-gefolgt wurde. Verhindert,
   // dass die 1,2-s-Pan-Animation bei jedem 3-s-Fleet-Tick neu feuert, obwohl
@@ -161,7 +170,8 @@ export function MapCard({
   }>({ base: null, overlay: null });
   const [tileChoice, setTileChoice] = useState<MapTileChoice>(loadTileChoice);
   const [waterOn, setWaterOn] = useState(true);
-  const [distance, setDistance] = useState<number>(0);
+  /** Distanz in km; null = kein Einsatzort (N-07). */
+  const [distance, setDistance] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
 
   // — Map einmalig initialisieren —
@@ -177,20 +187,16 @@ export function MapCard({
     // bessere Aufloesung in Oesterreich, Foto-Layer fuer Lageeinschaetzung.
     applyMapCardTileLayer(map, tileChoice, tileLayersRef.current);
 
-    // Einsatzort
-    L.marker([einsatzPos.lat, einsatzPos.lng], {
-      icon: einsatzIcon(),
-      title: "Einsatzort",
+    // Einsatzort-Marker + Route werden im Sync-Effekt unten gepflegt
+    // (N-07: einsatzPos kann null sein und spaeter kommen). Die Polyline
+    // startet leer und bekommt dort ihre Punkte.
+    routeRef.current = L.polyline([], {
+      color: "#dc2626",
+      weight: 4,
+      opacity: 0.7,
+      dashArray: "10 8",
+      lineCap: "round",
     }).addTo(map);
-
-    // Route
-    routeRef.current = L.polyline(
-      [
-        [selfPos.lat, selfPos.lng],
-        [einsatzPos.lat, einsatzPos.lng],
-      ],
-      { color: "#dc2626", weight: 4, opacity: 0.7, dashArray: "10 8", lineCap: "round" },
-    ).addTo(map);
 
     // Hydrant-Layer
     hydrantLayerRef.current = L.layerGroup().addTo(map);
@@ -237,6 +243,7 @@ export function MapCard({
       ro?.disconnect();
       map.remove();
       mapRef.current = null;
+      einsatzMarkerRef.current = null;
       tileLayersRef.current = { base: null, overlay: null };
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -289,8 +296,26 @@ export function MapCard({
         markersRef.current.delete(id);
       }
     }
+    // N-07: Einsatzort-Marker anlegen / versetzen / entfernen. Vorher wurde
+    // er einmalig beim Mount gesetzt und wanderte bei einer Adress-
+    // Korrektur (GPS-Uebernahme) nicht mit.
+    if (einsatzPos) {
+      const pos: LatLngExpression = [einsatzPos.lat, einsatzPos.lng];
+      if (einsatzMarkerRef.current) {
+        einsatzMarkerRef.current.setLatLng(pos);
+      } else {
+        einsatzMarkerRef.current = L.marker(pos, {
+          icon: einsatzIcon(),
+          title: "Einsatzort",
+        }).addTo(map);
+      }
+    } else if (einsatzMarkerRef.current) {
+      einsatzMarkerRef.current.remove();
+      einsatzMarkerRef.current = null;
+    }
     // Route updaten — bei echter GraphHopper-Route die Polyline der Strasse
     // folgen lassen + durchgehend statt gestrichelt. Sonst Luftlinie.
+    // Ohne Einsatzort: keine Linie.
     if (routeRef.current) {
       if (route && route.path.length > 1) {
         routeRef.current.setLatLngs(route.path.map((p) => [p.lat, p.lng]));
@@ -300,7 +325,7 @@ export function MapCard({
           opacity: 0.85,
           dashArray: undefined,
         });
-      } else {
+      } else if (einsatzPos) {
         routeRef.current.setLatLngs([
           [selfPos.lat, selfPos.lng],
           [einsatzPos.lat, einsatzPos.lng],
@@ -311,6 +336,8 @@ export function MapCard({
           opacity: 0.7,
           dashArray: "10 8",
         });
+      } else {
+        routeRef.current.setLatLngs([]);
       }
     }
     // Auto-Follow auf Self — aber nur neu pannen, wenn sich die eigene
@@ -324,11 +351,14 @@ export function MapCard({
         map.setView([selfPos.lat, selfPos.lng], SELF_ZOOM, { animate: true, duration: 1.2 });
       }
     }
-    // Distanz: echte Strecken-Distanz wenn GraphHopper-Route vorhanden, sonst Luftlinie
+    // Distanz: echte Strecken-Distanz wenn GraphHopper-Route vorhanden, sonst
+    // Luftlinie. Ohne Einsatzort: null → "—" (N-07).
     if (route && route.distanceM > 0) {
       setDistance(route.distanceM / 1000);
-    } else {
+    } else if (einsatzPos) {
       setDistance(haversineKm(selfPos, einsatzPos));
+    } else {
+      setDistance(null);
     }
   }, [fleet, selfPos, einsatzPos, route]);
 
@@ -355,11 +385,20 @@ export function MapCard({
     }
   }, [hydranten, waterOn]);
 
-  const navHref = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(einsatzAdresse)}&travelmode=driving`;
+  // N-07: Navigationsziel — Adresse, sonst Koordinaten, sonst gar nichts
+  // (Link wird dann inaktiv gezeichnet statt Google Maps ins Leere zu schicken).
+  const navZiel =
+    einsatzAdresse.trim() || (einsatzPos ? `${einsatzPos.lat},${einsatzPos.lng}` : "");
+  const navHref = navZiel
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(navZiel)}&travelmode=driving`
+    : undefined;
   const hydrantsNearby = hydranten.filter((h) => haversineKm({ lat: h.lat, lng: h.lng }, selfPos) * 1000 <= 250).length;
-  const etaMin = route && route.timeMs > 0
-    ? Math.max(1, Math.round(route.timeMs / 60_000))
-    : Math.max(1, Math.round((distance * 60) / 50));
+  const etaMin =
+    route && route.timeMs > 0
+      ? Math.max(1, Math.round(route.timeMs / 60_000))
+      : distance !== null
+        ? Math.max(1, Math.round((distance * 60) / 50))
+        : null;
 
   function recenter() {
     autoFollowRef.current = true;
@@ -389,6 +428,11 @@ export function MapCard({
   function zoomGesamt() {
     const map = mapRef.current;
     if (!map) return;
+    // N-07: ohne Einsatzort gibt es keine "gesamte Anfahrt" — auf Self.
+    if (!einsatzPos) {
+      zoomDetail();
+      return;
+    }
     autoFollowRef.current = false;
     const points: LatLngExpression[] = [
       [selfPos.lat, selfPos.lng],
@@ -555,10 +599,16 @@ export function MapCard({
         >
           <Stat
             label="Distanz"
-            value={distance < 1 ? `${Math.round(distance * 1000)} m` : `${distance.toFixed(1)} km`}
+            value={
+              distance === null
+                ? "—"
+                : distance < 1
+                  ? `${Math.round(distance * 1000)} m`
+                  : `${distance.toFixed(1)} km`
+            }
             tone="red"
           />
-          <Stat label="ETA" value={`${etaMin} min`} tone="amber" divided />
+          <Stat label="ETA" value={etaMin === null ? "—" : `${etaMin} min`} tone="amber" divided />
           <Stat
             label={`Hydranten 250m`}
             value={`${hydrantsNearby} · wkinfo`}
@@ -642,18 +692,23 @@ export function MapCard({
 
       <div className="mt-2.5 flex gap-2">
         <a
-          href={navHref}
+          {...(navHref ? { href: navHref } : {})}
           target="_blank"
           rel="noopener noreferrer"
+          aria-disabled={!navHref}
+          title={navHref ? undefined : "Kein Einsatzort — Adresse tippen oder GPS vor Ort"}
           className="flex flex-1 items-center justify-center gap-2.5 rounded-[14px] px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5"
           style={{
             background: "linear-gradient(180deg, #1E293B 0%, #0F172A 100%)",
             border: "1px solid #0F172A",
             boxShadow: "0 6px 18px -6px rgba(15, 23, 42, 0.50)",
+            // N-07: ohne Ziel inaktiv (kein href → kein Klick-Ziel).
+            opacity: navHref ? 1 : 0.5,
+            pointerEvents: navHref ? undefined : "none",
           }}
         >
           <Navigation size={18} />
-          <span>Route · Google Maps öffnen</span>
+          <span>{navHref ? "Route · Google Maps öffnen" : "Route · Einsatzort fehlt"}</span>
           <ExternalLink size={14} />
         </a>
         {showLoeschwasser ? (
@@ -700,7 +755,7 @@ function MapCardTileLayerSwitch({
   return (
     <div
       role="group"
-      aria-label="Karten-Layer waehlen"
+      aria-label="Karten-Layer wählen"
       style={{
         display: "inline-flex",
         alignItems: "center",

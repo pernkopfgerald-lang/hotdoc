@@ -11,7 +11,7 @@
  */
 
 import { Router } from "express";
-import { deriveBerichtNrFromId } from "@hotdoc/shared";
+import { asTruppsAus, deriveBerichtNrFromId } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
@@ -28,6 +28,7 @@ import {
   fahrzeugAbk,
   type FahrzeugberichtDaten,
 } from "../services/pdf/fahrzeugbericht.js";
+import { istInhaltlichLeer } from "../workers/phantom-fzgber-cleanup.js";
 
 export const pdfRouter: Router = Router();
 
@@ -118,6 +119,17 @@ function zeitmarkeZeit(v: unknown): string | undefined {
     return o.zeit ?? o.uhrzeit ?? undefined;
   }
   return undefined;
+}
+
+/**
+ * D-11 (Audit R3): Soft-geloeschte Chronik-Eintraege (DELETE /chronik/:entryId
+ * setzt geloescht:true, der Eintrag bleibt fuer den Audit-Trail im Doc)
+ * duerfen in KEINEM PDF/Spickzettel erscheinen. Wird VOR dem Normalisieren
+ * auf die Roh-Eintraege angewandt; der Adapter reicht das Flag zusaetzlich
+ * durch (NormalizedChronikEntry.geloescht).
+ */
+function istGeloeschterChronikEintrag(e: unknown): boolean {
+  return !!e && typeof e === "object" && (e as { geloescht?: unknown }).geloescht === true;
 }
 
 /**
@@ -220,7 +232,15 @@ async function buildLotsendienstHtml(
   doc: Record<string, unknown>,
 ): Promise<string> {
   const data = await buildBerichtDaten(id, doc);
+  applyLotsendienstOverlay(data, doc);
+  return renderHauptberichtHtml(data);
+}
 
+/**
+ * D-08 (Audit R3): Lotsendienst-Overlay als eigene Funktion, damit der
+ * Spickzettel dieselben Felder bekommt wie das PDF (kein zweites Mapping).
+ */
+function applyLotsendienstOverlay(data: BerichtDaten, doc: Record<string, unknown>): void {
   data.istLotsendienst = true;
   data.einsatzQuelle = "Lotsendienst";
 
@@ -246,8 +266,6 @@ async function buildLotsendienstHtml(
   delete data.einsatzauftragVia;
   delete data.anrufer;
   delete data.anruferTel;
-
-  return renderHauptberichtHtml(data);
 }
 
 /**
@@ -265,30 +283,46 @@ async function buildLotsendienstHtml(
 async function buildBerichtDaten(
   id: string,
   doc: Record<string, unknown>,
+  opts: { ohneFotos?: boolean } = {},
 ): Promise<BerichtDaten> {
   const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
   const reaktivierungen = (
     (doc.reaktivierungen as Array<{ am: string; grund: string }> | undefined) ?? []
   ).map((r) => ({ am: r.am, grund: r.grund }));
 
-  const fzgBerichte = await loadFahrzeugberichte(id);
+  // D-09 (Audit R3): Phantom-Fahrzeugberichte (inhaltlich leer — keine
+  // Mannschaft, kein Fahrer/Kdt, keine km, keine Geraete, kein Text) landen
+  // NICHT im PDF: weder in der Checkbox-Reihe "Eingesetzte Fahrzeuge" noch
+  // als Anhangblatt noch im Mannschafts-Aggregat. Dieselbe Definition wie
+  // der Phantom-Cleanup-Worker (istInhaltlichLeer) — kein Drift.
+  const fzgBerichteGeladen = await loadFahrzeugberichte(id);
+  const fzgBerichte = fzgBerichteGeladen.filter((fz) => !istInhaltlichLeer(fz));
 
   // AUDIT-14: Geraete-Klartext — config:geraete EINMAL laden (nicht pro
   // Fahrzeug), die Schleife unten loest materialId → bezeichnung auf.
   const geraeteLabelMap = await loadGeraeteLabelMap();
 
-  // Mannschafts-Aggregat berechnen
-  let eingesetzt = 0;
-  let asTrupps = 0; // Paare von Atemschutz-Personen / 2
+  // Mannschafts-Aggregat berechnen.
+  // D-12 (Audit R3): "Eingesetzt" zaehlt PERSONEN, nicht Slots — wer als
+  // Fahrer im KDO und spaeter in der Mannschaft des TANK steht, ist EINE
+  // Person. Dedupe ueber Set<personId> (Fahrer, Kdt, Mannschafts-Slots).
+  // AS-Trupps ueber die geteilte asTruppsAus-Definition (Aufrunden,
+  // NaN-sicher) — identisch zu stats.ts und PWA-Abschluss-Zusammenfassung.
+  const eingesetztIds = new Set<number>();
   let asPersonen = 0;
   for (const fz of fzgBerichte) {
-    const m = (fz.mannschaft as Array<{ atemschutzAktiv?: boolean }> | undefined) ?? [];
-    eingesetzt += m.length;
-    if (fz.fahrerPersonId) eingesetzt++;
-    if (fz.fahrzeugKdtPersonId) eingesetzt++;
-    for (const slot of m) if (slot.atemschutzAktiv) asPersonen++;
+    const m =
+      (fz.mannschaft as Array<{ personId?: unknown; atemschutzAktiv?: boolean }> | undefined) ??
+      [];
+    for (const slot of m) {
+      if (typeof slot.personId === "number") eingesetztIds.add(slot.personId);
+      if (slot.atemschutzAktiv) asPersonen++;
+    }
+    if (typeof fz.fahrerPersonId === "number") eingesetztIds.add(fz.fahrerPersonId);
+    if (typeof fz.fahrzeugKdtPersonId === "number") eingesetztIds.add(fz.fahrzeugKdtPersonId);
   }
-  asTrupps = Math.floor(asPersonen / 2);
+  const eingesetzt = eingesetztIds.size;
+  const asTrupps = asTruppsAus(asPersonen);
   const bereitschaft = (
     (doc.mannschaft as { bereitschaft?: number } | undefined)?.bereitschaft ?? 0
   );
@@ -309,7 +343,12 @@ async function buildBerichtDaten(
   // Chronik aus dem Einsatz-Doc — Issue #173 (v0.1.12): normalisieren auf
   // ein einheitliches Schema, damit der Renderer alte (transkript/typ) und
   // neue (text/source/funkrufname) Eintraege gleich behandeln kann.
-  const chronikRoh = (doc.chronik as unknown[] | undefined) ?? [];
+  // D-11 (Audit R3): soft-geloeschte Eintraege VOR dem Rendern ausfiltern —
+  // gilt damit fuer Haupt-, Übungs-, Lotsendienst-Bericht und Spickzettel
+  // (alle laufen durch buildBerichtDaten).
+  const chronikRoh = ((doc.chronik as unknown[] | undefined) ?? []).filter(
+    (e) => !istGeloeschterChronikEintrag(e),
+  );
   const chronik = chronikRoh.map((entry) => {
     const n = normalizeChronikEntry(entry);
     return {
@@ -324,7 +363,9 @@ async function buildBerichtDaten(
 
   // Foto-Funktion (2026-06-03): alle foto:-Docs des Einsatzes laden (für
   // Inline-Thumbnails in der Chronik + Foto-Anhang-Seiten 9×12 cm).
-  const fotos = await loadFotos(id);
+  // D-08: Der Spickzettel (HTML ohne Bilder) laedt die Foto-Docs nicht — die
+  // Base64-DataUrls sind der groesste Teil des Einsatz-Payloads.
+  const fotos: NonNullable<BerichtDaten["fotos"]> = opts.ohneFotos ? [] : await loadFotos(id);
 
   // Fahrzeug-Anhang-Daten mit Personen-Namen aufgeloest
   const fahrzeugberichteOut: NonNullable<BerichtDaten["fahrzeugberichte"]> = [];
@@ -332,6 +373,8 @@ async function buildBerichtDaten(
   // Kdt als Einsatzleiter markiert ist (kdtIstEinsatzleiter). Fallback weiter
   // unten: einsatzleiterPersonId am Einsatz-Doc.
   let einsatzleiterName: string | undefined;
+  // D-08: syBOS-Id des Einsatzleiters fuer den Spickzettel (gleiche Quelle).
+  let einsatzleiterPersonId: number | undefined;
   for (const fz of fzgBerichte) {
     const fid = (fz.fahrzeugId as string) ?? "?";
     const m = (fz.mannschaft as Array<{
@@ -347,6 +390,8 @@ async function buildBerichtDaten(
         : `Pers-${slot.personId}`;
       mannschaftResolved.push({
         name,
+        // D-08: syBOS-Id fuer den Spickzettel durchreichen.
+        ...(typeof slot.personId === "number" ? { personId: slot.personId } : {}),
         atemschutzAktiv: !!slot.atemschutzAktiv,
         ...(typeof slot.atemschutzDauerMin === "number"
           ? { atemschutzDauerMin: slot.atemschutzDauerMin }
@@ -362,13 +407,24 @@ async function buildBerichtDaten(
     // gewinnt (es sollte ohnehin nur einen geben).
     if (fz.kdtIstEinsatzleiter === true && kdtName && !einsatzleiterName) {
       einsatzleiterName = `${kdtName.nachname ?? ""} ${kdtName.vorname ?? ""}`.trim();
+      einsatzleiterPersonId = kdtId;
     }
+    // D-02 (Audit R3): Fahrzeug-eigene Zeiten (zeit.von/bis) fuer das
+    // Fahrzeugblatt — Alarmierung/Einsatzende sind dort nur noch Fallback.
+    const fzZeit = (fz.zeit as { von?: unknown; bis?: unknown } | undefined) ?? {};
+    const zeitVon = typeof fzZeit.von === "string" && fzZeit.von ? fzZeit.von : undefined;
+    const zeitBis = typeof fzZeit.bis === "string" && fzZeit.bis ? fzZeit.bis : undefined;
     fahrzeugberichteOut.push({
       fahrzeugId: fid,
       funkrufname: FAHRZEUG_FUNKRUF[fid] ?? fid,
       abk: FAHRZEUG_ABK[fid] ?? fid.toUpperCase(),
       status: (fz.status as "in_arbeit" | "abgeschlossen") ?? "in_arbeit",
       kmGefahren: (fz.km as { gefahrenKm?: number } | undefined)?.gefahrenKm ?? 0,
+      ...(zeitVon ? { zeitVon } : {}),
+      ...(zeitBis ? { zeitBis } : {}),
+      // D-08: syBOS-Ids von Fahrer/Kdt fuer den Spickzettel.
+      ...(typeof fahrerId === "number" ? { fahrerId } : {}),
+      ...(typeof kdtId === "number" ? { kdtId } : {}),
       ...(fahrerName
         ? { fahrer: `${fahrerName.nachname ?? ""} ${fahrerName.vorname ?? ""}`.trim() }
         : {}),
@@ -426,6 +482,7 @@ async function buildBerichtDaten(
       const elPerson = await loadPerson(elPersonId);
       if (elPerson) {
         einsatzleiterName = `${elPerson.nachname ?? ""} ${elPerson.vorname ?? ""}`.trim();
+        einsatzleiterPersonId = elPersonId;
       }
     }
   }
@@ -451,6 +508,7 @@ async function buildBerichtDaten(
     status: String(doc.status ?? ""),
     einsatzende: doc.einsatzende as string | undefined,
     ...(einsatzleiterName ? { einsatzleiter: einsatzleiterName } : {}),
+    ...(typeof einsatzleiterPersonId === "number" ? { einsatzleiterPersonId } : {}),
     meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
     oelbindemittelSaecke: oelbindemittelAggregiert,
     reaktivierungen,
@@ -568,7 +626,15 @@ async function buildHauptberichtHtml(
  */
 async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promise<string> {
   const data = await buildBerichtDaten(id, doc);
+  applyUebungOverlay(data, doc);
+  return renderHauptberichtHtml(data);
+}
 
+/**
+ * D-08 (Audit R3): Übungs-Overlay als eigene Funktion — geteilt von PDF und
+ * Spickzettel, damit beide exakt dieselben Übungs-Felder zeigen.
+ */
+function applyUebungOverlay(data: BerichtDaten, doc: Record<string, unknown>): void {
   data.istUebung = true;
   data.einsatzQuelle = "Übung";
 
@@ -602,8 +668,6 @@ async function buildUebungHtml(id: string, doc: Record<string, unknown>): Promis
   delete data.einsatzauftragVia;
   delete data.anrufer;
   delete data.anruferTel;
-
-  return renderHauptberichtHtml(data);
 }
 
 // ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────
@@ -675,7 +739,11 @@ pdfRouter.get(
       // Issue #173 (v0.1.12): Auch fuer den Fahrzeugbericht-PDF die Roh-
       // Chronik durch den normalisierenden Adapter ziehen, damit alte
       // Eintraege (transkript/typ) korrekt im Anhang erscheinen.
-      const chronikRaw = (einsatz.chronik as unknown[] | undefined) ?? [];
+      // D-11: soft-geloeschte Eintraege auch im Standalone-Fahrzeugbericht
+      // ausfiltern (Rueckseite zeigt die gesamte Einsatzchronik).
+      const chronikRaw = ((einsatz.chronik as unknown[] | undefined) ?? []).filter(
+        (e) => !istGeloeschterChronikEintrag(e),
+      );
 
       const data: FahrzeugberichtDaten = {
         einsatzId,
@@ -693,6 +761,11 @@ pdfRouter.get(
         funkrufname: FAHRZEUG_FUNKRUF[fahrzeugId] ?? fahrzeugId,
         einsatzort: String(einsatz.einsatzort ?? "—"),
         alarmierungZeit: String(einsatz.alarmierungZeit ?? ""),
+        // D-02: Fahrzeug-eigene Ausrueck-/Rueckkehrzeit aus zeit.von/bis —
+        // "Uhrzeit von" faellt nur ohne zeit.von auf die Alarmierung zurueck.
+        ...(((fzgber.zeit as { von?: string } | undefined)?.von)
+          ? { zeitVon: (fzgber.zeit as { von: string }).von }
+          : {}),
         ...(((fzgber.zeit as { bis?: string } | undefined)?.bis)
           ? { zeitBis: (fzgber.zeit as { bis: string }).bis }
           : {}),
@@ -756,41 +829,18 @@ pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), ah(async (req, re
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as Record<string, unknown>;
-    // AUDIT-14 (SF-12): Spickzettel typabhaengig — Uebungs-/Lotsendienst-
-    // Felder + Rechnungsadresse + echte Berichtsnummer (AUDIT-11) durchreichen.
+    // D-08 (Audit R3): Spickzettel nutzt buildBerichtDaten + dieselben
+    // Typ-Overlays wie das PDF statt eines eigenen Handmappings — damit
+    // stehen Fahrzeuge (von-bis, km), Personen mit syBOS-Id, Einsatzleiter,
+    // Mannschafts-Aggregat, Einsatzende und die syBOS-Statistik-Bloecke
+    // exakt so drin wie im Bericht (inkl. D-09 Phantom-Filter, D-11 Chronik-
+    // Filter, AUDIT-11 echte Berichtsnummer, AUDIT-14/SF-12 Typ-Felder +
+    // Rechnungsadresse). Fotos werden nicht geladen (HTML ohne Bilder).
     const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
-    const rechnungsadresse = (
-      doc.verrechnung as { rechnungsadresse?: string } | undefined
-    )?.rechnungsadresse;
-    const html = renderSpickzettelHtml({
-      einsatzId: id,
-      berichtsNummer:
-        (doc.berichtNummer as string | undefined) ??
-        deriveBerichtNrFromId(
-          id,
-          doc.einsatzart as string | undefined,
-          doc.alarmierungZeit as string | undefined,
-        ),
-      einsatzart: doc.einsatzart as string | undefined,
-      einsatzartFreitext: doc.einsatzartFreitext as string | undefined,
-      einsatzort: String(doc.einsatzort ?? "—"),
-      alarmierungZeit: String(doc.alarmierungZeit ?? ""),
-      alarmierungAuthor: doc.alarmierungAuthor as string | undefined,
-      einsatzTyp: einsatzTyp === "manuell" ? "manuell" : "alarm",
-      status: String(doc.status ?? ""),
-      oelbindemittelSaecke:
-        (doc.oelbindemittel as { gesamtSaecke?: number } | undefined)?.gesamtSaecke ?? 0,
-      ...(einsatzTyp === "uebung" ? { istUebung: true } : {}),
-      ...(einsatzTyp === "lotsendienst" ? { istLotsendienst: true } : {}),
-      ...(doc.uebungThema ? { uebungThema: String(doc.uebungThema) } : {}),
-      ...(doc.uebungsTyp ? { uebungsTyp: String(doc.uebungsTyp) } : {}),
-      ...(doc.uebungsleiter ? { uebungsleiter: String(doc.uebungsleiter) } : {}),
-      ...(doc.lotsendienstAuftraggeber
-        ? { lotsendienstAuftraggeber: String(doc.lotsendienstAuftraggeber) }
-        : {}),
-      ...(doc.lotsendienstRoute ? { lotsendienstRoute: String(doc.lotsendienstRoute) } : {}),
-      ...(rechnungsadresse ? { rechnungsadresse } : {}),
-    });
+    const data = await buildBerichtDaten(id, doc, { ohneFotos: true });
+    if (einsatzTyp === "uebung") applyUebungOverlay(data, doc);
+    else if (einsatzTyp === "lotsendienst") applyLotsendienstOverlay(data, doc);
+    const html = renderSpickzettelHtml(data);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch (err) {

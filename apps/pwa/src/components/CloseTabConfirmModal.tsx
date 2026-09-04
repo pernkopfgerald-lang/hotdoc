@@ -17,6 +17,14 @@ interface Props {
    * auslöst, ohne es zu wissen.
    */
   warnText?: string;
+  /**
+   * E-08 (Audit 2026-09): Beschriftung des primaeren Buttons + Hinweis-
+   * zeile darunter. Beim AKTIVEN Fahrzeug-Tab fuehrt der Confirm nur ins
+   * AbschlussModal — dort waere "PDF erzeugen" gelogen. Default: die
+   * bisherigen Texte (Archiv + PDF).
+   */
+  primaryLabel?: string;
+  primaryHint?: string;
   onClose: () => void;
   /**
    * Schließen mit Speichern. Bericht bleibt im Archiv,
@@ -48,6 +56,8 @@ export function CloseTabConfirmModal({
   tabLabel,
   isHauptauftrag,
   warnText,
+  primaryLabel,
+  primaryHint,
   onClose,
   onConfirmAbschluss,
   onConfirmVerwerfen,
@@ -248,7 +258,7 @@ export function CloseTabConfirmModal({
                     style={{ color: "var(--red)", flexShrink: 0, marginTop: 1 }}
                   />
                   <div>
-                    Hauptauftrag — schliesst auch alle noch offenen
+                    Hauptauftrag — schließt auch alle noch offenen
                     Fahrzeugberichte mit.
                   </div>
                 </div>
@@ -280,8 +290,9 @@ export function CloseTabConfirmModal({
                 <CheckCircle2 size={18} />
                 <span style={{ flex: 1 }}>
                   {/* U-05: klarere Sprache — der primaere CTA-Text
-                      beschreibt was passiert (PDF erzeugen + abschliessen). */}
-                  Bericht jetzt abschliessen &amp; PDF erzeugen
+                      beschreibt was passiert (PDF erzeugen + abschliessen).
+                      E-08: Aufrufer kann Label + Hint ueberschreiben. */}
+                  {primaryLabel ?? "Bericht jetzt abschließen & PDF erzeugen"}
                   <span
                     style={{
                       display: "block",
@@ -291,7 +302,7 @@ export function CloseTabConfirmModal({
                       marginTop: 2,
                     }}
                   >
-                    Bericht landet im Archiv, PDF wird generiert.
+                    {primaryHint ?? "Bericht landet im Archiv, PDF wird generiert."}
                   </span>
                 </span>
               </button>

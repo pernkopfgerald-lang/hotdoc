@@ -8,6 +8,7 @@ import {
   Siren,
   X,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 export interface EinsatzTabSummary {
   id: string;
@@ -77,11 +78,13 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
         }}
         // U-13: Tooltip + aria-label klarer — der "+"-Button oeffnet eine
         // Auswahl ueber Einsatz / Uebung / Lotsendienst.
-        title="Neuen Einsatz anlegen — Auswahl: Einsatz · Übung · Lotsendienst"
-        aria-label="Neuen Einsatz anlegen — Auswahl: Einsatz · Übung · Lotsendienst"
+        // E-03 (Audit 2026-09): "Bericht" statt "Einsatz" — das Modal legt
+        // auch Uebungen und Lotsendienste an.
+        title="Neuen Bericht anlegen — Einsatz ohne Alarm · Übung · Lotsendienst"
+        aria-label="Neuen Bericht anlegen — Einsatz ohne Alarm · Übung · Lotsendienst"
       >
         <Plus size={13} />
-        Neuer Einsatz
+        Neuer Bericht
       </button>
     </div>
   );
@@ -112,8 +115,21 @@ function EinsatzTab({
           ? { Icon: MapPin, farbe: "var(--warn)", tint: "var(--warn-tint)" }
           : { Icon: Siren, farbe: "var(--red)", tint: "var(--red-tint)" };
   const TypIcon = typStil.Icon;
+  // S-14 (Audit 2026-09): den aktiven Tab in der horizontal scrollbaren
+  // Leiste sichtbar halten — bei 3+ Einsaetzen lag der per Auto-Open
+  // gewaehlte Tab sonst rechts ausserhalb des Viewports.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    try {
+      rootRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    } catch {
+      // aeltere WebViews ohne Options-Objekt — Komfort, kein Muss
+    }
+  }, [active]);
   return (
     <div
+      ref={rootRef}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -198,8 +214,8 @@ function EinsatzTab({
             e.stopPropagation();
             onClose();
           }}
-          aria-label="Bericht schliessen"
-          title="Bericht schliessen"
+          aria-label="Bericht schließen"
+          title="Bericht schließen"
           style={{
             display: "inline-flex",
             alignItems: "center",

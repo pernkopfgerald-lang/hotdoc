@@ -1,5 +1,27 @@
-import { Search, X } from "lucide-react";
+import { AlertTriangle, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { loadPersonenStand } from "../lib/personen-cache";
+
+/** N-04: ab diesem Alter der Personalliste wird der Stand amber markiert. */
+const STAND_WARN_TAGE = 7;
+
+/**
+ * N-04 (Audit 2026-09): Alter der gecachten Personalliste in ganzen Tagen
+ * (null = kein Stand-Datum bekannt, z. B. Altformat-Cache).
+ */
+function personenStandTage(): number | null {
+  const stand = loadPersonenStand();
+  if (!stand) return null;
+  const ts = Date.parse(stand);
+  if (!Number.isFinite(ts)) return null;
+  return Math.max(0, Math.floor((Date.now() - ts) / 86_400_000));
+}
+
+function standLabel(tage: number): string {
+  if (tage === 0) return "heute";
+  if (tage === 1) return "vor 1 Tag";
+  return `vor ${tage} Tagen`;
+}
 
 export interface PickPerson {
   _id: string;
@@ -55,6 +77,11 @@ export function PersonPickerModal({
     );
   }, [q, personen]);
 
+  // N-04: Stand der Personalliste bei jedem Oeffnen frisch lesen — der
+  // Cache kann zwischen zwei Oeffnungen aktualisiert worden sein.
+  const standTage = useMemo(() => (open ? personenStandTage() : null), [open]);
+  const standAlt = standTage !== null && standTage >= STAND_WARN_TAGE;
+
   if (!open) return null;
 
   return (
@@ -88,6 +115,21 @@ export function PersonPickerModal({
                 {subtitle}
               </p>
             )}
+            {/* N-04 (Audit 2026-09): Stand der Liste sichtbar machen. Ab 7
+                Tagen amber + Handlungsanweisung — ein neues Mitglied fehlt
+                sonst still im Picker und der Kdt sucht vergeblich. */}
+            {standTage !== null && personen.length > 0 ? (
+              <p
+                className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold"
+                style={{ color: standAlt ? "var(--amber)" : "var(--fg-3)" }}
+              >
+                {standAlt ? <AlertTriangle size={13} style={{ flexShrink: 0 }} /> : null}
+                <span>
+                  Personalliste Stand: {standLabel(standTage)}
+                  {standAlt ? " — Funktionär: Backoffice → Schnittstellen → syBOS" : ""}
+                </span>
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -148,13 +190,22 @@ export function PersonPickerModal({
                     <span className="flex-1 text-[18px] font-medium text-text-1">
                       {p.nachname} {p.vorname}
                     </span>
+                    {/* E-15 (Audit 2026-09): "AS-tauglich" statt kryptischem
+                        "AS" — inaktive Variante mit durchgestrichener Optik. */}
                     {p.atemschutzGueltig ? (
-                      <span className="rounded border border-amber/40 bg-amber/15 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-amber">
-                        AS
+                      <span
+                        className="rounded border border-amber/40 bg-amber/15 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-amber"
+                        title="Atemschutz-Tauglichkeit gültig (laut syBOS)"
+                      >
+                        AS-tauglich
                       </span>
                     ) : (
-                      <span className="rounded border border-border bg-transparent px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-text-3 opacity-50">
-                        AS
+                      <span
+                        className="rounded border border-border bg-transparent px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-text-3 opacity-50"
+                        style={{ textDecoration: "line-through" }}
+                        title="Keine gültige Atemschutz-Tauglichkeit (laut syBOS)"
+                      >
+                        AS-tauglich
                       </span>
                     )}
                     <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-blue">

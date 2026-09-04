@@ -3,8 +3,14 @@ import { useEffect, useState } from "react";
 
 export interface AbschlussCheck {
   ok: boolean;
-  /** Pflichtwarnung (rot) wenn nicht ok */
+  /** Pflichtwarnung (amber) wenn nicht ok */
   label: string;
+  /**
+   * N-07 (Audit 2026-09): "red" = harter Hinweis (z. B. Einsatzort fehlt)
+   * — wird rot statt amber gezeichnet, bleibt aber ueberschreibbar
+   * ("Trotzdem schliessen"). Default amber.
+   */
+  tone?: "red";
 }
 
 interface Props {
@@ -20,6 +26,16 @@ interface Props {
   /** Wenn true, wird die "Auch Einsatz abschliessen"-Option angezeigt
    *  (nur sinnvoll wenn nur ein Fahrzeug am Einsatz beteiligt war). */
   showCloseEinsatzOption?: boolean;
+  /** E-02 (Audit 2026-09): Typ steuert das Vokabular der Abschluss-Checkbox
+   *  ("Ganze Übung" vs. "Ganzen Einsatz"). Default: Einsatz. */
+  einsatzTyp?: "alarm" | "manuell" | "lotsendienst" | "uebung";
+  /**
+   * S-12 (Audit 2026-09): Uhrzeit (HH:MM), zu der der Kdt diesen Bericht
+   * zuletzt verlassen hat (Tab-Wechsel) — Angebot fuer "Uhrzeit bis", wenn
+   * das Feld noch leer ist. Nur zusammen mit onUebernehmeVerlassenAm.
+   */
+  verlassenAmHHMM?: string;
+  onUebernehmeVerlassenAm?: (hhmm: string) => void;
 }
 
 /**
@@ -36,6 +52,9 @@ export function AbschlussModal({
   onConfirm,
   onCancel,
   showCloseEinsatzOption,
+  einsatzTyp,
+  verlassenAmHHMM,
+  onUebernehmeVerlassenAm,
 }: Props) {
   const [alsoCloseEinsatz, setAlsoCloseEinsatz] = useState(false);
   // T-01 (Audit 2026-07): Checkbox bei jedem Oeffnen zuruecksetzen — sonst
@@ -130,28 +149,38 @@ export function AbschlussModal({
 
         {/* Pflicht-Checks */}
         <ul className="flex flex-col gap-1.5 p-3">
-          {checks.map((c, i) => (
-            <li
-              key={i}
-              className="flex items-center gap-2.5 rounded-s border px-3 py-2"
-              style={{
-                borderColor: c.ok ? "var(--emerald-border)" : "var(--amber-border)",
-                background: c.ok ? "var(--emerald-bg)" : "var(--amber-soft)",
-              }}
-            >
-              {c.ok ? (
-                <CheckCircle2 size={15} className="shrink-0 text-emerald" />
-              ) : (
-                <AlertTriangle size={15} className="shrink-0 text-amber" />
-              )}
-              <span
-                className="flex-1 text-[16.5px] font-medium"
-                style={{ color: c.ok ? "var(--emerald)" : "var(--amber)" }}
+          {checks.map((c, i) => {
+            // N-07: rote Variante fuer harte Hinweise (Einsatzort fehlt).
+            const rot = !c.ok && c.tone === "red";
+            const farbe = c.ok ? "var(--emerald)" : rot ? "var(--red)" : "var(--amber)";
+            return (
+              <li
+                key={i}
+                className="flex items-center gap-2.5 rounded-s border px-3 py-2"
+                style={{
+                  borderColor: c.ok
+                    ? "var(--emerald-border)"
+                    : rot
+                      ? "var(--red-border)"
+                      : "var(--amber-border)",
+                  background: c.ok
+                    ? "var(--emerald-bg)"
+                    : rot
+                      ? "var(--red-tint)"
+                      : "var(--amber-soft)",
+                }}
               >
-                {c.label}
-              </span>
-            </li>
-          ))}
+                {c.ok ? (
+                  <CheckCircle2 size={15} className="shrink-0 text-emerald" />
+                ) : (
+                  <AlertTriangle size={15} className="shrink-0" style={{ color: farbe }} />
+                )}
+                <span className="flex-1 text-[16.5px] font-medium" style={{ color: farbe }}>
+                  {c.label}
+                </span>
+              </li>
+            );
+          })}
         </ul>
 
         {/* Summary */}
@@ -177,8 +206,45 @@ export function AbschlussModal({
           ))}
         </div>
 
+        {/* S-12 (Audit 2026-09): Ein-Klick-Uebernahme der Tab-Verlassen-Zeit
+            als "Uhrzeit bis" — der Kdt hat den Bericht z. B. um 14:32
+            verlassen und erst Stunden spaeter abgeschlossen; "jetzt" waere
+            dann falsch. Nur sichtbar, wenn die Page eine Zeit anbietet. */}
+        {verlassenAmHHMM && onUebernehmeVerlassenAm ? (
+          <div
+            className="flex flex-wrap items-center gap-2 px-3 py-2.5"
+            style={{
+              borderBottom: "1px solid var(--border)",
+              background: "var(--info-tint)",
+              color: "var(--info)",
+              fontSize: 15.5,
+              fontWeight: 600,
+            }}
+          >
+            <span style={{ flex: 1, minWidth: 180 }}>
+              Bericht zuletzt verlassen um{" "}
+              <span className="font-mono tabular-nums">{verlassenAmHHMM}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onUebernehmeVerlassenAm(verlassenAmHHMM)}
+              className="rounded-m border px-3 py-1.5 text-[15px] font-bold"
+              style={{
+                minHeight: 40,
+                borderColor: "var(--blue-border)",
+                background: "var(--surface)",
+                color: "var(--info)",
+              }}
+            >
+              Als Uhrzeit bis übernehmen
+            </button>
+          </div>
+        ) : null}
+
         {/* Solo-Tablet-Option: auch den Einsatz selbst abschliessen.
-            Nur wenn Florian Eberstalzell keinen Hauptbericht erwartet. */}
+            Nur wenn Florian Eberstalzell keinen Hauptbericht erwartet.
+            E-02 (Audit 2026-09): Vokabular typabhaengig + klare Regel,
+            wann das Hakerl gesetzt werden darf. */}
         {showCloseEinsatzOption ? (
           <label
             className="flex items-start gap-2 px-3 py-3 cursor-pointer"
@@ -199,10 +265,12 @@ export function AbschlussModal({
                 className="text-[16.5px] font-semibold"
                 style={{ color: alsoCloseEinsatz ? "var(--info)" : "var(--fg)" }}
               >
-                Einsatzbericht ebenfalls jetzt abschließen
+                {einsatzTyp === "uebung"
+                  ? "Ganze Übung jetzt abschließen"
+                  : "Ganzen Einsatz jetzt abschließen"}
               </div>
               <div className="text-[14px] mt-0.5" style={{ color: "var(--fg-3)" }}>
-                Für Solo-Einsätze wo nur dieses Fahrzeug beteiligt war und Florian Eberstalzell keinen Hauptbericht nachträgt. Setzt den Schreibschutz auch auf den Einsatz selbst.
+                Nur anhaken, wenn dieses Fahrzeug allein unterwegs war. Im Zweifel leer lassen — die Zentrale schließt später ab.
               </div>
             </div>
           </label>
