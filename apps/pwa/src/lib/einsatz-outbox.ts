@@ -13,8 +13,12 @@
  * anzulegen.
  *
  * Aufraeumen: erfolgreich gesendete Items werden geloescht. Schlaegt der
- * POST mit 4xx-Schema-Fehler fehl (also ein bug, nicht netz), wird das
- * Item ebenfalls geloescht damit es nicht endlos retryt.
+ * POST mit 404/409 fehl, wird das Item geloescht damit es nicht endlos
+ * retryt. C-05 (Audit 2026-09): 400/422 (Schema-Fehler, meist Drift nach
+ * einem Deploy) werden NICHT mehr geloescht, sondern als `blocked`
+ * markiert — der Body ist der einzige Traeger der Einsatz-Anlage. Der
+ * Flush ueberspringt blockierte Items; unblockEinsaetze() gibt sie nach
+ * einem Fix wieder frei.
  */
 
 import { db } from "../db/pouch";
@@ -28,6 +32,8 @@ export interface OutboxItem {
   enqueuedAt: string;
   lastAttempt?: string;
   attempts: number;
+  /** C-05: Schema-Fehler (400/422) → blockiert statt verworfen. */
+  blocked?: { status: number; at: string };
 }
 
 /** Body in die Outbox legen — idempotencyKey ist Pflicht, damit der Server bei
@@ -88,6 +94,43 @@ async function bumpAttempt(item: OutboxItem): Promise<void> {
   }
 }
 
+/** C-05: Item als blockiert markieren (siehe OutboxItem.blocked). */
+async function markBlocked(item: OutboxItem, status: number): Promise<void> {
+  try {
+    const fresh = (await db.get(item._id)) as OutboxItem;
+    await db.put({
+      ...fresh,
+      lastAttempt: new Date().toISOString(),
+      attempts: (fresh.attempts ?? 0) + 1,
+      blocked: { status, at: new Date().toISOString() },
+    });
+  } catch {
+    // egal — naechster Tick versucht erneut (und blockiert dann)
+  }
+}
+
+/** Liefert nur die blockierten Einsatz-Anlagen (Sync-Badge / Diagnose). */
+export async function listBlockedEinsaetze(): Promise<OutboxItem[]> {
+  return (await listPending()).filter((it) => !!it.blocked);
+}
+
+/**
+ * Hebt die Blockade aller Einsatz-Anlagen auf — z. B. nach einem App-Update,
+ * das den Schema-Fehler behoben hat. Der naechste Flush-Tick versucht sie
+ * erneut.
+ */
+export async function unblockEinsaetze(): Promise<void> {
+  for (const item of await listBlockedEinsaetze()) {
+    try {
+      const fresh = (await db.get(item._id)) as OutboxItem;
+      const { blocked: _blocked, ...rest } = fresh;
+      await db.put(rest);
+    } catch {
+      // Race — naechster Tick sieht den Stand.
+    }
+  }
+}
+
 /**
  * Versucht alle wartenden Items hochzuladen. Wird vom 30 s-Cron-Worker
  * sowie sofort beim Online-Werden aufgerufen.
@@ -101,10 +144,11 @@ export async function flushOutbox(): Promise<{
   pending: number;
 }> {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    const pending = (await listPending()).length;
+    const pending = (await listPending()).filter((it) => !it.blocked).length;
     return { total: pending, ok: 0, failed: 0, pending };
   }
-  const items = await listPending();
+  // C-05: blockierte Items ueberspringen — sie warten auf unblockEinsaetze().
+  const items = (await listPending()).filter((it) => !it.blocked);
   if (items.length === 0) return { total: 0, ok: 0, failed: 0, pending: 0 };
   let ok = 0;
   let failed = 0;
@@ -121,10 +165,17 @@ export async function flushOutbox(): Promise<{
       // naechsten Sync wieder probieren. Bei 401 reload-t der apiCall-Layer
       // ohnehin den User in den Setup-Flow; bei 423 ist das Doc temporaer
       // gesperrt (anderer Tab schreibt gerade), gleich nochmal probieren
-      // bringt was. Endgueltig droppen tun wir nur bei echten Client-
-      // Schema-Fehlern (400, 404, 409, 422).
-      const droppable = new Set([400, 404, 409, 422]);
-      if (err instanceof ApiError && droppable.has(err.status)) {
+      // bringt was. Endgueltig droppen nur bei 404/409 (Ziel weg bzw.
+      // Dublette = Ziel erreicht). C-05: 400/422 (Schema-Fehler) blockieren
+      // statt droppen — der Body ist der einzige Traeger der Anlage.
+      if (err instanceof ApiError && (err.status === 400 || err.status === 422)) {
+        console.error(
+          `[einsatz-outbox] ${err.status} auf /manuell — Item blockiert statt verworfen:`,
+          err.body,
+        );
+        await markBlocked(item, err.status);
+        failed++;
+      } else if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
         await removeFromOutbox(item);
         failed++;
       } else {
@@ -133,6 +184,6 @@ export async function flushOutbox(): Promise<{
       }
     }
   }
-  const rest = (await listPending()).length;
+  const rest = (await listPending()).filter((it) => !it.blocked).length;
   return { total: items.length, ok, failed, pending: rest };
 }

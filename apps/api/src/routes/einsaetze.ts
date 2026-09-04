@@ -18,7 +18,8 @@ import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
-import { writeAuditEvent } from "../services/audit.js";
+import { writeAuditEvent, type AuditEventType } from "../services/audit.js";
+import type { SessionPayload } from "../services/auth/jwt.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 
 export const einsaetzeRouter: Router = Router();
@@ -506,9 +507,33 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   const fzgDocs = fzgList.rows
     .map((r) => r.doc)
     .filter((d): d is NonNullable<typeof d> => !!d);
-  const offeneFzgber = fzgDocs.filter(
+  const inArbeitFzgber = fzgDocs.filter(
     (f) => (f as { status?: string }).status === "in_arbeit",
   );
+  // D-03 (Audit R3): Berichte, die beim Reaktivieren aus "abgeschlossen"
+  // wieder geoeffnet wurden (Marker reaktiviertAusStatus), sind keine
+  // "vergessenen" offenen Berichte — sie waren schon einmal fertig. Sie
+  // erzeugen KEINEN Override-Hinweis und werden unten still mit Grund
+  // "reaktivierung-wieder-geschlossen" zugemacht (Marker entfernt).
+  const reaktivierteFzgber = inArbeitFzgber.filter(
+    (f) => (f as { reaktiviertAusStatus?: string }).reaktiviertAusStatus === "abgeschlossen",
+  );
+  const offeneFzgber = inArbeitFzgber.filter(
+    (f) => (f as { reaktiviertAusStatus?: string }).reaktiviertAusStatus !== "abgeschlossen",
+  );
+  // D-01 (Audit R3): Einsatzende-Fallback = groesstes zeit.bis aller
+  // Fahrzeugberichte (letztes Fahrzeug eingerueckt). Erst wenn kein
+  // Fahrzeug eine Rueckkehr-Zeit traegt, faellt einsatzende auf "jetzt".
+  let maxFzgZeitBisMs = Number.NEGATIVE_INFINITY;
+  for (const f of fzgDocs) {
+    const bis = (f as { zeit?: { bis?: unknown } }).zeit?.bis;
+    if (typeof bis !== "string" || !bis) continue;
+    const t = new Date(bis).getTime();
+    if (Number.isFinite(t) && t > maxFzgZeitBisMs) maxFzgZeitBisMs = t;
+  }
+  const maxFzgZeitBis = Number.isFinite(maxFzgZeitBisMs)
+    ? new Date(maxFzgZeitBisMs).toISOString()
+    : undefined;
   const abschlussOverrideHinweis = offeneFzgber.length
     ? `Beim Abschluss waren ${offeneFzgber.length} Fahrzeugbericht(e) noch nicht abgeschlossen (${offeneFzgber
         .map((f) => (f as { fahrzeugId?: string }).fahrzeugId ?? "?")
@@ -573,7 +598,15 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     ...basis,
     status: "abgeschlossen",
     schreibschutz: true,
-    einsatzende: new Date().toISOString(),
+    // D-01: bestehendes einsatzende (Editor-Eingabe oder frueherer Abschluss
+    // vor einer Reaktivierung) hat Vorrang, dann letzte Fahrzeug-Rueckkehr,
+    // erst dann "jetzt".
+    einsatzende:
+      (typeof basis.einsatzende === "string" && basis.einsatzende
+        ? basis.einsatzende
+        : undefined) ??
+      maxFzgZeitBis ??
+      new Date().toISOString(),
     oelbindemittel: oelbindemittelAggregiert,
     verrechnung: verrechnungUpdated,
     geaendertAm: new Date().toISOString(),
@@ -645,7 +678,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       );
     }
   }
-  if (offeneFzgber.length > 0) {
+  if (offeneFzgber.length > 0 || reaktivierteFzgber.length > 0) {
     const cascadeNow = new Date().toISOString();
     // A-07: Kaskaden-Patch (Auto-Abschluss-Marker) als konstante Absicht —
     // im Conflict-Fall wird er auf den frischen fzgber-Stand appliziert,
@@ -658,16 +691,39 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       autoAbgeschlossenGrund: "hauptauftrag-geschlossen" as const,
       geaendertAm: cascadeNow,
     };
-    const cascadeDocs = offeneFzgber.map((f) => ({
-      ...(f as Record<string, unknown>),
-      ...cascadePatch,
-    }));
+    // D-03: eigener Patch fuer reaktivierte Berichte — anderer Grund, und
+    // der Marker reaktiviertAusStatus wird entfernt (undefined → weg).
+    const reaktCascadePatch: Record<string, unknown> = {
+      status: "abgeschlossen" as const,
+      autoAbgeschlossen: true,
+      autoAbgeschlossenAm: cascadeNow,
+      autoAbgeschlossenGrund: "reaktivierung-wieder-geschlossen" as const,
+      reaktiviertAusStatus: undefined,
+      geaendertAm: cascadeNow,
+    };
+    const patchById = new Map<string, Record<string, unknown>>();
+    const cascadeDocs: Array<Record<string, unknown>> = [];
+    for (const f of offeneFzgber) {
+      const src = f as Record<string, unknown>;
+      cascadeDocs.push({ ...src, ...cascadePatch });
+      patchById.set(String(src._id), cascadePatch);
+    }
+    for (const f of reaktivierteFzgber) {
+      const src = f as Record<string, unknown>;
+      cascadeDocs.push({ ...src, ...reaktCascadePatch });
+      patchById.set(String(src._id), reaktCascadePatch);
+    }
     try {
-      const { ok, failed } = await bulkUpdateWithRetry(cascadeDocs, logger, () => cascadePatch);
+      const { ok, failed } = await bulkUpdateWithRetry(
+        cascadeDocs,
+        logger,
+        (docId) => patchById.get(docId) ?? null,
+      );
       logger.info(
         {
           id,
           cascadeCount: cascadeDocs.length,
+          reaktivierteCount: reaktivierteFzgber.length,
           ok,
           failed: failed.length,
           failedIds: failed,
@@ -852,12 +908,198 @@ einsaetzeRouter.post(
   }),
 );
 
+// ─── Reaktivierungs-Helfer (Route /reaktivieren + V9 Auto-Reaktivierung) ──
+
+/**
+ * Reaktivierungs-Patch als Funktion ueber dem Basis-Doc — der 409-Retry
+ * appliziert ihn auf den FRISCHEN Stand neu (inkl. dessen reaktivierungen-
+ * Historie). L-04: Stale-Marker vom frueheren Abschluss/Verwerfen werden
+ * EXPLIZIT entfernt (undefined → JSON.stringify laesst die Keys weg) —
+ * sonst truege der reaktivierte Einsatz weiter verworfen/autoAbgeschlossen
+ * & Co. und PDF/Archiv/Worker wuerden ihn falsch einordnen.
+ *
+ * D-01 (Audit R3): einsatzende bleibt beim Reaktivieren ERHALTEN — der
+ * erneute /abschluss uebernimmt es (basis.einsatzende hat Vorrang), damit
+ * ein Nachtrag am Folgetag nicht das reale Einsatzende ueberschreibt.
+ *
+ * Exportiert, weil fotos.ts (V9) denselben Patch braucht.
+ */
+export function reaktivierenPatch(
+  basis: Record<string, unknown>,
+  eintrag: { vonBenutzerId: string; grund?: string },
+): Record<string, unknown> {
+  return {
+    ...basis,
+    status: "aktiv",
+    schreibschutz: false,
+    reaktivierungen: [
+      ...((basis.reaktivierungen as unknown[] | undefined) ?? []),
+      {
+        vonBenutzerId: eintrag.vonBenutzerId,
+        am: new Date().toISOString(),
+        grund: eintrag.grund,
+        vonStatus: "abgeschlossen",
+      },
+    ],
+    verworfen: undefined,
+    verwerfungsGrund: undefined,
+    autoAbgeschlossen: undefined,
+    autoAbgeschlossenAm: undefined,
+    autoAbgeschlossenGrund: undefined,
+    abschlussOverrideHinweis: undefined,
+    cascade_failed: undefined,
+    cascade_failed_ids: undefined,
+    geaendertAm: new Date().toISOString(),
+  };
+}
+
+/**
+ * Fahrzeugberichte eines Einsatzes nach dem Reaktivieren wieder oeffnen.
+ *
+ * BUG-Fix (Reaktivierung): Beim Hauptauftrag-Abschluss werden die offenen
+ * Fahrzeugberichte kaskadiert geschlossen (autoAbgeschlossenGrund=
+ * "hauptauftrag-geschlossen"). Beim Reaktivieren muss das rueckgaengig
+ * gemacht werden — sonst bleibt der Fahrzeugbericht schreibgeschuetzt und
+ * der Fahrzeugkommandant kommt nicht mehr an seine Mannschaft heran.
+ *
+ * D-03 (Audit R3): Jeder wieder geoeffnete Bericht bekommt den Marker
+ * reaktiviertAusStatus:"abgeschlossen". Beim naechsten /abschluss zaehlt er
+ * damit NICHT als "vergessener" offener Bericht (kein Override-Hinweis),
+ * sondern wird still mit Grund "reaktivierung-wieder-geschlossen" zugemacht.
+ *
+ * S-07 (Audit R3): `nurFahrzeugId` — nur den Bericht dieses Fahrzeugs
+ * oeffnen (Tablet-Nachtrag), die anderen bleiben abgeschlossen.
+ *
+ * A-07: Conflict-Retry appliziert den Reopen-Patch auf den frischen Stand —
+ * und nur, wenn der Bericht dort noch abgeschlossen ist.
+ */
+async function oeffneFahrzeugberichteWieder(
+  einsatzId: string,
+  nurFahrzeugId?: string,
+): Promise<{ ok: number; failed: string[] }> {
+  const fzgPrefix = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:`;
+  const fzgList = await db.list({
+    startkey: fzgPrefix,
+    endkey: `${fzgPrefix}￰`,
+    include_docs: true,
+  });
+  const reopenPatch: Record<string, unknown> = {
+    status: "in_arbeit" as const,
+    schreibschutz: false,
+    // Auto-Abschluss-Marker entfernen (undefined → JSON laesst sie weg).
+    autoAbgeschlossen: undefined,
+    autoAbgeschlossenAm: undefined,
+    autoAbgeschlossenGrund: undefined,
+    reaktiviertAusStatus: "abgeschlossen" as const,
+    geaendertAm: new Date().toISOString(),
+  };
+  const wiederOeffnen = fzgList.rows
+    .map((r) => r.doc)
+    .filter((d): d is NonNullable<typeof d> => !!d)
+    .filter((f) => (f as { status?: string }).status === "abgeschlossen")
+    .filter(
+      (f) =>
+        !nurFahrzeugId ||
+        (f as { fahrzeugId?: string }).fahrzeugId === nurFahrzeugId,
+    )
+    .map((f) => ({ ...(f as Record<string, unknown>), ...reopenPatch }));
+  if (wiederOeffnen.length === 0) return { ok: 0, failed: [] };
+  return bulkUpdateWithRetry(wiederOeffnen, logger, (_docId, fresh) =>
+    fresh.status === "abgeschlossen" ? reopenPatch : null,
+  );
+}
+
+/** V9: Auto-Abschluss-Grund, bei dem spaete Daten den Einsatz wieder oeffnen. */
+const AUTO_REAKTIVIERBARER_GRUND = "unbefuellt-1h";
+/** V9: Reaktivierungs-Grund im Audit-Trail + reaktivierungen[]. */
+const AUTO_REAKTIVIERUNGS_GRUND = "late-data-after-unbefuellt-1h";
+
+/**
+ * V9 (Audit R3): Auto-Reaktivierung bei spaeten Daten.
+ *
+ * Der Auto-Close-Worker schliesst unbefuellte Alarme nach 1 h (Grund
+ * "unbefuellt-1h"). Kommt DANACH doch noch ein Schreibzugriff (Fahrzeug-
+ * bericht, Editor-PUT, Chronik, Foto) — typisch: Tablet war im Funkloch,
+ * Outbox liefert verspaetet — soll der Request nicht mit 423 scheitern,
+ * sondern der Einsatz automatisch wieder geoeffnet und der Request normal
+ * verarbeitet werden. Fuer alle ANDEREN Abschluss-Gruende (menschlich,
+ * inaktiv-6h, verworfen) bleibt 423: dort ist der Abschluss gewollt.
+ *
+ * Aufruf NUR wenn doc.schreibschutz === true.
+ *
+ * @returns das reaktivierte Doc (frische _rev) — oder null, wenn nicht
+ *          anwendbar (Caller antwortet 423 schreibschutz_aktiv).
+ */
+export async function reaktiviereBeiSpaetenDaten(
+  doc: Record<string, unknown>,
+  session: SessionPayload,
+  ip: string | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (doc.autoAbgeschlossenGrund !== AUTO_REAKTIVIERBARER_GRUND) return null;
+  const id = String(doc._id);
+  const eintrag = { vonBenutzerId: session.sub, grund: AUTO_REAKTIVIERUNGS_GRUND };
+  let reaktiviert: Record<string, unknown>;
+  try {
+    const patched = reaktivierenPatch(doc, eintrag);
+    const r = await db.insert(patched);
+    reaktiviert = { ...patched, _rev: r.rev };
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    // 409: parallel geschrieben (zweites Tablet liefert gleichzeitig nach).
+    const fresh = (await db.get(id)) as Record<string, unknown>;
+    if (fresh.status === "aktiv" && fresh.schreibschutz !== true) {
+      // Bereits (auto-)reaktiviert — idempotent weiter.
+      return fresh;
+    }
+    if (fresh.autoAbgeschlossenGrund !== AUTO_REAKTIVIERBARER_GRUND) {
+      // Inzwischen anders abgeschlossen (z. B. menschlich) → gewollt, 423.
+      return null;
+    }
+    const patched = reaktivierenPatch(fresh, eintrag);
+    const r = await db.insert(patched);
+    reaktiviert = { ...patched, _rev: r.rev };
+  }
+  invalidateEinsatzCache();
+  logger.warn(
+    { id, by: session.username },
+    "Einsatz AUTO-REAKTIVIERT — spaete Daten nach unbefuellt-1h-Auto-Abschluss",
+  );
+  try {
+    const { ok, failed } = await oeffneFahrzeugberichteWieder(id);
+    if (ok > 0 || failed.length > 0) {
+      logger.info(
+        { id, reopened: ok, failed: failed.length },
+        "Fahrzeugberichte bei Auto-Reaktivierung wieder geoeffnet",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      { err, id },
+      "Fahrzeugbericht-Reopen bei Auto-Reaktivierung fehlgeschlagen — Einsatz ist trotzdem reaktiviert",
+    );
+  }
+  await writeAuditEvent({
+    type: "einsatz-reaktivierung",
+    actorUsername: session.username,
+    actorRolle: session.rolle,
+    einsatzId: id,
+    ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+    ...(ip ? { ipAddress: ip } : {}),
+    details: { grund: AUTO_REAKTIVIERUNGS_GRUND, automatisch: true },
+  });
+  return reaktiviert;
+}
+
 // ─── POST /api/einsaetze/:id/reaktivieren ─── FR-14 ─────────
 const ReaktivierenBodySchema = z.object({
   // Grund optional (User-Wunsch): wer etwas einträgt, gut — wer nicht, hat
   // auch seine Gründe. Kein Mindestlängen-Zwang. Audit-Event wird trotzdem
   // geschrieben (mit leerem Grund, falls keiner angegeben).
   grund: z.string().optional(),
+  /** S-07 (Audit R3): nur den Fahrzeugbericht DIESES Fahrzeugs wieder
+   *  oeffnen (Tablet-Nachtrag) — die anderen bleiben abgeschlossen. Ohne
+   *  Angabe werden wie bisher alle abgeschlossenen Berichte geoeffnet. */
+  nurFahrzeugId: z.string().min(1).optional(),
 });
 
 einsaetzeRouter.post(
@@ -885,39 +1127,12 @@ einsaetzeRouter.post(
       return;
     }
     // L-03/L-04 (Audit 2026-07): Reaktivierungs-Patch als Funktion ueber dem
-    // Basis-Doc — der 409-Retry appliziert ihn auf den FRISCHEN Stand neu
-    // (inkl. dessen reaktivierungen-Historie). L-04: Stale-Marker vom
-    // frueheren Abschluss/Verwerfen werden EXPLIZIT entfernt (undefined →
-    // JSON.stringify laesst die Keys weg) — sonst truege der reaktivierte
-    // Einsatz weiter verworfen/autoAbgeschlossen/einsatzende & Co. und
-    // PDF/Archiv/Worker wuerden ihn falsch einordnen.
-    const reaktivierenPatch = (basis: Record<string, unknown>): Record<string, unknown> => ({
-      ...basis,
-      status: "aktiv",
-      schreibschutz: false,
-      reaktivierungen: [
-        ...((basis.reaktivierungen as unknown[] | undefined) ?? []),
-        {
-          vonBenutzerId: session.sub,
-          am: new Date().toISOString(),
-          grund: parsed.data.grund,
-          vonStatus: "abgeschlossen",
-        },
-      ],
-      verworfen: undefined,
-      verwerfungsGrund: undefined,
-      autoAbgeschlossen: undefined,
-      autoAbgeschlossenAm: undefined,
-      autoAbgeschlossenGrund: undefined,
-      abschlussOverrideHinweis: undefined,
-      einsatzende: undefined,
-      cascade_failed: undefined,
-      cascade_failed_ids: undefined,
-      geaendertAm: new Date().toISOString(),
-    });
+    // Basis-Doc (siehe reaktivierenPatch oben) — der 409-Retry appliziert
+    // ihn auf den FRISCHEN Stand neu.
+    const eintrag = { vonBenutzerId: session.sub, grund: parsed.data.grund };
     let result: Awaited<ReturnType<typeof db.insert>>;
     try {
-      result = await db.insert(reaktivierenPatch(doc));
+      result = await db.insert(reaktivierenPatch(doc, eintrag));
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 409) throw err;
       // L-03: 409 — frisch laden; ist der Einsatz inzwischen schon aktiv
@@ -930,48 +1145,25 @@ einsaetzeRouter.post(
         res.json({ ok: true, id, rev: fresh._rev, idempotent: true });
         return;
       }
-      result = await db.insert(reaktivierenPatch(fresh));
+      result = await db.insert(reaktivierenPatch(fresh, eintrag));
     }
     invalidateEinsatzCache();
     logger.warn(
-      { id, by: session.username, grund: parsed.data.grund },
+      { id, by: session.username, grund: parsed.data.grund, nurFahrzeugId: parsed.data.nurFahrzeugId },
       "Einsatz REAKTIVIERT — Audit-Trail aktualisiert",
     );
 
-    // BUG-Fix (Reaktivierung): Beim Hauptauftrag-Abschluss werden die offenen
-    // Fahrzeugberichte kaskadiert geschlossen (autoAbgeschlossenGrund=
-    // "hauptauftrag-geschlossen"). Beim Reaktivieren muss das rückgängig
-    // gemacht werden — sonst bleibt der Fahrzeugbericht schreibgeschützt und
-    // der Fahrzeugkommandant kommt nicht mehr an seine Mannschaft heran
-    // (nur Florian konnte den Bericht öffnen). Wir öffnen alle abgeschlossenen
-    // Fahrzeugberichte dieses Einsatzes wieder (Status → in_arbeit), damit
-    // die Fahrzeuge weiterarbeiten können. Schlägt das fehl, bleibt der
+    // Fahrzeugberichte wieder oeffnen (siehe oeffneFahrzeugberichteWieder:
+    // D-03-Marker + S-07 nurFahrzeugId). Schlaegt das fehl, bleibt der
     // Einsatz trotzdem reaktiviert (nicht blockierend).
     try {
-      const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
-      const fzgList = await db.list({
-        startkey: fzgPrefix,
-        endkey: `${fzgPrefix}￰`,
-        include_docs: true,
-      });
-      const wiederOeffnen = fzgList.rows
-        .map((r) => r.doc)
-        .filter((d): d is NonNullable<typeof d> => !!d)
-        .filter((f) => (f as { status?: string }).status === "abgeschlossen")
-        .map((f) => ({
-          ...(f as Record<string, unknown>),
-          status: "in_arbeit" as const,
-          schreibschutz: false,
-          // Auto-Abschluss-Marker entfernen (undefined → JSON lässt sie weg).
-          autoAbgeschlossen: undefined,
-          autoAbgeschlossenAm: undefined,
-          autoAbgeschlossenGrund: undefined,
-          geaendertAm: new Date().toISOString(),
-        }));
-      if (wiederOeffnen.length > 0) {
-        const { ok, failed } = await bulkUpdateWithRetry(wiederOeffnen, logger);
+      const { ok, failed } = await oeffneFahrzeugberichteWieder(
+        id,
+        parsed.data.nurFahrzeugId,
+      );
+      if (ok > 0 || failed.length > 0) {
         logger.info(
-          { id, reopened: ok, failed: failed.length },
+          { id, reopened: ok, failed: failed.length, nurFahrzeugId: parsed.data.nurFahrzeugId },
           "Fahrzeugberichte beim Reaktivieren wieder geöffnet",
         );
       }
@@ -990,7 +1182,10 @@ einsaetzeRouter.post(
       einsatzId: id,
       ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
       ...(req.ip ? { ipAddress: req.ip } : {}),
-      details: { grund: parsed.data.grund },
+      details: {
+        grund: parsed.data.grund,
+        ...(parsed.data.nurFahrzeugId ? { nurFahrzeugId: parsed.data.nurFahrzeugId } : {}),
+      },
     });
     res.json({ ok: true, id, rev: result.rev });
   }),
@@ -1044,11 +1239,27 @@ einsaetzeRouter.delete(
 
     const cascadeIds = fzgDocs.map((f) => (f as { _id?: string })._id ?? "?");
 
-    // Bulk-Delete: alle Fahrzeugberichte + Einsatz selbst in einer
+    // D-05 (Audit R3): Fotos gehoeren zum Einsatz (foto:<suffix>:<fotoId>,
+    // siehe fotos.ts) — ohne Kaskade blieben sie als verwaiste Bild-Docs
+    // (je bis zu mehrere 100 kB dataUrl) dauerhaft in CouchDB liegen.
+    const fotoPrefix = `foto:${id.replace(/^einsatz:/, "")}:`;
+    const fotoList = await db.list({
+      startkey: fotoPrefix,
+      endkey: `${fotoPrefix}￰`,
+      include_docs: true,
+    });
+    const fotoDocs = fotoList.rows
+      .map((r) => r.doc)
+      .filter((d): d is NonNullable<typeof d> => !!d)
+      .filter((d) => (d as { type?: string }).type === "foto");
+    const cascadeFotoIds = fotoDocs.map((f) => (f as { _id?: string })._id ?? "?");
+
+    // Bulk-Delete: alle Fahrzeugberichte + Fotos + Einsatz selbst in einer
     // bulk_docs-Operation. So bleibt das Loeschen atomar im
     // Concurrency-Sinne (gleiche Update-Sequence).
     const bulkDocs: Array<Record<string, unknown>> = [
       ...fzgDocs.map((f) => ({ ...(f as Record<string, unknown>), _deleted: true })),
+      ...fotoDocs.map((f) => ({ ...(f as Record<string, unknown>), _deleted: true })),
       { ...doc, _deleted: true },
     ];
     // RISIKO-6 (Audit 2026-06-03): Frueher wurde db.bulk hier ohne Auswertung
@@ -1085,11 +1296,12 @@ einsaetzeRouter.delete(
         by: session.username,
         grund: parsed.data.grund,
         fzgCount: cascadeIds.length,
+        fotoCount: cascadeFotoIds.length,
         ...(failed.length > 0 ? { cascade_failed: failed } : {}),
       },
       failed.length > 0
         ? "Einsatz geloescht — aber einzelne Cascade-Docs blieben nach Retry als Orphan zurueck"
-        : "Einsatz GELOESCHT — Cascade auf Fahrzeugberichte",
+        : "Einsatz GELOESCHT — Cascade auf Fahrzeugberichte + Fotos",
     );
     await writeAuditEvent({
       type: "einsatz-delete",
@@ -1101,6 +1313,7 @@ einsaetzeRouter.delete(
       details: {
         grund: parsed.data.grund,
         cascade_fzgber: cascadeIds,
+        cascade_fotos: cascadeFotoIds,
         ...(failed.length > 0 ? { cascade_failed: failed } : {}),
       },
     });
@@ -1109,6 +1322,7 @@ einsaetzeRouter.delete(
       id,
       deleted: true,
       cascade_fzgber: cascadeIds.length,
+      fotos: cascadeFotoIds.length,
       ...(failed.length > 0 ? { cascade_failed: failed } : {}),
     });
   }),
@@ -1155,6 +1369,11 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "anrufer",
   "anruferTel",
   "einsatzauftragVia",
+  // Audit R3 (V4): Einsatzende ist im Florian-Editor korrigierbar (D-01),
+  // Alarm-Annahme am Florian (angenommenVon/-Am) wird per PUT gesetzt.
+  "einsatzende",
+  "angenommenVon",
+  "angenommenAm",
   // #1 (Test 2026-06-03): Koordinaten editierbar — wenn der EL (Florian) oder
   // der Fahrzeug-Kdt (GPS-Knopf) die Einsatzadresse korrigiert, wird die neue
   // Position mitgeschickt, damit die Lagekarte zur Adresse passt.
@@ -1178,30 +1397,66 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
 // Backoffice-User nein).
 einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
-  const current = await getEinsatzOr404(id, res);
+  const session = req.session!;
+  let current = await getEinsatzOr404(id, res);
   if (!current) return;
   if (current.schreibschutz === true) {
-    res.status(423).json({ error: "schreibschutz_aktiv", hint: "Bericht muss erst reaktiviert werden (FR-14)." });
-    return;
+    // V9: nach "unbefuellt-1h"-Auto-Abschluss oeffnen spaete Daten den
+    // Einsatz automatisch wieder; jeder andere Abschluss bleibt gesperrt.
+    const reaktiviert = await reaktiviereBeiSpaetenDaten(current, session, req.ip);
+    if (!reaktiviert) {
+      res.status(423).json({ error: "schreibschutz_aktiv", hint: "Bericht muss erst reaktiviert werden (FR-14)." });
+      return;
+    }
+    current = reaktiviert;
   }
   // Field-Allowlist: nur whitelisted Keys aus dem Body uebernehmen.
   // Schuetzt vor Privilege-Escalation via PUT (Status reset, schreibschutz
   // umgehen, Audit-Felder manipulieren). Felder mit "vidi"-Prefix sind
   // erlaubt damit der Florian-Editor Vidierungs-Workflows pflegen kann.
   const body = (req.body ?? {}) as Record<string, unknown>;
+  // S-03/S-13 (Audit R3): Optimistic Locking fuer den Editor. Der Client
+  // schickt den editorGeaendertAm-Stand mit, den er beim Laden gesehen hat.
+  // Hat ein ZWEITER Editor seither geschrieben (Wert ungleich), lehnen wir
+  // mit 409 editor_conflict ab und liefern den aktuellen Stand mit — der
+  // Client laedt neu statt fremde Eingaben zu ueberschreiben. Chronik-
+  // Broadcasts/Positions-Updates/Worker aendern editorGeaendertAm NICHT,
+  // erzeugen also keinen Fehlalarm. Das Feld ist KEIN Doc-Feld und wird
+  // vor dem Merge entfernt (steht ohnehin nicht in der Allowlist).
+  const expectedEditorGeaendertAm =
+    typeof body.expectedEditorGeaendertAm === "string" && body.expectedEditorGeaendertAm
+      ? body.expectedEditorGeaendertAm
+      : undefined;
+  delete body.expectedEditorGeaendertAm;
+  const pruefeEditorKonflikt = (stand: Record<string, unknown>): boolean => {
+    if (!expectedEditorGeaendertAm) return false;
+    const aktuell = stand.editorGeaendertAm;
+    if (typeof aktuell !== "string" || !aktuell) return false;
+    return aktuell !== expectedEditorGeaendertAm;
+  };
+  if (pruefeEditorKonflikt(current)) {
+    res.status(409).json({
+      error: "editor_conflict",
+      editorGeaendertAm: current.editorGeaendertAm,
+    });
+    return;
+  }
   const safeBody: Record<string, unknown> = {};
   for (const key of Object.keys(body)) {
     if (PUT_EINSATZ_ALLOWED_FIELDS.has(key) || key.startsWith("vidi")) {
       safeBody[key] = body[key];
     }
   }
+  const editorNow = new Date().toISOString();
   const merged = {
     ...current,
     ...safeBody,
     _id: current._id,
     _rev: current._rev,
     type: "einsatz",
-    geaendertAm: new Date().toISOString(),
+    geaendertAm: editorNow,
+    // V4: jeder Editor-PUT stempelt editorGeaendertAm (nur dieser Endpunkt).
+    editorGeaendertAm: editorNow,
   };
   const validated = EinsatzSchema.safeParse(merged);
   if (!validated.success) {
@@ -1227,13 +1482,24 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
     logger.info({ id }, "PUT einsatz: 409 Conflict — Retry mit frischer _rev");
     const fresh = await getEinsatzOr404(id, res);
     if (!fresh) return;
+    // S-03: auch im Retry-Pfad — hat der Konflikt-Verursacher ein anderer
+    // Editor-PUT war, ist der frische Stand ein Editor-Konflikt.
+    if (pruefeEditorKonflikt(fresh)) {
+      res.status(409).json({
+        error: "editor_conflict",
+        editorGeaendertAm: fresh.editorGeaendertAm,
+      });
+      return;
+    }
+    const retryNow = new Date().toISOString();
     const retryMerged = {
       ...fresh,
       ...safeBody,
       _id: fresh._id,
       _rev: fresh._rev,
       type: "einsatz",
-      geaendertAm: new Date().toISOString(),
+      geaendertAm: retryNow,
+      editorGeaendertAm: retryNow,
     };
     const retryValidated = EinsatzSchema.safeParse(retryMerged);
     if (!retryValidated.success) {
@@ -1276,11 +1542,10 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
     (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge,
   );
   if (vorher !== nachher) {
-    const session = req.session;
     await writeAuditEvent({
       type: "einsatz-zuweisung-geaendert",
-      ...(session?.username ? { actorUsername: session.username } : {}),
-      ...(session?.rolle ? { actorRolle: session.rolle } : {}),
+      actorUsername: session.username,
+      actorRolle: session.rolle,
       einsatzId: id,
       details: {
         vorher: (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge ?? [],
@@ -1293,13 +1558,39 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
 }));
 
 // ─── PUT /api/einsaetze/:id/fahrzeugbericht/:fzgId ─────────────
+/**
+ * D-14 / V7 (Audit R3): Allowlist der Felder, die das Fahrzeug-Tablet (und
+ * der QR-Handoff) ueber das fzgber-PUT schreiben darf. Identitaet (_id,
+ * einsatzId, fahrzeugId, type), Audit-Marker (autoAbgeschlossen*, verworfen,
+ * reaktiviertAusStatus, erstelltAm/geaendertAm) und die Verrechnungs-
+ * Kaskade (verrechnung — kommt nur ueber /abschluss) werden stillschweigend
+ * gefiltert. Das bisherige "_"-Strip (A-05) bleibt als zweite Schicht.
+ */
+const PUT_FZGBER_ALLOWED_FIELDS = new Set<string>([
+  "zeit",
+  "km",
+  "gpsTrack",
+  "fahrerPersonId",
+  "fahrzeugKdtPersonId",
+  "kdtIstEinsatzleiter",
+  "mannschaft",
+  "geraete",
+  "oelbindemittelSaecke",
+  "taetigkeitsbericht",
+  "status",
+  "lastWriterDeviceId",
+  "anhaengerMitgenommen",
+]);
+
 einsaetzeRouter.put(
   "/api/einsaetze/:id/fahrzeugbericht/:fzgId",
-  requireAuth(),
+  // V7: mannschaft+ (jeder Aufgaben-Mitarbeiter), reine Read-only-User nicht.
+  requireAuth("mannschaft"),
   ah(async (req, res) => {
     const einsatzId = decodeURIComponent(String(req.params.id));
     const fahrzeugId = decodeURIComponent(String(req.params.fzgId));
     const docId = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:${fahrzeugId}`;
+    const session = req.session!;
 
     // Schreibschutz-Check via Einsatz
     const einsatz = (await db.get(einsatzId).catch(() => null)) as Record<string, unknown> | null;
@@ -1308,8 +1599,13 @@ einsaetzeRouter.put(
       return;
     }
     if (einsatz.schreibschutz === true) {
-      res.status(423).json({ error: "schreibschutz_aktiv" });
-      return;
+      // V9: nach "unbefuellt-1h"-Auto-Abschluss oeffnen spaete Daten den
+      // Einsatz (inkl. seiner Fahrzeugberichte) automatisch wieder.
+      const reaktiviert = await reaktiviereBeiSpaetenDaten(einsatz, session, req.ip);
+      if (!reaktiviert) {
+        res.status(423).json({ error: "schreibschutz_aktiv" });
+        return;
+      }
     }
 
     let existing: Record<string, unknown> | null = null;
@@ -1325,10 +1621,13 @@ einsaetzeRouter.put(
     // Conflict/Overwrite, _deleted → Doc-Tombstone, _id → Umleitung) — die
     // Zeilen unterhalb setzen _id/_rev zwar explizit, aber nur gegen die
     // bekannten Felder; _deleted & Co. ruetschten ungefiltert durch.
+    // V7: zusaetzlich Field-Allowlist (PUT_FZGBER_ALLOWED_FIELDS).
     const bodyRaw = (req.body ?? {}) as Record<string, unknown>;
     const body: Record<string, unknown> = {};
     for (const key of Object.keys(bodyRaw)) {
-      if (!key.startsWith("_")) body[key] = bodyRaw[key];
+      if (key.startsWith("_")) continue;
+      if (!PUT_FZGBER_ALLOWED_FIELDS.has(key)) continue;
+      body[key] = bodyRaw[key];
     }
     const merged = {
       ...(existing ?? {
@@ -1409,9 +1708,14 @@ einsaetzeRouter.put(
 // 200 OK ohne erneutes Insert (verhindert Duplikate bei Retry/Sync).
 // Tablets pollen GET .../chronik in 8s-Intervallen und mergen
 // Einträge ihrer Geschwister-Fahrzeuge → echter Cross-Check.
+/** C-06: Toleranz zwischen Client-Zeitstempel und Server-Empfang. */
+const CHRONIK_ZEIT_TOLERANZ_MS = 5 * 60 * 1000;
+
 const ChronikEintragBodySchema = z.object({
   id: z.string().min(1),
-  zeitstempel: z.string(),
+  // C-06 (Audit R3): echtes ISO-Datum (UTC "Z" oder Offset) — freie Strings
+  // liessen sich weder sortieren noch gegen die Server-Zeit pruefen.
+  zeitstempel: z.string().datetime({ offset: true }),
   funkrufname: z.string().min(1),
   fahrzeugId: z.string().min(1),
   source: z.enum(["blaulichtsms", "fahrzeug", "manuell", "atemschutz"]),
@@ -1440,14 +1744,20 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req,
     throw err;
   }
   if (doc.schreibschutz === true) {
-    // 423 = Locked. Hint-Feld traegt eine User-lesbare Erlaeuterung damit
-    // das Frontend (Tablet/Florianstation) einen verstaendlichen Toast
-    // anzeigen kann anstatt den nackten Error-Code.
-    res.status(423).json({
-      error: "schreibschutz_aktiv",
-      hint: "Bericht ist abgeschlossen - bitte zuerst reaktivieren",
-    });
-    return;
+    // V9: nach "unbefuellt-1h"-Auto-Abschluss oeffnen spaete Daten den
+    // Einsatz automatisch wieder (Outbox liefert Chronik verspaetet).
+    const reaktiviert = await reaktiviereBeiSpaetenDaten(doc, req.session!, req.ip);
+    if (!reaktiviert) {
+      // 423 = Locked. Hint-Feld traegt eine User-lesbare Erlaeuterung damit
+      // das Frontend (Tablet/Florianstation) einen verstaendlichen Toast
+      // anzeigen kann anstatt den nackten Error-Code.
+      res.status(423).json({
+        error: "schreibschutz_aktiv",
+        hint: "Bericht ist abgeschlossen - bitte zuerst reaktivieren",
+      });
+      return;
+    }
+    doc = reaktiviert;
   }
 
   const chronik = ((doc.chronik as unknown[] | undefined) ?? []) as Array<{ id: string }>;
@@ -1461,9 +1771,37 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req,
     return;
   }
 
+  // C-06 (Audit R3): Server-Empfangszeit stempeln. Weicht der Client-
+  // Zeitstempel mehr als 5 min von der Server-Zeit ab (Tablet-Uhr verstellt,
+  // kein NTP im Funkloch), uebernimmt der Server seine Empfangszeit als
+  // zeitstempel — die Chronik bleibt chronologisch, das Original ist im
+  // Log nachvollziehbar. Bewusst NICHT bei Outbox-Nachlieferungen greifend:
+  // die sind i. d. R. > 5 min alt und tragen einen korrekten Zeitstempel —
+  // darum nur bei GROSSER Abweichung UND wenn der Zeitstempel in der
+  // ZUKUNFT liegt oder der Eintrag nicht als pending markiert ist.
+  const empfangenAm = new Date().toISOString();
+  const clientMs = Date.parse(parsed.data.zeitstempel);
+  const abweichungMs = Math.abs(clientMs - Date.now());
+  let zeitstempel = parsed.data.zeitstempel;
+  if (!Number.isFinite(clientMs) || abweichungMs > CHRONIK_ZEIT_TOLERANZ_MS) {
+    logger.warn(
+      {
+        id,
+        entryId: parsed.data.id,
+        fzg: parsed.data.fahrzeugId,
+        clientZeitstempel: parsed.data.zeitstempel,
+        empfangenAm,
+        abweichungSek: Number.isFinite(abweichungMs) ? Math.round(abweichungMs / 1000) : null,
+      },
+      "POST chronik: Client-Zeitstempel weicht > 5 min von Server-Zeit ab — empfangenAm uebernommen",
+    );
+    zeitstempel = empfangenAm;
+  }
+  const eintrag = { ...parsed.data, zeitstempel, empfangenAm };
+
   const updated = {
     ...doc,
-    chronik: [...chronik, parsed.data],
+    chronik: [...chronik, eintrag],
     geaendertAm: new Date().toISOString(),
   };
   let result: Awaited<ReturnType<typeof db.insert>>;
@@ -1487,7 +1825,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req,
     }
     const retryUpdated = {
       ...fresh,
-      chronik: [...freshChronik, parsed.data],
+      chronik: [...freshChronik, eintrag],
       geaendertAm: new Date().toISOString(),
     };
     try {
@@ -1618,6 +1956,99 @@ einsaetzeRouter.put(
       details: { entryId },
     });
     res.json({ ok: true, id, entryId, total: nextChronik.length });
+  }),
+);
+
+// ─── DELETE /api/einsaetze/:id/chronik/:entryId ──────────────
+// D-11 / V6 (Audit R3): Chronik-Eintrag loeschen — als SOFT-Delete. Der
+// Eintrag bleibt im Array (Audit-Trail, Idempotenz des POST-Dedupe ueber
+// entry.id bleibt intakt), traegt aber geloescht:true + geloeschtAm/-Von;
+// PDF und UI blenden ihn aus. Rolle einsatzleiter+: das Loeschen ist
+// (anders als der Text-Edit) eine Entscheidung der Einsatzleitung.
+// Idempotent: bereits geloeschter Eintrag → 200 ohne erneuten Write.
+einsaetzeRouter.delete(
+  "/api/einsaetze/:id/chronik/:entryId",
+  requireAuth("einsatzleiter"),
+  ah(async (req, res) => {
+    const id = decodeURIComponent(String(req.params.id));
+    const entryId = decodeURIComponent(String(req.params.entryId));
+    const session = req.session!;
+    const doc = await getEinsatzOr404(id, res);
+    if (!doc) return;
+    if (doc.schreibschutz === true) {
+      // Selber Code wie POST/PUT chronik — Frontend reagiert einheitlich.
+      res.status(423).json({
+        error: "schreibschutz_aktiv",
+        hint: "Bericht ist abgeschlossen - bitte zuerst reaktivieren",
+      });
+      return;
+    }
+    const chronik = ((doc.chronik as unknown[] | undefined) ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const idx = chronik.findIndex((e) => (e as { id?: string }).id === entryId);
+    if (idx < 0) {
+      res.status(404).json({ error: "entry_not_found" });
+      return;
+    }
+    if (chronik[idx]?.geloescht === true) {
+      res.json({ ok: true, deduped: true });
+      return;
+    }
+    const now = new Date().toISOString();
+    const loeschMarker = {
+      geloescht: true,
+      geloeschtAm: now,
+      geloeschtVon: session.username,
+    };
+    // Soft-Delete-Patch als Funktion ueber dem chronik-Array — A-07: im
+    // Conflict-Fall wird er auf das FRISCHE Array appliziert, parallel
+    // eingetroffene Eintraege anderer Fahrzeuge bleiben erhalten. Ist der
+    // Eintrag im frischen Stand verschwunden → null → failed → 409.
+    const softDeletePatch = (
+      basisChronik: Array<Record<string, unknown>>,
+    ): Record<string, unknown> | null => {
+      const i = basisChronik.findIndex((e) => (e as { id?: string }).id === entryId);
+      if (i < 0) return null;
+      const next = [...basisChronik];
+      next[i] = { ...basisChronik[i], ...loeschMarker };
+      return { chronik: next, geaendertAm: new Date().toISOString() };
+    };
+    const patch = softDeletePatch(chronik);
+    if (!patch) {
+      res.status(404).json({ error: "entry_not_found" });
+      return;
+    }
+    const { ok, failed } = await bulkUpdateWithRetry(
+      [{ ...doc, ...patch }],
+      logger,
+      (_docId, fresh) =>
+        softDeletePatch(
+          ((fresh.chronik as unknown[] | undefined) ?? []) as Array<Record<string, unknown>>,
+        ),
+    );
+    if (failed.length > 0 || ok === 0) {
+      res.status(409).json({
+        error: "conflict_retry_failed",
+        hint: "Eintrag wurde zwischenzeitlich geaendert. Bitte erneut versuchen.",
+      });
+      return;
+    }
+    invalidateEinsatzCache();
+    logger.info({ id, entryId, by: session.username }, "Chronik-Eintrag geloescht (soft)");
+    await writeAuditEvent({
+      // TODO(audit.ts): "chronik-delete" in AuditEventType aufnehmen — die
+      // Union liegt in services/audit.ts (nicht Teil dieses Aenderungs-
+      // Scopes); bis dahin Cast, der Event-Typ wird 1:1 persistiert.
+      type: "chronik-delete" as unknown as AuditEventType,
+      actorUsername: session.username,
+      actorRolle: session.rolle,
+      einsatzId: id,
+      ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+      ...(req.ip ? { ipAddress: req.ip } : {}),
+      details: { entryId },
+    });
+    res.json({ ok: true });
   }),
 );
 

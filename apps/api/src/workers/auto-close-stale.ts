@@ -23,11 +23,20 @@
  * Regel 2 — Unbefüllt-Abschluss (L-01, UNFILLED_CLOSE_MINUTES, Default 60):
  *   Poller-auto-angelegte Alarme (einsatzTyp="alarm") die nach 1 h komplett
  *   unbefüllt sind (keine User-Chronik, alle Fahrzeugberichte Phantom,
- *   Einsatz-Inhaltsfelder leer) werden OHNE Berichtsnummer geschlossen —
- *   Phantom-Alarme verbrennen keine Nummern; Reaktivieren + echter Abschluss
- *   vergibt regulär. Basis ist erstelltAm (NICHT geaendertAm: bloßes Öffnen
- *   am Tablet erzeugt Auto-Writes — einsatzort-PUT nach 1,5 s, leerer
- *   Fahrzeugbericht nach 2,5 s).
+ *   Einsatz-Inhaltsfelder leer, keine Disposition/Annahme am Florian,
+ *   kein Anrufer/Auftragsweg — S-05/N-06/I-02) werden OHNE Berichtsnummer
+ *   geschlossen — Phantom-Alarme verbrennen keine Nummern; Reaktivieren +
+ *   echter Abschluss vergibt regulär. Basis ist erstelltAm (NICHT
+ *   geaendertAm: bloßes Öffnen am Tablet erzeugt Auto-Writes — einsatzort-
+ *   PUT nach 1,5 s, leerer Fahrzeugbericht nach 2,5 s). Kommen nach dem
+ *   Auto-Abschluss doch noch Daten (V9), reaktivieren die Schreib-Endpunkte
+ *   den Einsatz automatisch (routes/einsaetze.ts:reaktiviereBeiSpaetenDaten).
+ *
+ * D-01: Beide Auto-Abschluss-Pfade setzen einsatzende = geaendertAm des
+ *   Einsatzes (letzte echte Aktivität), nicht den Cron-Tick.
+ *
+ * C-07: Kandidaten kommen aus zwei Mango-Queries (Index type-status) statt
+ *   aus einem einsatz:-Vollscan.
  *
  * Regel 3 — Orphan-Sweep (L-07): Fahrzeugberichte "in_arbeit" unter einem
  *   seit mehr als 1 h abgeschlossenen Einsatz (einsatzende in den letzten
@@ -63,6 +72,13 @@ const DEFAULT_UNFILLED_CLOSE_MINUTES = 60;
 const ORPHAN_FENSTER_TAGE = 7;
 /** L-07: einsatzende muss mind. 1 h zurückliegen (Kdt darf noch nachtippen). */
 const ORPHAN_MIN_ALTER_MS = 60 * 60 * 1000;
+/**
+ * C-07: Obergrenzen der Mango-Queries. Aktive Einsätze sind in der Praxis
+ * < 20; Orphan-Kandidaten (abgeschlossen in den letzten 7 Tagen) < 100.
+ * Wird ein Limit erreicht, loggt der Lauf eine Warnung.
+ */
+const AKTIV_FIND_LIMIT = 1000;
+const ORPHAN_FIND_LIMIT = 500;
 
 /** Gemeinsame Kappungslogik für die Stunden-ENVs. */
 function gekappteStunden(raw: string | undefined, fallback: number): number {
@@ -140,6 +156,16 @@ interface EinsatzMin {
   brandStatistik?: unknown;
   technischeStatistik?: unknown;
   verrechnung?: { verrechenbar?: boolean };
+  // — S-05 / N-06 / I-02 (Audit R3): weitere Befüllt-Signale —
+  /** Disposition am Florian → menschliche Interaktion. */
+  zugewieseneFahrzeuge?: unknown[];
+  anrufer?: string;
+  anruferTel?: string;
+  einsatzauftragVia?: string;
+  alarmiertDurch?: string;
+  oelbindemittel?: { verwendet?: boolean; gesamtSaecke?: number };
+  /** Alarm am Florian angenommen → menschliche Interaktion. */
+  angenommenAm?: string;
 }
 
 /**
@@ -307,6 +333,18 @@ function istUnbefuellt(
     return false;
   }
   if (einsatz.verrechnung?.verrechenbar === true) return false;
+  // S-05 (Audit R3): Disposition am Florian (zugewieseneFahrzeuge) ist eine
+  // menschliche Entscheidung — der Einsatz ist damit nicht mehr "unbefüllt".
+  if ((einsatz.zugewieseneFahrzeuge ?? []).length > 0) return false;
+  // N-06: Anrufer/Auftragsweg/Alarmierungsstelle sind Editor-Eingaben.
+  if ((einsatz.anrufer ?? "").trim().length > 0) return false;
+  if ((einsatz.anruferTel ?? "").trim().length > 0) return false;
+  if ((einsatz.einsatzauftragVia ?? "").trim().length > 0) return false;
+  if ((einsatz.alarmiertDurch ?? "").trim().length > 0) return false;
+  // I-02: Ölbindemittel am Einsatz-Doc (Aggregat oder Editor-Eingabe).
+  if ((einsatz.oelbindemittel?.gesamtSaecke ?? 0) > 0) return false;
+  // Alarm am Florian angenommen → jemand hat sich des Einsatzes angenommen.
+  if ((einsatz.angenommenAm ?? "").trim().length > 0) return false;
   return true;
 }
 
@@ -419,11 +457,39 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
   const orphanFensterStart = jetzt - ORPHAN_FENSTER_TAGE * 24 * 60 * 60 * 1000;
   const orphanCutoff = jetzt - ORPHAN_MIN_ALTER_MS;
 
-  const einsaetze = await db.list({
-    startkey: "einsatz:",
-    endkey: "einsatz:￰",
-    include_docs: true,
-  });
+  // C-07 (Audit R3): KEIN einsatz:-Vollscan mehr — zwei gezielte Mango-
+  // Queries über den Index type-status (couch/client.ts:ensureMangoIndizes):
+  //   (a) alle aktiven Einsätze (Regel 1 + 2),
+  //   (b) abgeschlossene Einsätze mit einsatzende im 7-Tage-Orphan-Fenster
+  //       (Regel 3) — die $gte-Grenze hält die Kandidatenmenge klein.
+  // Ohne Index läuft db.find trotzdem (Mango-Fallback auf _all_docs).
+  const iso7dAgo = new Date(orphanFensterStart).toISOString();
+  const [aktiveResult, orphanResult] = await Promise.all([
+    db.find({
+      selector: { type: "einsatz", status: "aktiv" },
+      limit: AKTIV_FIND_LIMIT,
+    }),
+    db.find({
+      selector: {
+        type: "einsatz",
+        status: "abgeschlossen",
+        einsatzende: { $gte: iso7dAgo },
+      },
+      limit: ORPHAN_FIND_LIMIT,
+    }),
+  ]);
+  if (aktiveResult.docs.length >= AKTIV_FIND_LIMIT) {
+    logger.warn(
+      { limit: AKTIV_FIND_LIMIT },
+      "Auto-Close: Limit für aktive Einsätze erreicht — Kandidaten evtl. unvollständig",
+    );
+  }
+  if (orphanResult.docs.length >= ORPHAN_FIND_LIMIT) {
+    logger.warn(
+      { limit: ORPHAN_FIND_LIMIT },
+      "Auto-Close: Limit für Orphan-Kandidaten erreicht — Sweep evtl. unvollständig",
+    );
+  }
 
   // L-06: KEIN Fahrzeugbericht-Vollscan mehr. Erst Einsätze scannen und
   // Kandidaten sammeln, danach die Fahrzeugberichte NUR für Kandidaten
@@ -431,38 +497,37 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
   const staleKandidaten: EinsatzMin[] = [];
   const unbefuelltKandidaten: EinsatzMin[] = [];
   const orphanKandidaten: EinsatzMin[] = [];
-  for (const row of einsaetze.rows) {
-    const doc = row.doc as (EinsatzMin & { type?: string }) | undefined;
-    if (!doc) continue;
-    if (doc.type !== "einsatz") continue;
-    if (doc.status === "aktiv") {
-      // Regel 1: Stale — Typ-abhängiger Schwellwert (U-08).
-      const istUebung = doc.einsatzTyp === "uebung";
-      const typHours = istUebung ? hoursUebung : hours;
-      if (typHours > 0) {
-        // Benutze den jüngsten Zeitstempel als Aktivitätsmarker.
-        const ts =
-          doc.geaendertAm ?? doc.erstelltAm ?? doc.alarmierungZeit ?? null;
-        if (ts) {
-          const t = new Date(ts).getTime();
-          if (!Number.isNaN(t) && t <= (istUebung ? cutoffUebung : cutoffStale)) {
-            staleKandidaten.push(doc);
-          }
+  for (const doc of aktiveResult.docs as EinsatzMin[]) {
+    // Defensiv: der Selektor liefert nur aktive, die Prüfung bleibt lokal.
+    if (doc.status !== "aktiv") continue;
+    // Regel 1: Stale — Typ-abhängiger Schwellwert (U-08).
+    const istUebung = doc.einsatzTyp === "uebung";
+    const typHours = istUebung ? hoursUebung : hours;
+    if (typHours > 0) {
+      // Benutze den jüngsten Zeitstempel als Aktivitätsmarker.
+      const ts =
+        doc.geaendertAm ?? doc.erstelltAm ?? doc.alarmierungZeit ?? null;
+      if (ts) {
+        const t = new Date(ts).getTime();
+        if (!Number.isNaN(t) && t <= (istUebung ? cutoffUebung : cutoffStale)) {
+          staleKandidaten.push(doc);
         }
       }
-      // Regel 2: Unbefüllt (L-01) — Inhalts-Vorprüfung noch OHNE Fahrzeug-
-      // berichte (leere Liste); die fzgber-Bedingung wird nach dem
-      // gezielten Laden unten nochmals vollständig geprüft.
-      if (unbefuelltMinuten > 0 && istUnbefuellt(doc, [], cutoffUnbefuellt)) {
-        unbefuelltKandidaten.push(doc);
-      }
-    } else if (doc.status === "abgeschlossen" && doc.einsatzende) {
-      // Regel 3: Orphan-Sweep-Kandidaten (L-07) — nur kürzlich (< 7 Tage)
-      // abgeschlossene Einsätze, deren einsatzende >= 1 h zurückliegt.
-      const t = new Date(doc.einsatzende).getTime();
-      if (!Number.isNaN(t) && t >= orphanFensterStart && t <= orphanCutoff) {
-        orphanKandidaten.push(doc);
-      }
+    }
+    // Regel 2: Unbefüllt (L-01) — Inhalts-Vorprüfung noch OHNE Fahrzeug-
+    // berichte (leere Liste); die fzgber-Bedingung wird nach dem
+    // gezielten Laden unten nochmals vollständig geprüft.
+    if (unbefuelltMinuten > 0 && istUnbefuellt(doc, [], cutoffUnbefuellt)) {
+      unbefuelltKandidaten.push(doc);
+    }
+  }
+  for (const doc of orphanResult.docs as EinsatzMin[]) {
+    // Regel 3: Orphan-Sweep-Kandidaten (L-07) — nur kürzlich (< 7 Tage)
+    // abgeschlossene Einsätze, deren einsatzende >= 1 h zurückliegt.
+    if (doc.status !== "abgeschlossen" || !doc.einsatzende) continue;
+    const t = new Date(doc.einsatzende).getTime();
+    if (!Number.isNaN(t) && t >= orphanFensterStart && t <= orphanCutoff) {
+      orphanKandidaten.push(doc);
     }
   }
   const kandidatIds = new Set<string>(
@@ -536,7 +601,10 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     const einsatzPatch: Record<string, unknown> = {
       status: "abgeschlossen",
       schreibschutz: true,
-      einsatzende: now,
+      // D-01 (Audit R3): einsatzende = letzte echte Aktivität, nicht der
+      // Cron-Tick — sonst stünde im PDF ein Einsatzende, das bis zu 15 min
+      // (Unbefüllt) bzw. 6 h (Stale) nach dem realen Ende liegt.
+      einsatzende: einsatz.geaendertAm ?? now,
       autoAbgeschlossen: true,
       autoAbgeschlossenAm: now,
       autoAbgeschlossenGrund: "unbefuellt-1h",
@@ -638,7 +706,8 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     const einsatzPatch: Record<string, unknown> = {
       status: "abgeschlossen",
       schreibschutz: true,
-      einsatzende: now,
+      // D-01 (Audit R3): einsatzende = letzte echte Aktivität (s. o.).
+      einsatzende: einsatz.geaendertAm ?? now,
       autoAbgeschlossen: true,
       autoAbgeschlossenAm: now,
       autoAbgeschlossenGrund: `inaktiv-${typHours}h`,

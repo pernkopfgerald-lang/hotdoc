@@ -11,7 +11,7 @@
  *      Upload.
  *   3. captureFoto() speichert das Foto als lokales `foto:`-Doc in PouchDB
  *      (sofortige Offline-Anzeige) UND legt den Upload-Request in die generische
- *      Request-Outbox (Prio 1, idempotent über fotoId) — der 30-s-Worker reicht
+ *      Request-Outbox (Prio 3, idempotent über fotoId) — der 30-s-Worker reicht
  *      es nach, sobald Netz da ist. Konsistent mit der Offline-Härtung.
  *
  * Das Foto wird über `fotoId` an einen Chronik-Eintrag gebunden (siehe
@@ -166,9 +166,14 @@ export async function captureFoto(args: {
     }
   }
 
-  // 2) Upload-Request in die Offline-Outbox (Prio 1, idempotent über fotoId).
+  // 2) Upload-Request in die Offline-Outbox (idempotent über fotoId).
+  // N-05 (Audit 2026-09): Prio 3 — Fotos sind groß (bis 1,4 MB) und dürfen
+  // im Funkloch-Flush weder den Fahrzeugbericht-PUT (Prio 1) noch den
+  // Abschluss-POST (Prio 2) blockieren. Die Outbox flusht lexikografisch
+  // nach `outbox:req:<prio>:` → 1 < 2 < 3. Der Foto-Pfad ist zudem vom
+  // Einsatz-Gate ausgenommen (siehe request-outbox.ts).
   await enqueueRequest(
-    1,
+    3,
     `foto:${fotoId}`,
     "PUT",
     `/api/einsaetze/${encodeURIComponent(args.einsatzId)}/fotos`,

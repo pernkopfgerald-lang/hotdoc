@@ -35,6 +35,47 @@ export async function ensureDatabase(): Promise<void> {
   for (const name of ["_users", "_replicator", "_global_changes", env.COUCH_DB]) {
     await ensureOne(name);
   }
+  await ensureMangoIndizes();
+}
+
+/**
+ * C-07 (Audit R3): Mango-Indizes fuer die heissen Selektor-Pfade —
+ * ersetzt die bisherigen Praefix-Vollscans (db.list ueber einsatz: bzw.
+ * fzgber:-Praefix):
+ *
+ *   type-status            → GET /api/einsaetze?status=aktiv (5-s-Poll),
+ *                            Auto-Close-Worker (aktive + Orphan-Kandidaten)
+ *   type-fahrzeugId-status → GET /api/fahrzeugberichte/meine (Tablet-Archiv)
+ *
+ * createIndex ist idempotent (CouchDB antwortet "exists" statt Fehler).
+ * Fehler werden NUR geloggt — ohne Index laeuft db.find weiterhin (Mango
+ * faellt auf _all_docs-Scan zurueck, nur langsamer), der Boot darf daran
+ * nicht scheitern.
+ */
+async function ensureMangoIndizes(): Promise<void> {
+  const indizes: Array<{ name: string; ddoc: string; fields: string[] }> = [
+    { name: "type-status", ddoc: "idx-type-status", fields: ["type", "status"] },
+    {
+      name: "type-fahrzeugId-status",
+      ddoc: "idx-type-fahrzeugId-status",
+      fields: ["type", "fahrzeugId", "status"],
+    },
+  ];
+  for (const idx of indizes) {
+    try {
+      const r = await db.createIndex({
+        index: { fields: idx.fields },
+        name: idx.name,
+        ddoc: idx.ddoc,
+      });
+      logger.info({ index: idx.name, result: r.result }, "CouchDB: Mango-Index bereit");
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), index: idx.name },
+        "CouchDB: Mango-Index konnte nicht angelegt werden — db.find laeuft ohne Index weiter",
+      );
+    }
+  }
 }
 
 async function ensureOne(name: string): Promise<void> {

@@ -21,9 +21,10 @@
  * Koordinaten + Namen bleiben ueber die JSON-Liste hinter requireAuth().
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -54,7 +55,7 @@ interface WasserquelleDoc {
 wasserquellenRouter.get(
   "/api/wasserquellen",
   requireAuth(),
-  (async (_req, res) => {
+  ah(async (_req, res) => {
     const list = await db.list({
       startkey: DOC_PREFIX,
       endkey: `${DOC_PREFIX}￰`,
@@ -76,13 +77,13 @@ wasserquellenRouter.get(
       ? (list.rows.find((r) => (r.doc as WasserquelleDoc | undefined)?.importBatchAt)?.doc as WasserquelleDoc | undefined)?.importBatchAt ?? null
       : null;
     res.json({ ok: true, count: items.length, importedAm, items });
-  }) as RequestHandler,
+  }),
 );
 
 // ─── GET /api/wasserquellen/icons/:id ── Icon-PNG (oeffentlich) ────────────
 wasserquellenRouter.get(
   "/api/wasserquellen/icons/:id",
-  (async (req, res) => {
+  ah(async (req, res) => {
     const id = String(req.params.id).replace(/[^a-z0-9]/gi, "");
     if (!id) {
       res.status(404).end();
@@ -97,7 +98,7 @@ wasserquellenRouter.get(
     } catch {
       res.status(404).end();
     }
-  }) as RequestHandler,
+  }),
 );
 
 const ImportBodySchema = z.object({
@@ -109,7 +110,7 @@ const ImportBodySchema = z.object({
 wasserquellenRouter.post(
   "/api/wasserquellen/import",
   requireAuth("funktionaer"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const parsed = ImportBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -201,5 +202,5 @@ wasserquellenRouter.post(
       fehler,
       importedAm: now,
     });
-  }) as RequestHandler,
+  }),
 );

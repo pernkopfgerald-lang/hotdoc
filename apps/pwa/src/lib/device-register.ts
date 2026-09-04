@@ -32,6 +32,11 @@ async function getOrCreateDeviceUuid(): Promise<string> {
   return uuid;
 }
 
+interface PushActionPerformed {
+  actionId: string;
+  notification: { data?: unknown };
+}
+
 interface PushPluginModule {
   PushNotifications: {
     requestPermissions(): Promise<{ receive: string }>;
@@ -40,7 +45,41 @@ interface PushPluginModule {
       event: "registration",
       cb: (token: { value: string }) => void,
     ): Promise<{ remove(): Promise<void> }>;
+    addListener(
+      event: "pushNotificationActionPerformed",
+      cb: (action: PushActionPerformed) => void,
+    ): Promise<{ remove(): Promise<void> }>;
   };
+}
+
+/**
+ * N-09 (Audit 2026-09): Tipp auf die Push-Benachrichtigung (Alarm) → die
+ * BerichtPage bekommt ein `hotdoc:alarm`-Window-Event mit den Push-Daten
+ * (detail = notification.data, enthält u. a. einsatzId) und kann den
+ * passenden Tab direkt öffnen. Vorher landete der Tipp nur auf der zuletzt
+ * sichtbaren Ansicht. Listener wird genau EINMAL pro App-Laufzeit gesetzt
+ * (registerDevice läuft bei jedem Boot/Re-Boot).
+ */
+let pushActionListenerInstalled = false;
+
+function installPushActionListener(PushNotifications: PushPluginModule["PushNotifications"]): void {
+  if (pushActionListenerInstalled) return;
+  pushActionListenerInstalled = true;
+  void PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+    try {
+      const data = action.notification?.data;
+      window.dispatchEvent(
+        new CustomEvent("hotdoc:alarm", {
+          detail: data && typeof data === "object" ? data : {},
+        }),
+      );
+    } catch (err) {
+      console.warn("[device-register] hotdoc:alarm dispatch fehlgeschlagen:", err);
+    }
+  }).catch((err: unknown) => {
+    pushActionListenerInstalled = false;
+    console.warn("[device-register] Push-Action-Listener nicht registrierbar:", err);
+  });
 }
 
 /** FCM-Token holen — nur Native + nur wenn das PushPlugin verfuegbar ist.
@@ -54,6 +93,7 @@ async function getFcmTokenIfPossible(): Promise<string> {
     )) as PushPluginModule | null;
     if (!mod) return "";
     const { PushNotifications } = mod;
+    installPushActionListener(PushNotifications);
     const perm = await PushNotifications.requestPermissions();
     if (perm.receive !== "granted") return "";
     return await new Promise<string>((resolve) => {

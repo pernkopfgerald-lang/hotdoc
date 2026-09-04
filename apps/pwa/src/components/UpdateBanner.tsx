@@ -6,10 +6,42 @@ import { installApkUpdate, isApkInstallerAvailable } from "../lib/apk-installer"
 
 const DISMISS_KEY = "hotdoc.update.dismissed";
 
+/** N-13: erster Update-Check erst 10 min nach dem Boot (nicht im Alarm-Moment). */
+const FIRST_CHECK_DELAY_MS = 10 * 60 * 1000;
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Wie oft geprüft wird, ob noch ein offener Bericht-Draft vorliegt. */
+const DRAFT_POLL_MS = 60 * 1000;
+
+/**
+ * N-13 (Audit 2026-09): Liegt lokal ein Fahrzeugbericht-Draft mit
+ * `abgeschlossen == null` (= laufender, nicht abgeschlossener Bericht)?
+ * Solange ja, wird der Banner unterdrückt — ein "Update jetzt" mitten im
+ * Einsatz killt die App und damit die Mannschaftserfassung.
+ */
+function hatOffenenDraft(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith("hotdoc.draft.")) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as { abgeschlossen?: unknown } | null;
+      if (!parsed || typeof parsed !== "object") continue;
+      if (parsed.abgeschlossen === null || parsed.abgeschlossen === undefined) return true;
+    }
+  } catch {
+    // korrupter Draft / Private-Mode → im Zweifel NICHT unterdrücken
+  }
+  return false;
+}
+
 /**
  * Dezenter Update-Banner.
  *
- * - Pollt alle 6 h /api/devices/app-version
+ * - Erster Check 10 min nach dem Boot, danach alle 6 h
+ *   /api/devices/app-version (N-13: kein Check mehr bei jedem Tab-
+ *   Wiederreingucken — das feuerte genau im Alarm-Moment)
+ * - Unterdrückt, solange ein Bericht-Draft offen ist
  * - Zeigt eine schmale rote Pille oben rechts wenn eine neuere Version
  *   verfuegbar ist
  * - Auf Android-Native nutzt der "Update jetzt"-Button das neue
@@ -35,6 +67,8 @@ export function UpdateBanner() {
     "idle" | "running" | "permission" | "error"
   >("idle");
   const [statusMessage, setStatusMessage] = useState<string>("");
+  // N-13: solange ein Bericht-Draft offen ist, bleibt der Banner weg.
+  const [draftOffen, setDraftOffen] = useState<boolean>(() => hatOffenenDraft());
 
   useEffect(() => {
     const check = async (): Promise<void> => {
@@ -56,22 +90,29 @@ export function UpdateBanner() {
         notes: res.releaseNotes,
       });
     };
-    void check();
-    const t = setInterval(check, 6 * 60 * 60 * 1000);
-    // Beim Tab-Wiederreingucken sofort nach Updates fragen — wenn das
-    // Tablet stundenlang im Background lag und der Funktionaer es jetzt
-    // aufmacht, soll er nicht erst auf den naechsten 6h-Intervall warten.
-    const onVisible = (): void => {
-      if (document.visibilityState === "visible") void check();
-    };
-    document.addEventListener("visibilitychange", onVisible);
+    // N-13: erster Check erst nach 10 min, dann 6-h-Intervall. Der frühere
+    // visibilitychange-Trigger ist weg — er feuerte beim Aufwecken des
+    // Tablets, also genau dann, wenn der Alarm reinkommt.
+    const first = setTimeout(() => void check(), FIRST_CHECK_DELAY_MS);
+    const t = setInterval(() => void check(), CHECK_INTERVAL_MS);
     return () => {
+      clearTimeout(first);
       clearInterval(t);
-      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
+  // Draft-Zustand periodisch nachlesen — nur solange ein Update ansteht,
+  // sonst wäre das ein unnötiger localStorage-Scan alle 60 s.
+  useEffect(() => {
+    if (!info?.available) return;
+    const tick = (): void => setDraftOffen(hatOffenenDraft());
+    tick();
+    const t = setInterval(tick, DRAFT_POLL_MS);
+    return () => clearInterval(t);
+  }, [info?.available]);
+
   if (!info || !info.available) return null;
+  if (draftOffen) return null;
 
   const runUpdate = async (): Promise<void> => {
     if (!info?.apkUrl) return;

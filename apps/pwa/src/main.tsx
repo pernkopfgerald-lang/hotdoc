@@ -74,4 +74,20 @@ if (isNative()) {
       void hideSplashScreen();
     }, 400);
   })();
+
+  // C-09 (Audit 2026-09): Android-Back-Button. Ohne Listener beendet
+  // Capacitor die App (Default-Verhalten) — mitten im Einsatz ein Tipp
+  // daneben und das Tablet ist auf dem Home-Screen. Wir übersetzen den
+  // Back-Button in ein Escape-Keydown: alle Modals/Sheets hören darauf
+  // bereits (Escape schließt), auf der Hauptansicht passiert nichts.
+  void (async () => {
+    try {
+      const { App: CapApp } = await import("@capacitor/app");
+      await CapApp.addListener("backButton", () => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      });
+    } catch (err) {
+      console.warn("[main] backButton-Listener nicht registrierbar:", err);
+    }
+  })();
 }

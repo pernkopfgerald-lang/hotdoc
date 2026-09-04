@@ -145,10 +145,10 @@ async function main(): Promise<void> {
   // Routen stehen und GENAU 4 Argumente haben (Express erkennt Error-Handler
   // an der Arität). Fängt synchron geworfene Fehler + alles was via next(err)
   // kommt und sendet eine saubere 500, statt den Request hängen zu lassen.
-  // (Reine async-Handler-Rejections ohne next() landen NICHT hier — die deckt
-  // der process.on("unhandledRejection")-Handler oben ab; eine npm-Dependency
-  // wie express-async-errors wäre dafür nötig, ist aber lt. CLAUDE.md §1 ohne
-  // Freigabe tabu.)
+  // Seit C-03 (Audit 2026-07) laufen alle async-Route-Handler durch ah()
+  // (lib/async-handler.ts), das Rejections an next(err) weiterreicht — damit
+  // landen auch DB-Fehler aus async-Handlern hier. Der
+  // process.on("unhandledRejection")-Handler oben bleibt als letztes Netz.
   app.use(
     (
       err: unknown,
@@ -158,6 +158,13 @@ async function main(): Promise<void> {
     ) => {
       logger.error({ err, url: req.url, method: req.method }, "Unhandled route error");
       if (res.headersSent) return;
+      // I-09: CouchDB nicht erreichbar / Timeout → 503 statt 500. Der Client
+      // (apiCall im Frontend) kann 503 als "später nochmal" behandeln, statt
+      // einen Server-Bug zu vermuten.
+      if (isDbUnavailableError(err)) {
+        res.status(503).json({ error: "db_unavailable" });
+        return;
+      }
       const sc = (err as { statusCode?: number })?.statusCode;
       const code = typeof sc === "number" && sc >= 400 && sc < 600 ? sc : 500;
       res.status(code).json({ error: "internal_error" });
@@ -189,39 +196,80 @@ async function main(): Promise<void> {
   startAutoCloseStaleCron();
 
   // — Start —
-  app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, "@hotdoc/api gestartet");
   });
 
-  // O-08/O-09: Graceful Shutdown. fly.io schickt SIGTERM beim Redeploy
-  // und beim Scale-Down. Wir geben den Workern + Subsystemen 5 Sekunden
-  // Zeit, sauber runterzufahren (Puppeteer-Browser schliessen, Cron-
-  // Timer stoppen, BlaulichtSMS-Poller-Interval clearen). Danach hartes
-  // process.exit damit fly nicht ewig wartet.
+  // O-08/O-09 + I-07: Graceful Shutdown. fly.io schickt SIGTERM beim Redeploy
+  // und beim Scale-Down. Reihenfolge:
+  //  1. HTTP-Listener schließen — keine neuen Verbindungen mehr, laufende
+  //     Requests dürfen fertig antworten (I-07: vorher wurden In-Flight-
+  //     Requests beim harten Exit einfach abgeschnitten → Tablet sah einen
+  //     Netzwerkfehler mitten im Speichern).
+  //  2. Idle Keep-Alive-Verbindungen kappen — sonst wartet server.close()
+  //     bis zum Keep-Alive-Timeout auf Sockets, auf denen nichts läuft.
+  //  3. Worker + Subsysteme stoppen (Puppeteer, Poller, Eviction-Timer).
+  //  4. Sobald die letzte Verbindung zu ist → exit 0. Sicherheits-Mauer:
+  //     nach 9 s hart raus (fly gibt ~10 s bis SIGKILL).
   let shuttingDown = false;
   function gracefulShutdown(signal: string): void {
     if (shuttingDown) return; // Doppel-Signal ignorieren
     shuttingDown = true;
     logger.info({ signal }, "Graceful Shutdown gestartet");
     // Puppeteer-Browser schliessen — sonst bleibt der Headless-Chromium
-    // als Zombie haengen.
-    void shutdownPdfGenerator().catch((err) => {
+    // als Zombie haengen. Promise merken, damit der Exit darauf wartet.
+    const pdfShutdown = shutdownPdfGenerator().catch((err) => {
       logger.warn({ err: err instanceof Error ? err.message : String(err) }, "shutdownPdfGenerator fehlgeschlagen");
     });
+    // I-07: Listener zu, In-Flight-Requests fertig bedienen lassen.
+    server.close(() => {
+      void pdfShutdown.finally(() => {
+        logger.info("Graceful Shutdown abgeschlossen (alle Verbindungen beendet), exit");
+        process.exit(0);
+      });
+    });
+    // Idle Keep-Alive-Sockets sofort trennen (Node >= 18.2; optional-call
+    // als Schutz falls die Runtime das noch nicht kennt).
+    server.closeIdleConnections?.();
     // BlaulichtSMS-Poller stoppen — sonst feuert das setInterval noch
     // einmal mit halb-runtergefahrener DB-Connection.
     stopBlaulichtSmsPoller();
     // Positions-State Eviction-Interval stoppen.
     stopEviction();
-    // Letzte Sicherheits-Mauer: nach 5s hart raus. Im Normalfall sollten
-    // die obigen await/clearInterval-Calls < 1s brauchen.
+    // Letzte Sicherheits-Mauer: nach 9 s hart raus. Im Normalfall ist
+    // server.close() deutlich früher durch (< 1 s ohne lange Requests).
     setTimeout(() => {
-      logger.info("Graceful Shutdown abgeschlossen, exit");
+      logger.warn("Graceful Shutdown: Timeout nach 9 s — harter Exit");
       process.exit(0);
-    }, 5000).unref?.();
+    }, 9000).unref?.();
   }
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
   process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+}
+
+/**
+ * I-09: Erkennt Verbindungs-/Timeout-Fehler Richtung CouchDB (nano/axios).
+ * nano wickelt Transportfehler in `new Error("error happened in your
+ * connection. Reason: <axios-message>")` ohne den Node-`code` zu
+ * übernehmen — deshalb prüfen wir sowohl `code` als auch die Message.
+ * Axios-Timeouts heißen "timeout of 2000ms exceeded", Node-Transportfehler
+ * tragen ECONNREFUSED/ECONNRESET/ETIMEDOUT in der Message.
+ */
+function isDbUnavailableError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; message?: unknown };
+  const code = typeof e.code === "string" ? e.code : "";
+  const message = typeof e.message === "string" ? e.message : "";
+  if (code === "ECONNREFUSED" || code === "ETIMEDOUT" || code === "ESOCKETTIMEDOUT") {
+    return true;
+  }
+  return (
+    /timeout/i.test(message) ||
+    message.includes("ECONNRESET") ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("ESOCKETTIMEDOUT")
+  );
 }
 
 main().catch((err) => {

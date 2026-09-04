@@ -101,6 +101,17 @@ export const FahrzeugberichtSchema = z.object({
   status: z.enum(["in_arbeit", "abgeschlossen"]).default("in_arbeit"),
 
   /**
+   * D-03 (Audit R3): Marker "beim Einsatz-Reaktivieren aus Status
+   * abgeschlossen wieder geoeffnet". Gesetzt vom Reopen in
+   * POST /api/einsaetze/:id/reaktivieren. Beim naechsten /abschluss zaehlt
+   * ein so markierter, noch offener Bericht NICHT als "vergessener"
+   * Fahrzeugbericht (kein abschlussOverrideHinweis) — er wird still mit
+   * autoAbgeschlossenGrund "reaktivierung-wieder-geschlossen" zugemacht und
+   * der Marker entfernt. Optional: Bestandsberichte bleiben valide.
+   */
+  reaktiviertAusStatus: z.literal("abgeschlossen").optional(),
+
+  /**
    * ING-04 (4-Personas-Audit, 2026-06-12): Geraete-ID des letzten
    * Schreibers (Fahrzeug-Tablet vs. QR-Handoff-Handy). Beide PUT-Pfade
    * der PWA (Live-Sync + Abschluss-Upload) schicken sie mit; das Tablet

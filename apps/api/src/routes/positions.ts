@@ -11,15 +11,17 @@
  *                          aussortiert.
  *
  * Datenschutz: Position = PII. Wir halten nur den letzten Ping pro Fahrzeug
- * im RAM, ohne Persistierung. Audit-Events werden bewusst NICHT geschrieben
- * (zu hohe Frequenz und der eigentliche Wert ist die Karte, nicht der Log).
+ * (RAM als Fast-Path + ein Doc `position:<fahrzeugId>` in CouchDB, das
+ * ueberschrieben wird — keine Bewegungsspur; I-05). Audit-Events werden
+ * bewusst NICHT geschrieben (zu hohe Frequenz und der eigentliche Wert ist
+ * die Karte, nicht der Log).
  */
 
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import {
-  evictOlderThan,
   getAllPings,
   setPing,
   type FahrzeugPing,
@@ -34,9 +36,6 @@ const PingBodySchema = z.object({
   heading: z.number().min(0).max(360).optional(),
   accuracyM: z.number().nonnegative().optional(),
 });
-
-/** Stale-Cutoff für die Listen-Antwort. 5 min ohne Ping → Fahrzeug fällt raus. */
-const MAX_PING_AGE_MS = 5 * 60 * 1000;
 
 /**
  * Fahrzeug-Allowlist — nur diese FahrzeugIds duerfen Pings absetzen.
@@ -114,8 +113,9 @@ positionsRouter.post("/api/positions", requireAuth(), (async (req, res) => {
 
 // — GET /api/positions —
 // Florianstation und Fahrzeug-Tablets dürfen lesen (Cross-Awareness).
-positionsRouter.get("/api/positions", requireAuth(), (async (_req, res) => {
-  evictOlderThan(MAX_PING_AGE_MS);
-  const items = getAllPings();
+// getAllPings merged persistierte Docs + RAM und filtert > 5 min alte Pings
+// (I-05). Response-Shape unveraendert (V15): { ok, items }.
+positionsRouter.get("/api/positions", requireAuth(), ah(async (_req, res) => {
+  const items = await getAllPings();
   res.json({ ok: true, items });
-}) as RequestHandler);
+}));

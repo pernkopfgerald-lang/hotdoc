@@ -13,6 +13,8 @@
  *    weil dieser Layer keinen Capacitor-Plugin braucht.
  */
 
+import { getFahrzeugConfig } from "../db/pouch";
+
 export const TOKEN_KEY = "hotdoc.tabletToken";
 
 /** Production-API-Basis fuer Capacitor-Native — ueber https. */
@@ -86,6 +88,14 @@ interface ReqOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
+  /**
+   * N-05 (Audit 2026-09): Request-Timeout in ms, Default 12 000. Foto-
+   * Uploads (0,3–1,4 MB Data-URL) brauchen im Mobilfunk deutlich länger —
+   * die Outbox übergibt dort 90 000.
+   */
+  timeoutMs?: number;
+  /** Intern: verhindert eine zweite stille Re-Registrierung (Loop-Schutz). */
+  _authRetried?: boolean;
 }
 
 /**
@@ -136,6 +146,58 @@ async function recheckAuth(token: string): Promise<"valid" | "invalid" | "unknow
   }
 }
 
+/**
+ * N-01/I-04 (Audit 2026-09): Stille Re-Registrierung statt Rauswurf.
+ *
+ * Wenn /me den Token endgültig als tot bestätigt hat, liegt in PouchDB
+ * meist noch `fahrzeug:self` (Fahrzeug + Geräte-UUID). Der Server erlaubt
+ * pin-register ohne PIN — also holen wir uns hier LAUTLOS einen frischen
+ * Token und wiederholen den ursprünglichen Request einmal. Erst wenn das
+ * scheitert (kein Fahrzeug-Doc, Server lehnt ab, Netz weg), landet der
+ * User im Setup. Vorher warf ein abgelaufenes JWT das Tablet mitten im
+ * Einsatz auf die Fahrzeug-Auswahl.
+ *
+ * Nackter fetch (KEIN apiCall — sonst Rekursion über den 401-Pfad).
+ * Parallele 401er teilen sich EINEN Re-Register-Versuch (in-flight-Promise).
+ */
+let silentReauthInFlight: Promise<boolean> | null = null;
+
+async function silentReRegister(): Promise<boolean> {
+  if (silentReauthInFlight) return silentReauthInFlight;
+  const p = (async (): Promise<boolean> => {
+    try {
+      const cfg = await getFahrzeugConfig();
+      if (!cfg?.fahrzeugId) return false;
+      const deviceId = cfg.tabletDeviceId || crypto.randomUUID();
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8_000);
+      try {
+        const res = await fetch(resolveApiUrl("/api/auth/tablet/pin-register"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ fahrzeugId: cfg.fahrzeugId, deviceId }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) return false;
+        const auth = (await res.json()) as { token?: unknown };
+        if (typeof auth.token !== "string" || !auth.token) return false;
+        localStorage.setItem(TOKEN_KEY, auth.token);
+        console.info("[api] Token still erneuert (pin-register)", cfg.fahrzeugId);
+        return true;
+      } finally {
+        clearTimeout(t);
+      }
+    } catch {
+      return false;
+    }
+  })();
+  silentReauthInFlight = p;
+  void p.finally(() => {
+    if (silentReauthInFlight === p) silentReauthInFlight = null;
+  });
+  return p;
+}
+
 export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   const token = getTabletToken();
   const init: RequestInit = {
@@ -155,7 +217,7 @@ export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   // AbortSignal.timeout(), weil ältere Android-System-WebViews letzteres nicht
   // kennen. Ein optional vom Caller übergebenes Signal wird mit-verdrahtet.
   const ctrl = new AbortController();
-  const TIMEOUT_MS = 12_000;
+  const TIMEOUT_MS = opts.timeoutMs ?? 12_000;
   const timeoutHandle = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   if (opts.signal) {
     if (opts.signal.aborted) ctrl.abort();
@@ -194,6 +256,12 @@ export async function apiCall<T>(path: string, opts: ReqOpts = {}): Promise<T> {
   if (res.status === 401 && token && !isAuthBypassPath(path)) {
     const verdict = await recheckAuth(token);
     if (verdict === "invalid") {
+      // N-01/I-04: erst stille Re-Registrierung über fahrzeug:self versuchen
+      // und den Request EINMAL wiederholen. Nur wenn das nicht klappt →
+      // Token-Cleanup + Reload in den Setup.
+      if (!opts._authRetried && (await silentReRegister())) {
+        return apiCall<T>(path, { ...opts, _authRetried: true });
+      }
       try {
         // Setup.tsx zeigt den Grund an ("Anmeldung abgelaufen").
         sessionStorage.setItem("hotdoc.setupReason", "auth-failed");

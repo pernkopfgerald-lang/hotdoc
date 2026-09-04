@@ -27,11 +27,16 @@
  *     Token in die Blacklist) und beim spaeteren Login-Fail-Threshold.
  *   - isRevoked() — in verifySession() vor dem Akzeptieren eines Tokens.
  *
- * Performance: ein db.get pro Token-Verify. Bei <100 aktiven Sitzungen
- * vernachlaessigbar. Bei deutlich groesserer Last waere ein In-Memory-LRU-
- * Cache vor dem DB-Lookup sinnvoll — TODO bei P-04.
+ * Performance (I-09): ein db.get pro Token-Verify, davor ein In-Memory-
+ * Negativ-Cache (60 s) — der zweite und jeder weitere Request desselben
+ * Tokens innerhalb der Minute kostet keinen CouchDB-Roundtrip mehr. Der
+ * Lookup laeuft ueber eine eigene nano-Instanz mit kurzem Timeout (2 s),
+ * damit ein haengendes CouchDB nicht jeden authentifizierten Request 15 s
+ * blockiert (siehe unten).
  */
 
+import nano from "nano";
+import { env } from "../../config.js";
 import { db } from "../../couch/client.js";
 import { logger } from "../../lib/logger.js";
 
@@ -50,6 +55,65 @@ interface BlacklistDoc {
 
 function makeBlacklistId(sub: string, iat: number): string {
   return `auth:blacklist:${sub}:${iat}`;
+}
+
+// ─── I-09: Eigene nano-Instanz NUR fuer den Blacklist-Lookup ────────────────
+// Kurzer Timeout (2 s statt der 15 s des Shared-Clients in couch/client.ts).
+// Grund: isRevoked() haengt an JEDEM authentifizierten Request. Ist CouchDB
+// gerade nicht erreichbar (Blackhole, haengender Container), wuerde sonst
+// jeder Request 15 s in der Auth-Middleware stecken, bevor fail-open greift —
+// die Tablets erleben das als "API tot". 2 s liegt weit ueber der realen
+// Antwortzeit eines einzelnen db.get und begrenzt den Schaden.
+// URL-Aufbau identisch zu couch/client.ts (bewusst dupliziert — der Shared-
+// Client bleibt unangetastet, Audit-Scope). revokeToken() schreibt weiterhin
+// ueber den Shared-Client `db` (Schreibpfad darf den vollen Timeout haben).
+const BLACKLIST_LOOKUP_TIMEOUT_MS = 2000;
+const couchAuth = `${encodeURIComponent(env.COUCH_USER)}:${encodeURIComponent(env.COUCH_PASS)}`;
+const couchUrl = env.COUCH_URL.replace("://", `://${couchAuth}@`);
+const lookupDb = nano({
+  url: couchUrl,
+  requestDefaults: { timeout: BLACKLIST_LOOKUP_TIMEOUT_MS },
+}).db.use<BlacklistDoc>(env.COUCH_DB);
+
+// ─── I-09: Negativ-Cache ────────────────────────────────────────────────────
+// Merkt sich fuer 60 s, dass ein (sub, iat) NICHT in der Blacklist steht —
+// spart bei jedem weiteren Request desselben Tokens den CouchDB-Roundtrip.
+// Ein Revoke ueber revokeToken() in DIESEM Prozess loescht den Eintrag
+// sofort (kein 60-s-Fenster; die API laeuft single-instance auf fly).
+// Positive Treffer (Token IST revoked) werden bewusst NICHT gecacht — die
+// sind selten und sollen immer frisch geprueft werden. Lookup-Fehler
+// (fail-open) werden ebenfalls nicht gecacht: wir WISSEN dann nichts.
+const NEGATIVE_CACHE_TTL_MS = 60_000;
+const NEGATIVE_CACHE_MAX_ENTRIES = 5000;
+/** key `${sub}:${iat}` → Zeitpunkt (Date.now()-basiert), ab dem der Eintrag abgelaufen ist. */
+const negativeCache = new Map<string, number>();
+
+function negativeCacheKey(sub: string, iat: number): string {
+  return `${sub}:${iat}`;
+}
+
+/** True wenn fuer den Key ein noch gueltiger "nicht revoked"-Eintrag existiert. */
+function isCachedNotRevoked(key: string): boolean {
+  const until = negativeCache.get(key);
+  if (until === undefined) return false;
+  if (until <= Date.now()) {
+    negativeCache.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function rememberNotRevoked(key: string): void {
+  // Speicherschutz: bei Ueberlauf abgelaufene Eintraege raeumen; reicht das
+  // nicht, den gesamten Cache verwerfen (ein Cache-Miss ist harmlos).
+  if (negativeCache.size >= NEGATIVE_CACHE_MAX_ENTRIES) {
+    const now = Date.now();
+    for (const [k, until] of negativeCache) {
+      if (until <= now) negativeCache.delete(k);
+    }
+    if (negativeCache.size >= NEGATIVE_CACHE_MAX_ENTRIES) negativeCache.clear();
+  }
+  negativeCache.set(key, Date.now() + NEGATIVE_CACHE_TTL_MS);
 }
 
 /**
@@ -74,6 +138,11 @@ export async function revokeToken(
 ): Promise<void> {
   const id = makeBlacklistId(sub, iat);
   const now = new Date().toISOString();
+  // I-09: Negativ-Cache-Eintrag sofort verwerfen — ab jetzt muss jeder
+  // isRevoked()-Call fuer diesen Token wieder die DB fragen. Wird nach dem
+  // Insert nochmals gemacht (Race: ein parallel laufender Lookup koennte
+  // zwischen hier und dem Insert ein 404 zurueckbekommen und neu cachen).
+  negativeCache.delete(negativeCacheKey(sub, iat));
   // Idempotenz: existierendes Doc holen, _rev mitnehmen.
   let existingRev: string | undefined;
   try {
@@ -99,6 +168,7 @@ export async function revokeToken(
   };
   try {
     await db.insert(doc as Parameters<typeof db.insert>[0]);
+    negativeCache.delete(negativeCacheKey(sub, iat));
     logger.info({ sub, iat, reason }, "Token revoked (Blacklist-Eintrag geschrieben)");
   } catch (err) {
     // Blacklist-Schreibfehler darf den User-Flow nicht blockieren — wir
@@ -113,21 +183,23 @@ export async function revokeToken(
 /**
  * Prueft ob ein Token (identifiziert ueber sub+iat) in der Blacklist steht.
  *
- * Implementation: einzelner db.get pro Call. Bei Audit-Schreibfehlern
- * (CouchDB-Outage) fallen wir auf `false` zurueck — d.h. wir akzeptieren
+ * Implementation (I-09): erst Negativ-Cache (60 s), dann einzelner db.get
+ * ueber die Lookup-Instanz mit 2-s-Timeout. Bei Lookup-Fehlern (CouchDB-
+ * Outage, Timeout) fallen wir auf `false` zurueck — d.h. wir akzeptieren
  * den Token. Begruendung: ein nicht-erreichbares CouchDB darf nicht die
  * gesamte API lahmlegen — der Token ist immer noch durch die JWT-Signatur
  * geschuetzt.
- *
- * TODO P-04: In-Memory-LRU-Cache vorschalten wenn >1000 Sitzungen.
  */
 export async function isRevoked(sub: string, iat: number): Promise<boolean> {
+  const cacheKey = negativeCacheKey(sub, iat);
+  if (isCachedNotRevoked(cacheKey)) return false;
   const id = makeBlacklistId(sub, iat);
   try {
-    await db.get(id);
+    await lookupDb.get(id);
     return true;
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode === 404) {
+      rememberNotRevoked(cacheKey);
       return false;
     }
     // Anderer Fehler (CouchDB unreachable, 500, etc.) — fail-open. Siehe

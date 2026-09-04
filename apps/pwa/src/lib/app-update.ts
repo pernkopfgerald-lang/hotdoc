@@ -18,6 +18,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { resolveApiUrl } from "./api";
 
 export interface AppVersionInfo {
   currentVersion: string;
@@ -74,8 +75,12 @@ export async function checkForUpdate(
     };
   }
   try {
-    const res = await fetch(`${apiBase}/api/devices/app-version`, {
-      headers: { Authorization: `Bearer ${authToken}` },
+    // C-01 (Audit 2026-09): resolveApiUrl — in der APK ist der Origin
+    // https://localhost, ein relativer Pfad lief dort ins Leere (der
+    // Update-Check schlug seit Monaten lautlos fehl). Ein absoluter apiBase
+    // wird von resolveApiUrl unverändert durchgereicht.
+    const res = await fetch(resolveApiUrl(`${apiBase}/api/devices/app-version`), {
+      headers: { Authorization: `Bearer ${authToken}`, Accept: "application/json" },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = (await res.json()) as { ok: boolean } & AppVersionInfo;
@@ -88,7 +93,10 @@ export async function checkForUpdate(
       apkUrl: body.apkUrl,
       releaseNotes: body.releaseNotes,
     };
-  } catch {
+  } catch (err) {
+    // Kein stummer catch mehr — der Funktionär soll im Log sehen, warum
+    // kein Update-Banner kommt (Netz, 401, Server).
+    console.warn("[app-update] Update-Check fehlgeschlagen:", err);
     return {
       updateAvailable: false,
       current: installed,

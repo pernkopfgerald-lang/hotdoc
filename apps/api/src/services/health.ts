@@ -8,12 +8,43 @@
  * Daten kommen aus:
  * - env (Feature-Toggle)
  * - in-Memory-State der Worker (letzter Poll / Sync · siehe state.ts)
+ * - persistiertem Worker-State `state:worker` als Fallback direkt nach
+ *   einem API-Neustart, solange der RAM-State noch leer ist (I-06)
  * - CouchDB-Stats für den Replication-Status
  */
 
 import { env, hasBlaulichtSMS, hasSyBos, hasWasserkarte } from "../config.js";
 import { couch, db } from "../couch/client.js";
 import { getBlaulichtSmsState, getSyBosState } from "./state.js";
+import { readWorkerState, type WorkerState } from "./worker-state.js";
+
+/**
+ * I-06: BlaulichtSMS gilt erst als "error", wenn ein Fehler vorliegt ODER
+ * seit dem letzten erfolgreichen Poll mehr als 10 min vergangen sind.
+ * Kuerzere Luecken (z. B. ein haengender Poll, Poller-Tick uebersprungen)
+ * sind nur "warn".
+ */
+const BLS_GAP_ERROR_MS = 10 * 60 * 1000;
+
+/** Sekunden lesbar: "42 s", "3 min", "1.5 h", "2 Tagen". */
+function formatSec(sec: number): string {
+  if (sec < 90) return `${Math.round(sec)} s`;
+  return formatAge(sec / 3600);
+}
+
+/** true wenn der persistierte Fehler juenger ist als der persistierte Erfolg. */
+function persistedErrorIsNewer(
+  lastError: string | undefined,
+  lastErrorAt: string | undefined,
+  lastOkAt: string | undefined,
+): boolean {
+  if (!lastError) return false;
+  if (!lastOkAt) return true;
+  const tErr = lastErrorAt ? Date.parse(lastErrorAt) : Number.NaN;
+  const tOk = Date.parse(lastOkAt);
+  if (Number.isNaN(tErr) || Number.isNaN(tOk)) return true;
+  return tErr > tOk;
+}
 
 export type HealthState = "ok" | "warn" | "off" | "error";
 
@@ -37,9 +68,14 @@ export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt:
   // optional in einer späteren Phase wieder aktiviert. Bis dahin bleibt
   // `checkWasserkarte()` als Dead-Code vorhanden (nicht aufgerufen) damit
   // die Re-Aktivierung trivial ist.
+  // I-06: Solange der RAM-State eines Workers leer ist (direkt nach
+  // Neustart), ziehen wir den persistierten Stand aus `state:worker` heran.
+  // Nur dann lesen — im Normalbetrieb kostet der Health-Call keinen Couch-GET.
+  const ramLeer = !getBlaulichtSmsState().lastPollAt || !getSyBosState().lastSyncAt;
+  const persisted = ramLeer ? await readWorkerState() : null;
   const items: HealthItem[] = [
-    await checkBlaulichtSms(),
-    await checkSyBos(),
+    await checkBlaulichtSms(persisted),
+    await checkSyBos(persisted),
     await checkCouch(),
     await checkFcm(),
   ];
@@ -92,7 +128,7 @@ async function checkFcm(): Promise<HealthItem> {
   };
 }
 
-async function checkBlaulichtSms(): Promise<HealthItem> {
+async function checkBlaulichtSms(persisted: WorkerState | null): Promise<HealthItem> {
   const sub = `Alarm-Polling alle ${env.BLAULICHTSMS_POLL_INTERVAL_SEC} s`;
   if (!hasBlaulichtSMS()) {
     return {
@@ -106,25 +142,70 @@ async function checkBlaulichtSms(): Promise<HealthItem> {
   }
   const s = getBlaulichtSmsState();
   if (!s.lastPollAt) {
+    // RAM leer = API gerade neu gestartet (der Sofort-Poll aus I-01 laeuft
+    // bereits). Persistierten Stand zeigen statt "noch kein Poll".
+    const okAt = persisted?.blaulichtLastOkAt;
+    const lastError = persisted?.blaulichtLastError;
+    if (!okAt && !lastError) {
+      return {
+        key: "blaulichtsms",
+        name: "BlaulichtSMS",
+        sub,
+        state: "warn",
+        detail: "Credentials gesetzt, aber noch kein Poll abgeschlossen.",
+      };
+    }
+    if (persistedErrorIsNewer(lastError, persisted?.blaulichtLastErrorAt, okAt)) {
+      return {
+        key: "blaulichtsms",
+        name: "BlaulichtSMS",
+        sub,
+        state: "error",
+        detail: `Letzter Poll vor API-Neustart fehlgeschlagen: ${lastError} · erster Poll nach Neustart laeuft`,
+      };
+    }
+    const okAgeSec = Math.floor((Date.now() - new Date(okAt ?? "").getTime()) / 1000);
+    // Der persistierte Erfolgs-Zeitstempel ist ein Heartbeat (max. 1 h alt)
+    // und kann eine echte Luecke nicht von der Drossel unterscheiden —
+    // deshalb hier hoechstens "warn", nie "error".
     return {
       key: "blaulichtsms",
       name: "BlaulichtSMS",
       sub,
-      state: "warn",
-      detail: "Credentials gesetzt, aber noch kein Poll abgeschlossen.",
+      state: okAgeSec > BLS_GAP_ERROR_MS / 1000 ? "warn" : "ok",
+      detail: `API neu gestartet · letzter erfolgreicher Poll vor ${formatSec(okAgeSec)} (persistiert, Heartbeat max. 1 h) · erster Poll nach Neustart laeuft`,
+      metrics: { okAgeSec },
     };
   }
   const ageSec = Math.floor((Date.now() - new Date(s.lastPollAt).getTime()) / 1000);
   const stale = ageSec > env.BLAULICHTSMS_POLL_INTERVAL_SEC * 3;
+  const okAgeSec = s.lastOkAt
+    ? Math.floor((Date.now() - new Date(s.lastOkAt).getTime()) / 1000)
+    : null;
+  // I-06: "error" nur bei gesetztem Fehler ODER Luecke seit letztem Erfolg
+  // > 10 min (z. B. haengender Poll ohne Exception). Dazwischen "warn".
+  const gapTooLong = okAgeSec !== null && okAgeSec > BLS_GAP_ERROR_MS / 1000;
+  const state: HealthState = s.lastError || gapTooLong ? "error" : stale ? "warn" : "ok";
+  let detail: string;
+  if (s.lastError) {
+    detail = `Letzter Poll fehlgeschlagen: ${s.lastError}`;
+  } else if (gapTooLong) {
+    detail = `Kein erfolgreicher Poll seit ${formatSec(okAgeSec ?? 0)} (> 10 min) · letzter Poll-Versuch vor ${formatSec(ageSec)}`;
+  } else {
+    detail = `Letzter Poll vor ${ageSec} s · ${s.totalNeu} neue Alarme insgesamt seit Start`;
+  }
   return {
     key: "blaulichtsms",
     name: "BlaulichtSMS",
     sub,
-    state: s.lastError ? "error" : stale ? "warn" : "ok",
-    detail: s.lastError
-      ? `Letzter Poll fehlgeschlagen: ${s.lastError}`
-      : `Letzter Poll vor ${ageSec} s · ${s.totalNeu} neue Alarme insgesamt seit Start`,
-    metrics: { ageSec, totalNeu: s.totalNeu, totalPolls: s.totalPolls },
+    state,
+    detail,
+    metrics: {
+      ageSec,
+      ...(okAgeSec !== null ? { okAgeSec } : {}),
+      totalNeu: s.totalNeu,
+      totalPolls: s.totalPolls,
+    },
   };
 }
 
@@ -149,7 +230,7 @@ async function getEgressIp(): Promise<string | null> {
   }
 }
 
-async function checkSyBos(): Promise<HealthItem> {
+async function checkSyBos(persisted: WorkerState | null): Promise<HealthItem> {
   const sub = "Personal & Material · tägl. 04:00";
   if (!hasSyBos()) {
     return {
@@ -166,13 +247,42 @@ async function checkSyBos(): Promise<HealthItem> {
     : "";
   const s = getSyBosState();
   if (!s.lastSyncAt) {
+    // RAM leer = API neu gestartet; der Cron laeuft erst um 04:00 wieder.
+    // Persistierten Stand aus `state:worker` zeigen (I-06), damit hier nicht
+    // bis zum naechsten Sync "noch kein Sync gelaufen" steht.
+    const okAt = persisted?.sybosLastOkAt;
+    const lastError = persisted?.sybosLastError;
+    if (!okAt && !lastError) {
+      return {
+        key: "sybos",
+        name: "syBOS",
+        sub,
+        state: "warn",
+        detail: `Credentials gesetzt, aber noch kein Sync gelaufen. Trigger manuell im Personal-Tab.${egressHint}`,
+        ...(egress ? { metrics: { egressIp: egress } } : {}),
+      };
+    }
+    if (persistedErrorIsNewer(lastError, persisted?.sybosLastErrorAt, okAt)) {
+      return {
+        key: "sybos",
+        name: "syBOS",
+        sub,
+        state: "error",
+        detail: `Letzter Sync (vor API-Neustart) fehlgeschlagen: ${lastError}${egressHint}`,
+        ...(egress ? { metrics: { egressIp: egress } } : {}),
+      };
+    }
+    const okAgeH = (Date.now() - new Date(okAt ?? "").getTime()) / 1000 / 3600;
     return {
       key: "sybos",
       name: "syBOS",
       sub,
-      state: "warn",
-      detail: `Credentials gesetzt, aber noch kein Sync gelaufen. Trigger manuell im Personal-Tab.${egressHint}`,
-      ...(egress ? { metrics: { egressIp: egress } } : {}),
+      state: okAgeH > 36 ? "warn" : "ok",
+      detail: `Letzter erfolgreicher Sync vor ${formatAge(okAgeH)} (vor API-Neustart persistiert) · Personen-/Material-Zaehler erst nach dem naechsten Sync verfuegbar`,
+      metrics: {
+        ageHours: Number(okAgeH.toFixed(2)),
+        ...(egress ? { egressIp: egress } : {}),
+      },
     };
   }
   const ageH = (Date.now() - new Date(s.lastSyncAt).getTime()) / 1000 / 3600;

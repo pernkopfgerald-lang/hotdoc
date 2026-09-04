@@ -104,16 +104,34 @@ export function isPhantom(b: FahrzeugberichtMin): boolean {
       grund === "hauptauftrag-unbefuellt" || grund === "hauptauftrag-geschlossen";
     if (!autoKaskade) return false;
   }
-  if (Array.isArray(b.mannschaft) && b.mannschaft.length > 0) return false;
+  return istInhaltlichLeer(b as unknown as Record<string, unknown>);
+}
+
+/**
+ * V8 (Audit R3): Reiner Inhalts-Teil der Phantom-Pruefung — OHNE die
+ * Status-Bedingung. "Inhaltlich leer" heisst: keine Mannschaft, kein Fahrer/
+ * Kdt, keine km (weder gefahren noch Abfahrt/Rueckkehr-Stand), keine
+ * Geraete, kein Taetigkeitsbericht, keine Oelbindemittel-Saecke.
+ *
+ * Exportiert fuer Aufrufer, die den Status separat bewerten (z. B. der
+ * fzgber-PUT: "ist das der erste echte Inhalt in einem leeren Bericht?").
+ * isPhantom baut darauf auf — eine Definition, kein Drift.
+ */
+export function istInhaltlichLeer(b: Record<string, unknown>): boolean {
+  const mannschaft = b.mannschaft;
+  if (Array.isArray(mannschaft) && mannschaft.length > 0) return false;
   if (b.fahrerPersonId !== undefined && b.fahrerPersonId !== null) return false;
   if (b.fahrzeugKdtPersonId !== undefined && b.fahrzeugKdtPersonId !== null) return false;
-  const km = b.km ?? {};
+  const km = (b.km ?? {}) as { abfahrt?: number; gefahrenKm?: number; rueckkehr?: number };
   if ((km.gefahrenKm ?? 0) > 0) return false;
   if (km.abfahrt !== undefined && km.abfahrt !== null) return false;
   if (km.rueckkehr !== undefined && km.rueckkehr !== null) return false;
-  if (Array.isArray(b.geraete) && b.geraete.length > 0) return false;
-  if ((b.taetigkeitsbericht ?? "").trim().length > 0) return false;
-  if ((b.oelbindemittelSaecke ?? 0) > 0) return false;
+  const geraete = b.geraete;
+  if (Array.isArray(geraete) && geraete.length > 0) return false;
+  const taetigkeit = typeof b.taetigkeitsbericht === "string" ? b.taetigkeitsbericht : "";
+  if (taetigkeit.trim().length > 0) return false;
+  const saecke = typeof b.oelbindemittelSaecke === "number" ? b.oelbindemittelSaecke : 0;
+  if (saecke > 0) return false;
   return true;
 }
 

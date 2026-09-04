@@ -11,7 +11,7 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 import {
@@ -21,6 +21,7 @@ import {
 } from "@hotdoc/shared";
 import { env } from "../config.js";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -37,7 +38,7 @@ export const authRouter: Router = Router();
 
 // — POST /api/auth/login —
 // Rate-Limited: max 5 fehlgeschlagene Versuche pro IP / 15 min → 30 min Sperre
-authRouter.post("/api/auth/login", loginRateLimit, (async (req, res) => {
+authRouter.post("/api/auth/login", loginRateLimit, ah(async (req, res) => {
   const parsed = LoginRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -104,10 +105,10 @@ authRouter.post("/api/auth/login", loginRateLimit, (async (req, res) => {
     },
   };
   res.json(response);
-}) as RequestHandler);
+}));
 
 // — GET /api/auth/me —
-authRouter.get("/api/auth/me", (async (req, res) => {
+authRouter.get("/api/auth/me", ah(async (req, res) => {
   const token = extractBearer(req.headers.authorization);
   if (!token) {
     res.status(401).json({ error: "no_token" });
@@ -123,8 +124,56 @@ authRouter.get("/api/auth/me", (async (req, res) => {
     rolle: session.rolle,
     username: session.username,
     fahrzeugId: session.fahrzeugId,
+    // V12 (N-01/I-04): Ablauf-Zeitpunkt aus dem exp-Claim, damit der Client
+    // weiß, wann er /api/auth/tablet/renew rufen muss. jose setzt exp immer,
+    // der Guard ist nur Typ-Hygiene (exp ist im SessionPayload optional).
+    ...(typeof session.exp === "number"
+      ? { expiresAt: new Date(session.exp * 1000).toISOString() }
+      : {}),
   });
-}) as RequestHandler);
+}));
+
+// — POST /api/auth/tablet/renew —
+// V11 (N-01/I-04): Verlängert eine Tablet-Session ohne Neu-Registrierung.
+// Liefert ein frisches Token für DIESELBE Session — gleiche sub, fahrzeugId,
+// rolle und username; nur iat/exp sind neu. Das alte Token wird bewusst
+// NICHT in die Blacklist gelegt: der Client tauscht es lokal aus, und ein
+// noch laufender Parallel-Request mit dem alten Token soll nicht mit 401
+// platzen. Es läuft ohnehin zu seiner ursprünglichen exp aus.
+// Handoff-Marker (autoReleaseAt, viaHandoff) werden übernommen — ein Handy
+// mit Handoff-Token kann sich über renew nicht über autoReleaseAt hinaus
+// verlängern (verifySession prüft den Claim unabhängig von exp).
+authRouter.post("/api/auth/tablet/renew", requireAuth("mannschaft"), ah(async (req, res) => {
+  const session = req.session!;
+  const { token, expiresAt } = await signSession(
+    {
+      sub: session.sub,
+      username: session.username,
+      rolle: session.rolle,
+      ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+    },
+    {
+      ...(session.autoReleaseAt ? { autoReleaseAt: session.autoReleaseAt } : {}),
+      ...(session.viaHandoff ? { viaHandoff: true } : {}),
+    },
+  );
+
+  logger.info(
+    { sub: session.sub, fahrzeugId: session.fahrzeugId, rolle: session.rolle, expiresAt },
+    "Session verlängert (tablet/renew)",
+  );
+  await writeAuditEvent({
+    type: "login-success",
+    actorUsername: session.username,
+    actorRolle: session.rolle,
+    ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
+    userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200),
+    details: { via: "tablet-renew" },
+    ipAddress: req.ip,
+  });
+
+  res.json({ ok: true, token, expiresAt });
+}));
 
 // — POST /api/auth/tablet/pin-register —
 // Tablet-Setup pro Fahrzeug. Body braucht nur { fahrzeugId, deviceId? }.
@@ -135,7 +184,7 @@ authRouter.get("/api/auth/me", (async (req, res) => {
 // Zugriffsschutz läuft jetzt über die Netzwerk-Ebene (Tailscale / LAN /
 // QR-Sticker pro Fahrzeug), nicht mehr über Tipp-PINs. Rate-Limit bleibt
 // als Defence-in-Depth aktiv.
-authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, res) => {
+authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, ah(async (req, res) => {
   const body = req.body as { fahrzeugId?: string; deviceId?: string };
   const fahrzeugId = String(body.fahrzeugId ?? "");
   const deviceId = String(body.deviceId ?? randomUUID());
@@ -180,7 +229,7 @@ authRouter.post("/api/auth/tablet/pin-register", loginRateLimit, (async (req, re
     fahrzeugId,
   };
   res.json(response);
-}) as RequestHandler);
+}));
 
 // — POST /api/auth/tablet/register — ENTFERNT (Audit F-01)
 //
@@ -312,7 +361,7 @@ const HandoffCreateBodySchema = z.object({
 });
 
 // — POST /api/auth/handoff/create —
-authRouter.post("/api/auth/handoff/create", requireAuth(), (async (req, res) => {
+authRouter.post("/api/auth/handoff/create", requireAuth(), ah(async (req, res) => {
   const parsed = HandoffCreateBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -378,12 +427,12 @@ authRouter.post("/api/auth/handoff/create", requireAuth(), (async (req, res) => 
     ttlSeconds: HANDOFF_TTL_MS / 1000,
     isReverseHandoff,
   });
-}) as RequestHandler);
+}));
 
 // — GET /api/auth/handoff/:code — Claim
 // Public-Endpoint, aber jeder gültige Claim verlangt Vorwissen des Codes.
 // Der Code wird single-use: zweiter Claim liefert 410 Gone.
-authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
+authRouter.get("/api/auth/handoff/:code", ah(async (req, res) => {
   const code = String(req.params.code ?? "").toUpperCase().trim();
   if (!/^[A-Z0-9]{8}$/.test(code)) {
     res.status(400).json({ error: "invalid_code_format" });
@@ -492,7 +541,7 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
     ...(doc.sourceFahrzeugId ? { fahrzeugId: doc.sourceFahrzeugId } : {}),
     ...(doc.einsatzId ? { einsatzId: doc.einsatzId } : {}),
   });
-}) as RequestHandler);
+}));
 
 // — POST /api/auth/handoff/release —
 // Manuelles „Sitzung freigeben" am Handy. Rein semantisch + Audit-Trail:
@@ -503,7 +552,7 @@ authRouter.get("/api/auth/handoff/:code", (async (req, res) => {
 // Verlangt einen aktuell-gültigen Token (requireAuth) — Anonyme können
 // nicht fremde Handoffs „beenden", auch wenn sie eh keine Auswirkung
 // hätten.
-authRouter.post("/api/auth/handoff/release", requireAuth(), (async (req, res) => {
+authRouter.post("/api/auth/handoff/release", requireAuth(), ah(async (req, res) => {
   const session = req.session!;
   // F-34: serverseitiges Token-Revoke. Beim Handoff-Release wandert die
   // (sub, iat)-Identitaet des aktuellen Tokens in die Blacklist — bis zum
@@ -536,12 +585,12 @@ authRouter.post("/api/auth/handoff/release", requireAuth(), (async (req, res) =>
     "Sitzung manuell freigegeben",
   );
   res.json({ ok: true, releasedAt: new Date().toISOString() });
-}) as RequestHandler);
+}));
 
 // — GET /api/auth/handoff/:code/status —
 // Tablet pollt diese Route alle 5 s. Sobald der Claim erfolgt ist,
 // sendet das Tablet sich selbst in den Logout.
-authRouter.get("/api/auth/handoff/:code/status", (async (req, res) => {
+authRouter.get("/api/auth/handoff/:code/status", ah(async (req, res) => {
   const code = String(req.params.code ?? "").toUpperCase().trim();
   if (!/^[A-Z0-9]{8}$/.test(code)) {
     res.status(400).json({ error: "invalid_code_format" });
@@ -564,7 +613,7 @@ authRouter.get("/api/auth/handoff/:code/status", (async (req, res) => {
     }
     throw err;
   }
-}) as RequestHandler);
+}));
 
 // ─────────────────────────────────────────────────────────────────────
 // QR-Sticker-Auth — persistente fahrzeug-spezifische Login-Anker
@@ -649,7 +698,7 @@ async function verifyQrAnchor(token: string): Promise<QrAnchorPayload | null> {
 // — GET /api/auth/qr-anchor/:fahrzeugId —
 // Liefert den aktuell gültigen QR-Token-String für den Backoffice-QR-Modal.
 // Nur funktionaer+ — der String darf nicht für jeden lesbar sein.
-authRouter.get("/api/auth/qr-anchor/:fahrzeugId", requireAuth("funktionaer"), (async (req, res) => {
+authRouter.get("/api/auth/qr-anchor/:fahrzeugId", requireAuth("funktionaer"), ah(async (req, res) => {
   const fahrzeugId = String(req.params.fahrzeugId ?? "");
   if (!/^[a-z0-9-]{1,32}$/.test(fahrzeugId)) {
     res.status(400).json({ error: "invalid_fahrzeugId" });
@@ -658,7 +707,7 @@ authRouter.get("/api/auth/qr-anchor/:fahrzeugId", requireAuth("funktionaer"), (a
   const generation = await getCurrentGeneration(fahrzeugId);
   const token = await signQrAnchor(fahrzeugId, generation);
   res.json({ ok: true, token, fahrzeugId, generation });
-}) as RequestHandler);
+}));
 
 // — POST /api/auth/qr-anchor/:fahrzeugId/rotate —
 // Erhöht die Generation im config:qr-anchors-Doc → alle bisherigen QR-Codes
@@ -666,7 +715,7 @@ authRouter.get("/api/auth/qr-anchor/:fahrzeugId", requireAuth("funktionaer"), (a
 authRouter.post(
   "/api/auth/qr-anchor/:fahrzeugId/rotate",
   requireAuth("funktionaer"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const fahrzeugId = String(req.params.fahrzeugId ?? "");
     if (!/^[a-z0-9-]{1,32}$/.test(fahrzeugId)) {
       res.status(400).json({ error: "invalid_fahrzeugId" });
@@ -711,14 +760,14 @@ authRouter.post(
       "QR-Anker rotiert",
     );
     res.json({ ok: true, token: newToken, fahrzeugId, generation: old + 1 });
-  }) as RequestHandler,
+  }),
 );
 
 // — GET /api/auth/qr/:token — Public-Endpoint
 // Wird von der PWA gerufen wenn jemand den QR scannt und /qr/<token> öffnet.
 // Liefert einen normalen Tablet-Session-Token zurück. Rate-Limited als
 // Defence-in-Depth — JWT-Signatur ist primärer Schutz.
-authRouter.get("/api/auth/qr/:token", loginRateLimit, (async (req, res) => {
+authRouter.get("/api/auth/qr/:token", loginRateLimit, ah(async (req, res) => {
   const token = String(req.params.token ?? "");
   if (!token || token.length > 800) {
     res.status(400).json({ error: "invalid_token_format" });
@@ -793,4 +842,4 @@ authRouter.get("/api/auth/qr/:token", loginRateLimit, (async (req, res) => {
     fahrzeugId: payload.fahrzeugId,
   };
   res.json(response);
-}) as RequestHandler);
+}));

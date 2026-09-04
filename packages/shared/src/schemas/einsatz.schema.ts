@@ -67,6 +67,17 @@ export const ChronikEintragSchema = z
     // foto:-Doc, damit der 8-s-Chronik-Broadcast nicht megabyteweise Bilddaten
     // über das (Funkloch-)Netz schiebt.
     fotoId: z.string().optional(),
+    // D-11 (Audit R3): Soft-Delete — der Eintrag bleibt im Array (Audit-
+    // Trail), wird aber von PDF/UI ausgeblendet. Gesetzt vom
+    // DELETE /api/einsaetze/:id/chronik/:entryId-Endpoint (Einsatzleiter+).
+    geloescht: z.boolean().optional(),
+    geloeschtAm: z.string().optional(),
+    geloeschtVon: z.string().optional(),
+    // C-06 (Audit R3): Server-Empfangszeit des Broadcasts. Weicht der
+    // Client-Zeitstempel > 5 min davon ab (falsche Tablet-Uhr), setzt der
+    // Server zeitstempel = empfangenAm — die Original-Empfangszeit bleibt
+    // hier nachvollziehbar.
+    empfangenAm: z.string().optional(),
   })
   .passthrough();
 
@@ -137,6 +148,18 @@ export const EinsatzSchema = z.object({
 
   // — Aus BlaulichtSMS (vorgefüllt, editierbar) — nur bei einsatzTyp="alarm" —
   alarmId: z.string().optional(),
+  /**
+   * Audit R3: Alle BlaulichtSMS-Alarm-IDs die auf diesen Einsatz gemappt
+   * wurden (Nachalarmierung / Duplikat-Zusammenfuehrung). alarmId bleibt die
+   * primaere (erste) ID; alarmIds traegt die Gesamtliste.
+   */
+  alarmIds: z.array(z.string()).optional(),
+  /**
+   * Audit R3: Verweis auf einen aelteren Einsatz (_id) der wahrscheinlich
+   * dasselbe Ereignis beschreibt (Poller-Heuristik: gleiche Adresse /
+   * kurzer Zeitabstand). Nur Hinweis fuer den Editor, keine Automatik.
+   */
+  moeglichesDuplikatVon: z.string().optional(),
   einsatzort: z.string(),
   einsatzortPostleitzahl: z.string().optional(),
   einsatzortOrt: z.string().optional(),
@@ -310,9 +333,26 @@ export const EinsatzSchema = z.object({
     })
     .optional(),
 
+  /**
+   * Audit R3 (S-05/N-06): Wer hat den Alarm am Florian angenommen und wann.
+   * angenommenAm gesetzt = menschliche Interaktion → der Auto-Close-Worker
+   * schliesst den Einsatz NICHT mehr als "unbefuellt".
+   */
+  angenommenVon: z.string().optional(),
+  angenommenAm: z.string().optional(),
+
   // — Audit-Felder —
   erstelltAm: z.string().datetime({ offset: true }),
   geaendertAm: z.string().datetime({ offset: true }),
+  /**
+   * S-03/S-13 (Audit R3): Zeitstempel des letzten EDITOR-Schreibzugriffs
+   * (generisches PUT /api/einsaetze/:id). Chronik-Broadcasts, Positions-
+   * Updates und Worker aendern geaendertAm, aber NICHT dieses Feld — so
+   * kann der Florian-Editor per expectedEditorGeaendertAm einen echten
+   * Editor-Konflikt (zweiter Bearbeiter) von Hintergrund-Rauschen
+   * unterscheiden.
+   */
+  editorGeaendertAm: z.string().optional(),
 });
 
 export type Einsatz = z.infer<typeof EinsatzSchema>;

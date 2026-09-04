@@ -138,7 +138,10 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
 
 /**
  * Liefert alle FCM-Tokens der Tablets die einem Fahrzeug zugeordnet sind.
- * Wenn fahrzeugIds leer → alle Tokens.
+ * Wenn fahrzeugIds leer → alle Tokens. Devices mit stale=true (Token von
+ * FCM als UNREGISTERED gemeldet, siehe markDeviceStale) werden
+ * uebersprungen (N-12) — sonst produzieren sie bei jedem Alarm einen
+ * sinnlosen 404 und verfaelschen die "fehlgeschlagen"-Statistik.
  */
 async function listTokensFor(fahrzeugIds: string[]): Promise<DeviceDoc[]> {
   const list = await db.list({
@@ -152,9 +155,22 @@ async function listTokensFor(fahrzeugIds: string[]): Promise<DeviceDoc[]> {
       (d): d is DeviceDoc =>
         !!d &&
         (d as { type?: string }).type === "device" &&
+        !(d as { stale?: boolean }).stale &&
         (fahrzeugIds.length === 0 ||
           fahrzeugIds.includes((d as { fahrzeugId?: string }).fahrzeugId ?? "")),
     );
+}
+
+/** Ein FCM-v1-Request fuer genau ein Device. */
+async function sendFcmMessage(url: string, accessToken: string, body: unknown): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 /**
@@ -215,21 +231,24 @@ export async function pushAlarm(
           data: payload.data,
           android: {
             priority: "HIGH" as const,
-            ttl: "60s",
+            // N-12: 10 min statt 60 s — ein Tablet im Funkloch soll den
+            // Alarm noch bekommen, wenn es kurz danach wieder Netz hat.
+            ttl: "600s",
           },
         },
       };
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+      let res = await sendFcmMessage(url, accessToken, body);
+      if (res.status === 401) {
+        // N-12: Access-Token abgelaufen/ungueltig — einmal frisch holen und
+        // denselben Device-Request EINMAL wiederholen. Frueher wurde nur der
+        // Cache geleert und dieses Device ging leer aus.
+        tokenCache = null;
+        accessToken = await getAccessToken(sa);
+        res = await sendFcmMessage(url, accessToken, body);
+      }
       if (!res.ok) {
         const text = await res.text();
-        // 401 -> Token abgelaufen; cachen wir den naechsten Call neu
+        // 401 auch nach Retry -> Cache leeren, naechster Push holt neu
         if (res.status === 401) {
           tokenCache = null;
         }

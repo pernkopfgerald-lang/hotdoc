@@ -1,13 +1,19 @@
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { runSyBosSync } from "../workers/sybos-sync.js";
 import { collectHealth } from "../services/health.js";
 import { loadRecentAuditEvents, writeAuditEvent } from "../services/audit.js";
 import { computeStats } from "../services/stats.js";
+import { getSyBosState } from "../services/state.js";
+import { readWorkerState } from "../services/worker-state.js";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
+// C-03: Alle async-Handler laufen ueber ah(), damit eine Rejection (z. B.
+// CouchDB nicht erreichbar) als JSON-Fehler beim Client landet statt den
+// Request bis zum Timeout haengen zu lassen (Express 4).
 export const adminRouter: Router = Router();
 
 /**
@@ -19,21 +25,21 @@ export const adminRouter: Router = Router();
  * offline", keine Credentials/IPs. Frontend braucht das vor dem Login
  * fuer den Status-Indikator.
  */
-adminRouter.get("/api/admin/health", async (_req, res) => {
+adminRouter.get("/api/admin/health", ah(async (_req, res) => {
   const health = await collectHealth();
   res.json(health);
-});
+}));
 
 /**
  * Manueller Trigger für syBOS-Sync — z. B. nach syBOS-Stammdaten-Änderung
  * ohne auf den nächsten Cron-Tick warten zu wollen.
  * Data-Modifying → requireAuth("funktionaer").
  */
-adminRouter.post("/api/admin/sybos/sync", requireAuth("funktionaer"), (async (req, res) => {
+adminRouter.post("/api/admin/sybos/sync", requireAuth("funktionaer"), ah(async (req, res) => {
   logger.info({ ua: req.headers["user-agent"], by: req.session?.username }, "Manueller syBOS-Sync angefordert");
   const result = await runSyBosSync();
   res.status(result.ok ? 200 : 500).json(result);
-}) as RequestHandler);
+}));
 
 /**
  * Read-only Personen-Liste — Tablets brauchen das zum Auflösen von
@@ -43,8 +49,12 @@ adminRouter.post("/api/admin/sybos/sync", requireAuth("funktionaer"), (async (re
  * rang, aktiv. KEINE Telefonnummern, KEINE Geburtsdaten — wird per
  * `requireAuth()` zusätzlich geschützt damit nur eingeloggte Tablets/
  * Backoffice-User die Liste sehen.
+ *
+ * V14 / I-11: `standVom` = Zeitpunkt des letzten erfolgreichen syBOS-Syncs
+ * (juengster Wert aus RAM-State und persistiertem `state:worker`), damit
+ * das UI "Stand vom …" anzeigen kann. null wenn noch nie gesynct.
  */
-adminRouter.get("/api/admin/personen", requireAuth(), (async (_req, res) => {
+adminRouter.get("/api/admin/personen", requireAuth(), ah(async (_req, res) => {
   const list = await db.list({
     startkey: "person:",
     endkey: "person:￰",
@@ -65,27 +75,42 @@ adminRouter.get("/api/admin/personen", requireAuth(), (async (_req, res) => {
       atemschutzGueltig: d.atemschutzGueltig as boolean | undefined,
     }))
     .filter((p) => p.aktiv !== false);
-  res.json({ ok: true, count: items.length, items });
-}) as RequestHandler);
+  const standVom = await ermittleStandVom();
+  res.json({ ok: true, count: items.length, items, standVom });
+}));
+
+/**
+ * Juengster bekannter Erfolgs-Zeitstempel des syBOS-Syncs. RAM-State
+ * (dieser Prozess) und persistiertes Doc `state:worker` (ueber Neustarts)
+ * werden verglichen — nach einem manuellen Sync innerhalb der 1-h-Drossel
+ * ist der RAM-Wert der aktuellere. Fehler beim Lesen -> null.
+ */
+async function ermittleStandVom(): Promise<string | null> {
+  const ram = getSyBosState().lastOkAt;
+  const persisted = (await readWorkerState())?.sybosLastOkAt ?? null;
+  if (!ram) return persisted;
+  if (!persisted) return ram;
+  return Date.parse(ram) >= Date.parse(persisted) ? ram : persisted;
+}
 
 /**
  * Audit-Events — die letzten N Events (Default 50). Für Verwaltung-Tab
  * „Aktivität". Nur funktionaer+ darf das sehen (Datenschutz: Login-Fails
  * mit Username/IP sind sensibel).
  */
-adminRouter.get("/api/admin/audit", requireAuth("funktionaer"), (async (req, res) => {
+adminRouter.get("/api/admin/audit", requireAuth("funktionaer"), ah(async (req, res) => {
   const rawLimit = req.query.limit;
   const limit = Math.min(200, Math.max(1, Number(rawLimit) || 50));
   const items = await loadRecentAuditEvents(limit);
   res.json({ ok: true, count: items.length, items });
-}) as RequestHandler);
+}));
 
 /**
  * Statistik-Dashboard — Aggregation über Einsätze + Fahrzeugberichte.
  * Query-Params: ?from=YYYY-MM-DD&to=YYYY-MM-DD. Default: aktuelles Jahr.
  * Nur funktionaer+ — sensibel weil Mannschafts-Stunden personalisiert sind.
  */
-adminRouter.get("/api/admin/stats", requireAuth("funktionaer"), (async (req, res) => {
+adminRouter.get("/api/admin/stats", requireAuth("funktionaer"), ah(async (req, res) => {
   const from = typeof req.query.from === "string" ? req.query.from : undefined;
   const to = typeof req.query.to === "string" ? req.query.to : undefined;
   const stats = await computeStats({
@@ -93,7 +118,7 @@ adminRouter.get("/api/admin/stats", requireAuth("funktionaer"), (async (req, res
     ...(to ? { to } : {}),
   });
   res.json(stats);
-}) as RequestHandler);
+}));
 
 /**
  * Client-side Error-Reports von der PWA Error-Boundary.
@@ -101,7 +126,7 @@ adminRouter.get("/api/admin/stats", requireAuth("funktionaer"), (async (req, res
  * Tablet ohne gültigen Token soll den Crash melden können. Wir limitieren
  * Body-Größe, droppen PII (User-Agent ja, Referrer-PII nein).
  */
-adminRouter.post("/api/admin/client-error", (async (req, res) => {
+adminRouter.post("/api/admin/client-error", ah(async (req, res) => {
   const b = req.body as Record<string, unknown> | undefined;
   if (!b || typeof b !== "object") {
     res.status(400).json({ error: "invalid_body" });
@@ -123,7 +148,7 @@ adminRouter.post("/api/admin/client-error", (async (req, res) => {
     "client_error_report",
   );
   res.json({ ok: true });
-}) as RequestHandler);
+}));
 
 /**
  * Test-Daten-Cleanup — wipet alle Einsatz-/Bericht-/Handoff-/Tablet-Docs.
@@ -152,7 +177,7 @@ const KEEP_PREFIXES = ["config:", "user:", "person:", "material:", "fahrzeug:"] 
 
 const TEST_DATA_PREFIXES = ["einsatz:", "fzgber:", "handoff:", "tablet:"] as const;
 
-adminRouter.post("/api/admin/wipe-test-data", requireAuth("admin"), (async (req, res) => {
+adminRouter.post("/api/admin/wipe-test-data", requireAuth("admin"), ah(async (req, res) => {
   const parsed = WipeSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({
@@ -239,4 +264,4 @@ adminRouter.post("/api/admin/wipe-test-data", requireAuth("admin"), (async (req,
     bulkErrors,
     byPrefix,
   });
-}) as RequestHandler);
+}));

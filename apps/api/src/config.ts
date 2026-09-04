@@ -89,8 +89,17 @@ const EnvSchema = z
     JWT_SECRET: z.string().min(32).default(JWT_SECRET_DEV_DEFAULT),
     /** Cookie-Name für Backoffice-Session. */
     AUTH_COOKIE_NAME: z.string().default("hotdoc.session"),
-    /** Session-Lebensdauer in Sekunden (default 8h). */
+    /** Session-Lebensdauer in Sekunden (default 8h) — Backoffice/Florianstation-Logins. */
     SESSION_TTL_SEC: z.coerce.number().int().positive().default(8 * 60 * 60),
+    /**
+     * Tablet-Session-Lebensdauer in Sekunden (default 30 Tage = 2592000).
+     * N-01/I-04: Fahrzeug-Tablets haben keinen interaktiven Login — ein
+     * 8h-Token würde jeden Tag ein manuelles Neu-Registrieren erzwingen.
+     * Gilt für alle Tokens, deren sub mit "tablet:" beginnt (siehe
+     * services/auth/jwt.ts). Verlängerung ohne Neu-Registrierung über
+     * POST /api/auth/tablet/renew.
+     */
+    TABLET_SESSION_TTL_SEC: z.coerce.number().int().positive().default(2592000),
     /** Initial-Admin-Anmeldung beim Server-Start auto-anlegen, falls keine Benutzer existieren. */
     BOOTSTRAP_ADMIN_USERNAME: z.string().default("admin"),
     BOOTSTRAP_ADMIN_PASSWORD: z.string().default(BOOTSTRAP_ADMIN_PASSWORD_DEV_DEFAULT),

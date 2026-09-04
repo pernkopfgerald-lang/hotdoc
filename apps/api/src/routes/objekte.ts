@@ -20,8 +20,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
@@ -73,7 +74,7 @@ export function hashAdresse(adresse: string): string {
 objekteRouter.get(
   "/api/objekte/lookup",
   requireAuth("einsatzleiter"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const adresseRaw = req.query.adresse;
     const adresse = typeof adresseRaw === "string" ? adresseRaw.trim() : "";
     if (!adresse) {
@@ -92,7 +93,7 @@ objekteRouter.get(
       }
       throw err;
     }
-  }) as RequestHandler,
+  }),
 );
 
 // ─── PUT /api/objekte/:hash ──────────────────────────────────
@@ -102,7 +103,7 @@ objekteRouter.get(
 objekteRouter.put(
   "/api/objekte/:hash",
   requireAuth("einsatzleiter"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const hash = decodeURIComponent(String(req.params.hash));
     if (!/^[0-9a-f]{16}$/.test(hash)) {
       res.status(400).json({ error: "invalid_hash", hint: "16 hex Zeichen erwartet" });
@@ -161,5 +162,5 @@ objekteRouter.put(
       "Objekt-Datenbank aktualisiert (Brand-Wiederholung-Cache)",
     );
     res.json({ ok: true, hash, id: docId, rev: result.rev });
-  }) as RequestHandler,
+  }),
 );

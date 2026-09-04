@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { HandoffClaim } from "./components/HandoffClaim";
 import { QrClaim } from "./components/QrClaim";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -8,6 +8,7 @@ import { registerDevice } from "./lib/device-register";
 import { flushOutbox } from "./lib/einsatz-outbox";
 import { flushRequestOutbox } from "./lib/request-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
+import { lazyRetry } from "./lib/lazy-retry";
 import { clearReportStates } from "./lib/report-state";
 import { BerichtPage } from "./pages/BerichtPage";
 import { ZentralePage } from "./pages/ZentralePage";
@@ -18,10 +19,63 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 // Fenster oeffnet. Spart auf dem Standard-Tablet ~30 kB JS beim First-Paint.
 // React.lazy() lost den Default-Export auf — beide Module exportieren
 // named, deshalb der `.then`-Wrapper.
-const Setup = lazy(() => import("./pages/Setup").then((m) => ({ default: m.Setup })));
-const FlorianMapPopout = lazy(() =>
+// I-08 (Audit 2026-09): lazyRetry statt lazy — ein Chunk-404 nach Deploy
+// (alte App-Shell, neue Hashes) loest einmal einen Reload aus statt den
+// Recovery-Screen zu zeigen.
+const Setup = lazyRetry(() => import("./pages/Setup").then((m) => ({ default: m.Setup })));
+const FlorianMapPopout = lazyRetry(() =>
   import("./pages/FlorianMapPopout").then((m) => ({ default: m.FlorianMapPopout })),
 );
+
+/**
+ * N-01/I-04 (b) (Audit 2026-09): Ablaufzeit (ms) aus dem JWT-Payload lesen —
+ * defensiv, ohne Signaturpruefung (die macht der Server). null wenn der
+ * Token kein/ein unlesbares exp traegt.
+ */
+function jwtExpMs(token: string): number | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as { exp?: unknown };
+    return typeof payload.exp === "number" && Number.isFinite(payload.exp)
+      ? payload.exp * 1000
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Restlaufzeit, unter der der Token proaktiv erneuert wird. */
+const RENEW_BELOW_MS = 24 * 60 * 60 * 1000;
+const RENEW_TICK_MS = 5 * 60 * 1000;
+
+/**
+ * Erneuert den Tablet-Token proaktiv, wenn er in < 24 h ablaeuft. Laeuft
+ * alle 5 min + einmal beim Boot. Ein 401 hier (Token schon tot) wirft nur
+ * den ApiError (Auth-Pfad ist vom Auto-Logout ausgenommen) — der naechste
+ * echte API-Call greift dann auf die stille Re-Registrierung in api.ts.
+ */
+async function renewTokenIfNeeded(): Promise<void> {
+  const token = getTabletToken();
+  if (!token) return;
+  const exp = jwtExpMs(token);
+  if (exp === null) return;
+  if (exp - Date.now() >= RENEW_BELOW_MS) return;
+  try {
+    const r = await apiCall<{ ok: boolean; token?: string; expiresAt?: string }>(
+      "/api/auth/tablet/renew",
+      { method: "POST" },
+    );
+    if (r && typeof r.token === "string" && r.token) {
+      localStorage.setItem(TOKEN_KEY, r.token);
+      console.info("[auth] Token erneuert, gueltig bis", r.expiresAt ?? "?");
+    }
+  } catch (err) {
+    console.warn("[auth] Token-Renew fehlgeschlagen:", err);
+  }
+}
 
 type State =
   | { kind: "loading" }
@@ -94,6 +148,13 @@ export function App() {
   useEffect(() => {
     void boot();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootGen]);
+
+  // N-01/I-04 (b): Token-Renew-Tick — einmal beim (Re-)Boot, dann alle 5 min.
+  useEffect(() => {
+    void renewTokenIfNeeded();
+    const t = setInterval(() => void renewTokenIfNeeded(), RENEW_TICK_MS);
+    return () => clearInterval(t);
   }, [bootGen]);
 
   // Inaktivitaets-Watchdog — Symptom war: Tablet haengt nach Stunden im Standby
@@ -183,7 +244,27 @@ export function App() {
     };
   }, []);
 
+  /**
+   * C-02 (Audit 2026-09): Der gesamte Boot ist in try/catch — ein PouchDB-
+   * Fehler (korrupte IndexedDB, Quota, Private-Mode) liess die App vorher
+   * ewig im "lädt …"-Zustand haengen, weil die Promise-Rejection nirgends
+   * ankam. Jetzt: Setup-Screen mit Hinweis "Lokale Datenbank nicht lesbar".
+   */
   async function boot() {
+    try {
+      await bootInner();
+    } catch (err) {
+      console.error("[boot] fehlgeschlagen:", err);
+      try {
+        sessionStorage.setItem("hotdoc.setupReason", "boot-failed");
+      } catch {
+        // egal
+      }
+      setState({ kind: "setup" });
+    }
+  }
+
+  async function bootInner() {
     // Notfall-Übergabe: URL `/handoff/<code>` hat Priorität vor allem anderen.
     // Der Empfänger braucht keinen vorherigen Tablet-Setup — Token kommt
     // direkt vom Backend nach Claim. Nach erfolgreichem Claim wird das

@@ -37,18 +37,32 @@ export interface SessionPayload {
 
 interface SignOptions {
   /** Optional: Token wird zusätzlich nach diesem Zeitpunkt ungültig.
-   *  Standard-exp bleibt unverändert (env.SESSION_TTL_SEC). */
+   *  Standard-exp bleibt unverändert (env.SESSION_TTL_SEC bzw.
+   *  env.TABLET_SESSION_TTL_SEC für Tablet-Subs). */
   autoReleaseAt?: string;
   /** Markiert den Token als „durch Handoff entstanden" (UI-Anzeige). */
   viaHandoff?: boolean;
 }
 
-/** Erzeugt einen signierten JWT-Token mit konfiguriertem TTL. */
+/** Prefix aller Tablet-Session-Subs (`tablet:<fahrzeugId>:<deviceId>`). */
+const TABLET_SUB_PREFIX = "tablet:";
+
+/**
+ * Liefert die Session-Lebensdauer in Sekunden für einen sub.
+ * N-01/I-04: Tablet-Sessions leben deutlich länger (Default 30 Tage) als
+ * Backoffice-Sessions (Default 8h) — die Fahrzeug-Tablets haben keinen
+ * interaktiven Login und sollen nicht täglich neu registriert werden müssen.
+ */
+function sessionTtlSecFor(sub: string): number {
+  return sub.startsWith(TABLET_SUB_PREFIX) ? env.TABLET_SESSION_TTL_SEC : env.SESSION_TTL_SEC;
+}
+
+/** Erzeugt einen signierten JWT-Token mit konfiguriertem TTL (abhängig vom sub-Typ). */
 export async function signSession(
   payload: SessionPayload,
   options: SignOptions = {},
 ): Promise<{ token: string; expiresAt: string; autoReleaseAt?: string }> {
-  const expiresAt = new Date(Date.now() + env.SESSION_TTL_SEC * 1000);
+  const expiresAt = new Date(Date.now() + sessionTtlSecFor(payload.sub) * 1000);
   const claims: Record<string, unknown> = { ...payload };
   if (options.autoReleaseAt) claims.autoReleaseAt = options.autoReleaseAt;
   if (options.viaHandoff) claims.viaHandoff = true;

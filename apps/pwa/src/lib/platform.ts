@@ -12,10 +12,10 @@
  *    Foreground-Service-faehig
  *
  * Aktuell aktiv: secureSet/secureGet (Token), getNetworkStatus,
- * getDeviceInfo, configureStatusBar, hideSplashScreen.
+ * getDeviceInfo, configureStatusBar, hideSplashScreen, setKeepAwake.
  * Entfernt im Audit (verwaist): secureRemove, onNetworkChange,
- * onAppStateChange, setKeepAwake. Sind in der Git-History falls wir
- * einen Foreground-Service oder Display-Wake-Lock brauchen.
+ * onAppStateChange. Sind in der Git-History falls wir einen
+ * Foreground-Service brauchen.
  */
 
 import { Capacitor } from "@capacitor/core";
@@ -149,6 +149,26 @@ export async function hideSplashScreen(): Promise<void> {
     await SplashScreen.hide();
   } catch {
     // Splash-Plugin nicht da — egal.
+  }
+}
+
+// ─── Display-Wake-Lock (nur Native) ───────────────────────────────────
+//
+// N-09 (Audit 2026-09): Während eines laufenden Einsatzes soll das Tablet-
+// Display nicht in den Standby fallen — sonst friert Android die JS-Engine
+// ein (Chronik-Poll, GPS, Outbox-Worker stehen). Im Browser gibt es keine
+// verlässliche API dafür (Screen-Wake-Lock ist nicht überall verfügbar),
+// daher hier bewusst nur der native Pfad. Fehler werden geschluckt — ein
+// fehlender Wake-Lock darf den Einsatz nie stören.
+
+export async function setKeepAwake(on: boolean): Promise<void> {
+  if (!isNative()) return;
+  try {
+    const { KeepAwake } = await import("@capacitor-community/keep-awake");
+    if (on) await KeepAwake.keepAwake();
+    else await KeepAwake.allowSleep();
+  } catch {
+    // Plugin nicht verfügbar / nicht unterstützt — egal.
   }
 }
 

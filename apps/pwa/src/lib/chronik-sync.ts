@@ -50,43 +50,58 @@ interface GetResponse {
  * Sendet einen Chronik-Eintrag an den Server. Wirft NIE — der Aufrufer
  * wertet das Ergebnis aus:
  *  - 'ok'       → angekommen (oder serverseitig dedupliziert)
- *  - 'queued'   → kein Netz/Server-Problem; Eintrag liegt in der persistenten
- *                 Outbox und wird automatisch nachgereicht. KEIN Fehler —
- *                 der optimistische lokale Eintrag bleibt stehen.
- *  - 'rejected' → Server lehnt endgültig ab (404 Einsatz weg, 423 Bericht
- *                 abgeschlossen). Der Aufrufer muss den lokalen Eintrag
- *                 markieren/entfernen und den User informieren.
+ *  - 'queued'   → kein Netz/Server-Problem ODER 423 (Bericht gerade
+ *                 abgeschlossen); Eintrag liegt in der persistenten Outbox
+ *                 und wird automatisch nachgereicht — bei 423 nach einer
+ *                 Reaktivierung (die Outbox markiert ihn als blockiert).
+ *                 KEIN Fehler — der optimistische lokale Eintrag bleibt.
+ *  - 'rejected' → Server lehnt endgültig ab (NUR 404: Einsatz weg). Der
+ *                 Aufrufer muss den lokalen Eintrag entfernen und den
+ *                 User informieren.
+ *  - 'failed'   → weder gesendet noch geparkt (PouchDB-Fehler beim
+ *                 Enqueue). Der lokale Eintrag ist der einzige Stand — der
+ *                 Aufrufer sollte das sichtbar machen.
+ *
+ * N-03 + C-04 (Audit 2026-09): 423 war vorher 'rejected' → der Eintrag
+ * wurde lokal GELÖSCHT, obwohl der Bericht nur kurz schreibgeschützt war
+ * (Abschluss auf der Zentrale, Reaktivierung folgt). Jetzt: parken.
  */
+export type BroadcastResult = "ok" | "queued" | "rejected" | "failed";
+
 export async function broadcastChronikEntry(
   einsatzId: string,
   entry: PostBody,
-): Promise<"ok" | "queued" | "rejected"> {
+): Promise<BroadcastResult> {
+  const path = `/api/einsaetze/${encodeURIComponent(einsatzId)}/chronik`;
   try {
-    await apiCall<PostResponse>(`/api/einsaetze/${encodeURIComponent(einsatzId)}/chronik`, {
+    await apiCall<PostResponse>(path, {
       method: "POST",
       body: entry,
     });
     return "ok";
   } catch (err) {
-    if (err instanceof ApiError && (err.status === 404 || err.status === 423)) {
-      // Einsatz existiert nicht (mehr) im Backend ODER ist schreibgeschützt
-      // → Retry sinnlos, NICHT queuen.
-      console.warn(`[chronik-sync] ${einsatzId} ${err.status}: ${err.message}`);
+    if (err instanceof ApiError && err.status === 404) {
+      // Einsatz existiert nicht (mehr) im Backend → Retry sinnlos, NICHT queuen.
+      console.warn(`[chronik-sync] ${einsatzId} 404: ${err.message}`);
       return "rejected";
     }
-    // Netz-Fehler / Timeout / 5xx → persistent in die request-outbox parken.
-    // Der Endpoint dedupliziert über entry.id — ein Doppel-POST (direkter
-    // Retry + Outbox-Flush) ist harmlos.
+    // Netz-Fehler / Timeout / 5xx / 423 → persistent in die request-outbox
+    // parken. Der Endpoint dedupliziert über entry.id — ein Doppel-POST
+    // (direkter Retry + Outbox-Flush) ist harmlos. Bei 423 setzt der
+    // Outbox-Flush selbst die blocked-Markierung, bis reaktiviert wird.
     try {
       await enqueueRequest(
         1,
         `chronik:${entry.id}`,
         "POST",
-        `/api/einsaetze/${encodeURIComponent(einsatzId)}/chronik`,
+        path,
         entry as unknown as Record<string, unknown>,
       );
-    } catch {
-      // PouchDB-Fehler — der lokale Timeline-Eintrag bleibt als letzter Stand.
+    } catch (dbErr) {
+      // PouchDB-Fehler — der lokale Timeline-Eintrag bleibt als letzter
+      // Stand, erreicht aber kein anderes Gerät. Aufrufer informieren.
+      console.error(`[chronik-sync] enqueue ${entry.id} fehlgeschlagen:`, dbErr);
+      return "failed";
     }
     console.warn(`[chronik-sync] queued ${entry.id} (${(err as Error).message})`);
     return "queued";

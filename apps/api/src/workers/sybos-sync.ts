@@ -124,7 +124,10 @@ export async function runSyBosSync(): Promise<SyncResult> {
     logger.error({ err, result }, "syBOS-Sync fehlgeschlagen");
   }
 
-  recordSyBosSync(result);
+  // I-06: schreibt Zustandswechsel/Erfolg auch nach `state:worker` (standVom
+  // fuer die Personenliste). Awaited, damit der manuelle Trigger im
+  // Backoffice erst antwortet, wenn der Stand persistiert ist.
+  await recordSyBosSync(result);
   return result;
 }
 

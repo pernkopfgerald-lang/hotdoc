@@ -19,6 +19,47 @@ import type { PickPerson } from "../components/PersonPickerModal";
 
 const CACHE_KEY = "hotdoc.personen.v1";
 
+/**
+ * Storage-Format (Audit 2026-09, V-PC): Umschlag mit Stand-Datum.
+ *   { v: 2, standVom: "2026-09-01T..." | null, items: PickPerson[] }
+ * Ältere Einträge sind ein nacktes Array — werden weiterhin gelesen
+ * (standVom dann null).
+ */
+interface CacheEnvelope {
+  v: 2;
+  standVom: string | null;
+  items: unknown;
+}
+
+function isEnvelope(raw: unknown): raw is CacheEnvelope {
+  return (
+    !!raw &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    (raw as { v?: unknown }).v === 2 &&
+    "items" in raw
+  );
+}
+
+/** Liest den rohen Storage-Wert und normalisiert Alt-/Neuformat. */
+function readRaw(): { items: unknown; standVom: string | null } | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (isEnvelope(parsed)) {
+      return {
+        items: parsed.items,
+        standVom: typeof parsed.standVom === "string" ? parsed.standVom : null,
+      };
+    }
+    // Altformat: nacktes Array ohne Stand-Datum.
+    return { items: parsed, standVom: null };
+  } catch {
+    return null;
+  }
+}
+
 /** Roh-Items defensiv auf die PickPerson-Form bringen — fremde/korrupte
  *  Storage-Daten dürfen den Boot nie brechen. */
 function sanitizePersonen(raw: unknown): PickPerson[] | null {
@@ -56,21 +97,31 @@ function sanitizePersonen(raw: unknown): PickPerson[] | null {
 
 /** Liest die gecachte Personalliste (oder null wenn keine/korrupt). */
 export function loadPersonenCache(): PickPerson[] | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    const cleaned = sanitizePersonen(parsed);
-    return cleaned && cleaned.length > 0 ? cleaned : null;
-  } catch {
-    return null;
-  }
+  const raw = readRaw();
+  if (!raw) return null;
+  const cleaned = sanitizePersonen(raw.items);
+  return cleaned && cleaned.length > 0 ? cleaned : null;
 }
 
-/** Speichert die Personalliste nach erfolgreichem Fetch. */
-export function savePersonenCache(list: PickPerson[]): void {
+/**
+ * Liefert das Stand-Datum (ISO) der gecachten Liste — für den Hinweis
+ * "Personalliste vom …" im PersonPicker, wenn offline aus dem Cache
+ * gelesen wird. null wenn kein Cache oder Altformat ohne Datum.
+ */
+export function loadPersonenStand(): string | null {
+  return readRaw()?.standVom ?? null;
+}
+
+/** Speichert die Personalliste nach erfolgreichem Fetch (mit Stand-Datum
+ *  aus GET /api/admin/personen → standVom, sonst jetzt). */
+export function savePersonenCache(list: PickPerson[], standVom?: string | null): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(list));
+    const envelope: CacheEnvelope = {
+      v: 2,
+      standVom: standVom ?? new Date().toISOString(),
+      items: list,
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(envelope));
   } catch {
     // Quota/Private-Mode → der nächste erfolgreiche Fetch versucht es erneut.
   }

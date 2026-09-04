@@ -85,30 +85,89 @@ let sessionId: string | null = null;
 let sessionLoginAt: number = 0;
 const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 h, danach erzwungener Re-Login
 
+// ─── Login-Backoff (I-10, Audit R3) ─────────────────────────────────
+// Ohne Backoff hat der 15-s-Poller bei falschem Passwort / gesperrtem
+// Account alle 15 s einen Login-Versuch abgesetzt — BlaulichtSMS koennte
+// das als Brute-Force werten und den Account sperren. Nach jedem
+// Fehlschlag wird der Login fuer min(15 min, 30 s * 2^n) pausiert
+// (n = Anzahl bisheriger Fehlversuche); waehrend der Sperre wirft login()
+// sofort, ohne Netz-Call. Erfolgreicher Login setzt alles zurueck.
+const LOGIN_BACKOFF_BASE_MS = 30 * 1000;
+const LOGIN_BACKOFF_MAX_MS = 15 * 60 * 1000;
+let loginBlockedUntil = 0;
+let loginFailures = 0;
+
+/** "HH:MM" in Europe/Vienna fuer die Fehlermeldung. */
+function formatHHMM(ts: number): string {
+  try {
+    return new Intl.DateTimeFormat("de-AT", {
+      timeZone: "Europe/Vienna",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(ts));
+  } catch {
+    return new Date(ts).toISOString().slice(11, 16);
+  }
+}
+
+/** Wirft sofort, wenn der Login gerade pausiert ist. Kein Netz-Call. */
+function assertLoginNotBlocked(): void {
+  if (Date.now() < loginBlockedUntil) {
+    throw new Error(
+      `Login pausiert bis ${formatHHMM(loginBlockedUntil)} (${loginFailures} Fehlversuche)`,
+    );
+  }
+}
+
+/** Fehlversuch verbuchen + Sperre setzen. */
+function registerLoginFailure(): void {
+  const sperreMs = Math.min(
+    LOGIN_BACKOFF_MAX_MS,
+    LOGIN_BACKOFF_BASE_MS * 2 ** loginFailures,
+  );
+  loginFailures += 1;
+  loginBlockedUntil = Date.now() + sperreMs;
+  logger.warn(
+    { fehlversuche: loginFailures, sperreSec: Math.round(sperreMs / 1000), bis: formatHHMM(loginBlockedUntil) },
+    "BlaulichtSMS-Login fehlgeschlagen — Backoff aktiv",
+  );
+}
+
 /**
- * Login durchführen + sessionId zwischenspeichern. Wirft bei Fehler.
+ * Login durchführen + sessionId zwischenspeichern. Wirft bei Fehler und
+ * waehrend einer Backoff-Sperre (dann ohne Netz-Call).
  */
 async function login(): Promise<string> {
+  assertLoginNotBlocked();
   const body = {
     username: env.BLAULICHTSMS_USER!,
     password: env.BLAULICHTSMS_PW!,
     customerId: env.BLAULICHTSMS_CUSTOMER_ID!,
   };
-  const res = await fetch(`${env.BLAULICHTSMS_BASE_URL}/api/alarm/v1/dashboard/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) {
-    throw new Error(`BlaulichtSMS-Login HTTP ${res.status}: ${await res.text()}`);
-  }
-  const json = (await res.json()) as LoginResponse;
-  if (!json.success || !json.sessionId) {
-    throw new Error(`BlaulichtSMS-Login fehlgeschlagen: ${json.error ?? "unbekannt"}`);
+  let json: LoginResponse;
+  try {
+    const res = await fetch(`${env.BLAULICHTSMS_BASE_URL}/api/alarm/v1/dashboard/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      throw new Error(`BlaulichtSMS-Login HTTP ${res.status}: ${await res.text()}`);
+    }
+    json = (await res.json()) as LoginResponse;
+    if (!json.success || !json.sessionId) {
+      throw new Error(`BlaulichtSMS-Login fehlgeschlagen: ${json.error ?? "unbekannt"}`);
+    }
+  } catch (err) {
+    registerLoginFailure();
+    throw err;
   }
   sessionId = json.sessionId;
   sessionLoginAt = Date.now();
+  loginFailures = 0;
+  loginBlockedUntil = 0;
   logger.info(
     { sessionIdPrefix: json.sessionId.slice(0, 8) + "…", customerId: env.BLAULICHTSMS_CUSTOMER_ID },
     "BlaulichtSMS-Login erfolgreich",

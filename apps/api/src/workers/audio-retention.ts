@@ -46,7 +46,19 @@ export async function runAudioRetention(): Promise<RetentionResult> {
     if (!doc) continue;
     if (doc.status !== "abgeschlossen") continue;
     if (!doc.einsatzende) continue;
-    if (new Date(doc.einsatzende) >= grenzDatum) continue;
+    // C-14: NaN-Guard. `new Date("kaputt") >= grenzDatum` ist IMMER false
+    // (Vergleich mit Invalid Date/NaN) — ein Einsatz mit unparsebarem
+    // einsatzende wuerde also faelschlich als "alt genug" durchrutschen und
+    // seine Audio-Aufnahmen verlieren. Solche Docs ueberspringen + loggen.
+    const einsatzendeMs = new Date(doc.einsatzende).getTime();
+    if (Number.isNaN(einsatzendeMs)) {
+      logger.warn(
+        { id: doc._id, einsatzende: doc.einsatzende },
+        "Audio-Retention: einsatzende nicht parsebar — Einsatz uebersprungen",
+      );
+      continue;
+    }
+    if (einsatzendeMs >= grenzDatum.getTime()) continue;
 
     result.abgeschlosseneEinsaetze += 1;
 

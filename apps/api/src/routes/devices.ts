@@ -17,9 +17,10 @@
  *   device:fcm-<fahrzeugId>-<deviceUuid>  → DeviceDoc
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
@@ -60,7 +61,7 @@ const RegisterBodySchema = z.object({
 // Tablet ruft das beim App-Start auf und nach jedem FCM-Token-Refresh.
 // Doc-ID wird aus fahrzeugId + deviceUuid zusammengesetzt — derselbe
 // Tablet/Fahrzeug-Combo aktualisiert IMMER denselben Eintrag.
-devicesRouter.post("/api/devices/register", requireAuth("mannschaft"), (async (req, res) => {
+devicesRouter.post("/api/devices/register", requireAuth("mannschaft"), ah(async (req, res) => {
   const parsed = RegisterBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_body", details: parsed.error.flatten() });
@@ -101,12 +102,12 @@ devicesRouter.post("/api/devices/register", requireAuth("mannschaft"), (async (r
     "Device registriert",
   );
   res.json({ ok: true, id: docId, rev: result.rev });
-}) as RequestHandler);
+}));
 
 // ─── GET /api/devices ────────────────────────────────────────────────
 // Liste fuer das Backoffice. PII (FCM-Token, Geraete-IDs) wird zurueck-
 // gegeben — Funktionaer-Rolle ist Pflicht.
-devicesRouter.get("/api/devices", requireAuth("funktionaer"), (async (_req, res) => {
+devicesRouter.get("/api/devices", requireAuth("funktionaer"), ah(async (_req, res) => {
   const list = await db.list({
     startkey: "device:",
     endkey: "device:￰",
@@ -127,13 +128,13 @@ devicesRouter.get("/api/devices", requireAuth("funktionaer"), (async (_req, res)
     };
   });
   res.json({ ok: true, items: safeDocs });
-}) as RequestHandler);
+}));
 
 // ─── DELETE /api/devices/:id ─────────────────────────────────────────
 // Wenn ein Tablet defekt/gestohlen ist, soll der Funktionaer es aus der
 // Push-Liste entfernen koennen. Geraet bekommt dann keine Alarm-Pushes
 // mehr (wenn es jemals wieder online geht).
-devicesRouter.delete("/api/devices/:id", requireAuth("funktionaer"), (async (req, res) => {
+devicesRouter.delete("/api/devices/:id", requireAuth("funktionaer"), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as DeviceDoc;
@@ -147,14 +148,14 @@ devicesRouter.delete("/api/devices/:id", requireAuth("funktionaer"), (async (req
     }
     throw err;
   }
-}) as RequestHandler);
+}));
 
 // ─── GET /api/devices/app-version ────────────────────────────────────
 // Tablets pollen das beim Start + alle paar Stunden. Wenn die Server-
 // empfohlene Version groesser ist als die installierte, zeigt die App
 // ein dezentes "Update verfuegbar"-Hinweis (Phase 2 — In-App-Update).
 // Public-ish: braucht nur eine valide Session, kein Funktionaer-Rolle.
-devicesRouter.get("/api/devices/app-version", requireAuth(), (async (_req, res) => {
+devicesRouter.get("/api/devices/app-version", requireAuth(), ah(async (_req, res) => {
   try {
     const doc = (await db.get("config:app-version")) as {
       currentVersion: string;
@@ -183,4 +184,4 @@ devicesRouter.get("/api/devices/app-version", requireAuth(), (async (_req, res) 
     }
     throw err;
   }
-}) as RequestHandler);
+}));

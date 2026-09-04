@@ -17,8 +17,9 @@
  * PUT → upsert, behält _rev korrekt.
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
@@ -230,7 +231,7 @@ async function loadConfig(key: ConfigKey): Promise<ConfigDoc> {
 }
 
 /** GET /api/config/:key — liefert das Doc, oder Defaults wenn noch nicht angelegt. */
-configRouter.get("/api/config/:key", requireAuth(), (async (req, res) => {
+configRouter.get("/api/config/:key", requireAuth(), ah(async (req, res) => {
   const key = String(req.params.key);
   if (!isValidKey(key)) {
     res.status(404).json({ error: "unknown_config_key", validKeys: KEYS });
@@ -243,10 +244,10 @@ configRouter.get("/api/config/:key", requireAuth(), (async (req, res) => {
   }
   const doc = await loadConfig(key);
   res.json({ ok: true, key, data: doc.data, geaendertAm: doc.geaendertAm });
-}) as RequestHandler);
+}));
 
 /** PUT /api/config/:key — überschreibt data. Server setzt geaendertAm und upsertet. */
-configRouter.put("/api/config/:key", requireAuth("funktionaer"), (async (req, res) => {
+configRouter.put("/api/config/:key", requireAuth("funktionaer"), ah(async (req, res) => {
   const key = String(req.params.key);
   if (!isValidKey(key)) {
     res.status(404).json({ error: "unknown_config_key", validKeys: KEYS });
@@ -274,4 +275,4 @@ configRouter.put("/api/config/:key", requireAuth("funktionaer"), (async (req, re
   const result = await db.insert(doc);
   logger.info({ key, rev: result.rev, by: req.session?.username }, "Config aktualisiert");
   res.json({ ok: true, key, data, geaendertAm: doc.geaendertAm, rev: result.rev });
-}) as RequestHandler);
+}));

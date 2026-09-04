@@ -43,16 +43,39 @@ export interface RequestOutboxItem {
    * Reaktivierung des Einsatzes ruft unblockRequests() und reicht sie nach.
    * Vorher: 423 retry'te alle 30 s gegen dieselbe Wand, 409 DROPPTE den
    * einzigen Träger des finalen Berichts.
+   *
+   * C-05 (Audit 2026-09): auch 400/422 auf Daten-tragenden Pfaden
+   * (/fahrzeugbericht, /fotos, /manuell) blockieren statt droppen — ein
+   * Schema-Fehler nach einem Deploy darf den einzigen Träger des Berichts
+   * nicht lautlos vernichten. Der Funktionär sieht das Item im Sync-Badge
+   * als blockiert und kann es nach dem Fix nachreichen.
    */
   blocked?: { status: number; at: string };
 }
+
+/**
+ * Pfade, deren Body der EINZIGE Träger von Einsatzdaten ist. Für diese
+ * Pfade gilt: nie droppen, im Zweifel blockieren.
+ */
+function isDatenTragenderPfad(path: string): boolean {
+  return /\/(fahrzeugbericht|fotos|manuell)(\/|$|\?)/.test(path);
+}
+
+/** Foto-Uploads: groß, unabhängig von der Bericht-Reihenfolge, langer Timeout. */
+function isFotoPfad(path: string): boolean {
+  return path.endsWith("/fotos");
+}
+
+/** N-05: Foto-Upload-Timeout (Data-URL bis 1,4 MB über Mobilfunk). */
+const FOTO_TIMEOUT_MS = 90_000;
 
 /**
  * Legt einen Request in die Outbox (oder überschreibt einen bestehenden mit
  * gleichem dedupeKey).
  *
  * @param priority 1 = zuerst flushen (z. B. Daten-PUT), 2 = danach (z. B.
- *   Abschluss-POST). Einstellig halten (lexikografische Sortierung).
+ *   Abschluss-POST), 3 = zuletzt (Foto-Uploads, groß + unabhängig).
+ *   Einstellig halten (lexikografische Sortierung 1 < 2 < 3).
  * @param dedupeKey eindeutig pro logischer Aktion, z. B.
  *   `fzgber:<einsatzId>:<fahrzeugId>` oder `abschluss:<einsatzId>`.
  */
@@ -205,24 +228,37 @@ export async function flushRequestOutbox(): Promise<{
     /einsaetze\/([^/]+)/.exec(p)?.[1] ?? null;
   for (const item of items) {
     const einsatzId = einsatzIdAusPfad(item.path);
-    if (einsatzId && fehlgeschlageneEinsaetze.has(einsatzId)) {
+    // I-03 (Audit 2026-09): Foto-Uploads sind vom Einsatz-Gate ausgenommen —
+    // sie hängen nicht an der PUT-vor-POST-Reihenfolge und sollen weder
+    // durch einen fehlgeschlagenen Bericht-PUT zurückgehalten werden noch
+    // (bei eigenem Fehlschlag) den Abschluss-POST blockieren.
+    const foto = isFotoPfad(item.path);
+    if (!foto && einsatzId && fehlgeschlageneEinsaetze.has(einsatzId)) {
       // Kein bumpAttempt — das Item wurde gar nicht versucht, es wartet nur
       // auf den Vorgaenger. Zaehlt als pending, nicht als failed.
       continue;
     }
     try {
-      await apiCall(item.path, { method: item.method, body: item.body });
+      await apiCall(item.path, {
+        method: item.method,
+        body: item.body,
+        // N-05: Fotos brauchen im Mobilfunk deutlich länger als 12 s.
+        ...(foto ? { timeoutMs: FOTO_TIMEOUT_MS } : {}),
+      });
       await removeItem(item);
       ok++;
     } catch (err) {
-      if (einsatzId) fehlgeschlageneEinsaetze.add(einsatzId);
+      if (!foto && einsatzId) fehlgeschlageneEinsaetze.add(einsatzId);
       // AUDIT-03 (Audit 2026-06-12): differenzierte Fehlerbehandlung.
       // - 423 (Schreibschutz): NICHT endlos retry'en — als blockiert markieren,
       //   eine Reaktivierung (unblockRequests) reicht das Item dann nach.
       // - 409 auf fahrzeugbericht-PUT: ebenfalls blockieren statt droppen —
       //   das Item ist der EINZIGE Träger des finalen Berichts.
+      // - C-05 (Audit 2026-09): 400/422 auf Daten-tragenden Pfaden
+      //   (/fahrzeugbericht, /fotos, /manuell) ebenfalls blockieren statt
+      //   droppen — Schema-Drift nach Deploy darf keine Daten vernichten.
       // - 409 auf /abschluss-POST bleibt droppable (already_closed = Ziel
-      //   erreicht), genau wie echte Client-/Schema-Fehler (400/404/422).
+      //   erreicht), genau wie 404 und 400/422 auf sonstigen Pfaden.
       // - Netz-Fehler (status 0), Timeout, 401, 5xx → Retry beim nächsten Tick.
       if (err instanceof ApiError && err.status === 423) {
         await markBlocked(item, 423);
@@ -233,6 +269,17 @@ export async function flushRequestOutbox(): Promise<{
         item.path.includes("/fahrzeugbericht/")
       ) {
         await markBlocked(item, 409);
+        failed++;
+      } else if (
+        err instanceof ApiError &&
+        (err.status === 400 || err.status === 422) &&
+        isDatenTragenderPfad(item.path)
+      ) {
+        console.error(
+          `[request-outbox] ${err.status} auf ${item.path} — Item blockiert statt verworfen:`,
+          err.body,
+        );
+        await markBlocked(item, err.status);
         failed++;
       } else if (err instanceof ApiError && [400, 404, 409, 422].includes(err.status)) {
         await removeItem(item);

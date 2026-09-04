@@ -11,8 +11,9 @@
  * normalen "Neuer Einsatz → Übung"-Flow im Backoffice/PWA.)
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { env } from "../config.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { probeBlaulichtSms } from "../services/blaulichtsms/client.js";
 import { pollOnce } from "../workers/blaulichtsms-poller.js";
@@ -23,13 +24,13 @@ export const devRouter: Router = Router();
 // Routen (poll) sogar admin-Login — siehe pro Route.
 
 /** Manueller Poll-Trigger ohne Cron-Intervall abzuwarten. */
-devRouter.post("/api/dev/blaulichtsms/poll", requireAuth("admin"), (async (_req, res) => {
+devRouter.post("/api/dev/blaulichtsms/poll", requireAuth("admin"), ah(async (_req, res) => {
   const result = await pollOnce();
   res.json({ ok: true, ...result });
-}) as RequestHandler);
+}));
 
 /** Diagnostic: testet die CouchDB-Konnektivität direkt. */
-devRouter.get("/api/dev/db-test", requireAuth("funktionaer"), (async (_req, res) => {
+devRouter.get("/api/dev/db-test", requireAuth("funktionaer"), ah(async (_req, res) => {
   const result: Record<string, unknown> = {
     couchUrl: env.COUCH_URL,
     couchDb: env.COUCH_DB,
@@ -52,7 +53,7 @@ devRouter.get("/api/dev/db-test", requireAuth("funktionaer"), (async (_req, res)
     result.pingError = err instanceof Error ? err.message : String(err);
   }
   res.json(result);
-}) as RequestHandler);
+}));
 
 /**
  * Liefert die Egress-IP der Fly-Machine.
@@ -62,7 +63,7 @@ devRouter.get("/api/dev/db-test", requireAuth("funktionaer"), (async (_req, res)
  * Wir brauchen das, damit der syBOS-Admin die IP in die
  * Server-IPs-Whitelist eintragen kann (sonst gibt syBOS 401 zurück).
  */
-devRouter.get("/api/dev/egress-ip", requireAuth("funktionaer"), (async (_req, res) => {
+devRouter.get("/api/dev/egress-ip", requireAuth("funktionaer"), ah(async (_req, res) => {
   const probes = [
     "https://api.ipify.org?format=json",
     "https://ipv4.icanhazip.com",
@@ -79,7 +80,7 @@ devRouter.get("/api/dev/egress-ip", requireAuth("funktionaer"), (async (_req, re
     }
   }
   res.json({ ok: true, probes: results });
-}) as RequestHandler);
+}));
 
 /**
  * Roh-Probe gegen syBOS. Liefert HTTP-Status + Body, damit der echte
@@ -92,10 +93,10 @@ devRouter.get("/api/dev/egress-ip", requireAuth("funktionaer"), (async (_req, re
  * Dashboard-Call, liefert sessionId-Prefix und Alarm-Anzahl.
  * Erspart Smoke-Test-Skripte für die Inbetriebnahme.
  */
-devRouter.get("/api/dev/blaulichtsms-probe", requireAuth("funktionaer"), (async (_req, res) => {
+devRouter.get("/api/dev/blaulichtsms-probe", requireAuth("funktionaer"), ah(async (_req, res) => {
   const probe = await probeBlaulichtSms();
   res.status(probe.ok ? 200 : 502).json(probe);
-}) as RequestHandler);
+}));
 
 /**
  * Generischer syBOS-Probe. Query-Params:
@@ -108,7 +109,7 @@ devRouter.get("/api/dev/blaulichtsms-probe", requireAuth("funktionaer"), (async 
  * Liefert die ersten 4000 Zeichen der Roh-Antwort + Status + content-type.
  * Praktisch um zu sehen wie syBOS auf bestimmte Aufrufe reagiert.
  */
-devRouter.get("/api/dev/sybos-probe", requireAuth("funktionaer"), (async (req, res) => {
+devRouter.get("/api/dev/sybos-probe", requireAuth("funktionaer"), ah(async (req, res) => {
   if (!env.SYBOS_API_URL || !env.SYBOS_TOKEN) {
     res.status(412).json({ error: "SYBOS_API_URL oder SYBOS_TOKEN nicht gesetzt" });
     return;
@@ -164,4 +165,4 @@ devRouter.get("/api/dev/sybos-probe", requireAuth("funktionaer"), (async (req, r
   } catch (err) {
     res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }
-}) as RequestHandler);
+}));
