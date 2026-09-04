@@ -1,6 +1,7 @@
-import { ArrowLeft, Printer, X } from "lucide-react";
-import { useMemo } from "react";
+import { AlertTriangle, ArrowLeft, FileText, Printer, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
+import { isNative } from "../lib/platform";
 import type { AlarmDaten } from "./AlarmCard";
 import type { Auftrag } from "./AuftraegeSection";
 import type { ChronikEintrag } from "./ChronikTimeline";
@@ -35,30 +36,60 @@ interface Props {
  * Druck-Flow: öffnet ein **neues Fenster** mit minimalem HTML +
  * Print-Styles und triggert dort print(). Vermeidet den klassischen
  * "Body-visibility-Hack" der Modal-Layouts mehrseitig duplizieren würde.
+ *
+ * C-10 (Audit 2026-09): In der Android-APK (Capacitor-WebView) gibt es
+ * weder window.open-Popups noch einen Druckdialog — der Klick lief vorher
+ * in ein alert() ins Leere. Nativ wird der Druck-Button deshalb gar nicht
+ * angeboten, stattdessen der Hinweis "PDF über die Zentrale". Im Browser
+ * ersetzt eine Inline-Fehlerzeile (printErr) das blockierende alert().
  */
 export function VorschauModal({ open, data, onClose }: Props) {
   const html = useMemo(() => (open ? renderHtml(data) : ""), [open, data]);
+  // C-10: Fehlertext statt alert() — bleibt im Modal sichtbar, blockiert nichts.
+  const [printErr, setPrintErr] = useState<string | null>(null);
+  const native = isNative();
 
   if (!open) return null;
 
   function printNow() {
-    const w = window.open("", "hotdoc-print", "width=900,height=1200");
+    setPrintErr(null);
+    let w: Window | null = null;
+    try {
+      w = window.open("", "hotdoc-print", "width=900,height=1200");
+    } catch (err) {
+      console.warn("[vorschau] window.open fehlgeschlagen:", err);
+      w = null;
+    }
     if (!w) {
-      alert("Pop-up-Blocker verhindert das Druckfenster. Bitte für diese Seite erlauben.");
+      setPrintErr(
+        "Druckfenster konnte nicht geöffnet werden (Pop-up-Blocker?). Bitte Pop-ups für HotDoc erlauben — oder das PDF über die Zentrale erzeugen.",
+      );
       return;
     }
-    w.document.open();
-    w.document.write(`<!doctype html>
+    try {
+      w.document.open();
+      w.document.write(`<!doctype html>
 <html lang="de"><head>
   <meta charset="utf-8">
   <title>Fahrzeugbericht ${data.alarm.alarmId} · ${data.funkrufname}</title>
   <style>${PRINT_STYLES}</style>
 </head><body>${html}</body></html>`);
-    w.document.close();
+      w.document.close();
+    } catch (err) {
+      console.warn("[vorschau] Druckfenster nicht beschreibbar:", err);
+      setPrintErr("Druckfenster konnte nicht befüllt werden. Bitte erneut versuchen.");
+      return;
+    }
     // print() nach kurzem Tick — mancher Browser braucht's
+    const win = w;
     setTimeout(() => {
-      w.focus();
-      w.print();
+      try {
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.warn("[vorschau] print() fehlgeschlagen:", err);
+        setPrintErr("Drucken wurde vom Browser abgelehnt. Bitte das PDF über die Zentrale erzeugen.");
+      }
     }, 300);
   }
 
@@ -108,19 +139,70 @@ export function VorschauModal({ open, data, onClose }: Props) {
             Vorschau · Fahrzeugbericht {data.alarm.alarmId} · {FAHRZEUGE[data.fahrzeugId].bezeichnung}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={printNow}
-              className="cta"
-              style={{ width: "auto", padding: "8px 14px", fontSize: 16.5 }}
-            >
-              <Printer size={14} /> Drucken
-            </button>
+            {!native && (
+              <button
+                type="button"
+                onClick={printNow}
+                className="cta"
+                style={{ width: "auto", padding: "8px 14px", fontSize: 16.5 }}
+              >
+                <Printer size={14} /> Drucken
+              </button>
+            )}
             <button type="button" onClick={onClose} className="themetoggle" aria-label="Schließen">
               <X size={16} />
             </button>
           </div>
         </div>
+
+        {/* C-10: Inline-Fehler statt alert() */}
+        {printErr ? (
+          <div
+            role="alert"
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              margin: "10px 18px 0",
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--red-tint)",
+              border: "1px solid var(--red-border)",
+              color: "var(--red)",
+              fontSize: 15.5,
+              lineHeight: 1.5,
+            }}
+          >
+            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+            <span>{printErr}</span>
+          </div>
+        ) : null}
+
+        {/* C-10: In der APK gibt es keinen Druckdialog — das PDF kommt von der Zentrale. */}
+        {native ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              margin: "10px 18px 0",
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--info-tint)",
+              border: "1px solid var(--blue-border)",
+              color: "var(--fg-2)",
+              fontSize: 15.5,
+              lineHeight: 1.5,
+            }}
+          >
+            <FileText size={16} style={{ flexShrink: 0, marginTop: 2, color: "var(--info)" }} />
+            <span>
+              <strong style={{ color: "var(--info)" }}>PDF über die Zentrale.</strong> Auf dem
+              Tablet gibt es keinen Druckdialog — der fertige Fahrzeugbericht wird nach dem
+              Abschluss als PDF in der Florian-Zentrale bzw. im Backoffice erzeugt.
+            </span>
+          </div>
+        ) : null}
 
         {/* Bericht-Inhalt (gleiches HTML wie im Print-Fenster, aber mit
             Light-Hintergrund damit's auch im Dark-Mode druckbar aussieht) */}
@@ -161,16 +243,18 @@ export function VorschauModal({ open, data, onClose }: Props) {
               minHeight: 44,
             }}
           >
-            <ArrowLeft size={14} /> Zurueck zur Bearbeitung
+            <ArrowLeft size={14} /> Zurück zur Bearbeitung
           </button>
-          <button
-            type="button"
-            onClick={printNow}
-            className="cta"
-            style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, minHeight: 44 }}
-          >
-            <Printer size={14} /> Drucken
-          </button>
+          {!native && (
+            <button
+              type="button"
+              onClick={printNow}
+              className="cta"
+              style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, minHeight: 44 }}
+            >
+              <Printer size={14} /> Drucken
+            </button>
+          )}
         </div>
       </div>
     </div>

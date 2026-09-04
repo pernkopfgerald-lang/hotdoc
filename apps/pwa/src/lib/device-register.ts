@@ -54,12 +54,21 @@ interface PushPluginModule {
 
 /**
  * N-09 (Audit 2026-09): Tipp auf die Push-Benachrichtigung (Alarm) → die
- * BerichtPage bekommt ein `hotdoc:alarm`-Window-Event mit den Push-Daten
- * (detail = notification.data, enthält u. a. einsatzId) und kann den
+ * BerichtPage bekommt ein `hotdoc:alarm`-Window-Event und kann den
  * passenden Tab direkt öffnen. Vorher landete der Tipp nur auf der zuletzt
- * sichtbaren Ansicht. Listener wird genau EINMAL pro App-Laufzeit gesetzt
- * (registerDevice läuft bei jedem Boot/Re-Boot).
+ * sichtbaren Ansicht.
+ *
+ * Vertrag: `new CustomEvent("hotdoc:alarm", { detail: { einsatzId } })` —
+ * `einsatzId` ist string oder null (Push ohne Einsatz-Bezug). Die übrigen
+ * Push-Daten (alarmId, einsatzort, …) werden zusätzlich durchgereicht.
+ * Listener wird genau EINMAL pro App-Laufzeit gesetzt (registerDevice
+ * läuft bei jedem Boot/Re-Boot).
  */
+export interface HotdocAlarmDetail {
+  einsatzId: string | null;
+  [key: string]: unknown;
+}
+
 let pushActionListenerInstalled = false;
 
 function installPushActionListener(PushNotifications: PushPluginModule["PushNotifications"]): void {
@@ -67,12 +76,12 @@ function installPushActionListener(PushNotifications: PushPluginModule["PushNoti
   pushActionListenerInstalled = true;
   void PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
     try {
-      const data = action.notification?.data;
-      window.dispatchEvent(
-        new CustomEvent("hotdoc:alarm", {
-          detail: data && typeof data === "object" ? data : {},
-        }),
-      );
+      const raw = action.notification?.data;
+      const data: Record<string, unknown> =
+        raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      const einsatzId = typeof data.einsatzId === "string" && data.einsatzId ? data.einsatzId : null;
+      const detail: HotdocAlarmDetail = { ...data, einsatzId };
+      window.dispatchEvent(new CustomEvent<HotdocAlarmDetail>("hotdoc:alarm", { detail }));
     } catch (err) {
       console.warn("[device-register] hotdoc:alarm dispatch fehlgeschlagen:", err);
     }

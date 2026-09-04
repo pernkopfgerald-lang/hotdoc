@@ -36,6 +36,9 @@ export type AuditEventType =
   // Eberstalzell" als "Floriane Berstalzell" verstanden hat. Audit-Trail
   // ist Pflicht damit der Vorgang nachvollziehbar bleibt.
   | "chronik-edit"
+  // D-11 (Audit R3): Soft-Delete eines Chronik-Eintrags (Test-Diktat,
+  // Eintrag im falschen Einsatz) — bleibt im Doc, faellt aus PDF/Anzeige.
+  | "chronik-delete"
   | "config-changed";
 
 export interface AuditEvent {

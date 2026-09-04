@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
@@ -10,6 +10,65 @@ interface State {
   errorMessage?: string;
   errorStack?: string;
   errorCount: number;
+  /** C-13: zweistufige Bestätigung für "Lokale Daten löschen". */
+  confirmWipe: boolean;
+  wiping: boolean;
+}
+
+/** localStorage-Präfixe, die beim harten Reset weg müssen (Drafts, Abschluss-States). */
+const LOCAL_PREFIXES = ["hotdoc.draft.", "hotdoc.report-state."];
+/** Einzel-Keys, die beim harten Reset weg müssen (Token, Handoff, Update-Merker). */
+const LOCAL_KEYS = ["hotdoc.tabletToken", "hotdoc.handoffInfo", "hotdoc.update.dismissed"];
+
+/**
+ * C-13 (Audit 2026-09): Harter lokaler Reset — letzte Rettung, wenn die App
+ * wiederholt crasht oder die lokale Datenbank nicht mehr lesbar ist.
+ *
+ *  1. Drafts + Abschluss-States + Token aus localStorage
+ *  2. PouchDB "hotdoc-local" zerstören (Fahrzeug-Konfig, Fotos, Outboxen)
+ *     — bevorzugt über db.destroy(); wenn das Modul selbst nicht mehr
+ *     lädt, direkt die IndexedDB hinter PouchDB löschen
+ *  3. /reset.html → Service-Worker + Caches weg, dann frische App-Shell
+ *
+ * Wird auch vom Setup-Screen (Grund "boot-failed") über Über HotDoc → Reset
+ * benutzt. Wirft nie; jeder Schritt ist best-effort.
+ */
+export async function hardResetLocalData(): Promise<void> {
+  // 1) localStorage
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && LOCAL_PREFIXES.some((p) => k.startsWith(p))) toRemove.push(k);
+    }
+    for (const k of [...toRemove, ...LOCAL_KEYS]) localStorage.removeItem(k);
+  } catch {
+    // Private-Mode / Storage gesperrt — egal, weiter
+  }
+  // 2) PouchDB
+  let destroyed = false;
+  try {
+    const { db } = await import("../db/pouch");
+    await db.destroy();
+    destroyed = true;
+  } catch (err) {
+    console.warn("[reset] db.destroy() fehlgeschlagen, lösche IndexedDB direkt:", err);
+  }
+  if (!destroyed) {
+    try {
+      // PouchDB-IndexedDB-Adapter prefixt den Namen mit "_pouch_".
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase("_pouch_hotdoc-local");
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+    } catch {
+      // egal — reset.html räumt den Rest
+    }
+  }
+  // 3) Service-Worker + Caches über reset.html, danach frische App
+  window.location.href = "/reset.html";
 }
 
 /**
@@ -27,7 +86,7 @@ interface State {
  * nichts mehr machen außer das Tablet neu zu starten.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, errorCount: 0 };
+  state: State = { hasError: false, errorCount: 0, confirmWipe: false, wiping: false };
 
   static getDerivedStateFromError(err: Error): Partial<State> {
     return {
@@ -87,6 +146,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   reload = (): void => {
     window.location.reload();
+  };
+
+  /** C-13: harter Reset — erst nach zweitem Klick. */
+  wipe = (): void => {
+    if (this.state.wiping) return;
+    this.setState({ wiping: true });
+    void hardResetLocalData();
   };
 
   override render(): ReactNode {
@@ -284,6 +350,101 @@ export class ErrorBoundary extends Component<Props, State> {
             </details>
           ) : null}
 
+          {/* C-13: ab dem zweiten Crash in dieser Sitzung die letzte Rettung
+              anbieten — lokale Daten komplett löschen (Drafts, PouchDB,
+              Service-Worker). Zweistufig, weil unwiderruflich. */}
+          {this.state.errorCount >= 2 ? (
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 10,
+                background: "var(--red-tint)",
+                border: "1px solid var(--red-border)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 15.5, lineHeight: 1.5, color: "var(--fg-2)" }}>
+                <strong style={{ color: "var(--red)" }}>Wiederholter Absturz.</strong> Wenn „Neu
+                laden“ nicht hilft, sind wahrscheinlich die lokalen Daten auf diesem Gerät
+                beschädigt. „Lokale Daten löschen“ entfernt Bericht-Entwürfe, die lokale
+                Datenbank und den App-Cache — das Tablet startet danach wie neu (Fahrzeug
+                wählen, PIN). Alles bereits Gesendete bleibt am Server.
+              </div>
+              {!this.state.confirmWipe ? (
+                <button
+                  type="button"
+                  onClick={() => this.setState({ confirmWipe: true })}
+                  style={{
+                    alignSelf: "flex-start",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    border: "1px solid var(--red-border)",
+                    background: "transparent",
+                    color: "var(--red)",
+                    fontWeight: 700,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    minHeight: 44,
+                  }}
+                >
+                  <Trash2 size={15} />
+                  Lokale Daten löschen …
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 15.5, color: "var(--red)", fontWeight: 600, flex: 1, minWidth: 180 }}>
+                    Wirklich alle lokalen Daten löschen?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => this.setState({ confirmWipe: false })}
+                    disabled={this.state.wiping}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--fg)",
+                      fontSize: 15,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      minHeight: 40,
+                    }}
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={this.wipe}
+                    disabled={this.state.wiping}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: 0,
+                      background: "var(--red)",
+                      color: "#fff",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: this.state.wiping ? "wait" : "pointer",
+                      minHeight: 40,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    {this.state.wiping ? "Lösche …" : "Ja, alles löschen"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           <p
             style={{
               marginTop: 0,
@@ -296,8 +457,9 @@ export class ErrorBoundary extends Component<Props, State> {
               color: "var(--fg-2)",
             }}
           >
-            <strong>„Tablet zurücksetzen"</strong> löscht den Login-Token von diesem Gerät. Du
-            kannst dich danach mit der Fahrzeug-PIN wieder einloggen.
+            <strong>„Tablet zurücksetzen"</strong> löscht nur den Login-Token von diesem Gerät —
+            Entwürfe bleiben erhalten. Du kannst dich danach mit der Fahrzeug-PIN wieder
+            einloggen.
           </p>
         </div>
       </div>

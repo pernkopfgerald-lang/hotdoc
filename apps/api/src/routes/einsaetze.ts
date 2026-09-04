@@ -18,7 +18,7 @@ import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
-import { writeAuditEvent, type AuditEventType } from "../services/audit.js";
+import { writeAuditEvent } from "../services/audit.js";
 import type { SessionPayload } from "../services/auth/jwt.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 
@@ -145,8 +145,22 @@ let einsatzListCache: {
   list: Awaited<ReturnType<typeof db.list>>;
 } | null = null;
 
+// C-07 (Audit R3): Der status=aktiv-Pfad (5-s-Tablet-Poll, Florian, Lage-
+// karte) laeuft ueber eine Mango-Query auf den Index type-status
+// (couch/client.ts:ensureMangoIndizes) statt ueber den einsatz:-Vollscan —
+// die Antwortzeit haengt damit nicht mehr an der Archivgroesse (aktive
+// Einsaetze sind < 20). Eigener TTL-Cache, A-03a gilt weiter: EIN CouchDB-
+// Read pro Fenster fuer alle Poller. Der Vollscan-Cache bleibt fuer die
+// Archiv-/Abgeschlossen-Ansichten (ohne status bzw. status=abgeschlossen).
+const AKTIV_LIST_FIND_LIMIT = 1000;
+let einsatzAktivCache: {
+  at: number;
+  docs: Array<Record<string, unknown>>;
+} | null = null;
+
 function invalidateEinsatzCache(): void {
   einsatzListCache = null;
+  einsatzAktivCache = null;
 }
 
 // ─── GET /api/einsaetze ─────────────────────────────────────
@@ -168,28 +182,51 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), ah(async (req, res) => {
   const rawSkip = Number.parseInt(String(req.query.skip ?? ""), 10);
   const skip = Number.isFinite(rawSkip) && rawSkip > 0 ? rawSkip : 0;
 
-  // A-03a: rohes Scan-Ergebnis aus dem TTL-Cache bedienen wenn frisch —
-  // Filter/Sortierung/Projektion laufen weiterhin pro Request (billig).
-  let list: Awaited<ReturnType<typeof db.list>>;
-  const cached = einsatzListCache;
-  if (cached && Date.now() - cached.at < EINSATZ_LIST_CACHE_TTL_MS) {
-    list = cached.list;
+  let docs: Array<Record<string, unknown>>;
+  if (status === "aktiv") {
+    // C-07: Mango-Query (Index type-status) statt Vollscan — gecacht.
+    const cachedAktiv = einsatzAktivCache;
+    if (cachedAktiv && Date.now() - cachedAktiv.at < EINSATZ_LIST_CACHE_TTL_MS) {
+      // Kopie: unten wird in-place sortiert, der Cache bleibt unberuehrt.
+      docs = [...cachedAktiv.docs];
+    } else {
+      const found = await db.find({
+        selector: { type: "einsatz", status: "aktiv" },
+        limit: AKTIV_LIST_FIND_LIMIT,
+      });
+      const aktive = found.docs as Array<Record<string, unknown>>;
+      if (aktive.length >= AKTIV_LIST_FIND_LIMIT) {
+        logger.warn(
+          { limit: AKTIV_LIST_FIND_LIMIT },
+          "GET /api/einsaetze?status=aktiv: Find-Limit erreicht — Liste evtl. unvollstaendig",
+        );
+      }
+      einsatzAktivCache = { at: Date.now(), docs: aktive };
+      docs = [...aktive];
+    }
   } else {
-    list = await db.list({
-      startkey: "einsatz:",
-      endkey: "einsatz:￰",
-      include_docs: true,
-      descending: false,
-    });
-    einsatzListCache = { at: Date.now(), list };
-  }
-  let docs = list.rows
-    .map((r) => r.doc)
-    .filter((d): d is NonNullable<typeof d> => d !== undefined)
-    .filter((d) => (d as { type?: string }).type === "einsatz");
-
-  if (status === "aktiv" || status === "abgeschlossen") {
-    docs = docs.filter((d) => (d as { status?: string }).status === status);
+    // A-03a: rohes Scan-Ergebnis aus dem TTL-Cache bedienen wenn frisch —
+    // Filter/Sortierung/Projektion laufen weiterhin pro Request (billig).
+    let list: Awaited<ReturnType<typeof db.list>>;
+    const cached = einsatzListCache;
+    if (cached && Date.now() - cached.at < EINSATZ_LIST_CACHE_TTL_MS) {
+      list = cached.list;
+    } else {
+      list = await db.list({
+        startkey: "einsatz:",
+        endkey: "einsatz:￰",
+        include_docs: true,
+        descending: false,
+      });
+      einsatzListCache = { at: Date.now(), list };
+    }
+    docs = list.rows
+      .map((r) => r.doc as Record<string, unknown> | undefined)
+      .filter((d): d is Record<string, unknown> => d !== undefined)
+      .filter((d) => (d as { type?: string }).type === "einsatz");
+    if (status === "abgeschlossen") {
+      docs = docs.filter((d) => (d as { status?: string }).status === status);
+    }
   }
 
   // Fahrzeug-Filter: jedes Fahrzeug-Tablet schickt seine eigene Id mit,
@@ -1771,17 +1808,17 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req,
     return;
   }
 
-  // C-06 (Audit R3): Server-Empfangszeit stempeln. Weicht der Client-
-  // Zeitstempel mehr als 5 min von der Server-Zeit ab (Tablet-Uhr verstellt,
-  // kein NTP im Funkloch), uebernimmt der Server seine Empfangszeit als
-  // zeitstempel — die Chronik bleibt chronologisch, das Original ist im
-  // Log nachvollziehbar. Bewusst NICHT bei Outbox-Nachlieferungen greifend:
-  // die sind i. d. R. > 5 min alt und tragen einen korrekten Zeitstempel —
-  // darum nur bei GROSSER Abweichung UND wenn der Zeitstempel in der
-  // ZUKUNFT liegt oder der Eintrag nicht als pending markiert ist.
+  // C-06 (Audit R3): Server-Empfangszeit stempeln (empfangenAm immer im
+  // Eintrag). Der Client-Zeitstempel wird NUR ersetzt, wenn er unparsbar ist
+  // oder mehr als 5 min in der ZUKUNFT liegt (Tablet-Uhr geht vor — das kann
+  // kein echter Eintrag sein). Ein Zeitstempel in der Vergangenheit bleibt
+  // erhalten: Nach 40 min Funkloch liefert die Outbox korrekte, aber alte
+  // Eintraege nach — die duerfen nicht auf die Empfangszeit springen, sonst
+  // ist genau die Chronologie kaputt, die hier geschuetzt werden soll. Eine
+  // nachgehende Uhr ist davon nicht unterscheidbar; sie wird nur geloggt.
   const empfangenAm = new Date().toISOString();
   const clientMs = Date.parse(parsed.data.zeitstempel);
-  const abweichungMs = Math.abs(clientMs - Date.now());
+  const abweichungMs = clientMs - Date.now();
   let zeitstempel = parsed.data.zeitstempel;
   if (!Number.isFinite(clientMs) || abweichungMs > CHRONIK_ZEIT_TOLERANZ_MS) {
     logger.warn(
@@ -1793,9 +1830,19 @@ einsaetzeRouter.post("/api/einsaetze/:id/chronik", requireAuth(), ah(async (req,
         empfangenAm,
         abweichungSek: Number.isFinite(abweichungMs) ? Math.round(abweichungMs / 1000) : null,
       },
-      "POST chronik: Client-Zeitstempel weicht > 5 min von Server-Zeit ab — empfangenAm uebernommen",
+      "POST chronik: Client-Zeitstempel unparsbar oder > 5 min in der Zukunft — empfangenAm uebernommen",
     );
     zeitstempel = empfangenAm;
+  } else if (-abweichungMs > CHRONIK_ZEIT_TOLERANZ_MS) {
+    logger.info(
+      {
+        id,
+        entryId: parsed.data.id,
+        fzg: parsed.data.fahrzeugId,
+        verspaetungSek: Math.round(-abweichungMs / 1000),
+      },
+      "POST chronik: Eintrag > 5 min alt (Outbox-Nachlieferung oder nachgehende Uhr) — Client-Zeit beibehalten",
+    );
   }
   const eintrag = { ...parsed.data, zeitstempel, empfangenAm };
 
@@ -2037,10 +2084,7 @@ einsaetzeRouter.delete(
     invalidateEinsatzCache();
     logger.info({ id, entryId, by: session.username }, "Chronik-Eintrag geloescht (soft)");
     await writeAuditEvent({
-      // TODO(audit.ts): "chronik-delete" in AuditEventType aufnehmen — die
-      // Union liegt in services/audit.ts (nicht Teil dieses Aenderungs-
-      // Scopes); bis dahin Cast, der Event-Typ wird 1:1 persistiert.
-      type: "chronik-delete" as unknown as AuditEventType,
+      type: "chronik-delete",
       actorUsername: session.username,
       actorRolle: session.rolle,
       einsatzId: id,
@@ -2099,8 +2143,14 @@ einsaetzeRouter.get(
 // das Tablet-Archiv braucht nur die juengsten Berichte, nicht Jahre an
 // Historie. Gekappt wird nach geaendertAm absteigend (die zuletzt
 // bearbeiteten Berichte bleiben erhalten).
+// C-07 (Audit R3): Mango-Query auf den Index type-fahrzeugId-status statt
+// fzgber:-Vollscan ueber ALLE Fahrzeuge. Mango kann ohne Index auf
+// geaendertAm nicht serverseitig nach Aktualitaet sortieren — darum ein
+// grosszuegiges Find-Limit (ein Fahrzeug hat < 300 Berichte/Jahr), die
+// Sortierung + Kappung auf `limit` bleiben wie bisher in JS.
 const MEINE_DEFAULT_LIMIT = 100;
 const MEINE_MAX_LIMIT = 500;
+const MEINE_FIND_LIMIT = 2000;
 einsaetzeRouter.get(
   "/api/fahrzeugberichte/meine",
   requireAuth(),
@@ -2118,21 +2168,30 @@ einsaetzeRouter.get(
       Number.isFinite(rawLimit) && rawLimit > 0
         ? Math.min(rawLimit, MEINE_MAX_LIMIT)
         : MEINE_DEFAULT_LIMIT;
-    const list = await db.list({
-      startkey: "fzgber:",
-      endkey: "fzgber:￰",
-      include_docs: true,
+    // C-07: Selektor deckt den Index type-fahrzeugId-status ab; bei
+    // status=alle nur den Praefix (type, fahrzeugId).
+    const found = await db.find({
+      selector: {
+        type: "fahrzeugbericht",
+        fahrzeugId,
+        ...(statusFilter !== "alle" ? { status: statusFilter } : {}),
+      },
+      limit: MEINE_FIND_LIMIT,
     });
-    const fzgbers = list.rows
-      .map((r) => r.doc)
-      .filter((d): d is NonNullable<typeof d> => d !== undefined)
-      .filter((d) => {
-        const doc = d as { type?: string; fahrzeugId?: string; status?: string };
-        if (doc.type !== "fahrzeugbericht") return false;
-        if (doc.fahrzeugId !== fahrzeugId) return false;
-        if (statusFilter !== "alle" && doc.status !== statusFilter) return false;
-        return true;
-      });
+    if (found.docs.length >= MEINE_FIND_LIMIT) {
+      logger.warn(
+        { fahrzeugId, statusFilter, limit: MEINE_FIND_LIMIT },
+        "fahrzeugberichte/meine: Find-Limit erreicht — aelteste Berichte evtl. nicht beruecksichtigt",
+      );
+    }
+    // Defensiv nachfiltern (Selektor-Semantik lokal abgesichert).
+    const fzgbers = (found.docs as Array<Record<string, unknown>>).filter((d) => {
+      const doc = d as { type?: string; fahrzeugId?: string; status?: string };
+      if (doc.type !== "fahrzeugbericht") return false;
+      if (doc.fahrzeugId !== fahrzeugId) return false;
+      if (statusFilter !== "alle" && doc.status !== statusFilter) return false;
+      return true;
+    });
     const items: Array<{
       _id: string;
       einsatzId: string;

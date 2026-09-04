@@ -13,5 +13,7 @@
  *   asTruppsAus(3) === 2
  */
 export function asTruppsAus(asPersonen: number): number {
+  // NaN/Infinity (z. B. aus Number("") im Formular) → 0 statt NaN-Trupps.
+  if (!Number.isFinite(asPersonen)) return 0;
   return Math.ceil(Math.max(0, asPersonen) / 2);
 }

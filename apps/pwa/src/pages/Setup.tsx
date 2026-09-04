@@ -1,9 +1,10 @@
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
-import { AlertTriangle, ChevronRight, Download, Info, Lock, Smartphone } from "lucide-react";
-import { useState } from "react";
-import { db } from "../db/pouch";
+import { AlertTriangle, ChevronRight, Download, Info, Loader2, Lock, Smartphone } from "lucide-react";
+import { useEffect, useState } from "react";
+import { db, getFahrzeugConfig } from "../db/pouch";
 import { AboutModal } from "../components/AboutModal";
 import { BrandLogo } from "../components/BrandLogo";
+import { hardResetLocalData } from "../components/ErrorBoundary";
 import { isNative } from "../lib/platform";
 
 /**
@@ -46,6 +47,24 @@ interface Props {
 const PIN_TOKEN_KEY = "hotdoc.tabletToken";
 
 /**
+ * Gründe, mit denen App.tsx den Setup-Screen öffnet (sessionStorage
+ * "hotdoc.setupReason"). Alles andere = normales Erst-Setup.
+ *  - auth-failed  → Token tot/weg (Server-Restart, Secret-Rotation, ITP)
+ *  - role-stale   → Zentrale-Tablet mit alter mannschaft-Rolle
+ *  - boot-failed  → C-02: PouchDB beim Boot nicht lesbar
+ */
+type SetupReason = "auth-failed" | "role-stale" | "boot-failed" | null;
+
+/**
+ * N-01/I-04 (Audit 2026-09): Zustand der stillen Neuanmeldung.
+ *  - pruefe         → fahrzeug:self wird gelesen
+ *  - laeuft         → pin-register läuft für das gespeicherte Fahrzeug
+ *  - fehlgeschlagen → Auto-Login ging nicht, User muss PIN-Weg gehen
+ *  - kein           → kein gespeichertes Fahrzeug bzw. kein Auth-Grund
+ */
+type AutoLogin = "pruefe" | "laeuft" | "fehlgeschlagen" | "kein";
+
+/**
  * Erstes Setup nach Installation:
  * 1. Fahrzeug wählen
  * 2. Backend registriert das Tablet, gibt JWT zurück → wird in
@@ -58,6 +77,13 @@ const PIN_TOKEN_KEY = "hotdoc.tabletToken";
  * Fallback wenn das Backend nicht erreichbar ist (z. B. erstes Setup
  * ohne Netz): Tablet bleibt offline-tauglich, registriert sich beim
  * ersten Online-Sync nach.
+ *
+ * N-01/I-04 (Audit 2026-09): Landet das Tablet wegen abgelaufenem Token
+ * hier (auth-failed/role-stale) und liegt noch `fahrzeug:self` in PouchDB,
+ * wird die Anmeldung OHNE PIN-Dialog direkt wiederholt — der Server
+ * erlaubt pin-register ohne PIN. Der Hinweis "kein PIN nötig" erscheint
+ * nur, wenn das auch wirklich passiert; scheitert es, sieht der User den
+ * normalen PIN-Weg mit Fehlertext.
  */
 export function Setup({ onSetupDone }: Props) {
   const [selectedFzg, setSelectedFzg] = useState<FahrzeugId | null>(null);
@@ -78,16 +104,63 @@ export function Setup({ onSetupDone }: Props) {
   // war (z. B. nach Backend-Restart, JWT-Secret-Rotation oder iOS-Safari-
   // ITP-Storage-Cleanup), wird in sessionStorage ein Reason-Flag gesetzt.
   // Wir zeigen dem User dann einen freundlichen Hinweis statt einer
-  // unerklärten Setup-Seite.
-  const setupReason = (() => {
+  // unerklärten Setup-Seite. Einmalig im State-Initializer lesen — vorher
+  // lief das bei jedem Render und der Hinweis verschwand nach dem ersten
+  // State-Update wieder. Das Flag wird erst im Mount-Effekt geloescht, damit
+  // ein doppelt laufender Initializer (StrictMode) nicht ins Leere greift.
+  const [setupReason] = useState<SetupReason>(() => {
     try {
       const r = sessionStorage.getItem("hotdoc.setupReason");
-      if (r) sessionStorage.removeItem("hotdoc.setupReason");
-      return r;
+      return r === "auth-failed" || r === "role-stale" || r === "boot-failed" ? r : null;
     } catch {
       return null;
     }
-  })();
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem("hotdoc.setupReason");
+    } catch {
+      // egal
+    }
+  }, []);
+  const authReason = setupReason === "auth-failed" || setupReason === "role-stale";
+  const [autoLogin, setAutoLogin] = useState<AutoLogin>(() => (authReason ? "pruefe" : "kein"));
+  /** Fahrzeug, für das der Auto-Login läuft (nur für den Hinweistext). */
+  const [autoFzg, setAutoFzg] = useState<FahrzeugId | null>(null);
+
+  // N-01/I-04: stille Neuanmeldung über fahrzeug:self — ohne PIN-Dialog.
+  useEffect(() => {
+    if (autoLogin !== "pruefe") return;
+    let cancelled = false;
+    void (async () => {
+      let cfg: Awaited<ReturnType<typeof getFahrzeugConfig>> = null;
+      try {
+        cfg = await getFahrzeugConfig();
+      } catch (err) {
+        console.warn("[setup] fahrzeug:self nicht lesbar:", err);
+        cfg = null;
+      }
+      if (cancelled) return;
+      if (!cfg?.fahrzeugId) {
+        setAutoLogin("kein");
+        return;
+      }
+      setAutoLogin("laeuft");
+      setAutoFzg(cfg.fahrzeugId);
+      setSelectedFzg(cfg.fahrzeugId);
+      setBusy(true);
+      // Geräte-UUID beibehalten — sonst zählt das Backend ein "neues" Gerät.
+      const ok = await tryRegister(cfg.fahrzeugId, cfg.tabletDeviceId);
+      if (cancelled) return;
+      setBusy(false);
+      if (!ok) setAutoLogin("fehlgeschlagen");
+      // ok → tryRegister hat onSetupDone gerufen, der Screen ist weg.
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLogin]);
 
   /**
    * Fahrzeug-Klick → oeffnet Confirm-Dialog mit PIN-Eingabe.
@@ -139,9 +212,12 @@ export function Setup({ onSetupDone }: Props) {
    * historisch — PIN-Body wird ignoriert). Liefert bei Erfolg den
    * Session-Token, persistiert ihn lokal und schreibt das `fahrzeug:self`-
    * Doc mit Upsert-Pattern (kein „Document update conflict" mehr).
+   *
+   * @param deviceIdOverride N-01: beim Auto-Login die bestehende Geräte-UUID
+   *   aus fahrzeug:self weiterverwenden statt eine neue zu würfeln.
    */
-  async function tryRegister(fahrzeugId: FahrzeugId): Promise<boolean> {
-    const deviceId = crypto.randomUUID();
+  async function tryRegister(fahrzeugId: FahrzeugId, deviceIdOverride?: string): Promise<boolean> {
+    const deviceId = deviceIdOverride || crypto.randomUUID();
     try {
       const { resolveApiUrl } = await import("../lib/api");
       const res = await fetch(resolveApiUrl("/api/auth/tablet/pin-register"), {
@@ -292,8 +368,10 @@ export function Setup({ onSetupDone }: Props) {
         </p>
       </header>
 
-      {/* ─── Reason-Hinweis (Boot-Check hat altes Token verworfen) ─── */}
-      {setupReason === "auth-failed" || setupReason === "role-stale" ? (
+      {/* ─── Reason-Hinweis (Boot-Check hat altes Token verworfen) ───
+          N-01/I-04: Text nur, wenn er auch stimmt — "kein PIN nötig"
+          erscheint ausschliesslich waehrend der stillen Neuanmeldung. */}
+      {authReason && (autoLogin === "pruefe" || autoLogin === "laeuft") ? (
         <div
           role="status"
           style={{
@@ -308,10 +386,79 @@ export function Setup({ onSetupDone }: Props) {
             fontSize: 16.5,
             lineHeight: 1.55,
             boxShadow: "var(--glow-info)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
           }}
         >
-          <strong style={{ color: "var(--info)" }}>Sitzung aufgefrischt.</strong>{" "}
-          Wähle dein Fahrzeug — du bist sofort wieder drin, kein PIN nötig.
+          <Loader2 size={18} className="animate-spin" style={{ color: "var(--info)", flexShrink: 0 }} />
+          <span>
+            <strong style={{ color: "var(--info)" }}>Sitzung wird aufgefrischt …</strong>{" "}
+            {autoLogin === "laeuft" && autoFzg
+              ? `${FAHRZEUGE[autoFzg].funkrufname} meldet sich neu an — kein PIN nötig.`
+              : "Gespeichertes Fahrzeug wird geprüft."}
+          </span>
+        </div>
+      ) : null}
+      {authReason && autoLogin === "fehlgeschlagen" ? (
+        <div
+          role="status"
+          style={{
+            margin: "8px 0 0",
+            padding: "14px 16px",
+            borderRadius: "var(--radius-m)",
+            background: "var(--warn-tint)",
+            border: "1px solid var(--amber-border)",
+            color: "var(--fg)",
+            fontSize: 16.5,
+            lineHeight: 1.55,
+          }}
+        >
+          <strong style={{ color: "var(--warn)" }}>Automatische Neuanmeldung fehlgeschlagen.</strong>{" "}
+          Wähle dein Fahrzeug und gib die PIN ein.
+        </div>
+      ) : null}
+      {authReason && autoLogin === "kein" ? (
+        <div
+          role="status"
+          style={{
+            margin: "8px 0 0",
+            padding: "14px 16px",
+            borderRadius: "var(--radius-m)",
+            background: "var(--info-tint)",
+            border: "1px solid var(--blue-border)",
+            color: "var(--fg)",
+            fontSize: 16.5,
+            lineHeight: 1.55,
+          }}
+        >
+          <strong style={{ color: "var(--info)" }}>Anmeldung abgelaufen.</strong>{" "}
+          Wähle dein Fahrzeug und gib die PIN ein — der laufende Bericht ist am Server gespeichert.
+        </div>
+      ) : null}
+      {/* C-02: PouchDB beim Boot nicht lesbar → harter Reset ist der Weg. */}
+      {setupReason === "boot-failed" ? (
+        <div
+          role="alert"
+          style={{
+            margin: "8px 0 0",
+            padding: "14px 16px",
+            borderRadius: "var(--radius-m)",
+            background: "var(--red-tint)",
+            border: "1px solid var(--red-border)",
+            color: "var(--fg)",
+            fontSize: 16.5,
+            lineHeight: 1.55,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <AlertTriangle size={18} style={{ color: "var(--red)", flexShrink: 0, marginTop: 2 }} />
+          <span>
+            <strong style={{ color: "var(--red)" }}>Lokale Datenbank nicht lesbar</strong> — Tablet
+            zurücksetzen (Über HotDoc → Reset). Bereits gesendete Berichte bleiben am Server.
+          </span>
         </div>
       ) : null}
 
@@ -528,7 +675,14 @@ export function Setup({ onSetupDone }: Props) {
         <Info size={14} />
         Über HotDoc · Entwickler · Lizenz · Release-Notes
       </button>
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {/* C-02: Bei "boot-failed" bekommt das About-Modal den harten Reset
+          (Drafts + PouchDB + Service-Worker) als Geraete-Aktion. Im
+          normalen Setup gibt es nichts zurueckzusetzen. */}
+      <AboutModal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        {...(setupReason === "boot-failed" ? { onResetSetup: () => void hardResetLocalData() } : {})}
+      />
 
       {/* U-07: Bestaetigungs-Dialog vor Fahrzeug-Registrierung.
           "Dieses Tablet wird als <Funkrufname> registriert. Spaeter nur
@@ -592,7 +746,7 @@ export function Setup({ onSetupDone }: Props) {
             <p style={{ margin: 0, fontSize: 17, color: "var(--fg-2)", lineHeight: 1.55 }}>
               Das Tablet wird als <strong>{FAHRZEUGE[confirmFzg].funkrufname}</strong>{" "}
               ({FAHRZEUGE[confirmFzg].bezeichnung}) registriert.
-              Spaeter nur durch einen Funktionaer aenderbar.
+              Später nur durch einen Funktionär änderbar.
             </p>
 
             {/* PIN-Eingabe — Test-Phasen-Schutz pro Fahrzeug. PIN ist in
@@ -616,7 +770,7 @@ export function Setup({ onSetupDone }: Props) {
                 }}
               >
                 <Lock size={14} />
-                PIN zur Bestaetigung
+                PIN zur Bestätigung
               </label>
               <input
                 id="setup-confirm-pin"
@@ -696,7 +850,7 @@ export function Setup({ onSetupDone }: Props) {
                   minHeight: 48,
                 }}
               >
-                Anderes waehlen
+                Anderes wählen
               </button>
               <button
                 type="button"

@@ -37,7 +37,11 @@ function writeFlag(on: boolean): void {
   }
 }
 
-export function lazyRetry<T extends ComponentType<unknown>>(
+// Signatur spiegelt React.lazy: `ComponentType<any>`, damit Komponenten mit
+// konkreten Props (Setup: onSetupDone) ohne Cast durchgehen — mit `unknown`
+// wären deren Props nicht zuweisbar.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function lazyRetry<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
   return lazy(async () => {

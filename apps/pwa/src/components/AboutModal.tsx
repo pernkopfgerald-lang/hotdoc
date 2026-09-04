@@ -1,6 +1,7 @@
 import { AlertTriangle, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { AboutSection } from "./AboutSection";
+import { FxToggle } from "./FxToggle";
 
 interface Props {
   open: boolean;
@@ -17,6 +18,10 @@ interface Props {
 /**
  * Modal-Wrap fuer die About-Seite. Wird ueber den "Über" Link im Footer
  * oder Setup-Screen geoeffnet.
+ *
+ * E-10 (Audit 2026-09): Der Performance-Modus (FxToggle) wohnt jetzt hier
+ * als Zeile "Darstellung" unter den Geraete-Aktionen — im Footer war er
+ * ein kryptisches Badge, das niemand zuordnen konnte.
  */
 export function AboutModal({ open, onClose, onResetSetup }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
@@ -86,31 +91,59 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
         </header>
         <AboutSection />
 
-        {/* U-12: Tablet-Reset gehoert hierher — nicht in die Fusszeile. */}
-        {onResetSetup && (
+        {/* Geraete-Aktionen: Darstellung (E-10) + U-12 Tablet-Reset. Der
+            Reset-Block bleibt an onResetSetup gebunden — im Setup-Screen
+            (kein Prop) gibt es nur die Darstellungs-Zeile. */}
+        <div
+          style={{
+            marginTop: 18,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px dashed var(--border-strong)",
+            background: "var(--surface-2)",
+          }}
+        >
           <div
             style={{
-              marginTop: 18,
-              padding: 14,
-              borderRadius: 12,
-              border: "1px dashed var(--border-strong)",
-              background: "var(--surface-2)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12.5,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--fg-3)",
+              marginBottom: 8,
             }}
           >
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 12.5,
-                fontWeight: 700,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "var(--fg-3)",
-                marginBottom: 8,
-              }}
-            >
-              Geraete-Aktionen
+            Geräte-Aktionen
+          </div>
+
+          {/* V-AB: Darstellung / Performance-Modus */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              padding: "6px 0 10px",
+              ...(onResetSetup
+                ? { borderBottom: "1px solid var(--border)", marginBottom: 12 }
+                : {}),
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 16.5, fontWeight: 600, color: "var(--fg)" }}>
+                Darstellung
+              </div>
+              <div style={{ fontSize: 14.5, color: "var(--fg-3)", lineHeight: 1.45, marginTop: 2 }}>
+                Performance-Modus: <strong>Auto</strong> erkennt schwache Tablets und schaltet
+                Glas-Effekte ab. Tippen wechselt Auto → Lite → Full.
+              </div>
             </div>
-            {!confirmReset ? (
+            <FxToggle />
+          </div>
+
+          {onResetSetup &&
+            (!confirmReset ? (
               <button
                 type="button"
                 onClick={() => setConfirmReset(true)}
@@ -130,7 +163,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                 }}
               >
                 <RotateCcw size={14} />
-                Tablet zuruecksetzen (Setup oeffnen)
+                Tablet zurücksetzen (Setup öffnen)
               </button>
             ) : (
               <div
@@ -147,7 +180,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
               >
                 <AlertTriangle size={16} style={{ color: "var(--warn)", flexShrink: 0 }} />
                 <span style={{ fontSize: 16.5, color: "var(--warn)", flex: 1, minWidth: 200 }}>
-                  Wirklich? Du musst danach wieder ein Fahrzeug auswaehlen
+                  Wirklich? Du musst danach wieder ein Fahrzeug auswählen
                   und der laufende Bericht ist im Backend gespeichert.
                 </span>
                 <button
@@ -186,12 +219,11 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     minHeight: 36,
                   }}
                 >
-                  Ja, zuruecksetzen
+                  Ja, zurücksetzen
                 </button>
               </div>
-            )}
-          </div>
-        )}
+            ))}
+        </div>
       </div>
     </div>
   );

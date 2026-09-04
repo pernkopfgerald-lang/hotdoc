@@ -7,6 +7,21 @@
  * eine leere Liste und der Poller protokolliert das einmalig beim Start.
  * Mock-Modus wurde entfernt — Test-Einsätze laufen ueber den normalen
  * "Neuer Einsatz → Uebung"-Flow im Backoffice/PWA.
+ *
+ * Audit R3:
+ *  - I-01: Sofort-Poll beim Start, noch vor dem ersten setInterval-Tick —
+ *    nach einem Deploy/Neustart vergehen sonst erst POLL_INTERVAL Sekunden,
+ *    in denen ein Alarm unbemerkt bliebe. Kostenneutral (ein Request mehr
+ *    pro Prozessstart).
+ *  - N-11/I-12: inFlight-Guard (kein zweiter Poll, solange einer laeuft);
+ *    409 beim Insert = Race mit einem parallelen Schreiber -> kein Fehler,
+ *    die Schleife verarbeitet die restlichen Alarme; Fehler bei EINEM Alarm
+ *    blockieren die anderen nicht; Chronik-Zeitstempel UTC-normalisiert.
+ *  - S-09/N-10: Doppelalarm-/Nachalarmierungs-Erkennung — siehe
+ *    findeDoppelalarmKandidat(). Das neue Einsatz-Doc wird trotzdem angelegt
+ *    (mit `moeglichesDuplikatVon`), der aeltere Einsatz bekommt die neue
+ *    alarmId in `alarmIds` plus einen Chronik-Eintrag; es geht genau EIN
+ *    FCM-Push mit Hinweis raus.
  */
 
 import { randomUUID } from "node:crypto";
@@ -36,35 +51,141 @@ function normalizeToIso(s: string): string {
   return Number.isNaN(d.getTime()) ? s : d.toISOString();
 }
 
+function statusCode(err: unknown): number | undefined {
+  return (err as { statusCode?: number }).statusCode;
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// ─── Doppelalarm-Erkennung (S-09/N-10) ───────────────────────────────
+/** Zeitfenster, in dem ein aktiver Alarm-Einsatz als Kandidat gilt. */
+const DOPPELALARM_FENSTER_MS = 20 * 60 * 1000;
+/** Koordinaten-Naehe (Luftlinie), ab der zwei Alarme als dasselbe Ereignis gelten. */
+const DOPPELALARM_MAX_DIST_KM = 0.3;
+/** Mango-Limit — mehr als ein paar aktive Alarm-Einsaetze gibt es nie. */
+const DOPPELALARM_FIND_LIMIT = 100;
+
+/** Nur die Felder eines Einsatz-Docs, die die Heuristik braucht. */
+interface DoppelalarmKandidat {
+  _id: string;
+  alarmId?: string;
+  alarmIds?: string[];
+  alarmierungZeit?: string;
+  alarmierungText?: string;
+  einsatzort?: string;
+  koordinaten?: { lat?: number; lng?: number };
+  moeglichesDuplikatVon?: string;
+}
+
+/** Kleinschreibung, Whitespace zusammengezogen — fuer Text-/Ortsvergleiche. */
+function normText(s: string | undefined): string {
+  return (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Wie normText, aber der Fallback-Platzhalter "Unbekannt" zaehlt als leer. */
+function normOrt(s: string | undefined): string {
+  const n = normText(s);
+  return n === "unbekannt" ? "" : n;
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 // F-39: Heartbeat-Zaehler — bei leeren Polls schreiben wir einen debug-Log
 // damit man im Dev-Modus den Live-Tick sieht. In production (level=info)
 // werden debug-Logs unterdrueckt, also kein Spam.
 let pollCount = 0;
+// N-11: Der gerade laufende Poll. Solange gesetzt, startet weder der
+// Intervall-Tick noch der manuelle Dev-Trigger einen zweiten Poll — sonst
+// verarbeiten zwei Durchlaeufe dieselben Alarme und rennen beim Insert in
+// 409 bzw. schicken den FCM-Push doppelt.
+let inFlight: Promise<PollErgebnis> | null = null;
+// Zaehlt Intervall-Ticks, die wegen eines noch laufenden Polls ausgelassen
+// wurden (in Folge). Wird nach jedem abgeschlossenen Poll zurueckgesetzt.
+let ticksUebersprungenInFolge = 0;
+// I-12: Ab so vielen Fehlern in Folge brechen wir die Alarm-Schleife ab —
+// dann ist nicht ein einzelnes Doc kaputt, sondern CouchDB weg, und jeder
+// weitere Versuch kostet nur Timeout-Zeit.
+const MAX_FEHLER_IN_FOLGE = 3;
 
-export async function pollOnce(): Promise<{ neu: number; gesamt: number }> {
+export interface PollErgebnis {
+  /** Neu angelegte Einsatz-Docs in diesem Poll. */
+  neu: number;
+  /** Vom Dashboard gelieferte Alarme. */
+  gesamt: number;
+  /** Alarme, deren Verarbeitung mit einem Fehler (ausser 409) abgebrochen wurde. */
+  fehler: number;
+}
+
+/**
+ * Ein Poll-Durchlauf. Laeuft bereits einer, haengt sich der Aufrufer an
+ * dessen Promise (N-11) — es gibt nie zwei parallele Durchlaeufe.
+ */
+export function pollOnce(): Promise<PollErgebnis> {
+  if (inFlight) return inFlight;
+  inFlight = pollOnceIntern().finally(() => {
+    inFlight = null;
+    ticksUebersprungenInFolge = 0;
+  });
+  return inFlight;
+}
+
+async function pollOnceIntern(): Promise<PollErgebnis> {
+  pollCount += 1;
+  let alarms: BlaulichtAlarmData[];
   try {
-    pollCount += 1;
-    const alarms = await listAlarms();
-    let neu = 0;
-    for (const a of alarms) {
-      const created = await upsertEinsatz(a);
-      if (created) neu += 1;
-    }
-    if (alarms.length > 0) {
-      logger.info({ neu, gesamt: alarms.length }, "BlaulichtSMS-Poll fertig");
-    } else {
-      // F-39: Heartbeat fuer leere Polls. Im Production-Logging (info+)
-      // unsichtbar, im Dev-Modus (debug) Live-Tick sichtbar.
-      logger.debug({ pollCount }, "BlaulichtSMS-Poll leer");
-    }
-    recordBlaulichtSmsPoll(neu);
-    return { neu, gesamt: alarms.length };
+    alarms = await listAlarms();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    recordBlaulichtSmsPoll(0, msg);
+    recordBlaulichtSmsPoll(0, errMsg(err));
     throw err;
   }
+
+  let neu = 0;
+  let fehler = 0;
+  let fehlerInFolge = 0;
+  let ersterFehler: string | null = null;
+  for (const a of alarms) {
+    try {
+      const created = await upsertEinsatz(a);
+      if (created) neu += 1;
+      fehlerInFolge = 0;
+    } catch (err) {
+      // I-12: Ein einzelner kaputter Alarm (oder ein Couch-Hickser bei genau
+      // diesem Doc) darf die restlichen Alarme desselben Polls nicht
+      // blockieren — frueher flog hier der ganze Poll raus.
+      fehler += 1;
+      fehlerInFolge += 1;
+      const msg = errMsg(err);
+      if (!ersterFehler) ersterFehler = msg;
+      logger.warn(
+        { alarmId: a.alarmId, err: msg },
+        "Alarm konnte nicht verarbeitet werden — weiter mit dem naechsten",
+      );
+      if (fehlerInFolge >= MAX_FEHLER_IN_FOLGE) {
+        logger.error(
+          { fehlerInFolge, verbleibend: alarms.length - fehler - neu },
+          "BlaulichtSMS-Poll: zu viele Fehler in Folge — Schleife abgebrochen",
+        );
+        break;
+      }
+    }
+  }
+
+  if (fehler > 0) {
+    const msg = `${fehler} von ${alarms.length} Alarmen nicht verarbeitet: ${ersterFehler ?? "unbekannt"}`;
+    recordBlaulichtSmsPoll(neu, msg);
+    throw new Error(msg);
+  }
+
+  if (alarms.length > 0) {
+    logger.info({ neu, gesamt: alarms.length }, "BlaulichtSMS-Poll fertig");
+  } else {
+    // F-39: Heartbeat fuer leere Polls. Im Production-Logging (info+)
+    // unsichtbar, im Dev-Modus (debug) Live-Tick sichtbar.
+    logger.debug({ pollCount }, "BlaulichtSMS-Poll leer");
+  }
+  recordBlaulichtSmsPoll(neu);
+  return { neu, gesamt: alarms.length, fehler: 0 };
 }
 
 /**
@@ -152,6 +273,138 @@ export function parseAutobahnPattern(
   return null;
 }
 
+/**
+ * S-09/N-10: Sucht unter den AKTIVEN Alarm-Einsaetzen der letzten 20 min
+ * (relativ zur Alarmierungszeit des neuen Alarms) einen, der wahrscheinlich
+ * dasselbe Ereignis beschreibt. Kandidat ist, wer mindestens eines erfuellt:
+ *   - gleicher normalisierter alarmierungText
+ *   - Koordinaten < 300 m Luftlinie auseinander
+ *   - identischer einsatzort (normalisiert, "Unbekannt"/leer zaehlt nicht)
+ * Mehrere Treffer: Wurzel bevorzugt (Einsatz ohne eigenen Duplikat-Verweis),
+ * dann der aelteste — dort arbeitet die Mannschaft bereits.
+ *
+ * Reine Heuristik: liefert nur einen HINWEIS fuer den Editor, es wird nichts
+ * zusammengefuehrt. Schlaegt die CouchDB-Query fehl, laeuft der Alarm-Pfad
+ * ohne Pruefung weiter (null) — ein Alarm darf daran nie haengen bleiben.
+ */
+async function findeDoppelalarmKandidat(neu: {
+  alarmId: string;
+  alarmierungZeit: string;
+  alarmierungText: string | undefined;
+  einsatzort: string;
+  koordinaten: { lat: number; lng: number } | null;
+}): Promise<DoppelalarmKandidat | null> {
+  const tNeu = Date.parse(neu.alarmierungZeit);
+  const referenz = Number.isNaN(tNeu) ? Date.now() : tNeu;
+  const fensterStart = new Date(referenz - DOPPELALARM_FENSTER_MS).toISOString();
+
+  let docs: DoppelalarmKandidat[];
+  try {
+    // Mango ueber den Index type-status (couch/client.ts:ensureMangoIndizes);
+    // einsatzTyp + alarmierungZeit filtert Couch in-memory nach — die aktive
+    // Menge ist klein. alarmierungZeit ist seit RISIKO-1 UTC-"Z", damit ist
+    // der String-Vergleich $gte korrekt; Alt-Docs mit Offset werden unten
+    // ueber Date.parse nochmals sauber geprueft.
+    const r = await db.find({
+      selector: {
+        type: "einsatz",
+        status: "aktiv",
+        einsatzTyp: "alarm",
+        alarmierungZeit: { $gte: fensterStart },
+      },
+      limit: DOPPELALARM_FIND_LIMIT,
+    });
+    docs = r.docs as DoppelalarmKandidat[];
+  } catch (err) {
+    logger.warn(
+      { alarmId: neu.alarmId, err: errMsg(err) },
+      "Doppelalarm-Pruefung uebersprungen — CouchDB-Query fehlgeschlagen",
+    );
+    return null;
+  }
+
+  const text = normText(neu.alarmierungText);
+  const ort = normOrt(neu.einsatzort);
+  const neueDocId = `einsatz:${neu.alarmId}`;
+
+  const treffer = docs.filter((d) => {
+    if (!d._id || d._id === neueDocId) return false;
+    // Diese alarmId ist dort schon vermerkt (z. B. haendisch) — kein Kandidat.
+    if (d.alarmId === neu.alarmId || d.alarmIds?.includes(neu.alarmId)) return false;
+    const tK = Date.parse(d.alarmierungZeit ?? "");
+    if (Number.isNaN(tK) || Math.abs(tK - referenz) > DOPPELALARM_FENSTER_MS) return false;
+
+    if (text && normText(d.alarmierungText) === text) return true;
+    if (
+      neu.koordinaten &&
+      typeof d.koordinaten?.lat === "number" &&
+      typeof d.koordinaten.lng === "number" &&
+      haversineKm(neu.koordinaten, { lat: d.koordinaten.lat, lng: d.koordinaten.lng }) <
+        DOPPELALARM_MAX_DIST_KM
+    ) {
+      return true;
+    }
+    if (ort && normOrt(d.einsatzort) === ort) return true;
+    return false;
+  });
+  if (treffer.length === 0) return null;
+
+  treffer.sort((x, y) => {
+    const wx = x.moeglichesDuplikatVon ? 1 : 0;
+    const wy = y.moeglichesDuplikatVon ? 1 : 0;
+    if (wx !== wy) return wx - wy;
+    return Date.parse(x.alarmierungZeit ?? "") - Date.parse(y.alarmierungZeit ?? "");
+  });
+  return treffer[0] ?? null;
+}
+
+/**
+ * S-09/N-10: Traegt die neue alarmId in `alarmIds` des Kandidaten ein und
+ * haengt einen Chronik-Eintrag "Nachalarmierung/Doppelalarm" an. Bei 409
+ * (Tablet/Florian hat gerade geschrieben) genau ein Retry mit frischem Doc.
+ * Wirft bei endgueltigem Fehler — der Aufrufer loggt, das neue Einsatz-Doc
+ * existiert zu dem Zeitpunkt bereits.
+ *
+ * Bewusst NICHT angefasst: editorGeaendertAm (S-03 — Worker sind kein
+ * Editor-Schreibzugriff) und status/schreibschutz.
+ */
+async function vermerkeDoppelalarmImKandidat(
+  kandidatId: string,
+  a: BlaulichtAlarmData,
+  neueEinsatzId: string,
+): Promise<void> {
+  const eintrag = {
+    id: randomUUID(),
+    zeitstempel: normalizeToIso(a.alarmDate),
+    fahrzeugId: "blaulichtsms",
+    typ: "auto-blaulichtsms" as const,
+    transkript: `Nachalarmierung/Doppelalarm: ${a.alarmText ?? "Alarmierung"} (siehe #${neueEinsatzId})`,
+    transkriptStatus: "verfuegbar" as const,
+  };
+  for (let versuch = 1; versuch <= 2; versuch++) {
+    const doc = (await db.get(kandidatId)) as Record<string, unknown>;
+    const primaer = typeof doc.alarmId === "string" ? [doc.alarmId] : [];
+    const bisher = Array.isArray(doc.alarmIds)
+      ? (doc.alarmIds as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    const alarmIds = [...new Set([...primaer, ...bisher, a.alarmId])];
+    const chronik = Array.isArray(doc.chronik) ? (doc.chronik as unknown[]) : [];
+    const patched: Record<string, unknown> = {
+      ...doc,
+      alarmIds,
+      chronik: [...chronik, eintrag],
+      geaendertAm: new Date().toISOString(),
+    };
+    try {
+      await db.insert(patched);
+      return;
+    } catch (err) {
+      if (statusCode(err) === 409 && versuch === 1) continue;
+      throw err;
+    }
+  }
+}
+
 async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
   // Filter: woechentlicher WAS-Box-Probealarm. Nur skippen, kein Einsatz-Doc
   // anlegen. Wird auch nicht in der FCM-Push-Pipeline weitergereicht.
@@ -168,7 +421,7 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     // Existiert — nichts tun (Audio + Felder können wir später in Update-Logik einarbeiten)
     return false;
   } catch (err) {
-    if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+    if (statusCode(err) !== 404) throw err;
   }
 
   const now = new Date().toISOString();
@@ -243,11 +496,29 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     }
   }
 
+  // RISIKO-1 (Audit 2026-06-03): roh a.alarmDate kann +02:00-Offset tragen
+  // (TZ=Europe/Vienna, Sommerzeit) → auf UTC-"Z" normalisieren.
+  const alarmierungZeit = normalizeToIso(a.alarmDate);
+
+  // S-09/N-10: VOR dem Insert nach einem aktiven Einsatz suchen, der
+  // wahrscheinlich dasselbe Ereignis ist (Nachalarmierung, zweite Leitstelle,
+  // Doppel-Versand). Ergebnis wird nur als Hinweis ins neue Doc geschrieben.
+  const kandidat = await findeDoppelalarmKandidat({
+    alarmId: a.alarmId,
+    alarmierungZeit,
+    alarmierungText: a.alarmText,
+    einsatzort: einsatzortText,
+    koordinaten,
+  });
+
   const doc = {
     _id: id,
     type: "einsatz" as const,
     einsatzTyp: "alarm" as const,
     alarmId: a.alarmId,
+    // V16: Gesamtliste der gemappten Alarm-IDs; alarmId bleibt die primaere.
+    alarmIds: [a.alarmId],
+    ...(kandidat ? { moeglichesDuplikatVon: kandidat._id } : {}),
     einsatzort: einsatzortText,
     ...(adresseAutoSkippedReason ? { adresseAutoSkippedReason } : {}),
     // Issue 19 (Einsatz-Test 2026-06-02): Audit-Marker fuer ausgewertete
@@ -269,9 +540,7 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
             : {}),
         }
       : {}),
-    // RISIKO-1 (Audit 2026-06-03): roh a.alarmDate kann +02:00-Offset tragen
-    // (TZ=Europe/Vienna, Sommerzeit) → auf UTC-"Z" normalisieren.
-    alarmierungZeit: normalizeToIso(a.alarmDate),
+    alarmierungZeit,
     ...(a.audioUrl ? { alarmierungAudio: a.audioUrl } : {}),
     ...(a.authorName ? { alarmierungAuthor: a.authorName } : {}),
     ...(a.alarmText ? { alarmierungText: a.alarmText } : {}),
@@ -289,7 +558,9 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     chronik: [
       {
         id: randomUUID(),
-        zeitstempel: a.alarmDate,
+        // I-12: gleicher UTC-normalisierter Zeitstempel wie alarmierungZeit
+        // (frueher roh a.alarmDate, ggf. mit +02:00-Offset).
+        zeitstempel: alarmierungZeit,
         fahrzeugId: "blaulichtsms",
         typ: "auto-blaulichtsms" as const,
         transkript: a.alarmText ?? "Alarmierung",
@@ -299,37 +570,108 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     erstelltAm: now,
     geaendertAm: now,
   };
-  await db.insert(doc);
-  logger.info({ alarmId: a.alarmId, einsatzort: doc.einsatzort }, "Neuer Einsatz aus Alarm angelegt");
+  try {
+    await db.insert(doc);
+  } catch (err) {
+    if (statusCode(err) === 409) {
+      // N-11: Das Doc ist zwischen unserem GET und dem Insert entstanden
+      // (paralleler Schreiber — zweite API-Instanz beim Deploy, manueller
+      // Dev-Poll). Kein Fehler: der andere hat Push + Chronik bereits
+      // erledigt, wir machen mit dem naechsten Alarm weiter.
+      logger.info(
+        { alarmId: a.alarmId },
+        "Einsatz wurde parallel bereits angelegt (409) — uebersprungen",
+      );
+      return false;
+    }
+    throw err;
+  }
+  logger.info(
+    {
+      alarmId: a.alarmId,
+      einsatzort: doc.einsatzort,
+      ...(kandidat ? { moeglichesDuplikatVon: kandidat._id } : {}),
+    },
+    kandidat
+      ? "Neuer Einsatz aus Alarm angelegt — moeglicher Doppelalarm/Nachalarmierung"
+      : "Neuer Einsatz aus Alarm angelegt",
+  );
+
   // FCM-Push parallel ausfuehren — error darf den Alarm-Pfad nicht blockieren.
   // BlaulichtSMS-Alarme gehen an ALLE Tablets (leere fahrzeugIds-Liste), weil
   // die Disposition erst nachtraeglich vom Einsatzleiter in der Florianstation
   // gemacht wird.
-  void pushAlarm([], {
-    notification: {
-      title: a.alarmText || "ALARM",
-      body: doc.einsatzort,
-    },
-    data: {
-      type: "alarm",
-      einsatzId: doc._id,
-      alarmId: a.alarmId,
-      einsatzort: doc.einsatzort,
-      alarmierungZeit: doc.alarmierungZeit,
-    },
-  }).catch((err) => {
-    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "FCM-Push beim Alarm fehlgeschlagen");
+  // S-09/N-10: Auch beim Doppelalarm geht genau EIN Push raus — fuer das neue
+  // Doc, mit Hinweis auf den aelteren Einsatz. Kein zweiter Push fuer die
+  // Aktualisierung des Kandidaten.
+  const pushData: Record<string, string> = {
+    type: "alarm",
+    einsatzId: doc._id,
+    alarmId: a.alarmId,
+    einsatzort: doc.einsatzort,
+    alarmierungZeit: doc.alarmierungZeit,
+    ...(kandidat ? { moeglichesDuplikatVon: kandidat._id, hinweis: "doppelalarm" } : {}),
+  };
+  const pushNotification = kandidat
+    ? {
+        title: `Nachalarmierung: ${a.alarmText || "ALARM"}`,
+        body: `${doc.einsatzort || "Einsatzort unbekannt"} · evtl. Doppelalarm zu ${kandidat.einsatzort || kandidat._id}`,
+      }
+    : {
+        title: a.alarmText || "ALARM",
+        body: doc.einsatzort,
+      };
+  void pushAlarm([], { notification: pushNotification, data: pushData }).catch((err) => {
+    logger.warn({ err: errMsg(err) }, "FCM-Push beim Alarm fehlgeschlagen");
   });
+
+  // S-09/N-10: Kandidat nachtragen (alarmIds + Chronik-Hinweis). Fehler hier
+  // sind nicht alarm-kritisch — das neue Doc steht, der Push ist raus.
+  if (kandidat) {
+    try {
+      await vermerkeDoppelalarmImKandidat(kandidat._id, a, doc._id);
+      logger.info(
+        { alarmId: a.alarmId, kandidat: kandidat._id },
+        "Doppelalarm im aelteren Einsatz vermerkt (alarmIds + Chronik)",
+      );
+    } catch (err) {
+      logger.warn(
+        { alarmId: a.alarmId, kandidat: kandidat._id, err: errMsg(err) },
+        "Doppelalarm konnte im aelteren Einsatz nicht vermerkt werden",
+      );
+    }
+  }
   return true;
 }
 
 export function startBlaulichtSmsPoller(): void {
   if (timer) return;
   const ms = env.BLAULICHTSMS_POLL_INTERVAL_SEC * 1000;
-  timer = setInterval(() => {
+  const tick = (): void => {
+    if (inFlight) {
+      // N-11: Vorheriger Poll laeuft noch (langsame Couch/BlaulichtSMS-
+      // Antwort) — keinen zweiten starten. Erster Skip laut, danach nur
+      // alle 20 Ticks, sonst Log-Spam bei einem haengenden Poll.
+      ticksUebersprungenInFolge += 1;
+      const ctx = { ticksUebersprungenInFolge, intervalSec: env.BLAULICHTSMS_POLL_INTERVAL_SEC };
+      if (ticksUebersprungenInFolge === 1 || ticksUebersprungenInFolge % 20 === 0) {
+        logger.warn(ctx, "BlaulichtSMS-Poll laeuft noch — Tick uebersprungen");
+      } else {
+        logger.debug(ctx, "BlaulichtSMS-Poll laeuft noch — Tick uebersprungen");
+      }
+      return;
+    }
     void pollOnce().catch((err) => logger.error({ err }, "BlaulichtSMS-Poll-Fehler"));
-  }, ms);
-  logger.info({ intervalSec: env.BLAULICHTSMS_POLL_INTERVAL_SEC }, "BlaulichtSMS-Poller gestartet");
+  };
+  // I-01: Sofort-Poll — nicht erst POLL_INTERVAL Sekunden nach dem Start
+  // warten. Nach einem Deploy (fly startet die neue Maschine, die alte
+  // stoppt) waere das sonst ein blindes Fenster fuer Alarme.
+  tick();
+  timer = setInterval(tick, ms);
+  logger.info(
+    { intervalSec: env.BLAULICHTSMS_POLL_INTERVAL_SEC, sofortPoll: true },
+    "BlaulichtSMS-Poller gestartet",
+  );
 }
 
 export function stopBlaulichtSmsPoller(): void {

@@ -11,12 +11,14 @@
  * Offline-Request-Outbox, ist also idempotent (gleiche fotoId überschreibt).
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { FotoSchema } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
+import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
+import { reaktiviereBeiSpaetenDaten } from "./einsaetze.js";
 
 export const fotosRouter: Router = Router();
 
@@ -30,10 +32,12 @@ const FotoUploadBodySchema = z.object({
 });
 
 // ─── PUT /api/einsaetze/:id/fotos ── Foto ablegen ──────────────────────────
+// C-03/V9 (Audit R3): ah()-Wrapper — die Auto-Reaktivierung unten kann
+// werfen (CouchDB-Fehler != 409); ohne Wrapper bliebe der Request haengen.
 fotosRouter.put(
   "/api/einsaetze/:id/fotos",
   requireAuth("mannschaft"),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const einsatzId = decodeURIComponent(String(req.params.id));
     const parsed = FotoUploadBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -42,16 +46,23 @@ fotosRouter.put(
     }
     const b = parsed.data;
     // Schreibschutz-Check über den Einsatz (analog fzgber-PUT).
-    const einsatz = (await db.get(einsatzId).catch(() => null)) as
-      | { schreibschutz?: boolean }
-      | null;
+    const einsatz = (await db.get(einsatzId).catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
     if (!einsatz) {
       res.status(404).json({ error: "einsatz_not_found" });
       return;
     }
     if (einsatz.schreibschutz === true) {
-      res.status(423).json({ error: "schreibschutz_aktiv" });
-      return;
+      // V9 (Audit R3): nach "unbefuellt-1h"-Auto-Abschluss oeffnen spaete
+      // Daten (Foto aus der Offline-Outbox) den Einsatz automatisch wieder;
+      // jeder andere Abschluss-Grund bleibt gesperrt (423).
+      const reaktiviert = await reaktiviereBeiSpaetenDaten(einsatz, req.session!, req.ip);
+      if (!reaktiviert) {
+        res.status(423).json({ error: "schreibschutz_aktiv" });
+        return;
+      }
     }
 
     let existing: { _rev?: string; erstelltAm?: string } | null = null;
@@ -101,14 +112,14 @@ fotosRouter.put(
         throw retryErr;
       }
     }
-  }) as RequestHandler,
+  }),
 );
 
 // ─── GET /api/einsaetze/:id/fotos ── alle Fotos eines Einsatzes ────────────
 fotosRouter.get(
   "/api/einsaetze/:id/fotos",
   requireAuth(),
-  (async (req, res) => {
+  ah(async (req, res) => {
     const einsatzId = decodeURIComponent(String(req.params.id));
     const prefix = `foto:${einsatzId.replace(/^einsatz:/, "")}:`;
     try {
@@ -125,5 +136,5 @@ fotosRouter.get(
       logger.error({ err, einsatzId }, "Foto-Liste fehlgeschlagen");
       res.status(500).json({ error: "list_failed" });
     }
-  }) as RequestHandler,
+  }),
 );

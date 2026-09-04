@@ -151,8 +151,8 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
   const TargetIcon = reverse ? Monitor : Smartphone;
   const title = reverse ? "Sitzung ans Tablet zurückgeben" : "Notfall-Übergabe an Handy";
   const subtitle = reverse
-    ? "QR scannen am Tablet · Sitzung normalisieren · Handy logt sich aus"
-    : "QR scannen · Sitzung übernehmen · Tablet logt sich aus";
+    ? "QR scannen am Tablet · Sitzung normalisieren · Handy loggt sich aus"
+    : "QR scannen · Sitzung übernehmen · Tablet loggt sich aus";
   const scanInstruction = reverse
     ? "Öffne am Tablet die Kamera oder den HotDoc-Scanner und scanne den QR-Code. Sobald das Tablet übernimmt, loggt sich dieses Handy automatisch aus."
     : "Öffne am Handy die Kamera und scanne den QR-Code. Sobald das Handy übernimmt, loggt sich dieses Tablet automatisch aus.";
@@ -358,7 +358,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               <span style={{ flex: 1 }}>
                 {secondsLeft < 60 ? (
                   <>
-                    <strong>Code laeuft ab</strong> · noch {mins}:{String(secs).padStart(2, "0")}
+                    <strong>Code läuft ab</strong> · noch {mins}:{String(secs).padStart(2, "0")}
                   </>
                 ) : (
                   <>

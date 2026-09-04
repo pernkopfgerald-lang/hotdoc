@@ -567,7 +567,7 @@ const KATEGORIEN: Kategorie[] = [
         frage: "Wofür ist HotDoc?",
         antwort:
           "HotDoc ist der digitale Einsatzbericht der FF Eberstalzell. Ersetzt das Klemmbrett im Fahrzeug: " +
-          "Mannschaft erfassen, Atemschutz-Trupps eintragen, Strecke automatisch, Chronik per Diktat, " +
+          "Mannschaft erfassen, Atemschutz-Trupps eintragen, Strecke automatisch, Chronik mit Zeitstempel, " +
           "PDF-Endbericht auf Knopfdruck. Zentral koordiniert über die Florianstation im Gerätehaus.",
         tags: ["was ist das", "zweck", "überblick"],
       },
@@ -584,7 +584,7 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Wie wechsle ich das Fahrzeug am Tablet?",
         antwort:
-          "Oben in der Topbar gibt es den Button 'Fahrzeug wechseln'. Tippe ihn an, wähle das neue Fahrzeug. " +
+          "Oben rechts in der Topbar: '⋯ Mehr' → 'Fahrzeug wechseln'. Wähle das neue Fahrzeug. " +
           "Achtung: dabei werden nicht-abgespeicherte Eingaben aus dem laufenden Bericht verworfen — wenn " +
           "ein Auftrag läuft, vorher abschließen oder bewusst verwerfen.",
         tags: ["umstellen", "anderes auto", "kdo tlf lfa-b mtf"],
@@ -688,7 +688,7 @@ const KATEGORIEN: Kategorie[] = [
           "Drei Bereiche:\n" +
           "  · Live-Karte mit allen Fahrzeug-Positionen + Einsatzort\n" +
           "  · Hauptbericht mit allen Stamm-Feldern (Stichwort, Adresse, Zeitmarken, " +
-          "Beteiligte Stellen, Meldung Einsatzleitung)\n" +
+          "Beteiligte Stellen)\n" +
           "  · Aktive Aufträge als Tab-Leiste oben — Wechsel per Tipp.\n\n" +
           "Alles live: was die Fahrzeug-Tablets tippen, siehst du sofort.",
         tags: ["zentrale", "übersicht", "hauptbericht"],
@@ -772,20 +772,26 @@ const KATEGORIEN: Kategorie[] = [
           "  · Aktiv — Bericht in Bearbeitung, Änderungen möglich, Tab sichtbar\n" +
           "  · Abgeschlossen — Bericht fertig, schreibgeschützt, Tab verschwindet aus der " +
           "Leiste. Nur noch im Archiv sichtbar.\n\n" +
-          "Reaktivieren geht über das Archiv (Florian-Zentrale oder Fahrzeug-Tablet) — " +
-          "immer mit Grund-Pflicht, der Grund landet im Audit-Log und auf dem PDF.",
+          "Reaktivieren geht über das Archiv (Florian-Zentrale oder Fahrzeug-Tablet). Ein Grund " +
+          "ist optional — wenn du einen angibst, landet er im Audit-Log und auf dem PDF.",
         tags: ["status", "fertig", "archiv", "reaktivieren"],
       },
       {
         frage: "Was passiert wenn ein Einsatz lange offen bleibt?",
         antwort:
-          "Wenn ein Einsatz 6 Stunden lang keine Änderung sieht (kein Mannschafts-Update, " +
-          "kein Geräte-Klick, kein Diktat), wird er automatisch abgeschlossen — mit " +
-          "Hinweis 'Auto-Abschluss nach 6 h Inaktivität'.\n\n" +
-          "Das passiert weil sonst vergessene Einsätze die Statistik blockieren. Falls das " +
-          "passiert obwohl ihr aktiv gearbeitet habt: Reaktivieren über Florian-Archiv mit " +
-          "Grund.",
-        tags: ["auto-close", "vergessen", "inaktiv"],
+          "Der Server schließt vergessene Einsätze automatisch — in drei Stufen:\n" +
+          "  · 1 h — ein BlaulichtSMS-Alarm, der komplett unbefüllt bleibt (keine Mannschaft, " +
+          "kein Chronik-Eintrag, nichts am Florian), wird OHNE Berichtsnummer geschlossen " +
+          "(Phantom-Alarm).\n" +
+          "  · 6 h — ein Einsatz ohne jede Änderung (kein Mannschafts-Update, kein Geräte-Klick, " +
+          "kein Chronik-Eintrag) wird mit Berichtsnummer abgeschlossen — Hinweis " +
+          "'Auto-Abschluss nach 6 h Inaktivität'.\n" +
+          "  · 24 h — Übungen (oft vorab angelegt) fallen erst nach 24 h zu, ohne Berichtsnummer.\n\n" +
+          "Das passiert, weil sonst vergessene Einsätze die Statistik blockieren. Falls es " +
+          "passiert, obwohl ihr aktiv gearbeitet habt: Reaktivieren über das Archiv (Florian oder " +
+          "Tablet), ein Grund ist optional. Kommen nach dem Auto-Abschluss noch Daten vom Tablet, " +
+          "reaktiviert der Server den Einsatz von selbst.",
+        tags: ["auto-close", "vergessen", "inaktiv", "1 h", "6 h", "24 h", "phantom"],
       },
     ],
   },
@@ -856,7 +862,7 @@ const KATEGORIEN: Kategorie[] = [
           "  · Lage unter Kontrolle — Brand greift nicht weiter aus, kein Personen-/Sachgefahr-" +
           "Zuwachs mehr\n" +
           "  · Brand aus — kein Feuer mehr sichtbar (vor Nachlöschen / Brandwache)\n\n" +
-          "Beide Felder sind im Bericht-PDF und im syBOS-Spickzettel relevant.",
+          "Beide Felder sind im Bericht-PDF und für die syBOS-Übernahme im Backoffice relevant.",
         tags: ["brandbekämpfung", "löschung", "zeitmarke"],
       },
     ],
@@ -872,7 +878,7 @@ const KATEGORIEN: Kategorie[] = [
         frage: "Wie übergebe ich an mein Handy?",
         antwort:
           "Falls der Tablet-Akku leer ist oder du das Tablet wegstellen musst: " +
-          "Tippe auf das Smartphone-Symbol oben in der Topbar ('Übergeben'). Es erscheint " +
+          "Oben rechts in der Topbar: '⋯ Mehr' → 'An Handy übergeben (QR)'. Es erscheint " +
           "ein QR-Code. Scanne ihn mit der Handy-Kamera, dein Handy übernimmt die Sitzung, " +
           "das Tablet loggt sich aus.\n\n" +
           "Der Code ist 5 Minuten gültig. Wenn er abläuft: 'Neuen Code anfordern' tippen.",
@@ -881,20 +887,25 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Wie aktualisiere ich die App?",
         antwort:
-          "Wenn ein Update verfügbar ist, erscheint oben ein Banner mit Update verfügbar — v0.1.x. " +
-          "Tippe drauf → APK wird heruntergeladen → Tablet installiert das Update " +
-          "(kann nach Installation aus unbekannter Quelle erlauben fragen — einmal " +
-          "bestätigen). Nach dem Update neu starten.\n\n" +
-          "Im Browser (PWA): Tab schließen + neu öffnen, dann zeigt der Service-Worker " +
-          "das Update an.",
+          "Wenn ein Update verfügbar ist, erscheint oben rechts ein roter Banner 'HotDoc v0.1.x " +
+          "verfügbar'. Der Check läuft automatisch (erster 10 min nach dem Start, danach alle " +
+          "6 h) — und der Banner wartet, solange auf dem Tablet ein Bericht offen ist, damit ein " +
+          "Update nie mitten in die Erfassung platzt.\n\n" +
+          "APK: 'Update' tippen → wird heruntergeladen → Android-Installer öffnet sich (beim " +
+          "ersten Mal 'Apps aus dieser Quelle erlauben' bestätigen). Nach dem Update neu starten.\n\n" +
+          "Im Browser (PWA): derselbe Banner, 'Öffnen' lädt die neue Version. Hängt die alte " +
+          "Version trotzdem fest: die HotDoc-Adresse mit /reset.html am Ende aufrufen — das " +
+          "leert Cache + Service-Worker, der Login bleibt.",
         tags: ["update", "version", "neue version", "apk"],
       },
       {
         frage: "Funktioniert HotDoc auch offline?",
         antwort:
-          "Teilweise. Die App ist Progressive-Web-App — gecachte Daten und das letzte UI " +
-          "sind offline verfügbar. ABER: neue Einsätze, BlaulichtSMS-Alarme und Live-Sync " +
-          "mit der Florianstation brauchen Netz (WLAN oder Mobilfunk).\n\n" +
+          "Ja, weitgehend. Einsatz anlegen, Mannschaft, Geräte, KM, Chronik, Fotos — das geht " +
+          "alles ohne Netz: die App speichert jede Änderung lokal am Tablet und schickt sie " +
+          "automatisch nach, sobald WLAN oder Mobilfunk wieder da ist (Sync-Anzeige im Footer). " +
+          "Nur BlaulichtSMS-Alarme und der Live-Abgleich mit der Florianstation brauchen eine " +
+          "Verbindung.\n\n" +
           "Im Tablet-Setup hilft Tailscale-VPN damit auch ohne FF-WLAN die Verbindung steht. " +
           "Frag den Funktionär wenn du den Zugang brauchst.",
         tags: ["wlan", "kein netz", "offline-modus", "pwa"],
@@ -902,8 +913,8 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Wie schließe ich einen Tab/Bericht?",
         antwort:
-          "An jedem Tab oben siehst du ein X-Symbol. Tippe drauf → Schließen-Dialog mit " +
-          "zwei Optionen:\n" +
+          "Das X-Symbol gibt es nur am AKTIVEN Tab (dem gerade geöffneten Bericht) — andere " +
+          "Tabs erst antippen. Tippe auf das X → Schließen-Dialog mit zwei Optionen:\n" +
           "  · 'Bericht jetzt abschliessen & PDF erzeugen' (grün, Standard) — Bericht " +
           "wandert ins Archiv.\n" +
           "  · 'Ohne Speichern verwerfen' (rot, mit 2. Bestätigung + Grund) — Bericht wird " +
@@ -919,9 +930,14 @@ const KATEGORIEN: Kategorie[] = [
         antwort:
           "1. App neu starten (Wischen → App schließen → wieder öffnen).\n" +
           "2. Tablet neu starten (Power-Knopf 10 s halten → Neu starten).\n" +
-          "3. Wenn auch das nicht hilft: an einen Funktionär melden, ggf. Reset im " +
-          "About-Dialog (Achtung: das setzt Tablet auf Fahrzeug-Auswahl zurück).",
-        tags: ["absturz", "hängt", "reboot", "neu starten"],
+          "3. Wenn auch das nicht hilft: '⋯ Mehr' → 'Über HotDoc' → Geräte-Aktionen → " +
+          "'Tablet zurücksetzen (Setup öffnen)'. Das löscht nur den Login — das Tablet landet " +
+          "in der Fahrzeug-Auswahl, gesendete Berichte bleiben am Server.\n" +
+          "4. Letzte Rettung bei wiederholten Abstürzen: Der Recovery-Screen bietet ab dem " +
+          "zweiten Absturz 'Lokale Daten löschen' (Entwürfe + lokale Datenbank + App-Cache). " +
+          "Alternativ im Browser die HotDoc-Adresse mit /reset.html am Ende aufrufen — leert " +
+          "Cache + Service-Worker, der Login bleibt. Danach Funktionär informieren.",
+        tags: ["absturz", "hängt", "reboot", "neu starten", "reset", "zurücksetzen", "reset.html"],
       },
     ],
   },
@@ -944,7 +960,7 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Speichert die App automatisch?",
         antwort:
-          "Ja. Jede Änderung (Mannschaft, Geräte, KM, Diktat) wird nach ca. 1,5 s automatisch " +
+          "Ja. Jede Änderung (Mannschaft, Geräte, KM, Chronik) wird nach ca. 1,5 s automatisch " +
           "an die Florianstation gesendet. Du musst nicht aktiv 'Speichern' drücken.\n\n" +
           "Unten im Footer siehst du den Status: 'Automatisch gespeichert · 14:23'. " +
           "Zusätzlich sichert die App den Arbeitsstand lokal am Gerät — auch ein " +
@@ -988,7 +1004,8 @@ const KATEGORIEN: Kategorie[] = [
         antwort:
           "1. Prüfe ob das Tablet überhaupt online ist (Statusbanner oben).\n" +
           "2. Prüfe ob das Tablet als Fahrzeug registriert ist (Setup-Screen).\n" +
-          "3. Im Florianstation: 'Schnittstellen'-Panel zeigt 'BlaulichtSMS letzter Poll vor …'\n" +
+          "3. Im Backoffice (Funktionär): der Schnittstellen-Status zeigt 'BlaulichtSMS letzter " +
+          "Poll vor …'. Auf dem Tablet meldet das Statusbanner nur echte Störungen.\n" +
           "4. Manuell anlegen über Plus-Button (Einsatz ohne Alarm), wenn der echte Alarm " +
           "verloren ging.\n\n" +
           "Fällt einer Bug auf? An Funktionär melden mit Uhrzeit + Stichwort des verloren " +
@@ -1011,8 +1028,9 @@ const KATEGORIEN: Kategorie[] = [
       {
         frage: "Falsche Person eingetragen — wie raus?",
         antwort:
-          "Tippe auf die Person in der Mannschafts-Liste — der Personen-Picker öffnet sich. " +
-          "Oben rechts: 'Person löschen'. Bestätigen, Slot ist wieder leer.\n\n" +
+          "Am belegten Platz in der Mannschafts-Liste sitzt rechts ein rotes X ('Person aus " +
+          "Slot entfernen'). Antippen → der Platz ist sofort wieder leer, ohne Rückfrage. " +
+          "Tipp auf den Namen selbst öffnet den Personen-Picker zum Wechseln.\n\n" +
           "Bei Fahrer/Kdt funktioniert es analog.",
         tags: ["löschen", "rausnehmen", "korrigieren"],
       },

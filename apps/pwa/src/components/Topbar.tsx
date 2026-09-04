@@ -1,32 +1,20 @@
-import { ArrowLeftRight, HelpCircle, MapPin, Moon, Smartphone, Sun, WifiOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  ArrowLeftRight,
+  HelpCircle,
+  Info,
+  MapPin,
+  Moon,
+  MoreHorizontal,
+  Smartphone,
+  Sun,
+  WifiOff,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
 import { BrandLogo } from "./BrandLogo";
 import { HilfeSheet } from "./HilfeSheet";
-
-// Issue 11 (Einsatz-Test 2026-06-02): Mobile-Breakpoint < 640px wird per
-// matchMedia gehoert damit die Topbar-Buttons "Fahrzeug wechseln" nur als
-// Icon (ohne Text-Label) erscheinen — sonst overflowt die ganze Topbar.
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(max-width: 640px)").matches;
-  });
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mql = window.matchMedia("(max-width: 640px)");
-    const handler = (ev: MediaQueryListEvent) => setIsMobile(ev.matches);
-    // Safari < 14 hat addListener statt addEventListener
-    if (mql.addEventListener) mql.addEventListener("change", handler);
-    else mql.addListener(handler);
-    return () => {
-      if (mql.removeEventListener) mql.removeEventListener("change", handler);
-      else mql.removeListener(handler);
-    };
-  }, []);
-  return isMobile;
-}
 
 interface Props {
   funkrufname?: string;
@@ -35,17 +23,40 @@ interface Props {
   /** Optional. Wenn nicht gesetzt: aus funkrufname abgeleitet
    *  (enthaelt "Florian" → "Florian Eberstalzell", sonst "Fahrzeugbericht"). */
   mode?: "fahrzeug" | "zentrale";
-  /** Optional. Fahrzeug-Tablet: zeigt Fahrzeug-wechseln-Button in der
-   *  Mitte der Topbar. Frueher war der nur in der Fusszeile, was zu
-   *  unsichtbar war. */
+  /** Optional. Fahrzeug-Tablet: "Fahrzeug wechseln" im Mehr-Menue. */
   onSwitchVehicle?: () => void;
-  /** Optional. Fahrzeug-Tablet: zeigt Handoff-Button (Uebergeben an Handy)
-   *  in der Mitte der Topbar. */
+  /** Optional. Fahrzeug-Tablet: "An Handy uebergeben (QR)" im Mehr-Menue. */
   onHandoff?: () => void;
   /** HILFE-Knopf nur auf der Florianstation einblenden (User-Wunsch). */
   showHilfe?: boolean;
+  /**
+   * E-09 (Audit 2026-09): "Über HotDoc" im Mehr-Menue — oeffnet das
+   * AboutModal des Aufrufers (dort sitzen Darstellung + Tablet-Reset).
+   */
+  onAbout?: () => void;
 }
 
+interface MenuItem {
+  key: string;
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  /** Handoff ist eine "Achtung"-Aktion — amber statt neutral. */
+  tone?: "warn";
+}
+
+/**
+ * Topbar — Logo, Titel, GPS-Chip, Hilfe (nur Zentrale), Mehr-Menue, Uhr.
+ *
+ * E-09 (Audit 2026-09): Die Sekundaer-Aktionen (Fahrzeug wechseln, An
+ * Handy uebergeben, Hell/Dunkel, Über HotDoc) sassen vorher als vier
+ * einzelne Buttons in der Leiste — auf dem Handy lief das in den Overflow
+ * (Issue 11), auf dem Tablet war "Uebergeben" ein unbeschrifteter Icon-
+ * Knopf. Jetzt: EIN "⋯ Mehr"-Button (44 px) mit Popover; Escape (auch
+ * Android-Back → Escape, C-09) und Tipp ausserhalb schliessen es. Der
+ * Hilfe-Knopf bleibt separat, weil er auf der Zentrale die Haupt-Anlaufstelle
+ * fuer Fragen ist.
+ */
 export function Topbar({
   funkrufname,
   einsatzNr,
@@ -54,14 +65,13 @@ export function Topbar({
   onSwitchVehicle,
   onHandoff,
   showHilfe,
+  onAbout,
 }: Props) {
   const [hilfeOpen, setHilfeOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
-  // Issue 11 (Einsatz-Test 2026-06-02): Mobile = < 640px. Steuert ob
-  // "Fahrzeug wechseln" mit Text-Label oder nur als Icon (44x44 Touch-
-  // Target) gerendert wird. Sonst rutscht die Topbar in den Overflow.
-  const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -72,10 +82,68 @@ export function Topbar({
     return () => clearInterval(id);
   }, []);
 
+  // Mehr-Menue: Escape + Outside-Click schliessen. pointerdown statt click,
+  // damit ein Tipp auf einen anderen Button das Menue schliesst, BEVOR dessen
+  // Click feuert (sonst bleibt das Popover einen Frame laenger offen).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const onPointer = (e: PointerEvent): void => {
+      const el = menuRef.current;
+      if (el && e.target instanceof Node && !el.contains(e.target)) setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [menuOpen]);
+
   function toggleTheme() {
     const next: Theme = theme === "dark" ? "light" : "dark";
     setThemeOverride(next);
     setTheme(next);
+  }
+
+  function runAndClose(fn: () => void): void {
+    setMenuOpen(false);
+    fn();
+  }
+
+  const items: MenuItem[] = [];
+  if (onSwitchVehicle) {
+    items.push({
+      key: "switch",
+      label: "Fahrzeug wechseln",
+      icon: <ArrowLeftRight size={18} strokeWidth={2.2} />,
+      onClick: onSwitchVehicle,
+    });
+  }
+  if (onHandoff) {
+    items.push({
+      key: "handoff",
+      label: "An Handy übergeben (QR)",
+      icon: <Smartphone size={18} strokeWidth={2.2} />,
+      onClick: onHandoff,
+      tone: "warn",
+    });
+  }
+  items.push({
+    key: "theme",
+    label: theme === "dark" ? "Hell / Dunkel: auf Hell wechseln" : "Hell / Dunkel: auf Dunkel wechseln",
+    icon: theme === "dark" ? <Sun size={18} strokeWidth={2.2} /> : <Moon size={18} strokeWidth={2.2} />,
+    onClick: toggleTheme,
+  });
+  if (onAbout) {
+    items.push({
+      key: "about",
+      label: "Über HotDoc",
+      icon: <Info size={18} strokeWidth={2.2} />,
+      onClick: onAbout,
+    });
   }
 
   return (
@@ -113,97 +181,6 @@ export function Topbar({
         </div>
       </div>
 
-      {/* Fahrzeug-Tablet-Aktionen mittig in der Topbar — deutlich sichtbarer
-          als die alten Footer-Links.
-          U-11: Hierarchie reduziert. "Fahrzeug wechseln" ist Text-Button mit
-          dezenter Optik (kein farbiges Tint mehr), "Uebergeben" als IconButton
-          (nur Smartphone-Icon, 44x44 Touch-Target, Tooltip). */}
-      {(onSwitchVehicle || onHandoff) && (
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            marginLeft: "auto",
-            marginRight: 8,
-          }}
-        >
-          {onSwitchVehicle && (
-            /* Issue 11 (Einsatz-Test 2026-06-02): Auf Mobile (< 640px) wird
-               das Text-Label "Fahrzeug wechseln" ausgeblendet — nur Icon
-               mit 44x44 Touch-Target. Sonst ueberlaeuft die Topbar. */
-            <button
-              type="button"
-              onClick={onSwitchVehicle}
-              className="btn"
-              style={
-                isMobile
-                  ? {
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 44,
-                      height: 44,
-                      padding: 0,
-                      background: "transparent",
-                      color: "var(--fg-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      minHeight: 0,
-                    }
-                  : {
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "6px 10px",
-                      fontSize: 15,
-                      fontWeight: 500,
-                      background: "transparent",
-                      color: "var(--fg-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      minHeight: 0,
-                    }
-              }
-              aria-label="Fahrzeug wechseln"
-              title="Fahrzeug wechseln"
-            >
-              <ArrowLeftRight
-                size={isMobile ? 18 : 13}
-                strokeWidth={2.2}
-              />
-              {isMobile ? null : "Fahrzeug wechseln"}
-            </button>
-          )}
-          {onHandoff && (
-            <button
-              type="button"
-              onClick={onHandoff}
-              className="btn"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 44,
-                height: 44,
-                padding: 0,
-                fontSize: 16.5,
-                fontWeight: 600,
-                background: "var(--warn-tint)",
-                color: "var(--warn)",
-                border: "1px solid var(--amber-border)",
-                borderRadius: 10,
-                minHeight: 0,
-              }}
-              aria-label="Sitzung an Handy uebergeben (QR-Code)"
-              title="Sitzung an Handy uebergeben (QR-Code)"
-            >
-              <Smartphone size={18} strokeWidth={2.4} />
-            </button>
-          )}
-        </div>
-      )}
-
       {geo ? <GeoChip geo={geo} /> : null}
 
       {/* HILFE: Knopf-Button nur auf der Florianstation (User-Wunsch). Im
@@ -214,17 +191,99 @@ export function Topbar({
           type="button"
           className="themetoggle"
           onClick={() => setHilfeOpen(true)}
-          aria-label="Hilfe oeffnen"
-          title="Hilfe &amp; haeufige Fragen"
-          style={{ color: "var(--info)" }}
+          aria-label="Hilfe öffnen"
+          title="Hilfe & häufige Fragen"
+          style={{ color: "var(--info)", width: 44, height: 44, minHeight: 44 }}
         >
           <HelpCircle size={18} />
         </button>
       )}
 
-      <button className="themetoggle" onClick={toggleTheme} aria-label="Modus wechseln">
-        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
+      {/* E-09: "⋯ Mehr"-Menue mit den Sekundaer-Aktionen */}
+      <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          type="button"
+          className="themetoggle"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label="Mehr"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title="Mehr: Fahrzeug wechseln · Übergeben · Hell/Dunkel · Über HotDoc"
+          style={{
+            width: 44,
+            height: 44,
+            minHeight: 44,
+            ...(menuOpen
+              ? { background: "var(--glass-2)", borderColor: "var(--glass-border-strong)", color: "var(--fg)" }
+              : {}),
+          }}
+        >
+          <MoreHorizontal size={20} strokeWidth={2.4} />
+        </button>
+        {menuOpen && (
+          <div
+            role="menu"
+            aria-label="Mehr"
+            style={{
+              position: "absolute",
+              right: 0,
+              top: "calc(100% + 8px)",
+              minWidth: 260,
+              padding: 6,
+              borderRadius: 12,
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              boxShadow: "0 16px 40px -12px rgba(15, 23, 42, 0.45)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              zIndex: 10,
+              animation: "glass-reveal 160ms var(--ease-decel) both",
+            }}
+          >
+            {items.map((it) => (
+              <button
+                key={it.key}
+                role="menuitem"
+                type="button"
+                onClick={() => runAndClose(it.onClick)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  width: "100%",
+                  minHeight: 44,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: 0,
+                  background: "transparent",
+                  color: it.tone === "warn" ? "var(--warn)" : "var(--fg)",
+                  fontFamily: "inherit",
+                  fontSize: 16.5,
+                  fontWeight: 600,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "grid",
+                    placeItems: "center",
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    background: it.tone === "warn" ? "var(--warn-tint)" : "var(--surface-2)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {it.icon}
+                </span>
+                <span style={{ flex: 1 }}>{it.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="headerstamp">
         <div className="time">{clock}</div>
@@ -261,7 +320,7 @@ function GeoChip({ geo }: { geo: GeoState }) {
           ? "GPS-Fix wird gesucht …"
           : geo.status === "denied"
             ? (geo.errorMessage ?? "Standortzugriff im Browser blockiert")
-            : (geo.errorMessage ?? "Geraet hat kein GPS-Signal");
+            : (geo.errorMessage ?? "Gerät hat kein GPS-Signal");
   return (
     <span className={`status-pill ${variant}`} title={detailTitle}>
       <span className="dot" />
