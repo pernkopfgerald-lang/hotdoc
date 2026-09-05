@@ -598,9 +598,8 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
   );
 
   // FCM-Push parallel ausfuehren — error darf den Alarm-Pfad nicht blockieren.
-  // BlaulichtSMS-Alarme gehen an ALLE Tablets (leere fahrzeugIds-Liste), weil
-  // die Disposition erst nachtraeglich vom Einsatzleiter in der Florianstation
-  // gemacht wird.
+  // BlaulichtSMS-Alarme gehen an ALLE Tablets (leere fahrzeugIds-Liste) — der
+  // jeweilige Fahrzeug-Kdt entscheidet am Tablet, ob das Fahrzeug ausrueckt.
   // S-09/N-10: Auch beim Doppelalarm geht genau EIN Push raus — fuer das neue
   // Doc, mit Hinweis auf den aelteren Einsatz. Kein zweiter Push fuer die
   // Aktualisierung des Kandidaten.

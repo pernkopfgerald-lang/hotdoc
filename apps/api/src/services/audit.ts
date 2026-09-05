@@ -28,7 +28,6 @@ export type AuditEventType =
   | "login-failed"
   | "einsatz-abschluss"
   | "einsatz-reaktivierung"
-  | "einsatz-zuweisung-geaendert"
   | "einsatz-delete"
   // Issue 6 (Einsatz-Test 2026-06-02): Chronik-Eintraege koennen vom
   // Fahrzeug-Tablet (eigene) und der Florianstation (alle) nachtraeglich

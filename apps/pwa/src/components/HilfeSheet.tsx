@@ -694,17 +694,13 @@ const KATEGORIEN: Kategorie[] = [
         tags: ["zentrale", "übersicht", "hauptbericht"],
       },
       {
-        // AUDIT-12/EL-15 (b): Die Zuweisung passiert NICHT im Anlage-Dialog,
-        // sondern in der Sektion "Fahrzeug-Disposition" im Hauptbericht-Editor.
-        frage: "Wie weise ich Fahrzeuge einem Einsatz zu?",
+        frage: "Welche Fahrzeuge sehen einen Einsatz?",
         antwort:
-          "In der Florian-Zentrale gibt es im Hauptbericht-Editor die Sektion " +
-          "'Fahrzeug-Disposition'. Keine Auswahl → alle Fahrzeug-Tablets sehen den " +
-          "Einsatz (Default bei BlaulichtSMS-Alarm). Eine Auswahl filtert die " +
-          "Sichtbarkeit auf die markierten Fahrzeuge — nützlich z. B. bei Sturm, " +
-          "um Adressen aufzuteilen.\n\n" +
-          "Der jeweilige Fahrzeug-Kdt entscheidet am Tablet, ob das Fahrzeug ausrückt.",
-        tags: ["disposition", "fahrzeug zuteilen", "alarmieren", "sichtbarkeit"],
+          "Alle Fahrzeug-Tablets sehen jeden aktiven Einsatz — es gibt keine " +
+          "Zuweisung durch die Zentrale. Der jeweilige Fahrzeug-Kdt entscheidet am " +
+          "Tablet, ob das Fahrzeug ausrückt und einen Bericht führt. Welche " +
+          "Fahrzeuge tatsächlich beteiligt sind, ergibt sich aus den Fahrzeugberichten.",
+        tags: ["fahrzeug", "sichtbarkeit", "beteiligt", "alarmieren"],
       },
       {
         // AUDIT-12/EL-15 (a): reale Button-Beschriftung + Fundort + Brand-Sonderfall.

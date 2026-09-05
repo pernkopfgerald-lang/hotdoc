@@ -128,7 +128,6 @@ interface EinsatzApiDoc {
   einsatzleiterPersonId?: number;
   bearbeiterPersonId?: number;
   reservePersonIds?: number[];
-  zugewieseneFahrzeuge?: Array<"kdo" | "tlf-a-4000" | "lfa-b" | "mtf">;
   // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Block.
   technischeStatistik?: {
     personenRettung?: {
@@ -194,9 +193,6 @@ interface EditorState {
   bearbeiterPersonId: number | null;
   /** syBOS-Person-IDs der Reserve-Mannschaft (zur Verfügung gestanden, nicht ausgerückt). */
   reservePersonIds: number[];
-  /** Florianstation-Disposition: welche Fahrzeuge bearbeiten diesen Einsatz?
-   *  Leer → alle Fahrzeuge-Tablets sehen den Einsatz (Default bei BlaulichtSMS-Alarm). */
-  zugewieseneFahrzeuge: Array<"kdo" | "tlf-a-4000" | "lfa-b" | "mtf">;
   // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Editor.
   // Nur befuellt wenn kategorieFuer(einsatzart) === "technisch". Wird beim
   // Save 1:1 in body.technischeStatistik gemappt.
@@ -232,7 +228,6 @@ const EMPTY_EDITOR: EditorState = {
   oelSaecke: 0,
   bearbeiterPersonId: null,
   reservePersonIds: [],
-  zugewieseneFahrzeuge: [],
   // Issue 16 (Einsatz-Test 2026-06-02): Technisch-Statistik-Defaults.
   tsPersonAnzahl: 0,
   tsPersonTot: 0,
@@ -1402,9 +1397,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       reservePersonIds: Array.isArray(aktiverEinsatz.reservePersonIds)
         ? aktiverEinsatz.reservePersonIds
         : [],
-      zugewieseneFahrzeuge: Array.isArray(aktiverEinsatz.zugewieseneFahrzeuge)
-        ? aktiverEinsatz.zugewieseneFahrzeuge
-        : [],
       // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik aus Doc seeden.
       // Wenn `ursache` nicht in URSACHE_TECHNISCH liegt, faellt der Wert in
       // tsUrsacheFreitext, damit der User ihn weiter editieren kann.
@@ -1550,7 +1542,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         body.bearbeiterPersonId = editor.bearbeiterPersonId;
       }
       body.reservePersonIds = editor.reservePersonIds;
-      body.zugewieseneFahrzeuge = editor.zugewieseneFahrzeuge;
 
       // Issue 16 (Einsatz-Test 2026-06-02): Technisch-Statistik nur bei
       // Einsatzkategorie "technisch" speichern. Bei "brand" landet der
@@ -3678,61 +3669,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         </section>
 
-        <SectionHead title="Fahrzeug-Disposition" />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Truck size={20} />
-              Welche Fahrzeuge bearbeiten diesen Einsatz?
-            </div>
-            <span className="card-meta">
-              {editor.zugewieseneFahrzeuge.length === 0
-                ? "Default: alle Fahrzeuge sehen den Einsatz"
-                : `${editor.zugewieseneFahrzeuge.length} zugewiesen`}
-            </span>
-          </div>
-
-          <p style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55, margin: "0 0 14px" }}>
-            Keine Auswahl → alle Fahrzeug-Tablets sehen den Einsatz (Default bei
-            BlaulichtSMS-Alarm). Auswahl filtert die Sichtbarkeit auf die markierten
-            Fahrzeuge — nützlich bei Sturm um Adressen aufzuteilen.
-          </p>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => {
-              const aktiv = editor.zugewieseneFahrzeuge.includes(id);
-              const fz = FAHRZEUGE[id];
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={schreibschutz}
-                  onClick={() =>
-                    patchEditor({
-                      zugewieseneFahrzeuge: aktiv
-                        ? editor.zugewieseneFahrzeuge.filter((x) => x !== id)
-                        : [...editor.zugewieseneFahrzeuge, id],
-                    })
-                  }
-                  className={`chip${aktiv ? " active" : ""}`}
-                  style={{
-                    padding: "10px 16px",
-                    fontSize: 16.5,
-                    fontWeight: 600,
-                    background: aktiv ? "var(--info)" : "var(--surface)",
-                    color: aktiv ? "#fff" : "var(--fg)",
-                    border: `1px solid ${aktiv ? "var(--info)" : "var(--border)"}`,
-                    borderRadius: 10,
-                    cursor: schreibschutz ? "not-allowed" : "pointer",
-                    opacity: schreibschutz ? 0.5 : 1,
-                  }}
-                >
-                  {fz.funkrufname}
-                </button>
-              );
-            })}
-          </div>
-        </section>
 
         {/* Z-03: 2-Phasen-Editor — ab hier beginnt die ABSCHLUSS-Phase.
             Waehrend des laufenden Einsatzes zaehlen Lagebild, Chronik und

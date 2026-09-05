@@ -23,7 +23,7 @@
  * Regel 2 — Unbefüllt-Abschluss (L-01, UNFILLED_CLOSE_MINUTES, Default 60):
  *   Poller-auto-angelegte Alarme (einsatzTyp="alarm") die nach 1 h komplett
  *   unbefüllt sind (keine User-Chronik, alle Fahrzeugberichte Phantom,
- *   Einsatz-Inhaltsfelder leer, keine Disposition/Annahme am Florian,
+ *   Einsatz-Inhaltsfelder leer, keine Annahme am Tablet,
  *   kein Anrufer/Auftragsweg — S-05/N-06/I-02) werden OHNE Berichtsnummer
  *   geschlossen — Phantom-Alarme verbrennen keine Nummern; Reaktivieren +
  *   echter Abschluss vergibt regulär. Basis ist erstelltAm (NICHT
@@ -157,8 +157,6 @@ interface EinsatzMin {
   technischeStatistik?: unknown;
   verrechnung?: { verrechenbar?: boolean };
   // — S-05 / N-06 / I-02 (Audit R3): weitere Befüllt-Signale —
-  /** Disposition am Florian → menschliche Interaktion. */
-  zugewieseneFahrzeuge?: unknown[];
   anrufer?: string;
   anruferTel?: string;
   einsatzauftragVia?: string;
@@ -333,9 +331,6 @@ function istUnbefuellt(
     return false;
   }
   if (einsatz.verrechnung?.verrechenbar === true) return false;
-  // S-05 (Audit R3): Disposition am Florian (zugewieseneFahrzeuge) ist eine
-  // menschliche Entscheidung — der Einsatz ist damit nicht mehr "unbefüllt".
-  if ((einsatz.zugewieseneFahrzeuge ?? []).length > 0) return false;
   // N-06: Anrufer/Auftragsweg/Alarmierungsstelle sind Editor-Eingaben.
   if ((einsatz.anrufer ?? "").trim().length > 0) return false;
   if ((einsatz.anruferTel ?? "").trim().length > 0) return false;

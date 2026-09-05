@@ -838,7 +838,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         // WICHTIG: Liest dieser Effekt kuenftig ein NEUES Feld aus
         // list.items, MUSS es in EINSATZ_POLL_FELDER nachgezogen werden.
         const list = await apiCall<{ items: ApiEinsatzListItem[] }>(
-          `/api/einsaetze?status=aktiv&fuerFahrzeug=${encodeURIComponent(fahrzeugId)}&shape=poll`,
+          `/api/einsaetze?status=aktiv&shape=poll`,
         );
         if (cancelled) return;
         // ING-01 (AUDIT-02, 2026-06-12): Der fruehere Early-Return bei leerer
@@ -1194,7 +1194,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     // #154: runPoll für den Sofort-Reload nach Einsatz-Anlage exponieren.
     runPollRef.current = () => void runPoll();
     // Polling alle 5 s. Vorher waren es 30 s — das war der Hauptgrund warum
-    // die Disposition von der Florianstation bis zum Empfang am Fahrzeug-
+    // ein neuer Einsatz von der Florianstation bis zum Empfang am Fahrzeug-
     // Tablet bis zu 30 s gebraucht hat. Fuenf Sekunden ist die richtige
     // Wahl: schnell genug damit der Funktionaer auf der Florianstation den
     // Wechsel quasi-live sieht, langsam genug damit keine Backend-Last

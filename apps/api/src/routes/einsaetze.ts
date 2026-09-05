@@ -229,21 +229,9 @@ einsaetzeRouter.get("/api/einsaetze", requireAuth(), ah(async (req, res) => {
     }
   }
 
-  // Fahrzeug-Filter: jedes Fahrzeug-Tablet schickt seine eigene Id mit,
-  // damit es nur Einsaetze sieht die ihm explizit zugewiesen sind (oder
-  // ueberhaupt keine Zuweisung tragen = Default offen). Florianstation
-  // schickt keinen Filter und sieht alle aktiven Einsaetze.
-  const fuerFahrzeugRaw = req.query.fuerFahrzeug;
-  const fuerFahrzeug =
-    typeof fuerFahrzeugRaw === "string" ? fuerFahrzeugRaw : "";
-  if (fuerFahrzeug) {
-    docs = docs.filter((d) => {
-      const z = (d as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge;
-      if (!Array.isArray(z) || z.length === 0) return true;
-      return z.includes(fuerFahrzeug);
-    });
-  }
-
+  // Kein Fahrzeug-Filter mehr (Audit R3, User-Wunsch): jedes Tablet und die
+  // Florianstation sehen alle aktiven Einsaetze. Beteiligt ist ein Fahrzeug,
+  // wenn es einen Fahrzeugbericht fuehrt — nicht per Zuweisung.
   docs.sort(
     (a, b) =>
       new Date((b as { alarmierungZeit: string }).alarmierungZeit).getTime() -
@@ -339,11 +327,6 @@ const ManuellAnlageBodySchema = z.object({
    *  als Default; der User kann sie immer noch manuell ueberschreiben. */
   pflichtbereich: z.boolean().optional(),
   einsatzzoneEzell: z.boolean().optional(),
-  /** Disposition: welche Fahrzeuge bearbeiten den Einsatz?
-   *  Leer/undefined → alle Fahrzeuge sehen ihn (Default). */
-  zugewieseneFahrzeuge: z
-    .array(z.enum(["kdo", "tlf-a-4000", "lfa-b", "mtf"]))
-    .optional(),
   /** Client-generierte UUID fuer Idempotenz. Wenn das Tablet den POST wegen
    *  Netz-Wackler retryt, wird derselbe Einsatz nicht doppelt angelegt — der
    *  Server findet die existierende Doc-ID und gibt sie zurueck. Optional fuer
@@ -406,9 +389,6 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), ah(asy
     ...(d.uebungThema ? { uebungThema: d.uebungThema } : {}),
     ...(d.uebungsleiter ? { uebungsleiter: d.uebungsleiter } : {}),
     ...(d.uebungsTyp ? { uebungsTyp: d.uebungsTyp } : {}),
-    ...(d.zugewieseneFahrzeuge && d.zugewieseneFahrzeuge.length > 0
-      ? { zugewieseneFahrzeuge: d.zugewieseneFahrzeuge }
-      : {}),
     // Auto-Pflichtbereich aus Geocoder-Erkennung: wenn der Client den Wert
     // mitschickt (weil GPS in Eberstalzell-Bbox), uebernehmen wir ihn als
     // Vorbefuellung — Florian-Editor zeigt die Checkbox bereits gesetzt,
@@ -1397,7 +1377,6 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "bearbeiterPersonId",
   "einsatzleiterPersonId",
   "reservePersonIds",
-  "zugewieseneFahrzeuge",
   "lotsendienstAuftraggeber",
   "lotsendienstRoute",
   "uebungThema",
@@ -1562,35 +1541,6 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
   // A-03a: erfolgreicher Schreibzugriff — Liste-Cache invalidieren, damit
   // die Aenderung fuer alle Poller sofort sichtbar ist.
   invalidateEinsatzCache();
-  // Audit-Trail: wenn sich die Fahrzeug-Zuweisung geaendert hat → eigenes
-  // Event schreiben. Sicherheits-relevant: aendert die Sichtbarkeit eines
-  // Einsatzes auf den Fahrzeug-Tablets.
-  // sortiert vergleichen — Reihenfolge im Array sollte den Audit-Trail
-  // nicht ausloesen (logisch eine Menge, nicht eine Liste).
-  const arrAsString = (raw: unknown): string => {
-    const arr = Array.isArray(raw) ? [...(raw as string[])] : [];
-    arr.sort();
-    return JSON.stringify(arr);
-  };
-  const vorher = arrAsString(
-    (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge,
-  );
-  const nachher = arrAsString(
-    (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge,
-  );
-  if (vorher !== nachher) {
-    await writeAuditEvent({
-      type: "einsatz-zuweisung-geaendert",
-      actorUsername: session.username,
-      actorRolle: session.rolle,
-      einsatzId: id,
-      details: {
-        vorher: (current as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge ?? [],
-        nachher: (merged as { zugewieseneFahrzeuge?: string[] }).zugewieseneFahrzeuge ?? [],
-      },
-      ...(req.ip ? { ipAddress: req.ip } : {}),
-    });
-  }
   res.json({ ok: true, id, rev: result.rev });
 }));
 

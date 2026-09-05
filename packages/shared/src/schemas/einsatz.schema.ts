@@ -254,12 +254,11 @@ export const EinsatzSchema = z.object({
    */
   berichtNummer: z.string().optional(),
   /**
-   * Optionale Disposition: welche Fahrzeuge sind diesem Einsatz zugewiesen?
-   * Leer/undefined → alle Tablets sehen den Einsatz (BlaulichtSMS-Default).
-   * Liste vorhanden → nur die zugewiesenen Fahrzeug-Tablets pollen ihn,
-   * andere bleiben in IdleView. Florianstation sieht IMMER alles.
-   * "zentrale" ist absichtlich nicht erlaubt — Florianstation ist
-   * Disposition, kein Einsatzfahrzeug.
+   * ENTFERNT (Audit R3, User-Wunsch: "verwirrt nur") — die Fahrzeug-Zuweisung
+   * durch die Florianstation gibt es nicht mehr; alle Tablets sehen jeden
+   * aktiven Einsatz, beteiligt ist, wer einen Fahrzeugbericht fuehrt. Das
+   * Feld bleibt nur als Altdaten-Toleranz im Schema (Bestandsdocs), wird
+   * nirgends mehr gelesen oder geschrieben. Keine Datenmigration.
    */
   zugewieseneFahrzeuge: z
     .array(z.enum(["kdo", "tlf-a-4000", "lfa-b", "mtf"]))
