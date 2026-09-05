@@ -4309,7 +4309,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           <div
             style={{
               position: "fixed",
-              top: 80,
+              // V-06 (Audit R3): unterhalb der Tab-Leiste, nicht auf ihr.
+              top: "calc(var(--topbar-h, 75px) + 52px)",
               right: 20,
               zIndex: 1500,
               padding: "8px 14px",

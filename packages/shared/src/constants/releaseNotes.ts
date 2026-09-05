@@ -21,6 +21,24 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.30",
+    date: "2026-09-05",
+    title: "Einsatztauglichkeits-Audit: Funkloch-Sicherheit, Nachtbetrieb, Klartext",
+    bullets: [
+      "Kein stiller Datenverlust mehr im Funkloch: Mannschaft, Atemschutz, Geräte und Chronik landen bei Netzausfall in der Warteschlange und werden nachgereicht — auch wenn der Einsatz inzwischen von der Zentrale geschlossen wurde (dann: 'Reaktivieren, dann wird nachgereicht' statt grünem Häkchen).",
+      "Tablet-Anmeldung hält jetzt 30 Tage und verlängert sich still — kein PIN-Bildschirm mehr um 03:10 beim Nachtalarm. Das APK-Update-Banner funktioniert erstmals auch in der App (der Aufruf ging bisher ins Leere).",
+      "1-Stunden-Regel entschärft: Eingaben der Zentrale (Anrufer, Auftragsweg) und das Öffnen am Tablet zählen als Aktivität; kommt Doku verspätet aus dem Funkloch, öffnet der Server den auto-geschlossenen Einsatz von selbst wieder.",
+      "Einsatzende im PDF ist jetzt das echte Ende (aus den Fahrzeugzeiten), nicht der Zeitpunkt des Abschluss-Klicks — und bleibt bei Korrektur-Reaktivierungen erhalten. Fahrzeugblätter zeigen die eigenen Von/Bis-Zeiten, Phantom-Berichte erscheinen nicht mehr als 'eingesetzt'.",
+      "Doppelalarm-Erkennung: Eine Nachalarmierung an derselben Adresse legt keinen zweiten stillen Einsatz mehr an, sondern markiert ihn als 'Möglicher Doppelalarm' mit Sprung zum Original. Mannschaft wird beim Folge-Einsatz nie mehr an den falschen Einsatz vererbt.",
+      "Zentrale: Editor-Text überlebt Tab-Wechsel, Abschluss, Handoff und Schichtübergabe; ein zweites Gerät kann nicht mehr still überschreiben (Konfliktwarnung mit 'Neu laden'). Fahrzeuge, die woanders im Einsatz sind, erscheinen als 'Im Einsatz bei …' statt 'Wartend'. Verwerfen hat 15 Sekunden 'Rückgängig'.",
+      "Fahrzeug-Zuweisung durch die Zentrale entfernt — alle Tablets sehen jeden Einsatz, beteiligt ist, wer einen Bericht führt.",
+      "Backoffice: Schriftführer korrigiert Fahrzeugberichte (Fahrer/Kdt/KM/Zeiten/Mannschaft), Einsatzleiter, Einsatzende und Chronik direkt; Phantome, Verworfene und Auto-Abschlüsse sind gekennzeichnet; Vollständigkeits-Check je Bericht; Spickzettel enthält Personen mit syBOS-Nummer, Zeiten und Statistik; Löschen entfernt jetzt auch Fotos.",
+      "Tablet-Sichtbereich: Abschluss-Dialog und Handoff scrollen statt abzuschneiden, 'Uhrzeit bis' läuft hochkant nicht mehr aus der Karte, Inhalt liegt nicht mehr unter der Android-Navigationsleiste, Vollbild-Karte zeigt Route-Buttons.",
+      "Klartext statt Insider-Sprache: Hilfe jetzt auch am Tablet (11 veraltete Hilfetexte korrigiert), Abschluss-Option 'Ganzen Einsatz jetzt abschließen — im Zweifel leer lassen', 'Übung anlegen' statt 'Neuen Bericht anlegen', Übungen ohne Alarm-Vokabular, aufgeräumte Kopf-/Fußzeile mit 'Mehr'-Menü.",
+      "Unter der Haube: Poller pollt sofort nach Neustart, Login-Backoff gegen Kontosperre, persistente Fahrzeugpositionen und Schnittstellen-Status über beide Server-Maschinen, Datenbank-Indizes für jahrelanges Wachstum, sauberer Shutdown beim Deploy.",
+    ],
+  },
+  {
     version: "0.1.29",
     date: "2026-07-03",
     title: "Löschwasser: Info-Panel + größere, standardmäßig sichtbare Symbole",

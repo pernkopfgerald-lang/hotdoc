@@ -183,6 +183,10 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
         style={{
           // D-18: Modal-Width Stufe sm (440px) — Bestaetigungs-Dialog.
           width: "min(var(--modal-w-sm), 100%)",
+          // V-05 (Audit R3): QR-Zustand ist ~660 px hoch — auf 1024x768 und
+          // mit Navigationsleiste wurde die unterste Box abgeschnitten.
+          maxHeight: "calc(100dvh - 32px)",
+          overflowY: "auto",
           background: "var(--glass-1)",
           backdropFilter: "var(--blur-1)",
           WebkitBackdropFilter: "var(--blur-1)",

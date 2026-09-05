@@ -22,6 +22,10 @@
 @import url("https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 :root {
+  /* V-06 (Audit R3): reale Topbar-Hoehe (14 + 44 + 16 + 1 Border) — die
+     sticky Tab-Leiste und der Auto-Save-Toast haengen sich daran, statt an
+     hart codierte 68/80 px, die unter die Topbar rutschten. */
+  --topbar-h: 75px;
   /* ────────────────────────────────────────────────
      LIGHT THEME — Tageinsatz, hoher Außenlicht-Kontrast
      ──────────────────────────────────────────────── */

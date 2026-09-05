@@ -73,7 +73,10 @@ export function AbschlussModal({
       // Issue 11 (Einsatz-Test 2026-06-02): Backdrop-Padding auf Mobile
       // reduziert (p-3 statt p-4) damit das Modal in 360px-Viewports nicht
       // ueber den Rand klebt.
-      className="fixed inset-0 z-[2000] grid place-items-center bg-black/75 p-3 sm:p-4 backdrop-blur-sm"
+      // V-01 (Audit R3): Container scrollt, Box hat eine Max-Hoehe — vorher
+      // war der Dialog auf 1280x800-Tablets 30-50 px hoeher als der WebView
+      // und place-items-center hat Kopf UND Footer-Buttons abgeschnitten.
+      className="fixed inset-0 z-[2000] grid place-items-center overflow-y-auto bg-black/75 p-3 sm:p-4 backdrop-blur-sm"
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
@@ -84,7 +87,7 @@ export function AbschlussModal({
           "abschliessen", nicht "alles ok". Frueher waren Border + CTA beide
           rot, was den canConfirm-Zustand visuell zerstoert hat. */}
       <div
-        className="w-full max-w-2xl overflow-hidden rounded-l border"
+        className="w-full max-w-2xl max-h-[calc(100dvh-24px)] overflow-y-auto rounded-l border"
         style={{
           borderColor: canConfirm ? "var(--emerald-border)" : "var(--amber-border)",
           background: "var(--card-gradient)",

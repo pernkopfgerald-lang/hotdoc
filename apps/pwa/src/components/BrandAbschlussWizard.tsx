@@ -172,7 +172,9 @@ export function BrandAbschlussWizard({
           margin: "0 auto",
           borderLeft: "1px solid var(--border)",
           borderRight: "1px solid var(--border)",
-          maxHeight: "100vh",
+          // V-07 (Audit R3): dvh statt vh — schrumpft mit Bildschirmtastatur
+          // (zusammen mit interactive-widget=resizes-content im Viewport-Meta).
+          maxHeight: "100dvh",
           overflow: "hidden",
         }}
       >

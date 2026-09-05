@@ -2,7 +2,15 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- V-03 (Audit R3): KEIN viewport-fit=cover — damit padded Capacitors
+         SystemBars den WebView selbst um Status-/Navigationsleiste (Android
+         15+ Edge-to-Edge); mit cover laege der Inhalt unter den Leisten
+         (Toasts unsichtbar, CTA/Modal-Footer angeschnitten), und die App
+         konsumiert nirgends env(safe-area-inset-*).
+         V-07: interactive-widget=resizes-content — im Tablet-Browser
+         schrumpft der Layout-Viewport mit der Bildschirmtastatur, sonst
+         liegen fixe Modal-Footer (Brand-Wizard) unter der Tastatur. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#C8102E" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192.png" />

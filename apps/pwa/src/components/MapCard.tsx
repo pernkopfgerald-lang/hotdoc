@@ -495,7 +495,10 @@ export function MapCard({
         background: "var(--card-gradient)",
         boxShadow: "var(--shadow-card)",
       });
-  const mapHeight = fullscreen ? "calc(100vh - 200px)" : "360px";
+  // V-04 (Audit R3): Im Vollbild fuellt die Karte den flex-Rest (minHeight 0),
+  // statt "100vh - 200px" — die 200 px deckten Abbiegehinweise (~212 px) +
+  // Route-Buttons nicht ab, die lagen dann unterhalb des Bildschirms.
+  const mapHeight = fullscreen ? "100%" : "360px";
 
   return (
     <section
@@ -558,7 +561,11 @@ export function MapCard({
 
       <div
         className="relative overflow-hidden rounded-s border"
-        style={{ borderColor: "var(--border-strong)", flex: fullscreen ? 1 : undefined }}
+        style={{
+          borderColor: "var(--border-strong)",
+          flex: fullscreen ? 1 : undefined,
+          minHeight: fullscreen ? 0 : undefined,
+        }}
       >
         <div ref={elRef} className="bg-surface-2" style={{ height: mapHeight, width: "100%" }} />
 

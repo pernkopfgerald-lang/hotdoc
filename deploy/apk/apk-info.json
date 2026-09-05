@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.29",
-  "apkUrl": "/hotdoc-v0.1.29-release.apk",
-  "releaseNotes": "v0.1.29 — Löschwasser: Info-Panel + größere, standardmäßig sichtbare Symbole\n\n• Löschwasser-Entnahmestellen werden jetzt standardmäßig angezeigt (Fahrzeug-Tablet UND Florian-Zentrale), Symbole 30% größer.\n• Antippen einer Entnahmestelle in der Florian-Zentrale öffnet ein Info-Panel rechts oben — wie beim Fahrzeug-Klick, nur mit Anschlüssen statt Status. Koordinaten stehen ebenfalls drin, praktisch zum genauen Auffinden vor Ort.\n\n— Enthält den Löschwasser-Layer (v0.1.27), das große Intensiv-Audit (v0.1.25) und alle Neuerungen aus v0.1.10–v0.1.26.",
-  "publishedAt": "2026-07-03T14:00:00+00:00",
+  "currentVersion": "0.1.30",
+  "apkUrl": "/hotdoc-v0.1.30-release.apk",
+  "releaseNotes": "v0.1.30 — Einsatztauglichkeits-Audit: Funkloch-Sicherheit, Nachtbetrieb, Klartext\n\n• Kein stiller Datenverlust mehr im Funkloch: Mannschaft, Atemschutz, Geräte und Chronik werden nachgereicht — auch wenn der Einsatz inzwischen geschlossen wurde (dann Hinweis statt grünem Häkchen).\n• Tablet-Anmeldung hält 30 Tage und verlängert sich still — kein PIN-Bildschirm mehr beim Nachtalarm. Das Update-Banner funktioniert erstmals in der App.\n• 1-Stunden-Regel entschärft: Zentrale-Eingaben und Öffnen am Tablet zählen; verspätete Doku öffnet den Einsatz automatisch wieder.\n• Einsatzende im PDF = echtes Ende, Fahrzeugblätter mit eigenen Zeiten, keine Phantom-Fahrzeuge mehr.\n• Doppelalarm-Erkennung, korrekte Mannschafts-Übernahme beim Folge-Einsatz, Zentrale-Editor verliert keinen Text mehr, Verwerfen mit Rückgängig.\n• Fahrzeug-Zuweisung durch die Zentrale entfernt.\n• Tablet-Sichtbereich: Dialoge scrollen, nichts mehr unter der Navigationsleiste, Uhrzeit-Feld hochkant sichtbar.\n• Klartext: Hilfe am Tablet, verständliche Abschluss-Option, Übung heißt Übung, Mehr-Menü.\n\n— Enthält Löschwasser-Layer (v0.1.26–29), Intensiv-Audit R2 (v0.1.25) und alle Neuerungen aus v0.1.10–v0.1.24.",
+  "publishedAt": "2026-09-05T12:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

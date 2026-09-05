@@ -51,8 +51,10 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
   if (visible.length === 0) return null;
   return (
     <div
-      className="sticky top-[68px] z-[15] flex items-end gap-1 overflow-x-auto px-4 pt-1.5"
+      className="sticky z-[15] flex items-end gap-1 overflow-x-auto px-4 pt-1.5"
       style={{
+        // V-06 (Audit R3): an die echte Topbar-Hoehe gekoppelt (75/71 px).
+        top: "var(--topbar-h, 75px)",
         background:
           "linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, var(--bg) 100%)",
         borderBottom: "1px solid var(--border)",
