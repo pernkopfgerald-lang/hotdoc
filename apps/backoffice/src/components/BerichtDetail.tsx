@@ -145,11 +145,9 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
   // Issue 2 (Einsatz-Test 2026-06-02): Loesch-Modal mit Pflicht-Grund.
   const [deleteModal, setDeleteModal] = useState(false);
   const [deleteGrund, setDeleteGrund] = useState("");
-  // D-10 (Audit R3): Abschluss-Modal statt confirm() — Verrechnung +
+  // D-10 (Audit R3): Abschluss-Modal statt confirm() — die D-07-
   // Vollstaendigkeits-Warnungen vor dem Sperren sichtbar machen.
   const [abschlussModal, setAbschlussModal] = useState(false);
-  const [verrechenbar, setVerrechenbar] = useState(false);
-  const [rechnungsadresse, setRechnungsadresse] = useState("");
 
   useEffect(() => {
     void load();
@@ -195,10 +193,6 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
 
   function openAbschlussModal() {
     if (!doc) return;
-    const v = doc.verrechnung as { verrechenbar?: boolean; rechnungsadresse?: string } | undefined;
-    // Default: gespeicherter Stand; Lotsendienst ist praktisch immer verrechenbar.
-    setVerrechenbar(v?.verrechenbar ?? doc.einsatzTyp === "lotsendienst");
-    setRechnungsadresse(v?.rechnungsadresse ?? "");
     setAbschlussModal(true);
   }
 
@@ -207,15 +201,9 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
     setBusy(true);
     setErr(null);
     try {
-      const istUebung = doc.einsatzTyp === "uebung";
       // clientTs = Zeitpunkt des Klicks — Server lehnt mit 409 stale_abschluss
       // ab, wenn seither jemand reaktiviert hat (L-08).
-      await abschluss(
-        id,
-        istUebung
-          ? { clientTs: new Date().toISOString() }
-          : { verrechenbar, rechnungsadresse, clientTs: new Date().toISOString() },
-      );
+      await abschluss(id, { clientTs: new Date().toISOString() });
       setAbschlussModal(false);
       await load();
       onChange();
@@ -287,12 +275,8 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
   // AUDIT-15: typabhaengige Zusatzfelder aus dem bereits geladenen Doc —
   // defensiv gecastet, weil das Listen-Item-Interface nur die Stammfelder
   // typisiert. berichtNummer kommt erst mit AUDIT-11 (Counter beim Abschluss).
-  const verrechnung = doc.verrechnung as
-    | { verrechenbar?: boolean; rechnungsadresse?: string }
-    | undefined;
   const berichtNummer =
     typeof doc.berichtNummer === "string" ? doc.berichtNummer : undefined;
-  const istUebung = doc.einsatzTyp === "uebung";
   const vollst = pruefeVollstaendigkeit(doc, fzgBerichte);
   // D-06: gibt es ueberhaupt einen Lifecycle-Hinweis fuer die Warn-Box?
   const hatLifecycleHinweis =
@@ -470,12 +454,6 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
             <Field label="Auftraggeber">{doc.lotsendienstAuftraggeber ?? "—"}</Field>
             <Field label="Route">{doc.lotsendienstRoute ?? "—"}</Field>
           </>
-        )}
-        {verrechnung?.verrechenbar !== undefined && (
-          <Field label="Verrechenbar">{verrechnung.verrechenbar ? "JA" : "NEIN"}</Field>
-        )}
-        {verrechnung?.rechnungsadresse && (
-          <Field label="Rechnungsadresse">{verrechnung.rechnungsadresse}</Field>
         )}
       </dl>
 
@@ -737,11 +715,9 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
         </button>
       </footer>
 
-      {/* D-10 (Audit R3): Abschluss-Modal. Ersetzt das nackte confirm():
-          Verrechnung (JA/NEIN + Rechnungsadresse, bei Uebung ausgeblendet —
-          der Server ignoriert sie dort ohnehin, U-05) und die D-07-Warnungen
-          werden VOR dem Sperren gezeigt. Escape/Abbrechen schliesst ohne
-          Wirkung. */}
+      {/* D-10 (Audit R3): Abschluss-Modal. Ersetzt das nackte confirm(): die
+          D-07-Warnungen werden VOR dem Sperren gezeigt. Escape/Abbrechen
+          schliesst ohne Wirkung. */}
       {abschlussModal && (
         <div
           style={{
@@ -800,52 +776,6 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
                   ))}
                 </div>
               </div>
-            )}
-
-            {!istUebung && (
-              <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-                <div className="field">
-                  <label className="caption">Verrechenbar</label>
-                  <div style={{ display: "flex", gap: 16, paddingTop: 6 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-                      <input
-                        type="radio"
-                        name="verrechenbar"
-                        checked={verrechenbar}
-                        onChange={() => setVerrechenbar(true)}
-                        style={{ accentColor: "var(--ok)" }}
-                      />
-                      JA
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-                      <input
-                        type="radio"
-                        name="verrechenbar"
-                        checked={!verrechenbar}
-                        onChange={() => setVerrechenbar(false)}
-                        style={{ accentColor: "var(--fg-2)" }}
-                      />
-                      NEIN
-                    </label>
-                  </div>
-                </div>
-                <div className="field">
-                  <label className="caption">Rechnungsadresse {verrechenbar ? "" : "(optional)"}</label>
-                  <textarea
-                    value={rechnungsadresse}
-                    onChange={(e) => setRechnungsadresse(e.target.value)}
-                    rows={2}
-                    className="input"
-                    style={{ resize: "vertical" }}
-                    placeholder="Firma / Name, Straße, PLZ Ort"
-                  />
-                </div>
-              </div>
-            )}
-            {istUebung && (
-              <p style={{ marginTop: 12, fontSize: 12, color: "var(--fg-3)" }}>
-                Übungen werden nicht verrechnet — keine Verrechnungsangaben nötig.
-              </p>
             )}
 
             <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end", gap: 10 }}>

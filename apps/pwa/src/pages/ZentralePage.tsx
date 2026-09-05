@@ -123,7 +123,6 @@ interface EinsatzApiDoc {
     lageUnterKontrolle?: string;
     brandAus?: string;
   };
-  verrechnung?: { verrechenbar?: boolean; rechnungsadresse?: string };
   oelbindemittel?: { verwendet?: boolean; gesamtSaecke?: number };
   einsatzleiterPersonId?: number;
   bearbeiterPersonId?: number;
@@ -187,7 +186,6 @@ interface EditorState {
    *  der EL muss eine falsche Auto-Adresse korrigieren können (z.B. wenn
    *  BlaulichtSMS einen Autobahn-km-Marker daneben geocoded hat). */
   einsatzort: string;
-  verrechenbar: boolean;
   oelSaecke: number;
   /** syBOS-Person-ID des Sachbearbeiters in der Florianstation. */
   bearbeiterPersonId: number | null;
@@ -224,7 +222,6 @@ const EMPTY_EDITOR: EditorState = {
   sonstigeFreitext: "",
   meldungEinsatzleitung: "",
   einsatzort: "",
-  verrechenbar: false,
   oelSaecke: 0,
   bearbeiterPersonId: null,
   reservePersonIds: [],
@@ -777,10 +774,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  Grund wandert ins Audit-Log und auf das PDF. */
   const [abschlussOverrideOpen, setAbschlussOverrideOpen] = useState(false);
   const [abschlussOverrideGrund, setAbschlussOverrideGrund] = useState("");
-  /** Issue 8 (Einsatz-Test 2026-06-02): Verrechnungs-Stand beim Abschluss
-   *  setzen. Wird vom Backend auf alle Fahrzeugberichte cascadiert. */
-  const [abschlussVerrechenbar, setAbschlussVerrechenbar] = useState(false);
-  const [abschlussRechnungsadresse, setAbschlussRechnungsadresse] = useState("");
   /** Issue 17 (Einsatz-Test 2026-06-02): Brand-Abschluss-Wizard.
    *  Wird VOR handleAbschluss() bei kategorieFuer(einsatzart)==="brand"
    *  geoeffnet. Cancel mid-flow schreibt NICHTS — der User kann den
@@ -992,16 +985,14 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   }
 
   // AUDIT-07/EL-10: kein Abschluss-State-Leak zwischen Einsaetzen —
-  // Verrechenbar/Rechnungsadresse/Override-Grund gehoeren immer genau zu
-  // EINEM Einsatz und werden beim Wechsel zurueckgesetzt.
+  // Override-Grund gehoert immer genau zu EINEM Einsatz und wird beim
+  // Wechsel zurueckgesetzt.
   useEffect(() => {
     if (abschlussSeedGuardRef.current) {
       // Tab-X-Pfad hat soeben gewechselt UND geseedet — Reset ueberspringen.
       abschlussSeedGuardRef.current = false;
       return;
     }
-    setAbschlussVerrechenbar(false);
-    setAbschlussRechnungsadresse("");
     setAbschlussOverrideGrund("");
   }, [aktiverEinsatzId]);
 
@@ -1388,7 +1379,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       sonstigeFreitext: aktiverEinsatz.sonstigeAnwesendeFF?.sonstigeFreitext ?? "",
       einsatzort: aktiverEinsatz.einsatzort ?? "",
       meldungEinsatzleitung: aktiverEinsatz.meldungEinsatzleitung ?? "",
-      verrechenbar: aktiverEinsatz.verrechnung?.verrechenbar ?? false,
       oelSaecke: aktiverEinsatz.oelbindemittel?.gesamtSaecke ?? 0,
       bearbeiterPersonId:
         typeof aktiverEinsatz.bearbeiterPersonId === "number"
@@ -1524,7 +1514,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           ...(lage ? { lageUnterKontrolle: lage } : {}),
           ...(brand ? { brandAus: brand } : {}),
         },
-        verrechnung: { verrechenbar: editor.verrechenbar },
         oelbindemittel: {
           verwendet: editor.oelSaecke > 0,
           gesamtSaecke: Math.max(0, Math.floor(editor.oelSaecke)),
@@ -1768,26 +1757,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   }
 
   /**
-   * AUDIT-07/EL-10: Gemeinsames Seeding fuer das Abschluss-Confirm — aufgerufen
-   * vom CTA (Pfad "confirm"), von handleBrandWizardComplete und vom Tab-X-Pfad.
-   * Frueher startete das Confirm immer mit verrechenbar=false bzw. dem
-   * State-Leak des vorherigen Einsatzes — der im Editor gesetzte Stand wurde
-   * beim Abschluss-Cascade stillschweigend ueberschrieben.
-   *
-   * `zielDoc` wird vom Tab-X-Pfad uebergeben (frisch gewechselter Einsatz —
-   * die Closure haelt dort noch editor/aktiverEinsatz des ALTEN Einsatzes).
+   * AUDIT-07/EL-10: gemeinsamer Oeffnen-Punkt fuer das Abschluss-Confirm —
+   * aufgerufen vom CTA (Pfad "confirm"), von handleBrandWizardComplete und
+   * vom Tab-X-Pfad.
    */
-  function openAbschlussConfirm(zielDoc?: EinsatzApiDoc | null): void {
-    const doc = zielDoc ?? aktiverEinsatz;
-    const istAktiverEinsatz = !zielDoc || zielDoc._id === aktiverEinsatzId;
-    // Beim aktiven Einsatz hat der Editor den frischesten Verrechenbar-Stand
-    // (Tipparbeit kann noch vor dem Auto-Save liegen), bei Fremd-Tab das Doc.
-    setAbschlussVerrechenbar(
-      istAktiverEinsatz
-        ? editor.verrechenbar
-        : (doc?.verrechnung?.verrechenbar ?? false),
-    );
-    setAbschlussRechnungsadresse(doc?.verrechnung?.rechnungsadresse ?? "");
+  function openAbschlussConfirm(): void {
     setAbschlussErr(null);
     setAbschlussOk(null);
     setAbschlussConfirmOpen(true);
@@ -1839,21 +1813,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       // kann ihn in den Audit-Trail/PDF uebernehmen. Der bestehende
       // Endpoint akzeptiert leeren Body, zusaetzliche Felder werden
       // ignoriert wenn das Backend sie noch nicht kennt.
-      //
-      // Issue 8 (Einsatz-Test 2026-06-02): verrechenbar + rechnungsadresse
-      // beim Abschluss mitschicken damit das Backend sie auf alle
-      // Fahrzeugberichte cascadiert.
       const body: Record<string, unknown> = {};
       if (overrideGrund) body.abschlussOverrideHinweis = overrideGrund;
-      // U-05: Eine Übung ist NIE verrechenbar — selbst wenn der State
-      // (z. B. per Seeding aus einem Alt-Doc) true traegt, wird
-      // verrechenbar bei Übungen nicht mitgeschickt.
-      if (abschlussVerrechenbar && aktiverEinsatz?.einsatzTyp !== "uebung") {
-        body.verrechenbar = true;
-        if (abschlussRechnungsadresse.trim()) {
-          body.rechnungsadresse = abschlussRechnungsadresse.trim();
-        }
-      }
       // AUDIT-07/EL-11a: /abschluss liefert seit AUDIT-11 die echte
       // Berichtsnummer mit — Fallback fuer Altstaende: deriveBerichtNrFromId.
       const resp = await apiCall<{
@@ -2035,8 +1996,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         return;
       }
       // Nach erfolgreichem Wizard direkt das normale Abschluss-Confirm
-      // anzeigen (User sieht Sanity-Check + verrechenbar-Felder).
-      // AUDIT-07/EL-10: via openAbschlussConfirm — seeded Verrechenbar-Stand.
+      // anzeigen (User sieht den Sanity-Check).
       openAbschlussConfirm();
     } catch (e) {
       // AUDIT-05 (ING-12): Klartext + Handlungsanweisung statt HTTP-Code.
@@ -3604,11 +3564,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         <SectionHead title="Zeitmarken" />
         <section className="card">
           <div className="card-head">
-            {/* Z-10: Titel nennt beide Inhalte — die Karte traegt neben den
-                Zeitmarken auch die Verrechenbar-Checkbox. */}
             <div className="card-title">
               <Clock size={20} />
-              Zeitmarken &amp; Verrechnung
+              Zeitmarken
             </div>
             <span className="card-meta">
               {alarmierungZeit
@@ -3616,7 +3574,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 : "kein Datum"}
             </span>
           </div>
-          <div className="grid-3" style={{ gap: 14 }}>
+          <div className="grid-2" style={{ gap: 14 }}>
             <div className="field">
               <label className="caption">Lage unter Kontrolle</label>
               <input
@@ -3639,33 +3597,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 onChange={(e) => patchEditor({ brandAusHHMM: e.target.value })}
               />
             </div>
-            {/* U-05: Eine Übung ist NIE verrechenbar — Checkbox bei Übungen
-                gar nicht anbieten (analog #171 im Abschluss-Confirm). */}
-            {einsatzTyp !== "uebung" ? (
-              <div className="field">
-                <label className="caption">Verrechenbar</label>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    paddingTop: 12,
-                    fontSize: 17.5,
-                    cursor: schreibschutz ? "not-allowed" : "pointer",
-                    opacity: schreibschutz ? 0.55 : 1,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={editor.verrechenbar}
-                    disabled={schreibschutz}
-                    onChange={(e) => patchEditor({ verrechenbar: e.target.checked })}
-                    style={{ accentColor: "var(--info)" }}
-                  />
-                  Einsatz ist verrechenbar
-                </label>
-              </div>
-            ) : null}
           </div>
         </section>
 
@@ -4662,8 +4593,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       return;
                     }
                     if (abschlussPfad === "confirm") {
-                      // AUDIT-07/EL-10: Confirm mit Verrechenbar-Seeding
-                      // aus dem Editor-Stand oeffnen.
                       openAbschlussConfirm();
                     }
                   }}
@@ -4910,9 +4839,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           AUDIT-07/EL-14: das X POSTet NICHT mehr roh /abschluss. Es laeuft
           durch DENSELBEN Trichter wie der CTA (entscheideAbschlussPfad):
           Brand ohne Statistik → Wizard, offene Fahrzeugberichte → Override
-          mit Grund-Pflicht, sonst → Abschluss-Confirm mit Verrechenbar-
-          Seeding. Vorher konnte das X den Brand-Wizard, den Override-Grund
-          und die Verrechnungs-Abfrage komplett umgehen. */}
+          mit Grund-Pflicht, sonst → Abschluss-Confirm. Vorher konnte das X
+          den Brand-Wizard und den Override-Grund komplett umgehen. */}
       <CloseTabConfirmModal
         open={tabToClose !== null}
         tabLabel={tabToClose?.label ?? ""}
@@ -4962,15 +4890,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           });
           setAbschlussErr(null);
           setAbschlussOk(null);
-          if (pfad !== "confirm") {
-            // Der Reset-Effekt wurde per Guard uebersprungen — fuer Wizard-/
-            // Override-Pfad den Verrechnungs-State trotzdem frisch vom
-            // ZIEL-Doc seeden (kein Leak des vorherigen Einsatzes).
-            setAbschlussVerrechenbar(zielDoc?.verrechnung?.verrechenbar ?? false);
-            setAbschlussRechnungsadresse(
-              zielDoc?.verrechnung?.rechnungsadresse ?? "",
-            );
-          }
           if (pfad === "wizard") {
             setBrandWizardOpen(true);
             return;
@@ -4988,7 +4907,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             setAbschlussOverrideOpen(true);
             return;
           }
-          openAbschlussConfirm(zielDoc);
+          openAbschlussConfirm();
         }}
         onConfirmVerwerfen={async (grund) => {
           if (!tabToClose) return;
@@ -5187,44 +5106,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 {aeltereOffeneText}
               </div>
             ) : null}
-
-            {/* Issue 8 (Einsatz-Test 2026-06-02): Verrechnungs-Toggle. */}
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                background: abschlussVerrechenbar ? "var(--info-tint)" : "var(--surface-2)",
-                border: `1px solid ${abschlussVerrechenbar ? "var(--info-border)" : "var(--border)"}`,
-                display:
-                  // #171 (Test 2026-06-03): Bei Übung KEINE "verrechenbar"-Abfrage —
-                  // eine Übung ist nie verrechenbar. Block einfach ausblenden.
-                  einsatzTyp === "uebung" ? "none" : "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={abschlussVerrechenbar}
-                  onChange={(e) => setAbschlussVerrechenbar(e.target.checked)}
-                  style={{ width: 18, height: 18, accentColor: "var(--info)" }}
-                />
-                <span style={{ fontSize: 17.5, fontWeight: 600, color: "var(--fg)" }}>
-                  Einsatz ist verrechenbar
-                </span>
-              </label>
-              {abschlussVerrechenbar ? (
-                <input
-                  type="text"
-                  className="input"
-                  value={abschlussRechnungsadresse}
-                  onChange={(e) => setAbschlussRechnungsadresse(e.target.value)}
-                  placeholder="Rechnungsadresse (optional)"
-                  style={{ fontSize: 16.5 }}
-                />
-              ) : null}
-            </div>
 
             {abschlussErr ? (
               <div

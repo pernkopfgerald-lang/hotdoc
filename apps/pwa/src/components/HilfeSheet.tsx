@@ -708,8 +708,8 @@ const KATEGORIEN: Kategorie[] = [
         antwort:
           "In der Sektion 'Abschluss & PDF' (unten im Hauptbericht) sitzt der rote " +
           "Button 'Einsatz abschließen & archivieren'. Klick → Bestätigungs-Dialog " +
-          "(inkl. Verrechenbar-Abfrage) → Bericht wird schreibgeschützt archiviert; " +
-          "das PDF holst du über den Button 'PDF-Bericht' in derselben Sektion.\n\n" +
+          "→ Bericht wird schreibgeschützt archiviert; das PDF holst du über den " +
+          "Button 'PDF-Bericht' in derselben Sektion.\n\n" +
           "Bei Brandeinsätzen öffnet sich zuerst der syBOS-Brand-Statistik-Assistent, " +
           "danach die Abschluss-Bestätigung.\n\n" +
           "Falls ein Fahrzeug-Kdt den Tablet-Bericht NICHT mehr abschließen kann (z. B. Akku " +
@@ -815,12 +815,9 @@ const KATEGORIEN: Kategorie[] = [
         antwort:
           "Florian: Plus-Button → 'Lotsendienst'. Felder:\n" +
           "  · Auftraggeber (z. B. Bezirkshauptmannschaft, Polizei)\n" +
-          "  · Rechnungsadresse (wenn verrechenbar)\n" +
           "  · Strecke / Route (Freitext)\n\n" +
-          "Das Fahrzeug-Tablet bekommt den Auftrag, trägt Mannschaft + KM ein. " +
-          "Beim PDF gibts einen eigenen Verrechnungs-Block — kann der Sachbearbeiter direkt " +
-          "für die Rechnung verwenden.",
-        tags: ["begleitung", "konvoi", "verrechnung", "rechnung"],
+          "Das Fahrzeug-Tablet bekommt den Auftrag, trägt Mannschaft + KM ein.",
+        tags: ["begleitung", "konvoi"],
       },
       {
         frage: "Was ist der Pflichtbereich?",

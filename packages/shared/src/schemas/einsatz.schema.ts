@@ -121,7 +121,6 @@ export const EinsatzSchema = z.object({
   lotsendienstAuftraggeber: z.string().optional(),
   /** Lotsendienst-spezifisch: kurze Routen-Beschreibung. */
   lotsendienstRoute: z.string().optional(),
-  /** Lotsendienst-spezifisch: Verrechnungs-Adresse (Default aus verrechnung.rechnungsadresse). */
 
   /** Übungs-spezifisch: Thema / Schwerpunkt. */
   uebungThema: z.string().optional(),
@@ -223,13 +222,6 @@ export const EinsatzSchema = z.object({
    * über das `person:*`-Doc-Cache in der PWA/Backoffice.
    */
   reservePersonIds: z.array(z.number().int().positive()).default([]),
-
-  verrechnung: z
-    .object({
-      verrechenbar: z.boolean().default(false),
-      rechnungsadresse: z.string().optional(),
-    })
-    .default({}),
 
   /** Aggregiert aus Fahrzeugberichten (oelbindemittelSaecke). */
   oelbindemittel: z

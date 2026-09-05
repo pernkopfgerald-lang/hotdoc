@@ -92,14 +92,17 @@ const EnvSchema = z
     /** Session-Lebensdauer in Sekunden (default 8h) — Backoffice/Florianstation-Logins. */
     SESSION_TTL_SEC: z.coerce.number().int().positive().default(8 * 60 * 60),
     /**
-     * Tablet-Session-Lebensdauer in Sekunden (default 30 Tage = 2592000).
-     * N-01/I-04: Fahrzeug-Tablets haben keinen interaktiven Login — ein
-     * 8h-Token würde jeden Tag ein manuelles Neu-Registrieren erzwingen.
-     * Gilt für alle Tokens, deren sub mit "tablet:" beginnt (siehe
-     * services/auth/jwt.ts). Verlängerung ohne Neu-Registrierung über
+     * Tablet-Session-Lebensdauer in Sekunden (default 10 Jahre = 315360000).
+     * N-01/I-04, Review 2026-09-04 (Entscheidung 4): Fahrzeug-Tablets haben
+     * keinen interaktiven Login und sollen NIE erneut per PIN einsteigen
+     * müssen ("dauerhaft"). Statt die Ablauf-Prüfung ganz zu entfernen,
+     * bleibt ein sehr langer TTL — Widerruf einzelner Tablets (Verlust/
+     * Diebstahl) läuft weiterhin über die Blacklist (Backoffice). Gilt für
+     * alle Tokens, deren sub mit "tablet:" beginnt (siehe services/auth/
+     * jwt.ts). Verlängerung ohne Neu-Registrierung über
      * POST /api/auth/tablet/renew.
      */
-    TABLET_SESSION_TTL_SEC: z.coerce.number().int().positive().default(2592000),
+    TABLET_SESSION_TTL_SEC: z.coerce.number().int().positive().default(315360000),
     /** Initial-Admin-Anmeldung beim Server-Start auto-anlegen, falls keine Benutzer existieren. */
     BOOTSTRAP_ADMIN_USERNAME: z.string().default("admin"),
     BOOTSTRAP_ADMIN_PASSWORD: z.string().default(BOOTSTRAP_ADMIN_PASSWORD_DEV_DEFAULT),

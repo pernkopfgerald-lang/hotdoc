@@ -52,6 +52,7 @@
 import cron from "node-cron";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
+import { FZGBER_ABSCHLUSS_GRACE_MS } from "../routes/einsaetze.js";
 import { writeAuditEvent } from "../services/audit.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 import {
@@ -155,7 +156,6 @@ interface EinsatzMin {
   bearbeiterPersonId?: number;
   brandStatistik?: unknown;
   technischeStatistik?: unknown;
-  verrechnung?: { verrechenbar?: boolean };
   // — S-05 / N-06 / I-02 (Audit R3): weitere Befüllt-Signale —
   anrufer?: string;
   anruferTel?: string;
@@ -330,7 +330,6 @@ function istUnbefuellt(
   if (einsatz.technischeStatistik !== undefined && einsatz.technischeStatistik !== null) {
     return false;
   }
-  if (einsatz.verrechnung?.verrechenbar === true) return false;
   // N-06: Anrufer/Auftragsweg/Alarmierungsstelle sind Editor-Eingaben.
   if ((einsatz.anrufer ?? "").trim().length > 0) return false;
   if ((einsatz.anruferTel ?? "").trim().length > 0) return false;
@@ -427,6 +426,119 @@ async function schliesseEinsatzMitKaskade(
       "Auto-Close fehlgeschlagen für Einsatz",
     );
     return { hauptOk: false, kaskade: 0, fehler: 1 };
+  }
+}
+
+/**
+ * Review 2026-09-04 (Entscheidung 1): 30 Minuten nach einem manuellen
+ * Hauptauftrag-Abschluss noch offene Fahrzeugberichte zwangsschliessen.
+ * Gegenstueck zu FZGBER_ABSCHLUSS_GRACE_MS (routes/einsaetze.ts) — dort
+ * bekommt ein Fahrzeugbericht bei /abschluss KEINEN sofortigen Zwangs-
+ * schluss mehr, sondern der Einsatz merkt sich `hauptabschlussAm`. Ist die
+ * Frist um und der Bericht ist immer noch "in_arbeit", passiert hier
+ * exakt das, was vorher synchron in /abschluss passierte: Zwangsschluss
+ * mit autoAbgeschlossenGrund "hauptauftrag-geschlossen" + Override-Hinweis
+ * aufs Einsatz-Doc. Laeuft im selben 15-Minuten-Cron wie runAutoCloseStale().
+ */
+export async function schliesseOffeneFzgberNachGnadenfrist(): Promise<{
+  geprueft: number;
+  geschlossen_fzgber: number;
+  fehler: number;
+}> {
+  const result = { geprueft: 0, geschlossen_fzgber: 0, fehler: 0 };
+  // 2h Sicherheitsmarge um die 30-Minuten-Frist — reicht locker fuer
+  // Cron-Jitter, ohne je den ganzen Archiv-Bestand scannen zu muessen.
+  // Aeltere hauptabschlussAm-Werte hat ein frueherer Lauf bereits
+  // verarbeitet und aufgeraeumt (siehe raeumeHauptabschlussAmAuf unten).
+  const seit = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  let kandidaten: Array<Record<string, unknown>>;
+  try {
+    const found = await db.find({
+      selector: {
+        type: "einsatz",
+        status: "abgeschlossen",
+        hauptabschlussAm: { $gte: seit },
+      },
+      limit: 200,
+    });
+    kandidaten = found.docs as Array<Record<string, unknown>>;
+  } catch (err) {
+    logger.error({ err }, "Gnadenfrist-Sweep: Kandidaten-Suche fehlgeschlagen");
+    return result;
+  }
+  for (const einsatz of kandidaten) {
+    const hauptabschlussAm = einsatz.hauptabschlussAm;
+    if (typeof hauptabschlussAm !== "string") continue;
+    if (Date.now() - Date.parse(hauptabschlussAm) < FZGBER_ABSCHLUSS_GRACE_MS) continue;
+    result.geprueft += 1;
+    const einsatzId = String(einsatz._id);
+    try {
+      const prefix = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:`;
+      const liste = await db.list({
+        startkey: prefix,
+        endkey: `${prefix}￰`,
+        include_docs: true,
+      });
+      const fzgDocs = liste.rows
+        .map((r) => r.doc as Record<string, unknown> | undefined)
+        .filter((d): d is Record<string, unknown> => !!d && d.type === "fahrzeugbericht");
+      const nochOffen = fzgDocs.filter((f) => f.status === "in_arbeit");
+      if (nochOffen.length === 0) {
+        // Kdt war schneller als die Frist — nur den Marker aufraeumen,
+        // damit dieser Einsatz nicht erneut gescannt wird.
+        await raeumeHauptabschlussAmAuf(einsatzId);
+        continue;
+      }
+      const cascadeNow = new Date().toISOString();
+      const cascadePatch: Record<string, unknown> = {
+        status: "abgeschlossen" as const,
+        autoAbgeschlossen: true,
+        autoAbgeschlossenAm: cascadeNow,
+        autoAbgeschlossenGrund: "hauptauftrag-geschlossen" as const,
+        geaendertAm: cascadeNow,
+      };
+      const cascadeDocs = nochOffen.map((f) => ({ ...f, ...cascadePatch }));
+      const patchById = new Map(nochOffen.map((f) => [String(f._id), cascadePatch]));
+      const { ok, failed } = await bulkUpdateWithRetry(cascadeDocs, (docId) =>
+        patchById.get(docId) ?? null,
+      );
+      result.geschlossen_fzgber += ok;
+      if (failed.length > 0) result.fehler += failed.length;
+      const hinweis =
+        `Beim Abschluss waren ${nochOffen.length} Fahrzeugbericht(e) noch nicht abgeschlossen ` +
+        `(${nochOffen.map((f) => String(f.fahrzeugId ?? "?")).join(", ")}) — nach Ablauf der ` +
+        `30-Minuten-Frist automatisch geschlossen. Datenstand entspricht dem Zwischenstand zum ` +
+        `Zeitpunkt des Zwangsschlusses.`;
+      await raeumeHauptabschlussAmAuf(einsatzId, hinweis);
+      logger.info(
+        { einsatzId, geschlossen: ok, failed: failed.length },
+        "Gnadenfrist abgelaufen — offene Fahrzeugberichte zwangsgeschlossen",
+      );
+    } catch (err) {
+      result.fehler += 1;
+      logger.error({ err, einsatzId }, "Gnadenfrist-Sweep fuer Einsatz fehlgeschlagen");
+    }
+  }
+  return result;
+}
+
+/**
+ * Raeumt den hauptabschlussAm-Marker vom Einsatz-Doc weg, damit der
+ * naechste Lauf ihn nicht erneut prueft. Schreibt optional den Override-
+ * Hinweis dazu — NUR wenn noch keiner gesetzt ist (ein manuell erfasster
+ * Override-Grund der Zentrale hat Vorrang und wird nicht ueberschrieben).
+ */
+async function raeumeHauptabschlussAmAuf(einsatzId: string, hinweis?: string): Promise<void> {
+  try {
+    const fresh = (await db.get(einsatzId)) as Record<string, unknown>;
+    await db.insert({
+      ...fresh,
+      hauptabschlussAm: undefined,
+      geaendertAm: new Date().toISOString(),
+      ...(hinweis && !fresh.abschlussOverrideHinweis ? { abschlussOverrideHinweis: hinweis } : {}),
+    } as Parameters<typeof db.insert>[0]);
+  } catch (err) {
+    logger.warn({ err, einsatzId }, "Gnadenfrist: hauptabschlussAm konnte nicht aufgeraeumt werden");
   }
 }
 
@@ -819,6 +931,11 @@ export function startAutoCloseStaleCron(): void {
   cron.schedule(CRON_AUSDRUCK, () => {
     void runAutoCloseStale().catch((err) => {
       logger.error({ err }, "Auto-Close-Cron-Lauf fehlgeschlagen");
+    });
+    // Review 2026-09-04 (Entscheidung 1): laeuft im selben Takt — prueft
+    // nur die (typischerweise 0) Einsaetze mit abgelaufener Gnadenfrist.
+    void schliesseOffeneFzgberNachGnadenfrist().catch((err) => {
+      logger.error({ err }, "Gnadenfrist-Cron-Lauf fehlgeschlagen");
     });
   });
   logger.info(

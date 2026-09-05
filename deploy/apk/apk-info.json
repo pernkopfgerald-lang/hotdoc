@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.30",
-  "apkUrl": "/hotdoc-v0.1.30-release.apk",
-  "releaseNotes": "v0.1.30 — Einsatztauglichkeits-Audit: Funkloch-Sicherheit, Nachtbetrieb, Klartext\n\n• Kein stiller Datenverlust mehr im Funkloch: Mannschaft, Atemschutz, Geräte und Chronik werden nachgereicht — auch wenn der Einsatz inzwischen geschlossen wurde (dann Hinweis statt grünem Häkchen).\n• Tablet-Anmeldung hält 30 Tage und verlängert sich still — kein PIN-Bildschirm mehr beim Nachtalarm. Das Update-Banner funktioniert erstmals in der App.\n• 1-Stunden-Regel entschärft: Zentrale-Eingaben und Öffnen am Tablet zählen; verspätete Doku öffnet den Einsatz automatisch wieder.\n• Einsatzende im PDF = echtes Ende, Fahrzeugblätter mit eigenen Zeiten, keine Phantom-Fahrzeuge mehr.\n• Doppelalarm-Erkennung, korrekte Mannschafts-Übernahme beim Folge-Einsatz, Zentrale-Editor verliert keinen Text mehr, Verwerfen mit Rückgängig.\n• Fahrzeug-Zuweisung durch die Zentrale entfernt.\n• Tablet-Sichtbereich: Dialoge scrollen, nichts mehr unter der Navigationsleiste, Uhrzeit-Feld hochkant sichtbar.\n• Klartext: Hilfe am Tablet, verständliche Abschluss-Option, Übung heißt Übung, Mehr-Menü.\n\n— Enthält Löschwasser-Layer (v0.1.26–29), Intensiv-Audit R2 (v0.1.25) und alle Neuerungen aus v0.1.10–v0.1.24.",
-  "publishedAt": "2026-09-05T12:00:00+00:00",
+  "currentVersion": "0.1.31",
+  "apkUrl": "/hotdoc-v0.1.31-release.apk",
+  "releaseNotes": "v0.1.31 — Review-Rückmeldungen: Gnadenfrist beim Abschluss, dauerhafte Anmeldung, Klartext\n\n• Schließt die Zentrale den Gesamtbericht, werden offene Fahrzeugberichte NICHT mehr sofort mitgeschlossen — 30 Minuten Zeit zum Fertigstellen (Banner mit Restzeit), erst danach automatischer Zwangsschluss.\n• Tablet-Anmeldung ist jetzt dauerhaft — kein erneutes PIN-Eingeben mehr. Ein verlorenes Tablet muss dafür aktiv im Backoffice gesperrt werden.\n• Abgewählte Aufträge verschwinden jetzt auch aus der Chronik, statt dort veraltet stehen zu bleiben.\n• Reaktivierter Bericht springt nicht mehr verschoben ins Formular.\n• 'Verrechenbar'-Markierung beim Abschluss komplett entfernt (Tablet, Zentrale, Backoffice, PDF) — sorgte nur für Verwirrung.\n\n— Enthält Einsatztauglichkeits-Audit (v0.1.30), Löschwasser-Layer (v0.1.26–29) und alle Neuerungen aus v0.1.10–v0.1.25.",
+  "publishedAt": "2026-09-05T14:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

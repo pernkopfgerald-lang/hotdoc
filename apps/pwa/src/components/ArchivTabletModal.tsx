@@ -644,6 +644,11 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                     // Modal schliessen → ohne onReaktiviert holt der
                     // naechste Poll den reaktivierten Einsatz.
                     onClose();
+                    // Review 2026-09-04 (Bug 2): dahinter liegt jetzt das
+                    // Live-Formular statt der Archiv-Liste/AbgeschlossenView
+                    // — ohne Reset blieb die alte Scroll-Position stehen und
+                    // das neue Formular wirkte "nach oben verschoben".
+                    window.scrollTo(0, 0);
                   } catch (e) {
                     if (e instanceof ApiError && e.status === 409) {
                       // not_closed: Einsatz läuft bereits (nur der Fahrzeug-

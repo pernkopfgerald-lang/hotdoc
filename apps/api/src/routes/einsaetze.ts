@@ -319,8 +319,6 @@ const ManuellAnlageBodySchema = z.object({
       "Sonstige",
     ])
     .optional(),
-  verrechenbar: z.boolean().optional(),
-  rechnungsadresse: z.string().optional(),
   /** Auto-Pflichtbereich-Erkennung (siehe routes/geocoding.ts:isInEberstalzell).
    *  Wenn der Einsatzort in der Eberstalzell-Bbox liegt, setzt das Tablet
    *  diese Werte auf true beim Anlegen. Der Florian-Editor uebernimmt sie
@@ -399,10 +397,6 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), ah(asy
     beteiligteStellen: [],
     sonstigeAnwesendeFF: { aktive: [] },
     mannschaft: { bereitschaft: 0, sonstige: 0 },
-    verrechnung: {
-      verrechenbar: d.verrechenbar ?? d.einsatzTyp === "lotsendienst",
-      ...(d.rechnungsadresse ? { rechnungsadresse: d.rechnungsadresse } : {}),
-    },
     oelbindemittel: { verwendet: false, gesamtSaecke: 0 },
     meldungEinsatzleitung: "",
     reaktivierungen: [],
@@ -453,20 +447,24 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), ah(asy
   }
 }));
 
+/**
+ * Review 2026-09-04 (Entscheidung 1): wenn beim Hauptauftrag-Abschluss noch
+ * Fahrzeugberichte offen sind, bekommen sie 30 Minuten Zeit, bevor sie
+ * zwangsgeschlossen werden — vorher riskierte ein vorschneller Abschluss der
+ * Zentrale, dass der Fahrzeug-Kdt Dateneingaben verliert. Verwendet vom
+ * fzgber-PUT (Schreib-Bypass waehrend der Frist) und von
+ * schliesseOffeneFzgberNachGnadenfrist() in workers/auto-close-stale.ts.
+ */
+export const FZGBER_ABSCHLUSS_GRACE_MS = 30 * 60 * 1000;
+
 // ─── POST /api/einsaetze/:id/abschluss ─── FR-6 ─────────────
 // Mannschaft-Rolle reicht — Solo-Tablet-Einsaetze (kein Florian, nur
 // ein Fahrzeug) sollen auch direkt vom Fahrzeug-Tablet abgeschlossen
 // werden koennen. Die Florianstation hat ohnehin die einsatzleiter-
 // Rolle und kann das jederzeit zusaetzlich. Der abschlussOverride-
 // Hinweis im PDF zeigt offene Fahrzeugberichte transparent.
-//
-// Issue 8 (Einsatz-Test 2026-06-02): Body-Felder verrechenbar + rechnungsadresse
-// werden cascadiert auf alle Fahrzeugberichte uebernommen damit der
-// Verrechnungs-Stand konsistent bleibt.
 const AbschlussBodySchema = z.object({
   abschlussOverrideHinweis: z.string().optional(),
-  verrechenbar: z.boolean().optional(),
-  rechnungsadresse: z.string().optional(),
   /** L-08 (Audit 2026-07): Zeitstempel des Abschluss-Dialogs am Client.
    *  Wurde der Einsatz NACH diesem Zeitpunkt reaktiviert, ist der Abschluss-
    *  Wunsch veraltet (er wuerde die Nach-Reaktivierungs-Arbeit ungesehen
@@ -503,12 +501,6 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       return;
     }
   }
-  // U-05-Backend (Audit 2026-07): Uebungen kennen keine Verrechnung —
-  // verrechenbar/rechnungsadresse aus dem Body werden ignoriert (nicht
-  // persistiert, keine Verrechnungs-Kaskade auf die Fahrzeugberichte).
-  const istUebung = doc.einsatzTyp === "uebung";
-  const verrechenbar = istUebung ? undefined : bodyParsed.data.verrechenbar;
-  const rechnungsadresse = istUebung ? undefined : bodyParsed.data.rechnungsadresse;
   // Abschluss-Override-Hinweis: wenn noch nicht alle Fahrzeugberichte
   // abgeschlossen sind aber der Einsatzleiter trotzdem abschliesst (z. B.
   // Kdt hat das Tablet noch nicht zurueckgegeben, Funktionaer braucht den
@@ -551,11 +543,12 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   const maxFzgZeitBis = Number.isFinite(maxFzgZeitBisMs)
     ? new Date(maxFzgZeitBisMs).toISOString()
     : undefined;
-  const abschlussOverrideHinweis = offeneFzgber.length
-    ? `Beim Abschluss waren ${offeneFzgber.length} Fahrzeugbericht(e) noch nicht abgeschlossen (${offeneFzgber
-        .map((f) => (f as { fahrzeugId?: string }).fahrzeugId ?? "?")
-        .join(", ")}). Datenstand entspricht dem Zwischenstand zum Abschluss-Zeitpunkt.`
-    : undefined;
+  // Review 2026-09-04 (Entscheidung 1): kein sofortiger Override-Hinweis
+  // mehr fuer offene Fahrzeugberichte — die 30-Minuten-Gnadenfrist unten
+  // gibt dem Kdt Zeit, seinen Bericht noch fertigzustellen. Der Hinweis
+  // (und der tatsaechliche Zwangsschluss) entsteht erst in
+  // schliesseOffeneFzgberNachGnadenfrist(), wenn die Frist abgelaufen ist
+  // UND der Bericht wirklich noch offen war.
   // Issue 22 (Einsatz-Test 2026-06-02): Ölbindemittel-Säcke aus allen
   // Fahrzeugberichten aggregieren und ans Einsatz-Doc schreiben. Vorher
   // stand im Hauptbericht 0 Säcke, obwohl die Fahrzeuge in Summe 3 Säcke
@@ -570,23 +563,6 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     verwendet: oelGesamtSaecke > 0,
     gesamtSaecke: oelGesamtSaecke,
   };
-  // Issue 8: Verrechnung-Cascade. Wenn `verrechenbar` aus dem Body kommt,
-  // setzen wir ihn auf das Einsatz-Doc + auf alle Fahrzeugberichte (siehe
-  // Cascade-Loop unten). Optional auch die Rechnungsadresse.
-  const existingVerrechnung =
-    (doc as { verrechnung?: { verrechenbar?: boolean; rechnungsadresse?: string } })
-      .verrechnung ?? {};
-  const verrechnungUpdated =
-    verrechenbar !== undefined || rechnungsadresse !== undefined
-      ? {
-          ...existingVerrechnung,
-          ...(verrechenbar !== undefined ? { verrechenbar } : {}),
-          ...(rechnungsadresse !== undefined ? { rechnungsadresse } : {}),
-        }
-      : existingVerrechnung;
-  // Override-Hinweis kommt entweder aus Body (Override-Flow) oder aus
-  // der automatischen "offene Fahrzeugberichte"-Detection (siehe oben).
-  const finalOverrideHinweis = overrideHinweisFromBody ?? abschlussOverrideHinweis;
   // AUDIT-11: Echte laufende Berichtsnummer (config:bericht-counter) beim
   // Abschluss vergeben — NUR wenn das Doc noch keine traegt. Reaktivieren +
   // erneuter Abschluss zieht damit KEINE zweite Nummer. Schlaegt die Vergabe
@@ -625,10 +601,14 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       maxFzgZeitBis ??
       new Date().toISOString(),
     oelbindemittel: oelbindemittelAggregiert,
-    verrechnung: verrechnungUpdated,
     geaendertAm: new Date().toISOString(),
-    ...(finalOverrideHinweis ? { abschlussOverrideHinweis: finalOverrideHinweis } : {}),
+    ...(overrideHinweisFromBody ? { abschlussOverrideHinweis: overrideHinweisFromBody } : {}),
     ...(berichtNummer ? { berichtNummer } : {}),
+    // Review 2026-09-04 (Entscheidung 1): offene Fahrzeugberichte bekommen
+    // eine 30-Minuten-Gnadenfrist statt sofort zwangsgeschlossen zu werden —
+    // schliesseOffeneFzgberNachGnadenfrist() (auto-close-stale.ts) und die
+    // fzgber-PUT-Route lesen diesen Zeitstempel.
+    ...(offeneFzgber.length > 0 ? { hauptabschlussAm: new Date().toISOString() } : {}),
   });
   let result: Awaited<ReturnType<typeof db.insert>>;
   try {
@@ -653,63 +633,17 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   invalidateEinsatzCache();
   logger.info({ id, by: session.username, berichtNummer }, "Einsatz abgeschlossen");
 
-  // F3: Cascade-Abschluss aller noch offenen Fahrzeugberichte.
-  // Hintergrund: wenn der Einsatzleiter den Hauptauftrag schließt, sollen
-  // KEINE in-arbeit Fahrzeugberichte mehr offen sein — die Tab-Kachel bleibt
-  // sonst auf dem Fahrzeug-Tablet ewig hängen ("Geist-Tab"). Wir markieren
-  // die als auto-abgeschlossen damit das PDF die Information trägt:
-  // "Vom EL beim Hauptauftrag-Abschluss automatisch geschlossen".
-  //
-  // Issue 8 (Einsatz-Test 2026-06-02): Verrechnung wird ZUSAETZLICH auf
-  // ALLE Fahrzeugberichte gespiegelt (auch die schon abgeschlossenen),
-  // nicht nur die offenen. So bleibt der Verrechnungs-Stand konsistent.
-  if (verrechenbar !== undefined || rechnungsadresse !== undefined) {
-    const verrechnungCascadeNow = new Date().toISOString();
-    // A-07: Verrechnungs-Patch als Funktion ueber dem Basis-Doc — im
-    // Conflict-Fall appliziert bulkUpdateWithRetry ihn auf den FRISCHEN
-    // Stand (fremde Aenderungen am fzgber bleiben erhalten).
-    const verrechnungPatch = (basis: Record<string, unknown>): Record<string, unknown> => ({
-      verrechnung: {
-        ...((basis as { verrechnung?: object }).verrechnung ?? {}),
-        ...(verrechenbar !== undefined ? { verrechenbar } : {}),
-        ...(rechnungsadresse !== undefined ? { rechnungsadresse } : {}),
-      },
-      geaendertAm: verrechnungCascadeNow,
-    });
-    const allFzgWithVerrechnung = fzgDocs.map((f) => ({
-      ...(f as Record<string, unknown>),
-      ...verrechnungPatch(f as Record<string, unknown>),
-    }));
-    try {
-      await bulkUpdateWithRetry(allFzgWithVerrechnung, logger, (_docId, fresh) =>
-        verrechnungPatch(fresh),
-      );
-      logger.info(
-        { id, cascadeCount: allFzgWithVerrechnung.length, verrechenbar, rechnungsadresse },
-        "Verrechnungs-Cascade auf alle Fahrzeugberichte",
-      );
-    } catch (err) {
-      logger.warn(
-        { err, id },
-        "Verrechnungs-Cascade fehlgeschlagen — Hauptauftrag bleibt geschlossen",
-      );
-    }
-  }
-  if (offeneFzgber.length > 0 || reaktivierteFzgber.length > 0) {
+  // F3: Cascade-Abschluss der REAKTIVIERTEN Fahrzeugberichte (D-03) —
+  // die waren schon einmal fertig, es gibt fuer sie keine Gnadenfrist.
+  // Review 2026-09-04 (Entscheidung 1): echte offene Fahrzeugberichte
+  // (offeneFzgber) werden NICHT mehr hier sofort mitgeschlossen — die
+  // 30-Minuten-Gnadenfrist (hauptabschlussAm oben) gibt dem Kdt Zeit,
+  // seinen Bericht noch fertigzustellen; schliesseOffeneFzgberNachGnaden
+  // frist() in auto-close-stale.ts macht den Zwangsschluss danach.
+  if (reaktivierteFzgber.length > 0) {
     const cascadeNow = new Date().toISOString();
-    // A-07: Kaskaden-Patch (Auto-Abschluss-Marker) als konstante Absicht —
-    // im Conflict-Fall wird er auf den frischen fzgber-Stand appliziert,
-    // parallel eingetragene Mannschaft/KM/Taetigkeitsbericht bleiben so
-    // erhalten statt vom stalen sourceDoc ueberschrieben zu werden.
-    const cascadePatch: Record<string, unknown> = {
-      status: "abgeschlossen" as const,
-      autoAbgeschlossen: true,
-      autoAbgeschlossenAm: cascadeNow,
-      autoAbgeschlossenGrund: "hauptauftrag-geschlossen" as const,
-      geaendertAm: cascadeNow,
-    };
-    // D-03: eigener Patch fuer reaktivierte Berichte — anderer Grund, und
-    // der Marker reaktiviertAusStatus wird entfernt (undefined → weg).
+    // D-03: eigener Patch fuer reaktivierte Berichte — der Marker
+    // reaktiviertAusStatus wird entfernt (undefined → weg).
     const reaktCascadePatch: Record<string, unknown> = {
       status: "abgeschlossen" as const,
       autoAbgeschlossen: true,
@@ -720,11 +654,6 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     };
     const patchById = new Map<string, Record<string, unknown>>();
     const cascadeDocs: Array<Record<string, unknown>> = [];
-    for (const f of offeneFzgber) {
-      const src = f as Record<string, unknown>;
-      cascadeDocs.push({ ...src, ...cascadePatch });
-      patchById.set(String(src._id), cascadePatch);
-    }
     for (const f of reaktivierteFzgber) {
       const src = f as Record<string, unknown>;
       cascadeDocs.push({ ...src, ...reaktCascadePatch });
@@ -745,7 +674,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
           failed: failed.length,
           failedIds: failed,
         },
-        "Offene Fahrzeugberichte beim Hauptauftrag-Abschluss kaskadiert geschlossen",
+        "Reaktivierte Fahrzeugberichte beim Hauptauftrag-Abschluss kaskadiert geschlossen",
       );
       if (failed.length > 0) {
         // Marker am Hauptauftrag — wir holen die frischeste _rev (wir haben
@@ -769,11 +698,10 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
         }
       }
     } catch (err) {
-      // Kaskade-Fehler darf den Haupt-Abschluss nicht stoppen. Der
-      // abschlussOverrideHinweis ist im Einsatz schon vermerkt.
+      // Kaskade-Fehler darf den Haupt-Abschluss nicht stoppen.
       logger.warn(
         { err, id, count: cascadeDocs.length },
-        "Cascade-Abschluss der Fahrzeugberichte fehlgeschlagen — Hauptauftrag bleibt geschlossen",
+        "Cascade-Abschluss der reaktivierten Fahrzeugberichte fehlgeschlagen — Hauptauftrag bleibt geschlossen",
       );
     }
   }
@@ -1370,7 +1298,6 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "beteiligteStellen",
   "sonstigeAnwesendeFF",
   "mannschaft",
-  "verrechnung",
   "oelbindemittel",
   "zeitmarken",
   "abschlussOverrideHinweis",
@@ -1548,10 +1475,10 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
 /**
  * D-14 / V7 (Audit R3): Allowlist der Felder, die das Fahrzeug-Tablet (und
  * der QR-Handoff) ueber das fzgber-PUT schreiben darf. Identitaet (_id,
- * einsatzId, fahrzeugId, type), Audit-Marker (autoAbgeschlossen*, verworfen,
- * reaktiviertAusStatus, erstelltAm/geaendertAm) und die Verrechnungs-
- * Kaskade (verrechnung — kommt nur ueber /abschluss) werden stillschweigend
- * gefiltert. Das bisherige "_"-Strip (A-05) bleibt als zweite Schicht.
+ * einsatzId, fahrzeugId, type) und Audit-Marker (autoAbgeschlossen*,
+ * verworfen, reaktiviertAusStatus, erstelltAm/geaendertAm) werden
+ * stillschweigend gefiltert. Das bisherige "_"-Strip (A-05) bleibt als
+ * zweite Schicht.
  */
 const PUT_FZGBER_ALLOWED_FIELDS = new Set<string>([
   "zeit",
@@ -1585,21 +1512,32 @@ einsaetzeRouter.put(
       res.status(404).json({ error: "einsatz_not_found" });
       return;
     }
-    if (einsatz.schreibschutz === true) {
-      // V9: nach "unbefuellt-1h"-Auto-Abschluss oeffnen spaete Daten den
-      // Einsatz (inkl. seiner Fahrzeugberichte) automatisch wieder.
-      const reaktiviert = await reaktiviereBeiSpaetenDaten(einsatz, session, req.ip);
-      if (!reaktiviert) {
-        res.status(423).json({ error: "schreibschutz_aktiv" });
-        return;
-      }
-    }
 
     let existing: Record<string, unknown> | null = null;
     try {
       existing = (await db.get(docId)) as Record<string, unknown>;
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode !== 404) throw err;
+    }
+
+    if (einsatz.schreibschutz === true) {
+      // V9: nach "unbefuellt-1h"-Auto-Abschluss oeffnen spaete Daten den
+      // Einsatz (inkl. seiner Fahrzeugberichte) automatisch wieder.
+      const reaktiviert = await reaktiviereBeiSpaetenDaten(einsatz, session, req.ip);
+      // Review 2026-09-04 (Entscheidung 1): innerhalb der 30-Minuten-
+      // Gnadenfrist nach einem Hauptauftrag-Abschluss darf der Kdt seinen
+      // EIGENEN, noch nicht zwangsgeschlossenen Fahrzeugbericht weiter
+      // ergaenzen — ohne den ganzen Einsatz zu reaktivieren (der bleibt aus
+      // Sicht der Zentrale "abgeschlossen"). schliesseOffeneFzgberNach
+      // Gnadenfrist() macht den Zwangsschluss nach Ablauf der Frist.
+      const inGnadenfrist =
+        typeof einsatz.hauptabschlussAm === "string" &&
+        Date.now() - Date.parse(einsatz.hauptabschlussAm) < FZGBER_ABSCHLUSS_GRACE_MS &&
+        (existing as { status?: string } | null)?.status === "in_arbeit";
+      if (!reaktiviert && !inGnadenfrist) {
+        res.status(423).json({ error: "schreibschutz_aktiv" });
+        return;
+      }
     }
 
     const now = new Date().toISOString();
@@ -1960,12 +1898,19 @@ einsaetzeRouter.put(
 // D-11 / V6 (Audit R3): Chronik-Eintrag loeschen — als SOFT-Delete. Der
 // Eintrag bleibt im Array (Audit-Trail, Idempotenz des POST-Dedupe ueber
 // entry.id bleibt intakt), traegt aber geloescht:true + geloeschtAm/-Von;
-// PDF und UI blenden ihn aus. Rolle einsatzleiter+: das Loeschen ist
-// (anders als der Text-Edit) eine Entscheidung der Einsatzleitung.
+// PDF und UI blenden ihn aus. Rolle einsatzleiter+: das Loeschen beliebiger
+// Eintraege ist (anders als der Text-Edit) eine Entscheidung der
+// Einsatzleitung.
+// Review 2026-09-04 (Bug 3): mannschaft darf zusaetzlich genau die
+// Auto-Chronik-Eintraege des EIGENEN Fahrzeugs loeschen (source:"fahrzeug",
+// fahrzeugId === session.fahrzeugId) — das ist die Selbstkorrektur eines
+// Auftrag-Chips, den der Kdt gerade erst selbst angewaehlt und wieder
+// abgewaehlt hat (siehe removeAuftrag in BerichtPage.tsx). Fremde oder
+// aeltere Eintraege bleiben ihr/ihm weiterhin verwehrt.
 // Idempotent: bereits geloeschter Eintrag → 200 ohne erneuten Write.
 einsaetzeRouter.delete(
   "/api/einsaetze/:id/chronik/:entryId",
-  requireAuth("einsatzleiter"),
+  requireAuth("mannschaft"),
   ah(async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
     const entryId = decodeURIComponent(String(req.params.entryId));
@@ -1986,6 +1931,13 @@ einsaetzeRouter.delete(
     const idx = chronik.findIndex((e) => (e as { id?: string }).id === entryId);
     if (idx < 0) {
       res.status(404).json({ error: "entry_not_found" });
+      return;
+    }
+    if (
+      session.rolle === "mannschaft" &&
+      (chronik[idx]?.source !== "fahrzeug" || chronik[idx]?.fahrzeugId !== session.fahrzeugId)
+    ) {
+      res.status(403).json({ error: "forbidden", hint: "Nur eigene Fahrzeug-Eintraege loeschbar." });
       return;
     }
     if (chronik[idx]?.geloescht === true) {

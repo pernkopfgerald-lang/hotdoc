@@ -14,7 +14,7 @@
  *  - Lage unter Kontrolle / Brand AUS / Beteiligte Stellen
  *  - Alarmstufen 2/3, Sonstige FF
  *  - Mannschaft (Eingesetzt / Bereitschaft / Sonstige)
- *  - Verrechenbar / Ölbindemittel
+ *  - Ölbindemittel
  *  - Meldung von der Einsatzleitung (großes Freitextfeld)
  *  - Einsatzleiter / Einsatzende / Bearbeiter / Unterschrift
  *
@@ -49,7 +49,7 @@ export interface BerichtDaten {
    * Übungs-Modus (2026-06-03): wenn true, wird derselbe Renderer wie fuer den
    * Einsatzbericht verwendet, aber GRUEN als "ÜBUNG" gekennzeichnet, der Titel
    * lautet "Übungsbericht" und die Einsatz-spezifischen Bloecke (syBOS-Statistik,
-   * Verrechnung, Pflichtbereich/Einsatzzone/ueberoertliche Hilfe, Einsatzauftrag-
+   * Pflichtbereich/Einsatzzone/ueberoertliche Hilfe, Einsatzauftrag-
    * via, Anrufer) werden ausgeblendet. Die generischen Bloecke (Mannschaft,
    * Geraete, Chronik, Fahrzeug-Anhangblaetter, Fotos) bleiben.
    */
@@ -68,8 +68,8 @@ export interface BerichtDaten {
    * "Lotsendienst-Bericht", Quelle-Label "LOTSENDIENST". Die Einsatz-/Brand-
    * spezifischen Bloecke (syBOS-Statistik, Pflichtbereich/Einsatzzone/ueber-
    * oertliche Hilfe, Einsatzauftrag-via, Anrufer, Brand-Zeitmarken, Einsatz-
-   * art-Tabelle) werden ausgeblendet. Der Verrechnungs-Block BLEIBT (Lotsen-
-   * dienst ist verrechenbar). Auftraggeber + Route werden im Kopf angezeigt.
+   * art-Tabelle) werden ausgeblendet. Auftraggeber + Route werden im Kopf
+   * angezeigt.
    */
   istLotsendienst?: boolean;
   /** Auftraggeber (nur Lotsendienst). Wird prominent im Kopf angezeigt. */
@@ -108,10 +108,6 @@ export interface BerichtDaten {
   beteiligteStellen?: string[];
   sonstigeAnwesendeFF?: string[];
   sonstigeFreitext?: string;
-  verrechenbar?: boolean;
-  /** AUDIT-14 (SF-02): Rechnungsadresse — gerendert im Verrechenbar-Block
-   *  wenn verrechenbar === true. Quelle: doc.verrechnung.rechnungsadresse. */
-  rechnungsadresse?: string;
   /** Aggregation: Personen-Anzahl, AS-Trupps etc. */
   mannschaft?: {
     eingesetzt: number;
@@ -560,7 +556,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     <tr>
       <td class="lbl" colspan="2">Sonstige anwesende Feuerwehren</td>
       <td class="lbl">Mannschaft</td>
-      ${isUebung ? "" : `<td class="lbl">Verrechenbar / Öl</td>`}
+      ${isUebung ? "" : `<td class="lbl">Ölbindemittel</td>`}
     </tr>
     <tr>
       <td class="val" colspan="2" style="vertical-align:top">
@@ -583,7 +579,6 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         isUebung
           ? ""
           : `<td class="val" style="vertical-align:top">
-        Verrechenbar: <span class="cb">${boxFilled(d.verrechenbar === true)} JA</span> · <span class="cb">${boxFilled(d.verrechenbar === false)} NEIN</span>${d.verrechenbar === true && d.rechnungsadresse ? `<br>Rechnung an: <span style="color:${FILLED};font-weight:600">${escape(d.rechnungsadresse)}</span>` : ""}<br>
         Ölbindemittel: ${
           d.oelbindemittelSaecke && d.oelbindemittelSaecke > 0
             ? `<strong style="color:${FILLED}">${boxFilled(true)} ${d.oelbindemittelSaecke} Sack</strong>`
@@ -988,16 +983,14 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
     <li>Übungsleiter: <span class="val">${escape(d.uebungsleiter ?? "—")}</span></li>`
         : istLotsen
           ? `<li>Auftraggeber: <span class="val">${escape(d.lotsendienstAuftraggeber ?? "—")}</span></li>
-    ${d.lotsendienstRoute ? `<li>Route / Strecke: <span class="val">${escape(d.lotsendienstRoute)}</span></li>` : ""}
-    ${d.rechnungsadresse ? `<li>Rechnungsadresse: <span class="val">${escape(d.rechnungsadresse)}</span></li>` : ""}`
+    ${d.lotsendienstRoute ? `<li>Route / Strecke: <span class="val">${escape(d.lotsendienstRoute)}</span></li>` : ""}`
           : `<li>Einsatzart: <span class="val">${escape(d.einsatzart ?? d.einsatzartFreitext ?? "—")}</span></li>`
     }
     ${d.alarmierungAuthor ? `<li>Alarmierungsquelle: <span class="val">${escape(d.alarmierungAuthor)}</span></li>` : ""}
     ${istUebung ? "" : `<li>Einsatzleiter: <span class="val">${leiterStr}</span></li>`}
     <li>${istUebung ? "Übungsende" : "Einsatzende"}: <span class="val">${escape(endeStr)}</span></li>
     <li>Mannschaft: <span class="val">${escape(mannschaftStr)}</span></li>
-    ${d.oelbindemittelSaecke ? `<li>Ölbindemittel: <span class="val">${d.oelbindemittelSaecke} Säcke${istUebung ? "" : " (VERRECHENBAR)"}</span></li>` : ""}
-    ${!istUebung && !istLotsen && d.rechnungsadresse ? `<li>Rechnungsadresse: <span class="val">${escape(d.rechnungsadresse)}</span></li>` : ""}
+    ${d.oelbindemittelSaecke ? `<li>Ölbindemittel: <span class="val">${d.oelbindemittelSaecke} Säcke</span></li>` : ""}
     <li>Bericht-PDF als Anhang an den syBOS-Eintrag hängen.</li>
   </ol>
 

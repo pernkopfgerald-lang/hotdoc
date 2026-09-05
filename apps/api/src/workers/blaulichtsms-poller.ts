@@ -548,7 +548,6 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     beteiligteStellen: [],
     sonstigeAnwesendeFF: { aktive: [] },
     mannschaft: { bereitschaft: 0, sonstige: 0 },
-    verrechnung: { verrechenbar: false },
     oelbindemittel: { verwendet: false, gesamtSaecke: 0 },
     meldungEinsatzleitung: "",
     reaktivierungen: [],

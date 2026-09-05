@@ -69,26 +69,16 @@ export async function getEinsatz(id: string): Promise<EinsatzListItem & Record<s
 }
 
 /**
- * D-10 (Audit R3): Abschluss-Body. verrechenbar/rechnungsadresse werden
- * vom Server bei Uebungen ignoriert (U-05); clientTs = Zeitpunkt des
- * Abschluss-Dialogs — liegt eine juengere Reaktivierung vor, antwortet
- * der Server 409 stale_abschluss (L-08).
+ * D-10 (Audit R3): Abschluss-Body. clientTs = Zeitpunkt des Abschluss-
+ * Dialogs — liegt eine juengere Reaktivierung vor, antwortet der Server
+ * 409 stale_abschluss (L-08).
  */
 export interface AbschlussInput {
-  verrechenbar?: boolean;
-  rechnungsadresse?: string;
   clientTs?: string;
 }
 
 export async function abschluss(id: string, input: AbschlussInput = {}): Promise<{ ok: boolean }> {
-  // Nur gesetzte Keys in den Body — exactOptionalPropertyTypes + Zod
-  // (rechnungsadresse: undefined waere im JSON ohnehin weg, aber so ist
-  // es explizit).
   const body: Record<string, unknown> = {};
-  if (typeof input.verrechenbar === "boolean") body.verrechenbar = input.verrechenbar;
-  if (typeof input.rechnungsadresse === "string" && input.rechnungsadresse.trim()) {
-    body.rechnungsadresse = input.rechnungsadresse.trim();
-  }
   if (input.clientTs) body.clientTs = input.clientTs;
   return apiCall(`/api/einsaetze/${encodeURIComponent(id)}/abschluss`, { method: "POST", body });
 }
@@ -260,9 +250,6 @@ export interface ManuellAnlageInput {
   uebungThema?: string;
   uebungsleiter?: string;
   uebungsTyp?: UebungsTyp;
-  // Verrechnung (für Lotsendienst meist true)
-  verrechenbar?: boolean;
-  rechnungsadresse?: string;
 }
 
 export async function manuellAnlegen(input: ManuellAnlageInput): Promise<{ ok: boolean; id: string }> {

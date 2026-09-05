@@ -33,8 +33,6 @@ interface ManuellAnlageBody {
   grund?: string;
   lotsendienstAuftraggeber?: string;
   lotsendienstRoute?: string;
-  verrechenbar?: boolean;
-  rechnungsadresse?: string;
   uebungThema?: string;
   uebungsleiter?: string;
   uebungsTyp?: string;
@@ -205,8 +203,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
   // Lotsendienst-Felder
   const [auftraggeber, setAuftraggeber] = useState("");
   const [route, setRoute] = useState("");
-  const [verrechenbar, setVerrechenbar] = useState(true);
-  const [rechnungsadresse, setRechnungsadresse] = useState("");
   // Übungs-Felder
   const [uebungThema, setUebungThema] = useState("");
   /** Person aus der syBOS-Liste, die die Übung leitet. */
@@ -247,8 +243,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     // Lotsendienst-Felder
     setAuftraggeber("");
     setRoute("");
-    setVerrechenbar(true);
-    setRechnungsadresse("");
     // Uebungs-Felder
     setUebungThema("");
     setUebungsleiterPerson(null);
@@ -317,8 +311,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     setGrund("");
     setAuftraggeber("");
     setRoute("");
-    setVerrechenbar(true);
-    setRechnungsadresse("");
     setUebungThema("");
     setUebungsleiterPerson(null);
     setUebungsTyp("");
@@ -411,8 +403,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     if (typ === "lotsendienst") {
       body.lotsendienstAuftraggeber = auftraggeber.trim();
       if (route.trim()) body.lotsendienstRoute = route.trim();
-      body.verrechenbar = verrechenbar;
-      if (rechnungsadresse.trim()) body.rechnungsadresse = rechnungsadresse.trim();
     }
     if (typ === "uebung") {
       body.uebungThema = uebungThema.trim();
@@ -950,37 +940,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 placeholder="z. B. Anfang → Schwertransport-Etappe → Ende"
               />
             </div>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 12px",
-                background: "var(--glass-3)",
-                border: "1px solid var(--glass-border)",
-                borderRadius: "var(--radius-s)",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={verrechenbar}
-                onChange={(e) => setVerrechenbar(e.target.checked)}
-                style={{ width: 18, height: 18 }}
-              />
-              <span style={{ fontSize: 17.5, fontWeight: 600 }}>Verrechenbar</span>
-            </label>
-            {verrechenbar ? (
-              <div className="field">
-                <label className="caption">Rechnungsadresse</label>
-                <input
-                  className="input"
-                  value={rechnungsadresse}
-                  onChange={(e) => setRechnungsadresse(e.target.value)}
-                  placeholder="z. B. Polizei OÖ, Landeskommando"
-                />
-              </div>
-            ) : null}
           </>
         ) : null}
 

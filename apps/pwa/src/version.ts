@@ -10,5 +10,5 @@
  * Bildschirm aus wie ein veralteter Stand, obwohl die Version korrekt war.
  * Bei JEDEM Release BEIDE Zeilen aktualisieren, nicht nur APP_VERSION.
  */
-export const APP_VERSION = "v0.1.30";
+export const APP_VERSION = "v0.1.31";
 export const APP_BUILD = "2026-09-05";

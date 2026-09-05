@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.31",
+    date: "2026-09-05",
+    title: "Review-Rückmeldungen: Gnadenfrist beim Abschluss, dauerhafte Anmeldung, Klartext",
+    bullets: [
+      "Schließt die Zentrale den Gesamtbericht, werden noch offene Fahrzeugberichte NICHT mehr sofort mitgeschlossen — der Fahrzeug-Kdt hat 30 Minuten Zeit, seinen Bericht fertigzustellen (Banner mit Restzeit), erst danach wird automatisch zugemacht.",
+      "Tablet-Anmeldung ist jetzt dauerhaft (vorher 30 Tage) — kein erneutes PIN-Eingeben mehr. Ein verlorenes Tablet muss dafür aktiv im Backoffice gesperrt werden.",
+      "Abgewählte Aufträge (z. B. 'Brandbekämpfung außen' wieder entfernt) verschwinden jetzt auch aus der Chronik, statt dort veraltet stehen zu bleiben.",
+      "Reaktivierter Bericht springt nicht mehr verschoben ins Formular — die Ansicht startet wieder oben.",
+      "Die Markierung 'Verrechenbar' beim Abschluss ist komplett entfernt (auf Tablet, Zentrale, Backoffice und im PDF) — sie hatte in der Praxis nur zu Verwirrung geführt.",
+    ],
+  },
+  {
     version: "0.1.30",
     date: "2026-09-05",
     title: "Einsatztauglichkeits-Audit: Funkloch-Sicherheit, Nachtbetrieb, Klartext",

@@ -74,18 +74,6 @@ export const FahrzeugberichtSchema = z.object({
    */
   kdtIstEinsatzleiter: z.boolean().optional(),
 
-  /**
-   * Issue 8 (Einsatz-Test 2026-06-02): Verrechnungs-Stand wird beim
-   * Hauptauftrag-Abschluss auf alle Fahrzeugberichte gespiegelt.
-   * Vorher musste der Sachbearbeiter pro Bericht haendisch markieren.
-   */
-  verrechnung: z
-    .object({
-      verrechenbar: z.boolean().default(false),
-      rechnungsadresse: z.string().optional(),
-    })
-    .optional(),
-
   mannschaft: z.array(MannschaftEintragSchema).default([]),
 
   /** Nur MTF: welche Anhänger wurden mitgenommen? */

@@ -3,7 +3,7 @@
  *
  * Dispatcher pro einsatzTyp:
  *   - alarm/manuell → Papier-Original-Layout (renderHauptberichtHtml)
- *   - lotsendienst  → Lotsendienst-Layout mit Verrechnungs-Block
+ *   - lotsendienst  → Lotsendienst-Layout (Auftraggeber + Route im Kopf)
  *   - uebung        → derselbe Renderer wie der Einsatzbericht
  *                     (renderHauptberichtHtml mit istUebung=true): GRUEN als
  *                     "ÜBUNG", je-Fahrzeug-Anhangblaetter, Einsatz-only-
@@ -224,8 +224,7 @@ pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), ah(async (req, res) => {
  * die Lotsendienst-spezifischen Felder (Auftraggeber, Route). Die Einsatz-/
  * Brand-only-Bloecke (syBOS-Statistik, Pflichtbereich/Einsatzzone/ueberoert-
  * liche Hilfe, Einsatzauftrag-via, Anrufer, Brand-Zeitmarken, Einsatzart-
- * Tabelle) werden ausgeblendet. Der Verrechnungs-Block BLEIBT erhalten —
- * der Lotsendienst ist verrechenbar.
+ * Tabelle) werden ausgeblendet.
  */
 async function buildLotsendienstHtml(
   id: string,
@@ -249,15 +248,9 @@ function applyLotsendienstOverlay(data: BerichtDaten, doc: Record<string, unknow
     data.lotsendienstRoute = String(doc.lotsendienstRoute);
   }
 
-  // Verrechnung sicherstellen: Lotsendienst ist standardmaessig verrechenbar.
-  // Der Verrechnungs-Block bleibt im Renderer sichtbar (Guard `!isUebung`).
-  data.verrechenbar =
-    (doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar ?? true;
-
   // Einsatz-/Brand-only-Felder entfernen — fuer den Lotsendienst irrelevant.
   // Der Renderer guarded zusaetzlich per `isLotsendienst`/`isSpezial`, aber so
-  // steht im data-Objekt auch nichts Irrefuehrendes mehr. Verrechnung NICHT
-  // loeschen (siehe oben).
+  // steht im data-Objekt auch nichts Irrefuehrendes mehr.
   delete data.technischeStatistik;
   delete data.brandStatistik;
   delete data.pflichtbereich;
@@ -567,15 +560,6 @@ async function buildBerichtDaten(
       doc.sonstigeAnwesendeFF && typeof doc.sonstigeAnwesendeFF === "object" && !Array.isArray(doc.sonstigeAnwesendeFF)
         ? (doc.sonstigeAnwesendeFF as { sonstigeFreitext?: string }).sonstigeFreitext
         : undefined,
-    verrechenbar:
-      (doc.verrechnung as { verrechenbar?: boolean } | undefined)?.verrechenbar,
-    // AUDIT-14 (SF-02): Rechnungsadresse fuer den Verrechenbar-Block.
-    ...((doc.verrechnung as { rechnungsadresse?: string } | undefined)?.rechnungsadresse
-      ? {
-          rechnungsadresse: (doc.verrechnung as { rechnungsadresse?: string })
-            .rechnungsadresse,
-        }
-      : {}),
     mannschaft: {
       eingesetzt,
       bereitschaft,
@@ -619,8 +603,8 @@ async function buildHauptberichtHtml(
  * Charakter + die je-Fahrzeug-Anhangblaetter bekommt. Wir bauen zuerst die
  * volle `BerichtDaten` (Mannschaft je Fahrzeug, Geraete, Chronik, Fahrzeug-
  * berichte, Fotos) und overlayen dann die Übungs-spezifischen Felder. Die
- * Einsatz-only-Bloecke (syBOS-Statistik, Verrechnung, Pflichtbereich/
- * Einsatzzone/ueberoertliche Hilfe, Einsatzauftrag-via, Anrufer) werden vom
+ * Einsatz-only-Bloecke (syBOS-Statistik, Pflichtbereich/Einsatzzone/
+ * ueberoertliche Hilfe, Einsatzauftrag-via, Anrufer) werden vom
  * data-Objekt entfernt — der Renderer blendet sie zusaetzlich per
  * `istUebung`-Guard aus, doppelt haelt besser.
  */
@@ -661,7 +645,6 @@ function applyUebungOverlay(data: BerichtDaten, doc: Record<string, unknown>): v
   // istUebung, aber so steht im data-Objekt auch nichts Irrefuehrendes mehr.
   delete data.technischeStatistik;
   delete data.brandStatistik;
-  delete data.verrechenbar;
   delete data.pflichtbereich;
   delete data.einsatzzoneEzell;
   delete data.ueberOertlicheHilfe;
@@ -834,8 +817,8 @@ pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), ah(async (req, re
     // stehen Fahrzeuge (von-bis, km), Personen mit syBOS-Id, Einsatzleiter,
     // Mannschafts-Aggregat, Einsatzende und die syBOS-Statistik-Bloecke
     // exakt so drin wie im Bericht (inkl. D-09 Phantom-Filter, D-11 Chronik-
-    // Filter, AUDIT-11 echte Berichtsnummer, AUDIT-14/SF-12 Typ-Felder +
-    // Rechnungsadresse). Fotos werden nicht geladen (HTML ohne Bilder).
+    // Filter, AUDIT-11 echte Berichtsnummer, AUDIT-14/SF-12 Typ-Felder).
+    // Fotos werden nicht geladen (HTML ohne Bilder).
     const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
     const data = await buildBerichtDaten(id, doc, { ohneFotos: true });
     if (einsatzTyp === "uebung") applyUebungOverlay(data, doc);

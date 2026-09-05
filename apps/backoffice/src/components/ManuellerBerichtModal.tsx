@@ -34,7 +34,7 @@ const TYP_META: Record<
   },
   lotsendienst: {
     label: "Lotsendienst",
-    sub: "Polizei / Rettung / Gemeinde · meist verrechenbar",
+    sub: "Polizei / Rettung / Gemeinde",
     icon: MapPin,
     color: "var(--warn)",
   },
@@ -55,8 +55,6 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
   // Lotsendienst
   const [auftraggeber, setAuftraggeber] = useState("");
   const [route, setRoute] = useState("");
-  const [verrechenbar, setVerrechenbar] = useState(true);
-  const [rechnungsadresse, setRechnungsadresse] = useState("");
   // Übung
   const [uebungThema, setUebungThema] = useState("");
   const [uebungsleiter, setUebungsleiter] = useState("");
@@ -74,8 +72,6 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
     setGrund("");
     setAuftraggeber("");
     setRoute("");
-    setVerrechenbar(true);
-    setRechnungsadresse("");
     setUebungThema("");
     setUebungsleiter("");
     setUebungsTyp("");
@@ -91,8 +87,6 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
     // Lotsendienst-Felder
     setAuftraggeber("");
     setRoute("");
-    setVerrechenbar(true);
-    setRechnungsadresse("");
     // Uebungs-Felder
     setUebungThema("");
     setUebungsleiter("");
@@ -134,8 +128,6 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
       if (formType === "lotsendienst") {
         body.lotsendienstAuftraggeber = auftraggeber.trim();
         if (route.trim()) body.lotsendienstRoute = route.trim();
-        body.verrechenbar = verrechenbar;
-        if (rechnungsadresse.trim()) body.rechnungsadresse = rechnungsadresse.trim();
       }
       if (formType === "uebung") {
         body.uebungThema = uebungThema.trim();
@@ -332,39 +324,6 @@ export function ManuellerBerichtModal({ open, onClose, onSubmit }: Props) {
                 className="input"
                 style={{ resize: "vertical" }}
               />
-            </div>
-            <div className="grid-2" style={{ gap: 12, marginTop: 12 }}>
-              <div className="field">
-                <label className="caption">Verrechenbar</label>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    paddingTop: 12,
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={verrechenbar}
-                    onChange={(e) => setVerrechenbar(e.target.checked)}
-                    style={{ accentColor: "var(--info)" }}
-                  />
-                  Lotsendienst verrechnen
-                </label>
-              </div>
-              <div className="field">
-                <label className="caption">Rechnungsadresse</label>
-                <input
-                  value={rechnungsadresse}
-                  onChange={(e) => setRechnungsadresse(e.target.value)}
-                  placeholder={verrechenbar ? "Adresse für Verrechnung" : "—"}
-                  className="input"
-                  disabled={!verrechenbar}
-                />
-              </div>
             </div>
           </>
         ) : null}

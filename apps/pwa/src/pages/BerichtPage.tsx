@@ -64,6 +64,10 @@ type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot:
 
 const ROAD_FACTOR = 1.3;
 
+/** Review 2026-09-04 (Entscheidung 1) — muss mit FZGBER_ABSCHLUSS_GRACE_MS
+ *  in apps/api/src/routes/einsaetze.ts uebereinstimmen. */
+const FZGBER_GNADENFRIST_MS = 30 * 60 * 1000;
+
 /** Re-Export aus @hotdoc/shared/constants/florian — siehe dort.
  * Feuerwehrhaus FF Eberstalzell, Solarstrasse 1 — Bezugspunkt fuer KM-
  *  Berechnung und Map-Fallback wenn das Tablet noch keine GPS-Position hat. */
@@ -138,8 +142,8 @@ interface EinsatzInstance {
    */
   kdtIstEinsatzleiter: boolean;
   /**
-   * U-06 (Audit 2026-07): Auftraggeber eines Lotsendienstes (Verrechnung!)
-   * — Grundlage fuer den Abschluss-Check "Auftraggeber erfasst". Die
+   * U-06 (Audit 2026-07): Auftraggeber eines Lotsendienstes — Grundlage
+   * fuer den Abschluss-Check "Auftraggeber erfasst". Die
    * schlanke Poll-Projektion traegt das Feld bewusst nicht; es wird einmal
    * pro Lotsendienst-Einsatz aus dem vollen Einsatz-Doc nachgeladen.
    * undefined = noch nicht geladen, "" = geladen aber leer.
@@ -314,6 +318,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   useEffect(() => {
     uploadStateRef.current = uploadState;
   }, [uploadState]);
+  // Review 2026-09-04 (Entscheidung 1): 30-Minuten-Gnadenfrist nach einem
+  // Hauptauftrag-Abschluss — solange sie laeuft, bleibt DIESER Bericht
+  // editierbar statt sofort in die AbgeschlossenView zu wechseln.
+  const [gnadenfristHinweis, setGnadenfristHinweis] = useState<{
+    einsatzId: string;
+    bisMs: number;
+  } | null>(null);
 
   // AUDIT-03 (2026-06-12): aggregierter Outbox-Status für das persistente
   // Sync-Badge unter der Topbar (wartend = nur Netz fehlt, blockiert =
@@ -1118,13 +1129,33 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         const offeneLokal = einsaetzeRef.current.filter(
           (e) => !e.abgeschlossen && !listIds.has(e.id),
         );
+        // Gnadenfrist-Hinweis aufraeumen falls der Einsatz zwischenzeitlich
+        // (Zentrale) wieder reaktiviert wurde und jetzt wieder in der
+        // aktiv-Liste steht — sonst bliebe der Banner stehen bleiben.
+        setGnadenfristHinweis((cur) => (cur && listIds.has(cur.einsatzId) ? null : cur));
         for (const lokal of offeneLokal) {
           try {
-            const doc = await apiCall<{ status?: string; einsatzende?: string }>(
-              `/api/einsaetze/${encodeURIComponent(lokal.id)}`,
-            );
+            const doc = await apiCall<{
+              status?: string;
+              einsatzende?: string;
+              hauptabschlussAm?: string;
+            }>(`/api/einsaetze/${encodeURIComponent(lokal.id)}`);
             if (cancelled) return;
+            // Review 2026-09-04 (Entscheidung 1): 30-Minuten-Gnadenfrist —
+            // solange sie laeuft, NICHT sofort in die AbgeschlossenView
+            // wechseln, der Kdt darf seinen Bericht noch fertigstellen.
+            // Faellt hauptabschlussAm auf einem spaeteren Poll weg (Frist
+            // von schliesseOffeneFzgberNachGnadenfrist() abgearbeitet),
+            // greift der normale Abschluss-Zweig unten.
+            if (typeof doc.hauptabschlussAm === "string") {
+              const bisMs = Date.parse(doc.hauptabschlussAm) + FZGBER_GNADENFRIST_MS;
+              if (Date.now() < bisMs) {
+                setGnadenfristHinweis({ einsatzId: lokal.id, bisMs });
+                continue;
+              }
+            }
             if (doc.status === "abgeschlossen") {
+              setGnadenfristHinweis((cur) => (cur?.einsatzId === lokal.id ? null : cur));
               // KM wie bisher berechnen: manueller Override gewinnt, sonst
               // Luftlinie x Strassenfaktor x 2 (die GraphHopper-Route gehoert
               // zum gerade aktiven Einsatz und ist hier nicht verfuegbar).
@@ -1227,6 +1258,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // Key "<einsatzId>:<fremde DeviceId>". Bewusst nur Session-genau (useRef,
   // kein Persist): nach einem App-Neustart darf der Hinweis erneut kommen.
   const fremdschreiberGesehenRef = useRef<Set<string>>(new Set());
+  // Review 2026-09-04 (Bug 3): IDs von Chronik-Eintraegen, die lokal per
+  // removeAuftrag() geloescht wurden (Auftrag-Chip abgewaehlt). Verhindert,
+  // dass der 8s-Chronik-Poll den Eintrag wieder aufleben laesst, solange
+  // der DELETE-Request (best-effort, kein Outbox-Retry) noch unterwegs
+  // oder offline fehlgeschlagen ist. Session-genau (useRef).
+  const geloeschteChronikIdsRef = useRef<Set<string>>(new Set());
   // Foto-Funktion (2026-06-03): Busy-Flag während Komprimierung/Speichern.
   const [fotoBusy, setFotoBusy] = useState(false);
   // #172 (Test 2026-06-03): GPS-Adresse-Übernahme-Status für den Einsatzort-Button.
@@ -1778,7 +1815,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       if (cancelled || neue.length === 0) return;
       patchActive((e) => {
         const own = new Set(e.chronik.map((c) => c.id));
-        const toAdd = neue.filter((n) => !own.has(n.id));
+        // Bug 3: lokal per removeAuftrag() geloeschte Eintraege nicht
+        // wieder aufleben lassen, falls der DELETE-Request noch unterwegs
+        // oder offline fehlgeschlagen ist.
+        const toAdd = neue.filter(
+          (n) => !own.has(n.id) && !geloeschteChronikIdsRef.current.has(n.id),
+        );
         if (toAdd.length === 0) return e;
         return {
           ...e,
@@ -2013,7 +2055,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     });
   }
   function removeAuftrag(id: string) {
-    patchActive((e) => ({ ...e, auftraege: e.auftraege.filter((a) => a.id !== id) }));
+    // Review 2026-09-04 (Bug 3): addAuftrag() schreibt beim Anwaehlen einen
+    // Chronik-Eintrag ("chr-auf-<id>") — der muss beim Abwaehlen mit
+    // verschwinden, sonst bleibt ein nicht mehr gueltiger Auftrag fuer
+    // andere Fahrzeuge/die Zentrale sichtbar in der Chronik stehen.
+    const chronikId = `chr-auf-${id}`;
+    geloeschteChronikIdsRef.current.add(chronikId);
+    patchActive((e) => ({
+      ...e,
+      auftraege: e.auftraege.filter((a) => a.id !== id),
+      chronik: e.chronik.filter((c) => c.id !== chronikId),
+    }));
+    apiCall(
+      `/api/einsaetze/${encodeURIComponent(activeId)}/chronik/${encodeURIComponent(chronikId)}`,
+      { method: "DELETE" },
+    ).catch(() => {
+      // Bericht evtl. schon abgeschlossen (423) oder Eintrag serverseitig
+      // nie angekommen (404, Anlage offline) — lokal ist er ohnehin schon
+      // weg; kein Outbox-Retry fuer diesen seltenen Korrektur-Fall.
+    });
   }
 
   function toggleGear(id: string) {
@@ -2293,6 +2353,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         prev.map((e) => (e.id === einsatzId ? { ...e, abgeschlossen: null } : e)),
       );
       setUploadState({ kind: "idle" });
+      // Review 2026-09-04 (Bug 2): Ansicht wechselt hier von AbgeschlossenView
+      // auf das Live-Formular — ohne Reset blieb die Scroll-Position der
+      // (oft weiter unten betrachteten) AbgeschlossenView stehen, wodurch
+      // das neue, anders aufgebaute Formular "nach oben verschoben" wirkte.
+      window.scrollTo(0, 0);
       // (4) AUDIT-03: blockierte Outbox-Items (423/409) wieder freigeben.
       await unblockRequests(einsatzId).catch(() => {
         /* PouchDB-Fehler — der naechste Flush-Tick sieht den Stand */
@@ -2594,8 +2659,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         ]
       : []),
     // U-06 (Audit 2026-07): beim Lotsendienst muss der Auftraggeber erfasst
-    // sein (Lotsendienste sind verrechenbar — ohne Auftraggeber keine
-    // Rechnung). Feld kommt lazy aus dem vollen Einsatz-Doc, siehe Effekt
+    // sein — wer den Einsatz angefordert hat, gehoert in jeden Lotsendienst-
+    // Bericht. Feld kommt lazy aus dem vollen Einsatz-Doc, siehe Effekt
     // oben; undefined (noch nicht geladen) zaehlt als nicht erfasst.
     ...(active?.einsatzTyp === "lotsendienst"
       ? [
@@ -2746,6 +2811,31 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           />
         ) : (
           <>
+            {gnadenfristHinweis && gnadenfristHinweis.einsatzId === active.id ? (
+              <div
+                role="status"
+                style={{
+                  margin: "0 0 14px",
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "var(--warn-tint)",
+                  border: "1px solid var(--amber-border)",
+                  color: "var(--fg)",
+                  fontSize: 15,
+                  lineHeight: 1.5,
+                }}
+              >
+                Hauptbericht wurde bei der Zentrale abgeschlossen — du kannst deinen
+                Fahrzeugbericht noch bis{" "}
+                <strong>
+                  {new Date(gnadenfristHinweis.bisMs).toLocaleTimeString("de-AT", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </strong>{" "}
+                ergänzen, danach wird er automatisch mitgeschlossen.
+              </div>
+            ) : null}
             <AlarmCard
               alarm={active.alarm}
               einsatzTyp={active.einsatzTyp}
