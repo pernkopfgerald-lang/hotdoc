@@ -192,13 +192,26 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
     ],
   },
   // Aktuelle empfohlene App-Version + APK-URL. Wird vom Update-Banner
-  // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release.
+  // der App alle 6h gepollt. Der Funktionaer pflegt das nach jedem Release
+  // im Backoffice (System → App-Version) — dieser Default hier greift NUR
+  // solange noch kein echtes config:app-version-Doc gespeichert wurde.
+  //
+  // Review 2026-09-07: genau das war seit Monaten der Fall — das Doc wurde
+  // offenbar NIE gespeichert, der Default blieb auf "0.1.7" stehen (Stand
+  // von vor ueber 20 Releases). Erst mit C-01 (Audit R3, v0.1.30) wurde der
+  // Update-Check ueberhaupt funktionsfaehig (er schlug vorher lautlos fehl,
+  // resolveApiUrl-Bug) — seitdem hat er lautlos "kein Update" gemeldet,
+  // weil 0.1.7 ja "aelter" war als jede installierte Version. Das
+  // Update-Banner-Feature war dadurch de facto nie sichtbar. Default hier
+  // auf den aktuellen Stand gezogen; ideal waere zusaetzlich ein echtes
+  // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
+  // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.1.7",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.1.7-release.apk",
+    currentVersion: "0.2.0",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.0-release.apk",
     releaseNotes:
-      "v0.1.7 — Florianstation-Upgrade + Fahrzeugbericht-Vordruck\n\n• Florianstation Lagekarte: Klick auf Status-Card lässt Marker pulsieren + Mannschafts-Details (Fahrer/Kdt/Besatzung) klappen unter der Card auf.\n• Drei Zoom-Tasten an beiden Karten: Lagebild (200m), Gesamt (alle Fahrzeuge), Zentrieren.\n• Pop-Out-Fenster für 2. Bildschirm via /florian-map.\n• Florian-Position korrigiert: echte Solarstraße 1 statt 5 km zu weit nördlich — wirkt auch auf KM-Berechnung.\n• Fahrzeugbericht-PDF (Anhang + standalone) im Original-Vordruck-Layout mit FF-Wappen + 4 Tabellen.\n• Neuer Bericht öffnet sich automatisch (war Bug).\n• 'Meldung Einsatzleitung'-Feld entfernt — Text kommt direkt in 'Einsatzbericht / Chronologie'.\n• GPS → Adresse via Reverse-Geocoding (Photon).\n• Pflichtbereich + Einsatzzone automatisch bei Eberstalzell-GPS.",
-    minSupported: "0.1.0",
+      "v0.2.0 — Going-Live-Stand: Klartext-Personalliste, Geräte-Kürzung repariert, Doppeltipp-Fix\n\n• '⋯ Mehr'-Menü in der Kopfzeile ist wieder weg — Fahrzeug wechseln, An Handy übergeben, Hell/Dunkel und Über HotDoc sind wieder direkt sichtbare Buttons.\n• Personalliste zeigt kein 'AS-tauglich' mehr an — nur noch Name und Dienstgrad.\n• Geräte & Mittel: die Kürzung auf die 6 meistgenutzten Geräte wirkt jetzt von Anfang an.\n• Plus/Minus bei der Atemschutz-Zeit reagierte bei schnellem Antippen manchmal nicht — behoben.\n• Löschwasser-Button in der Fahrzeugbericht-Karte sitzt jetzt oben rechts in der Karte.",
+    minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
   // den Florian-Editor "Technische Statistik". Default leer — der Funktionaer
