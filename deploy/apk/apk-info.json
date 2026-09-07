@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.31",
-  "apkUrl": "/hotdoc-v0.1.31-release.apk",
-  "releaseNotes": "v0.1.31 — Review-Rückmeldungen: Gnadenfrist beim Abschluss, dauerhafte Anmeldung, Klartext\n\n• Schließt die Zentrale den Gesamtbericht, werden offene Fahrzeugberichte NICHT mehr sofort mitgeschlossen — 30 Minuten Zeit zum Fertigstellen (Banner mit Restzeit), erst danach automatischer Zwangsschluss.\n• Tablet-Anmeldung ist jetzt dauerhaft — kein erneutes PIN-Eingeben mehr. Ein verlorenes Tablet muss dafür aktiv im Backoffice gesperrt werden.\n• Abgewählte Aufträge verschwinden jetzt auch aus der Chronik, statt dort veraltet stehen zu bleiben.\n• Reaktivierter Bericht springt nicht mehr verschoben ins Formular.\n• 'Verrechenbar'-Markierung beim Abschluss komplett entfernt (Tablet, Zentrale, Backoffice, PDF) — sorgte nur für Verwirrung.\n\n— Enthält Einsatztauglichkeits-Audit (v0.1.30), Löschwasser-Layer (v0.1.26–29) und alle Neuerungen aus v0.1.10–v0.1.25.",
-  "publishedAt": "2026-09-05T14:00:00+00:00",
+  "currentVersion": "0.1.32",
+  "apkUrl": "/hotdoc-v0.1.32-release.apk",
+  "releaseNotes": "v0.1.32 — Schwarzer Bildschirm am Handy, Geräte-Liste, Klartext-Formulare\n\n• Schwarzer Bildschirm beim Aufrufen von Archiv, Neuer Einsatz, An-Handy-übergeben oder Über HotDoc auf schwächeren Handys behoben.\n• Geräte & Mittel zeigt nur noch die 6 meistgenutzten Geräte offen an, der Rest sitzt hinter 'weitere Geräte' — plus Freitext-Feld für Geräte außerhalb der Liste.\n• Neuer Einsatz: das doppelte Stichwort-Feld ist zu einem einzigen zusammengelegt.\n• 'Fahrzeug wechseln', 'An Handy übergeben' & Co. sind auf dem Tablet wieder direkt sichtbar statt im Mehr-Menü versteckt.\n• Atemschutz-Zeit-Buttons vergrößert, mit Abstand zwischen Plus und Minus.\n• Grund-Texte bei Reaktivieren/Trotzdem-abschließen brauchen nur noch 6 statt 10 Zeichen.\n• Nach einem App-Update wird bei einem Ladefehler jetzt bis zu zweimal automatisch neu geladen.\n\n— Enthält Review-Rückmeldungen (v0.1.31), Einsatztauglichkeits-Audit (v0.1.30) und alle Neuerungen aus v0.1.10–v0.1.30.",
+  "publishedAt": "2026-09-07T08:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

@@ -58,6 +58,7 @@ import {
   saveReportState,
 } from "../lib/report-state";
 import { loadWasserquellen, wasserquelleIconUrl } from "../lib/wasserquellen";
+import { pushGeraeteVerlauf, topGeraeteIds } from "../lib/geraete-recent";
 import { FAHRZEUGE, FLORIAN_POSITION, type FahrzeugId } from "@hotdoc/shared";
 
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
@@ -224,6 +225,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // statt der hartkodierten Default-Liste — sonst zeigen Fahrzeugbericht und
   // Backoffice unterschiedliche Geräte. Fallback auf Defaults bleibt offline.
   const gearList = useGeraete(fahrzeugId);
+  // Review 2026-09-06: die 6 meistgenutzten Geraete der letzten 40 Berichte
+  // dieses Fahrzeugs — GearChips zeigt nur diese + bereits Ausgewaehltes
+  // offen, der Rest sitzt hinter "weitere Geraete" (siehe lib/geraete-recent).
+  const topGearIds = useMemo(() => topGeraeteIds(fahrzeugId, 6), [fahrzeugId]);
 
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState<PickerTarget | null>(null);
@@ -2084,6 +2089,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       return { ...e, gearSelected: next };
     });
   }
+  // Review 2026-09-06: Freitext-Geraet hinzufuegen (Katalog-Item passt
+  // nicht) — im Unterschied zu toggleGear immer HINZUFUEGEN, nie entfernen,
+  // damit ein zweiter identischer Freitext-Submit kein versehentliches
+  // Loeschen ausloest.
+  function addCustomGear(text: string) {
+    patchActive((e) => {
+      if (e.gearSelected.has(text)) return e;
+      const next = new Set(e.gearSelected);
+      next.add(text);
+      return { ...e, gearSelected: next };
+    });
+  }
   function setOelSaecke(n: number) {
     patchActive((e) => ({ ...e, oelSaecke: n }));
   }
@@ -2195,6 +2212,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       try {
         await apiCall(putPath, { method: "PUT", body });
         setUploadState({ kind: "ok", einsatzId, at: new Date().toLocaleTimeString("de-AT") });
+        // Review 2026-09-06: Geraete-Verlauf fuer die "meistgenutzt"-Kuerzung
+        // in GearChips — nur bei bestaetigtem Abschluss, nicht bei jedem
+        // Live-Sync-Tick (siehe lib/geraete-recent.ts).
+        pushGeraeteVerlauf(fahrzeugId, Array.from(einsatz.gearSelected));
         return "ok";
       } catch (e) {
         // BLOCKER-2b+3 (Audit 2026-06-03): Netz-/Timeout-/5xx-Fehler → in die
@@ -3357,6 +3378,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               oelbindemittelSaecke={active.oelSaecke}
               onToggle={toggleGear}
               onOelChange={setOelSaecke}
+              topIds={topGearIds}
+              onAddCustom={addCustomGear}
             />
 
             <AuftraegeSection

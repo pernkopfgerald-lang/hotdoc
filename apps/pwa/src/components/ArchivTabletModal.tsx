@@ -80,7 +80,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
    * Reaktivierungs-Dialog — wenn der EL (Florianstation) einen
    * abgeschlossenen Einsatz wieder öffnen will. Inline-State mit
    * der ID des Einsatzes der gerade bestätigt wird + Grund-Input.
-   * Backend braucht Grund (mind. 10 Zeichen) fuer den Audit-Trail.
+   * Backend braucht Grund (mind. 6 Zeichen, Review 2026-09-07 — vorher 10)
+   * fuer den Audit-Trail.
    */
   const [reaktivOpen, setReaktivOpen] = useState<{ id: string; title: string } | null>(null);
   const [reaktivGrund, setReaktivGrund] = useState("");
@@ -180,13 +181,18 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
         position: "fixed",
         inset: 0,
         zIndex: 1500,
-        background:
-          "radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.75) 100%)",
+        // Review 2026-09-06: vorher radial-gradient + backdrop-filter
+        // blur(12px) saturate(150%) HIER und zusaetzlich var(--blur-1)
+        // (saturate(180%) blur(40px)!) auf der Card darunter — zwei
+        // gestapelte, sehr teure Weichzeichner auf einer fast bildschirm-
+        // fuellenden Flaeche. Auf schwaecheren Handy-GPUs (Android-
+        // Compositor) fuehrte das zu einem schwarzen Bildschirm statt der
+        // Archiv-Suche. Backdrop jetzt schlicht/undurchsichtig, die Card
+        // behaelt ihren EINEN Glas-Effekt.
+        background: "rgba(0,0,0,0.6)",
         display: "grid",
         placeItems: "center",
         padding: 16,
-        backdropFilter: "blur(12px) saturate(150%)",
-        WebkitBackdropFilter: "blur(12px) saturate(150%)",
         animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
@@ -574,7 +580,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
             </h3>
             <div style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
               <strong>{reaktivOpen.title}</strong> wird wieder geöffnet.
-              Bitte einen Grund angeben (mind. 10 Zeichen) — wird ins
+              Bitte einen Grund angeben (mind. 6 Zeichen) — wird ins
               Audit-Log eingetragen und auf dem PDF als Reaktivierungs-Hinweis
               gerendert.
             </div>
@@ -624,8 +630,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                 className="btn btn-primary"
                 disabled={reaktivBusy}
                 onClick={async () => {
-                  if (reaktivGrund.trim().length < 10) {
-                    setReaktivErr("Grund mind. 10 Zeichen.");
+                  if (reaktivGrund.trim().length < 6) {
+                    setReaktivErr("Grund mind. 6 Zeichen.");
                     return;
                   }
                   setReaktivBusy(true);

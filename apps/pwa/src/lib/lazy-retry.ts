@@ -5,35 +5,46 @@
  * Dateien mehr. Ein Tablet mit gecachter App-Shell, das erst JETZT den
  * Setup- oder Popout-Chunk nachlädt, bekommt 404 → "Failed to fetch
  * dynamically imported module" → ErrorBoundary-Recovery-Screen mitten im
- * Einsatz. Ein einziger Reload holt die frische Shell und behebt das.
+ * Einsatz. Ein Reload holt die frische Shell und behebt das — meistens.
+ *
+ * Review 2026-09-06: EIN automatischer Reload reichte nicht immer. Der
+ * Service Worker laeuft mit registerType "autoUpdate" und precacht auch
+ * index.html; nach einem Deploy braucht die Aktivierung der neuen SW-
+ * Version manchmal einen ERSTEN Reload nur zum Umschalten, der zweite
+ * bekommt dann wirklich die frischen Chunk-Hashes. Bisher gab genau der
+ * erste, noch stale Reload-Versuch schon auf und zeigte die Fehlerseite —
+ * ein Klick auf "Neu laden" war in Wahrheit der (funktionierende) zweite
+ * Versuch. Jetzt: bis zu 2 automatische Reloads, erst danach die
+ * ErrorBoundary.
  *
  * Verhalten:
- *  - Import schlägt fehl → sessionStorage-Flag "hotdoc.chunkReload" setzen
- *    und einmal location.reload().
- *  - Flag schon gesetzt (Reload hat nicht geholfen, z. B. echtes Offline) →
- *    Fehler durchreichen, die ErrorBoundary übernimmt.
- *  - Erfolgreicher Import räumt das Flag weg, damit der nächste Deploy
- *    wieder einen Reload-Versuch bekommt.
+ *  - Import schlägt fehl, Zaehler < MAX_AUTO_RELOADS → Zaehler in
+ *    sessionStorage hochzaehlen und location.reload().
+ *  - Zaehler erreicht (Reloads haben nicht geholfen, z. B. echtes Offline)
+ *    → Fehler durchreichen, die ErrorBoundary übernimmt.
+ *  - Erfolgreicher Import räumt den Zaehler weg, damit der nächste Deploy
+ *    wieder frische Reload-Versuche bekommt.
  */
 
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-const RELOAD_FLAG = "hotdoc.chunkReload";
+const RELOAD_COUNT_KEY = "hotdoc.chunkReload";
+const MAX_AUTO_RELOADS = 2;
 
-function readFlag(): boolean {
+function readCount(): number {
   try {
-    return sessionStorage.getItem(RELOAD_FLAG) === "1";
+    return Number.parseInt(sessionStorage.getItem(RELOAD_COUNT_KEY) ?? "0", 10) || 0;
   } catch {
-    return false;
+    return 0;
   }
 }
 
-function writeFlag(on: boolean): void {
+function writeCount(n: number): void {
   try {
-    if (on) sessionStorage.setItem(RELOAD_FLAG, "1");
-    else sessionStorage.removeItem(RELOAD_FLAG);
+    if (n <= 0) sessionStorage.removeItem(RELOAD_COUNT_KEY);
+    else sessionStorage.setItem(RELOAD_COUNT_KEY, String(n));
   } catch {
-    // egal — Private-Mode; dann gibt es eben keinen zweiten Versuch
+    // egal — Private-Mode; dann gibt es eben keinen automatischen Retry
   }
 }
 
@@ -47,16 +58,20 @@ export function lazyRetry<T extends ComponentType<any>>(
   return lazy(async () => {
     try {
       const mod = await factory();
-      writeFlag(false);
+      writeCount(0);
       return mod;
     } catch (err) {
-      if (readFlag()) {
-        // Zweiter Fehlschlag in dieser Session → nicht endlos reloaden.
-        writeFlag(false);
+      const count = readCount();
+      if (count >= MAX_AUTO_RELOADS) {
+        // Reloads haben nicht geholfen → nicht endlos weiterversuchen.
+        writeCount(0);
         throw err;
       }
-      console.warn("[lazy-retry] Chunk-Import fehlgeschlagen, lade neu:", err);
-      writeFlag(true);
+      console.warn(
+        `[lazy-retry] Chunk-Import fehlgeschlagen, lade neu (Versuch ${count + 1}/${MAX_AUTO_RELOADS}):`,
+        err,
+      );
+      writeCount(count + 1);
       window.location.reload();
       // Promise nie auflösen — der Reload ersetzt die Seite ohnehin.
       return await new Promise<{ default: T }>(() => {

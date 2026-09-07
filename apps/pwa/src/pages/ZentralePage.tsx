@@ -770,7 +770,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
   /** U-17: Override-Confirm — wenn der EL trotz noch offener Fahrzeugberichte
-   *  abschliessen will, muss er einen Grund (min 10 Zeichen) angeben. Der
+   *  abschliessen will, muss er einen Grund (min 6 Zeichen, Review 2026-09-07
+   *  — vorher 10) angeben. Der
    *  Grund wandert ins Audit-Log und auf das PDF. */
   const [abschlussOverrideOpen, setAbschlussOverrideOpen] = useState(false);
   const [abschlussOverrideGrund, setAbschlussOverrideGrund] = useState("");
@@ -4984,13 +4985,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             position: "fixed",
             inset: 0,
             zIndex: 1000,
-            background:
-              "radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.75) 100%)",
+            // Review 2026-09-06: kein backdrop-filter mehr auf dieser
+            // Vollbild-Ebene — zusammen mit dem var(--blur-1)-Glaseffekt
+            // der Card darunter (saturate(180%) blur(40px)) fuehrte der
+            // doppelt gestapelte, teure Weichzeichner auf schwaecheren
+            // GPUs zu einem schwarzen Bildschirm statt des Dialogs.
+            background: "rgba(0,0,0,0.6)",
             display: "grid",
             placeItems: "center",
             padding: 16,
-            backdropFilter: "blur(12px) saturate(150%)",
-            WebkitBackdropFilter: "blur(12px) saturate(150%)",
             animation: "glass-reveal 220ms var(--ease-decel) both",
           }}
         >
@@ -5175,7 +5178,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         </div>
       ) : null}
 
-      {/* U-17: Abschluss-Override-Modal — Grund-Pflicht-Input, min 10 Zeichen.
+      {/* U-17: Abschluss-Override-Modal — Grund-Pflicht-Input, min 6 Zeichen.
           Beim Bestaetigen ruft handleAbschluss mit Grund auf, der ins
           Audit-Log wandert und (sofern Backend mitkann) am PDF erscheint. */}
       {abschlussOverrideOpen && (
@@ -5217,7 +5220,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             </div>
             <p style={{ margin: 0, fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.55 }}>
               Es sind noch Fahrzeugberichte offen. Du kannst den Hauptbericht
-              trotzdem schließen — bitte einen Grund angeben (mind. 10 Zeichen).
+              trotzdem schließen — bitte einen Grund angeben (mind. 6 Zeichen).
               Der Grund wandert ins Audit-Log und auf das PDF.
             </p>
             {/* S-11: Nummern-Hinweis auch am Override-Pfad. */}
@@ -5290,7 +5293,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               </button>
               <button
                 type="button"
-                disabled={abschlussBusy || abschlussOverrideGrund.trim().length < 10}
+                disabled={abschlussBusy || abschlussOverrideGrund.trim().length < 6}
                 onClick={async () => {
                   // AUDIT-07/EL-11b: Erfolg kommt jetzt als Rueckgabewert —
                   // frueher wurde das STALE abschlussErr aus der Render-
@@ -5309,10 +5312,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   fontSize: 16.5,
                   fontWeight: 700,
                   cursor:
-                    abschlussBusy || abschlussOverrideGrund.trim().length < 10
+                    abschlussBusy || abschlussOverrideGrund.trim().length < 6
                       ? "not-allowed"
                       : "pointer",
-                  opacity: abschlussOverrideGrund.trim().length < 10 ? 0.5 : 1,
+                  opacity: abschlussOverrideGrund.trim().length < 6 ? 0.5 : 1,
                   minHeight: 44,
                 }}
               >

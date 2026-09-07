@@ -194,13 +194,17 @@ function AsTimer({
   // Fahrzeug nachgeführt werden — die alten 24×24px-Buttons waren unter
   // Handschuhen praktisch nicht treffbar (Fehltap auf das Slot-leeren-X
   // daneben). Klickfläche jetzt 44×44px, Icon optisch etwas größer (15px).
+  // Review 2026-09-06: auf 48×48 vergroessert und mit sichtbarem Trenner
+  // zwischen Minus/Plus — die beiden sassen bisher nahtlos aneinander
+  // (Pille mit overflow:hidden, kein Abstand), ein Fehltap nahe der
+  // Mitte konnte den falschen Knopf treffen und die Aenderung "auffressen".
   const stepBtnStyle: React.CSSProperties = {
     background: "transparent",
     border: 0,
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    minHeight: 44,
+    width: 48,
+    height: 48,
+    minWidth: 48,
+    minHeight: 48,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -218,7 +222,7 @@ function AsTimer({
         className="icon-btn"
         style={{ ...stepBtnStyle, opacity: minusDisabled ? 0.3 : 1 }}
       >
-        <Minus size={15} strokeWidth={3} />
+        <Minus size={17} strokeWidth={3} />
       </button>
       <button
         type="button"
@@ -226,9 +230,13 @@ function AsTimer({
         onClick={onPlus}
         disabled={plusDisabled}
         className="icon-btn"
-        style={{ ...stepBtnStyle, opacity: plusDisabled ? 0.3 : 1 }}
+        style={{
+          ...stepBtnStyle,
+          opacity: plusDisabled ? 0.3 : 1,
+          borderLeft: "1px solid rgba(0,0,0,0.15)",
+        }}
       >
-        <Plus size={15} strokeWidth={3} />
+        <Plus size={17} strokeWidth={3} />
       </button>
     </span>
   );

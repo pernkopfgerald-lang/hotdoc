@@ -254,6 +254,10 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     // weiterleben.
     if (nextTyp !== "manuell") {
       setEinsatzart("");
+      // Review 2026-09-06: das Suchfeld ist jetzt auch die Freitext-Quelle
+      // fuer "manuell" (siehe submit()) — beim Wegwechseln darf es nicht
+      // stehen bleiben und spaeter unbeabsichtigt wieder einfliessen.
+      setEinsatzartSuche("");
     }
     setErr(null);
   }
@@ -308,6 +312,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
     setKoord(null);
     setEinsatzart("");
     setEinsatzartFreitext("");
+    setEinsatzartSuche("");
     setGrund("");
     setAuftraggeber("");
     setRoute("");
@@ -389,9 +394,18 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
       einsatzTyp: typ,
       einsatzort: ortString,
       ...(einsatzart ? { einsatzart } : {}),
-      ...(einsatzartFreitext.trim()
-        ? { einsatzartFreitext: einsatzartFreitext.trim() }
-        : {}),
+      // Review 2026-09-06: "manuell" hat nur noch EIN Einsatzart-Feld —
+      // das Suchfeld filtert die Chips UND liefert, wenn keine Chip
+      // ausgewaehlt ist, den getippten Text als Freitext (kein separates
+      // zweites Feld mehr, siehe JSX unten). Lotsendienst/Uebung nutzen
+      // weiterhin ihr eigenes Freitext-Feld bzw. das Thema-Feld.
+      ...(typ === "manuell"
+        ? !einsatzart && einsatzartSuche.trim()
+          ? { einsatzartFreitext: einsatzartSuche.trim() }
+          : {}
+        : einsatzartFreitext.trim()
+          ? { einsatzartFreitext: einsatzartFreitext.trim() }
+          : {}),
       ...(koord ? { koordinaten: koord } : {}),
       ...(grund.trim() ? { grund: grund.trim() } : {}),
       // Auto-Pflichtbereich-Erkennung bei Eberstalzell (siehe Backend
@@ -475,13 +489,15 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         position: "fixed",
         inset: 0,
         zIndex: 1500,
-        background:
-          "radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.75) 100%)",
+        // Review 2026-09-06: kein backdrop-filter mehr auf dieser Vollbild-
+        // Ebene — zusammen mit dem var(--blur-1)-Glaseffekt der Card
+        // darunter (saturate(180%) blur(40px)) fuehrte der doppelt
+        // gestapelte, teure Weichzeichner auf schwaecheren Handy-GPUs zu
+        // einem schwarzen Bildschirm statt des Dialogs.
+        background: "rgba(0,0,0,0.6)",
         display: "grid",
         placeItems: "center",
         padding: 16,
-        backdropFilter: "blur(12px) saturate(150%)",
-        WebkitBackdropFilter: "blur(12px) saturate(150%)",
         animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
@@ -767,7 +783,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                         padding: "10px 4px",
                       }}
                     >
-                      Kein Treffer · nimm den Stichwort-Freitext unten.
+                      Kein Treffer — der Suchtext oben wird als Stichwort übernommen.
                     </div>
                   );
                 }
@@ -815,7 +831,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 marginTop: 6,
               }}
             >
-              Optional · falls keine passt, einfach im Stichwort-Feld unten frei tippen.
+              Optional · passt keine, wird der oben getippte Suchtext als Stichwort übernommen.
             </div>
           </div>
         ) : null}
@@ -902,14 +918,15 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         {/* E-04 (Audit 2026-09): Bei einer Übung gibt es KEIN separates
             "Beschreibung"-Feld mehr — das Thema unten übernimmt diese Rolle
             und geht als einsatzartFreitext mit (zwei Felder für dieselbe
-            Sache haben verwirrt). */}
-        {typ !== "uebung" ? (
+            Sache haben verwirrt).
+            Review 2026-09-06: bei "manuell" galt dieselbe Verwirrung fuer
+            das Suchfeld oben + dieses Freitext-Feld — beide meinten
+            faktisch dasselbe. Jetzt uebernimmt das Suchfeld selbst die
+            Freitext-Rolle (siehe submit()), dieses Feld bleibt nur noch
+            fuer Lotsendienst (der hat keine Chip-Auswahl). */}
+        {typ === "lotsendienst" ? (
           <div className="field">
-            <label className="caption">
-              {typ === "manuell"
-                ? "Stichwort / Freitext (falls oben nichts passt)"
-                : "Stichwort / Freitext"}
-            </label>
+            <label className="caption">Stichwort / Freitext</label>
             <input
               className="input"
               value={einsatzartFreitext}

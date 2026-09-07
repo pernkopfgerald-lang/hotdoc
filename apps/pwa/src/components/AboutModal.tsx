@@ -35,13 +35,15 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
         position: "fixed",
         inset: 0,
         zIndex: 1900,
-        background:
-          "radial-gradient(ellipse at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.75) 100%)",
+        // Review 2026-09-06: kein backdrop-filter mehr auf dieser Vollbild-
+        // Ebene — zusammen mit dem var(--blur-1)-Glaseffekt der Card
+        // darunter (saturate(180%) blur(40px)) fuehrte der doppelt
+        // gestapelte, teure Weichzeichner auf schwaecheren Handy-GPUs zu
+        // einem schwarzen Bildschirm statt des Dialogs.
+        background: "rgba(0,0,0,0.6)",
         display: "grid",
         placeItems: "center",
         padding: 16,
-        backdropFilter: "blur(12px) saturate(150%)",
-        WebkitBackdropFilter: "blur(12px) saturate(150%)",
         animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >

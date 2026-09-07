@@ -1020,6 +1020,16 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   z-index: 50;
   box-shadow: 0 1px 0 var(--glass-divider);
 }
+/* Review 2026-09-06: Topbar-Sekundaeraktionen (Fahrzeug wechseln, Uebergeben,
+   Hell/Dunkel, Ueber HotDoc) — auf breiten Screens (Tablet/Desktop, Default
+   hier) direkt sichtbar; auf dem schmalen Handy (Issue 11) hinter "⋯ Mehr"
+   versteckt, siehe @media (max-width: 640px) unten. */
+.topbar-actions-full {
+  display: flex;
+}
+.topbar-menu-trigger-wrap {
+  display: none;
+}
 .applogo {
   width: 44px;
   height: 44px;
@@ -1210,6 +1220,14 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   .appheader {
     padding: 10px 12px 12px;
     gap: 10px;
+  }
+  /* Issue 11: hier (nicht am Tablet) drohte der Overflow — Sekundaer-
+     aktionen bleiben auf dem Handy hinter "⋯ Mehr" versteckt. */
+  .topbar-actions-full {
+    display: none;
+  }
+  .topbar-menu-trigger-wrap {
+    display: flex;
   }
   .applogo {
     width: 38px;

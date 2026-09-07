@@ -21,6 +21,20 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.1.32",
+    date: "2026-09-07",
+    title: "Schwarzer Bildschirm am Handy, Geräte-Liste, Klartext-Formulare",
+    bullets: [
+      "Schwarzer Bildschirm beim Aufrufen von Archiv, Neuer Einsatz, An-Handy-übergeben oder Über HotDoc auf schwächeren Handys behoben (zu aufwendiger, doppelter Weichzeichner-Effekt hinter den Dialogen).",
+      "Geräte & Mittel zeigt jetzt nur noch die 6 meistgenutzten Geräte offen an, der Rest sitzt hinter 'weitere Geräte' — plus ein Freitext-Feld für Geräte, die nicht in der Liste stehen.",
+      "Neuer Einsatz: das doppelte Stichwort-Feld (Suche oben, Freitext unten) ist zu einem einzigen Feld zusammengelegt.",
+      "'Fahrzeug wechseln', 'An Handy übergeben' & Co. sind auf dem Tablet wieder direkt sichtbar statt im '⋯ Mehr'-Menü versteckt (bleibt nur auf dem schmalen Handy zusammengeklappt).",
+      "Atemschutz-Zeit-Buttons vergrößert und mit sichtbarem Abstand zwischen Plus und Minus, damit ein Fehltap im wackelnden Fahrzeug nicht die eigene Eingabe aufhebt.",
+      "Grund-Texte bei Reaktivieren oder 'Trotzdem abschließen' brauchen nur noch 6 statt 10 Zeichen.",
+      "Nach einem App-Update lädt die Seite bei einem Ladefehler jetzt bis zu zweimal automatisch neu, bevor eine Fehlermeldung erscheint.",
+    ],
+  },
+  {
     version: "0.1.31",
     date: "2026-09-05",
     title: "Review-Rückmeldungen: Gnadenfrist beim Abschluss, dauerhafte Anmeldung, Klartext",

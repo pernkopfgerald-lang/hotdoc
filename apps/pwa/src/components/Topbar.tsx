@@ -46,16 +46,18 @@ interface MenuItem {
 }
 
 /**
- * Topbar — Logo, Titel, GPS-Chip, Hilfe (nur Zentrale), Mehr-Menue, Uhr.
+ * Topbar — Logo, Titel, GPS-Chip, Hilfe (nur Zentrale), Sekundaer-Aktionen, Uhr.
  *
- * E-09 (Audit 2026-09): Die Sekundaer-Aktionen (Fahrzeug wechseln, An
- * Handy uebergeben, Hell/Dunkel, Über HotDoc) sassen vorher als vier
- * einzelne Buttons in der Leiste — auf dem Handy lief das in den Overflow
- * (Issue 11), auf dem Tablet war "Uebergeben" ein unbeschrifteter Icon-
- * Knopf. Jetzt: EIN "⋯ Mehr"-Button (44 px) mit Popover; Escape (auch
- * Android-Back → Escape, C-09) und Tipp ausserhalb schliessen es. Der
- * Hilfe-Knopf bleibt separat, weil er auf der Zentrale die Haupt-Anlaufstelle
- * fuer Fragen ist.
+ * E-09 (Audit 2026-09) hatte die Sekundaer-Aktionen (Fahrzeug wechseln, An
+ * Handy uebergeben, Hell/Dunkel, Über HotDoc) hinter einem "⋯ Mehr"-Button
+ * versteckt, um den Handy-Overflow (Issue 11, Viewport ≤640px) zu vermeiden.
+ * Review 2026-09-06: auf dem Fahrzeug-Tablet (reichlich Platz) fand der User
+ * das Verstecken haeufig genutzter Befehle wie "Fahrzeug wechseln" hinter
+ * zwei Taps schlechter als das geloeste Overflow-Problem — dort sollen die
+ * Befehle wieder direkt sichtbar sein. Beide Varianten werden gerendert
+ * (dieselbe `items`-Liste), CSS (.topbar-actions-full / .topbar-menu-trigger-
+ * wrap in design.css) blendet je nach Breite die passende ein — auf dem
+ * schmalen Handy (≤640px, Issue 11) bleibt weiterhin das "⋯ Mehr"-Popover.
  */
 export function Topbar({
   funkrufname,
@@ -199,8 +201,35 @@ export function Topbar({
         </button>
       )}
 
-      {/* E-09: "⋯ Mehr"-Menue mit den Sekundaer-Aktionen */}
-      <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
+      {/* Review 2026-09-06: auf breiten Screens (Tablet/Desktop) direkt
+          sichtbare Buttons — dieselben Aktionen wie im Mehr-Menue unten,
+          per CSS ab 641px eingeblendet (design.css .topbar-actions-full). */}
+      <div className="topbar-actions-full" style={{ gap: 8, flexShrink: 0 }}>
+        {items.map((it) => (
+          <button
+            key={it.key}
+            type="button"
+            className="themetoggle"
+            onClick={it.onClick}
+            aria-label={it.label}
+            title={it.label}
+            style={{
+              width: 44,
+              height: 44,
+              minHeight: 44,
+              color: it.tone === "warn" ? "var(--warn)" : undefined,
+            }}
+          >
+            {it.icon}
+          </button>
+        ))}
+      </div>
+
+      {/* E-09/Issue 11: "⋯ Mehr"-Menue — auf dem schmalen Handy (≤640px)
+          bleiben die Sekundaer-Aktionen dahinter versteckt, damit die
+          Leiste nicht ueberlaeuft; per CSS ausgeblendet auf breiten Screens
+          (design.css .topbar-menu-trigger-wrap). */}
+      <div ref={menuRef} className="topbar-menu-trigger-wrap" style={{ position: "relative", flexShrink: 0 }}>
         <button
           type="button"
           className="themetoggle"

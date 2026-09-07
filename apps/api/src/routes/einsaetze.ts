@@ -1053,9 +1053,9 @@ einsaetzeRouter.post(
   // damit das Fahrzeug-Tablet einen unabsichtlich abgeschlossenen Bericht
   // selbst wieder oeffnen kann. Vorher musste die Florianstation gerufen
   // werden ("PIN 1234"), was im Live-Einsatz unpraktisch war.
-  // Der Audit-Trail (Pflicht-Begruendung min. 10 Zeichen + Audit-Event)
-  // bleibt unveraendert, sodass die Reaktivierung weiterhin nachvollziehbar
-  // ist.
+  // Der Audit-Trail (Pflicht-Begruendung, clientseitig min. 6 Zeichen —
+  // Review 2026-09-07, vorher 10 — + Audit-Event) bleibt unveraendert,
+  // sodass die Reaktivierung weiterhin nachvollziehbar ist.
   requireAuth("mannschaft"),
   ah(async (req, res) => {
     const id = decodeURIComponent(String(req.params.id));
