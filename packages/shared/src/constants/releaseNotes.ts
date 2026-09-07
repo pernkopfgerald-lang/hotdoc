@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.2.0",
+    date: "2026-09-07",
+    title: "Going-Live-Stand: Klartext-Personalliste, Geräte-Kürzung repariert, Doppeltipp-Fix",
+    bullets: [
+      "'⋯ Mehr'-Menü in der Kopfzeile ist wieder weg — Fahrzeug wechseln, An Handy übergeben, Hell/Dunkel und Über HotDoc sind wieder direkt sichtbare Buttons.",
+      "Personalliste zeigt kein 'AS-tauglich' mehr an (der Stand ist nicht zuverlässig genug) — nur noch Name und Dienstgrad. Atemschutz ankreuzen bleibt im Einsatzformular selbst möglich.",
+      "Geräte & Mittel: die Kürzung auf die 6 meistgenutzten Geräte hat bisher nie gegriffen, solange kein Nutzungsverlauf da war (also fast immer) — jetzt wirkt sie von Anfang an.",
+      "Plus/Minus bei der Atemschutz-Zeit (und anderen Steppern) reagierte bei schnellem Antippen manchmal nicht — das Handy interpretierte zwei knappe Taps als Zoom-Geste statt als Klicks. Behoben.",
+      "Löschwasser-Button in der Fahrzeugbericht-Karte sitzt jetzt wie überall sonst direkt in der Karte oben rechts, nicht mehr als eigener Button darunter.",
+    ],
+  },
+  {
     version: "0.1.32",
     date: "2026-09-07",
     title: "Schwarzer Bildschirm am Handy, Geräte-Liste, Klartext-Formulare",

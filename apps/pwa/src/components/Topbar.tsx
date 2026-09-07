@@ -4,13 +4,12 @@ import {
   Info,
   MapPin,
   Moon,
-  MoreHorizontal,
   Smartphone,
   Sun,
   WifiOff,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
 import { BrandLogo } from "./BrandLogo";
@@ -51,13 +50,11 @@ interface MenuItem {
  * E-09 (Audit 2026-09) hatte die Sekundaer-Aktionen (Fahrzeug wechseln, An
  * Handy uebergeben, Hell/Dunkel, Über HotDoc) hinter einem "⋯ Mehr"-Button
  * versteckt, um den Handy-Overflow (Issue 11, Viewport ≤640px) zu vermeiden.
- * Review 2026-09-06: auf dem Fahrzeug-Tablet (reichlich Platz) fand der User
- * das Verstecken haeufig genutzter Befehle wie "Fahrzeug wechseln" hinter
- * zwei Taps schlechter als das geloeste Overflow-Problem — dort sollen die
- * Befehle wieder direkt sichtbar sein. Beide Varianten werden gerendert
- * (dieselbe `items`-Liste), CSS (.topbar-actions-full / .topbar-menu-trigger-
- * wrap in design.css) blendet je nach Breite die passende ein — auf dem
- * schmalen Handy (≤640px, Issue 11) bleibt weiterhin das "⋯ Mehr"-Popover.
+ * Review 2026-09-07: User-Feedback war eindeutig — das Verstecken haeufig
+ * genutzter Befehle hinter einem zusaetzlichen Tap wog schwerer als das
+ * geloeste Overflow-Problem, auch am schmalen Handy. Das "⋯ Mehr"-Popover
+ * ist komplett weg, alle Sekundaer-Aktionen sind wieder direkte Icon-
+ * Buttons (Stand vor E-09).
  */
 export function Topbar({
   funkrufname,
@@ -72,8 +69,6 @@ export function Topbar({
   const [hilfeOpen, setHilfeOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -84,35 +79,10 @@ export function Topbar({
     return () => clearInterval(id);
   }, []);
 
-  // Mehr-Menue: Escape + Outside-Click schliessen. pointerdown statt click,
-  // damit ein Tipp auf einen anderen Button das Menue schliesst, BEVOR dessen
-  // Click feuert (sonst bleibt das Popover einen Frame laenger offen).
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setMenuOpen(false);
-    };
-    const onPointer = (e: PointerEvent): void => {
-      const el = menuRef.current;
-      if (el && e.target instanceof Node && !el.contains(e.target)) setMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onPointer);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onPointer);
-    };
-  }, [menuOpen]);
-
   function toggleTheme() {
     const next: Theme = theme === "dark" ? "light" : "dark";
     setThemeOverride(next);
     setTheme(next);
-  }
-
-  function runAndClose(fn: () => void): void {
-    setMenuOpen(false);
-    fn();
   }
 
   const items: MenuItem[] = [];
@@ -201,10 +171,13 @@ export function Topbar({
         </button>
       )}
 
-      {/* Review 2026-09-06: auf breiten Screens (Tablet/Desktop) direkt
-          sichtbare Buttons — dieselben Aktionen wie im Mehr-Menue unten,
-          per CSS ab 641px eingeblendet (design.css .topbar-actions-full). */}
-      <div className="topbar-actions-full" style={{ gap: 8, flexShrink: 0 }}>
+      {/* Review 2026-09-07: das "⋯ Mehr"-Popover (E-09) ist wieder weg —
+          User-Feedback: das Verstecken haeufig genutzter Befehle hinter
+          zwei Taps war eine Verschlechterung, auch auf dem schmalen Handy.
+          Alle Sekundaer-Aktionen jetzt wieder als direkte Icon-Buttons,
+          exakt wie vor E-09. Der Handy-Overflow (Issue 11) ist in Kauf
+          genommen — flexShrink/Umbruch federt die schlimmsten Faelle ab. */}
+      <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {items.map((it) => (
           <button
             key={it.key}
@@ -223,95 +196,6 @@ export function Topbar({
             {it.icon}
           </button>
         ))}
-      </div>
-
-      {/* E-09/Issue 11: "⋯ Mehr"-Menue — auf dem schmalen Handy (≤640px)
-          bleiben die Sekundaer-Aktionen dahinter versteckt, damit die
-          Leiste nicht ueberlaeuft; per CSS ausgeblendet auf breiten Screens
-          (design.css .topbar-menu-trigger-wrap). */}
-      <div ref={menuRef} className="topbar-menu-trigger-wrap" style={{ position: "relative", flexShrink: 0 }}>
-        <button
-          type="button"
-          className="themetoggle"
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-label="Mehr"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          title="Mehr: Fahrzeug wechseln · Übergeben · Hell/Dunkel · Über HotDoc"
-          style={{
-            width: 44,
-            height: 44,
-            minHeight: 44,
-            ...(menuOpen
-              ? { background: "var(--glass-2)", borderColor: "var(--glass-border-strong)", color: "var(--fg)" }
-              : {}),
-          }}
-        >
-          <MoreHorizontal size={20} strokeWidth={2.4} />
-        </button>
-        {menuOpen && (
-          <div
-            role="menu"
-            aria-label="Mehr"
-            style={{
-              position: "absolute",
-              right: 0,
-              top: "calc(100% + 8px)",
-              minWidth: 260,
-              padding: 6,
-              borderRadius: 12,
-              background: "var(--surface)",
-              border: "1px solid var(--border-strong)",
-              boxShadow: "0 16px 40px -12px rgba(15, 23, 42, 0.45)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              zIndex: 10,
-              animation: "glass-reveal 160ms var(--ease-decel) both",
-            }}
-          >
-            {items.map((it) => (
-              <button
-                key={it.key}
-                role="menuitem"
-                type="button"
-                onClick={() => runAndClose(it.onClick)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  width: "100%",
-                  minHeight: 44,
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: 0,
-                  background: "transparent",
-                  color: it.tone === "warn" ? "var(--warn)" : "var(--fg)",
-                  fontFamily: "inherit",
-                  fontSize: 16.5,
-                  fontWeight: 600,
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  style={{
-                    display: "grid",
-                    placeItems: "center",
-                    width: 30,
-                    height: 30,
-                    borderRadius: 8,
-                    background: it.tone === "warn" ? "var(--warn-tint)" : "var(--surface-2)",
-                    flexShrink: 0,
-                  }}
-                >
-                  {it.icon}
-                </span>
-                <span style={{ flex: 1 }}>{it.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="headerstamp">

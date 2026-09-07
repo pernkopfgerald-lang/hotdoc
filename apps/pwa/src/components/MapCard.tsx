@@ -569,13 +569,21 @@ export function MapCard({
       >
         <div ref={elRef} className="bg-surface-2" style={{ height: mapHeight, width: "100%" }} />
 
-        {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch top-right. */}
+        {/* Issue 25 (Einsatz-Test 2026-06-02): Layer-Switch top-right.
+            Review 2026-09-07: Löschwasser-Toggle sass bisher als eigener
+            Button UNTER der Karte (neben "Route öffnen") — inkonsistent
+            zu FlorianMap, wo er immer als Icon-Button rechts oben IN der
+            Karte sitzt (siehe WaterToggleButton dort). Jetzt gleiche
+            Position wie ueberall sonst. */}
         <div
           style={{
             position: "absolute",
             top: 8,
             right: 8,
             zIndex: 401,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
           <MapCardTileLayerSwitch
@@ -585,6 +593,23 @@ export function MapCard({
               saveTileChoice(next);
             }}
           />
+          {showLoeschwasser ? (
+            <button
+              type="button"
+              className="icon-btn"
+              aria-pressed={waterOn}
+              onClick={() => setWaterOn((v) => !v)}
+              aria-label="Löschwasser-Entnahmestellen ein-/ausblenden"
+              title="Löschwasser (wasserkarte.info)"
+              style={
+                waterOn
+                  ? { color: "var(--info)", background: "var(--info-tint)" }
+                  : undefined
+              }
+            >
+              <Droplets size={14} />
+            </button>
+          ) : null}
         </div>
 
         <button
@@ -718,30 +743,6 @@ export function MapCard({
           <span>{navHref ? "Route · Google Maps öffnen" : "Route · Einsatzort fehlt"}</span>
           <ExternalLink size={14} />
         </a>
-        {showLoeschwasser ? (
-          <button
-            type="button"
-            aria-pressed={waterOn}
-            onClick={() => setWaterOn((v) => !v)}
-            className="flex shrink-0 items-center gap-2 rounded-[14px] border px-3.5 py-3 text-sm font-semibold transition"
-            style={
-              waterOn
-                ? {
-                    borderColor: "var(--blue-border)",
-                    background: "var(--blue-bg)",
-                    color: "var(--blue)",
-                  }
-                : {
-                    borderColor: "var(--border-strong)",
-                    background: "var(--surface-2)",
-                    color: "var(--fg-2)",
-                  }
-            }
-          >
-            <Droplets size={18} />
-            Löschwasser
-          </button>
-        ) : null}
       </div>
     </section>
   );

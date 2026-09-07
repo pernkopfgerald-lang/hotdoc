@@ -66,6 +66,14 @@ body::after {
 
 button {
   font: inherit;
+  /* Review 2026-09-07: ohne touch-action wartet Mobile-Chrome/Safari nach
+     jedem Tap ~300ms auf einen moeglichen zweiten Tap (Doppeltipp-Zoom-
+     Erkennung) — bei eng benachbarten Stepper-Buttons (AS-Dauer-Plus/Minus,
+     Oelbindemittel-Saecke) landen schnell aufeinanderfolgende Taps am
+     selben Fleck manchmal ALS Zoom-Geste statt als zwei Klicks, der
+     Stepper wirkt "reagiert nicht". manipulation erlaubt Pan/Pinch-Zoom
+     weiterhin, killt nur die Doppeltipp-Zoom-Ambiguitaet auf Buttons. */
+  touch-action: manipulation;
 }
 
 /* Touch-Targets minimum 44px für Tablet */

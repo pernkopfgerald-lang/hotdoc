@@ -14,12 +14,14 @@ interface Props {
   onToggle: (id: string) => void;
   onOelChange: (newCount: number) => void;
   /**
-   * Review 2026-09-06: IDs der meistgenutzten Geräte (aus den letzten 40
+   * Review 2026-09-06/07: IDs der meistgenutzten Geräte (aus den letzten 40
    * Berichten dieses Fahrzeugs, siehe lib/geraete-recent.ts), häufigste
    * zuerst. Nur diese + bereits ausgewählte stehen standardmäßig offen;
-   * der Rest sitzt hinter "weitere Geräte". Leer/zu kurz → keine Kürzung,
-   * es werden einfach alle Katalog-Items gezeigt (z. B. frisches Tablet
-   * ohne Verlauf, oder Fahrzeug mit ≤6 Geräten).
+   * der Rest sitzt hinter "weitere Geräte". Leer (frisches Tablet ohne
+   * Verlauf) → die ersten MIN_SICHTBAR Katalog-Items dienen als
+   * Platzhalter, damit die Kürzung von Anfang an greift statt erst nach
+   * 40 Berichten. Bei ≤ MIN_SICHTBAR Katalog-Items insgesamt wird ohnehin
+   * nicht gekürzt.
    */
   topIds?: string[];
   /** Freitext-Gerät hinzufügen — Text landet 1:1 als materialId (Backend
@@ -52,20 +54,27 @@ export function GearChips({
   const plainItems = items.filter((it) => !it.isOelbindemittel);
   const oelItem = items.find((it) => it.isOelbindemittel);
 
-  // Review 2026-09-06: "Häufig" = topIds-Reihenfolge + alles bereits
-  // Ausgewaehlte (eine getroffene Auswahl darf beim Kollabieren nie aus dem
-  // Blick verschwinden). Reicht die Katalogliste (≤ MIN_SICHTBAR) oder gibt
-  // es noch keinen Haeufigkeits-Verlauf, wird gar nicht gekuerzt.
-  const topIdSet = new Set(topIds);
+  // Review 2026-09-07: Kaltstart-Fix — der Verlauf faengt bei jedem
+  // Fahrzeug bei 0 an (frisches Feature). Bisher blieb topIds dann leer
+  // und die Kuerzung komplett aus, es wurden IMMER alle Geraete gezeigt —
+  // genau das hat der User gemeldet. Jetzt dienen ohne Verlauf einfach
+  // die ersten MIN_SICHTBAR Katalog-Eintraege als Platzhalter-"Häufig";
+  // sobald echte Nutzung getrackt ist, uebernimmt topIds automatisch.
+  const effektiveTopIds = topIds.length > 0 ? topIds : plainItems.slice(0, MIN_SICHTBAR).map((it) => it.id);
+  const topIdSet = new Set(effektiveTopIds);
+  // "Häufig" = effektiveTopIds-Reihenfolge + alles bereits Ausgewaehlte
+  // (eine getroffene Auswahl darf beim Kollabieren nie aus dem Blick
+  // verschwinden). Reicht die Katalogliste (≤ MIN_SICHTBAR), wird trotzdem
+  // nicht gekuerzt — sichtbarIds deckt dann ohnehin alles ab.
   const sichtbarIds = new Set<string>([
-    ...topIds.slice(0, MIN_SICHTBAR),
+    ...effektiveTopIds.slice(0, MIN_SICHTBAR),
     ...[...selected].filter((id) => plainItems.some((it) => it.id === id)),
   ]);
-  const kuerzungAktiv = topIds.length > 0 && plainItems.length > sichtbarIds.size;
+  const kuerzungAktiv = plainItems.length > sichtbarIds.size;
   const hauptListe = kuerzungAktiv
     ? plainItems
         .filter((it) => sichtbarIds.has(it.id))
-        .sort((a, b) => topIds.indexOf(a.id) - topIds.indexOf(b.id) || (topIdSet.has(a.id) ? -1 : 1))
+        .sort((a, b) => effektiveTopIds.indexOf(a.id) - effektiveTopIds.indexOf(b.id) || (topIdSet.has(a.id) ? -1 : 1))
     : plainItems;
   const weitereListe = kuerzungAktiv ? plainItems.filter((it) => !sichtbarIds.has(it.id)) : [];
 

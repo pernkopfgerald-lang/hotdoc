@@ -1,8 +1,8 @@
 {
-  "currentVersion": "0.1.32",
-  "apkUrl": "/hotdoc-v0.1.32-release.apk",
-  "releaseNotes": "v0.1.32 — Schwarzer Bildschirm am Handy, Geräte-Liste, Klartext-Formulare\n\n• Schwarzer Bildschirm beim Aufrufen von Archiv, Neuer Einsatz, An-Handy-übergeben oder Über HotDoc auf schwächeren Handys behoben.\n• Geräte & Mittel zeigt nur noch die 6 meistgenutzten Geräte offen an, der Rest sitzt hinter 'weitere Geräte' — plus Freitext-Feld für Geräte außerhalb der Liste.\n• Neuer Einsatz: das doppelte Stichwort-Feld ist zu einem einzigen zusammengelegt.\n• 'Fahrzeug wechseln', 'An Handy übergeben' & Co. sind auf dem Tablet wieder direkt sichtbar statt im Mehr-Menü versteckt.\n• Atemschutz-Zeit-Buttons vergrößert, mit Abstand zwischen Plus und Minus.\n• Grund-Texte bei Reaktivieren/Trotzdem-abschließen brauchen nur noch 6 statt 10 Zeichen.\n• Nach einem App-Update wird bei einem Ladefehler jetzt bis zu zweimal automatisch neu geladen.\n\n— Enthält Review-Rückmeldungen (v0.1.31), Einsatztauglichkeits-Audit (v0.1.30) und alle Neuerungen aus v0.1.10–v0.1.30.",
-  "publishedAt": "2026-09-07T08:00:00+00:00",
+  "currentVersion": "0.2.0",
+  "apkUrl": "/hotdoc-v0.2.0-release.apk",
+  "releaseNotes": "v0.2.0 — Going-Live-Stand: Klartext-Personalliste, Geräte-Kürzung repariert, Doppeltipp-Fix\n\n• '⋯ Mehr'-Menü in der Kopfzeile ist wieder weg — Fahrzeug wechseln, An Handy übergeben, Hell/Dunkel und Über HotDoc sind wieder direkt sichtbare Buttons.\n• Personalliste zeigt kein 'AS-tauglich' mehr an — nur noch Name und Dienstgrad. Atemschutz ankreuzen bleibt im Einsatzformular möglich.\n• Geräte & Mittel: die Kürzung auf die 6 meistgenutzten Geräte hat bisher nie gegriffen, solange kein Nutzungsverlauf da war — jetzt wirkt sie von Anfang an.\n• Plus/Minus bei der Atemschutz-Zeit reagierte bei schnellem Antippen manchmal nicht (Doppeltipp-Zoom-Verwechslung). Behoben.\n• Löschwasser-Button in der Fahrzeugbericht-Karte sitzt jetzt wie überall direkt in der Karte oben rechts.\n\n— Enthält alle Neuerungen aus v0.1.10–v0.1.32 (Review-Rückmeldungen, Einsatztauglichkeits-Audit, Löschwasser-Layer u.v.m.).",
+  "publishedAt": "2026-09-07T10:00:00+00:00",
   "developer": {
     "name": "Ing. Gerald Pernkopf",
     "company": "Ingenieurbüro Pernkopf e.U.",

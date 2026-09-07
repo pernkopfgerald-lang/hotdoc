@@ -190,24 +190,13 @@ export function PersonPickerModal({
                     <span className="flex-1 text-[18px] font-medium text-text-1">
                       {p.nachname} {p.vorname}
                     </span>
-                    {/* E-15 (Audit 2026-09): "AS-tauglich" statt kryptischem
-                        "AS" — inaktive Variante mit durchgestrichener Optik. */}
-                    {p.atemschutzGueltig ? (
-                      <span
-                        className="rounded border border-amber/40 bg-amber/15 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-amber"
-                        title="Atemschutz-Tauglichkeit gültig (laut syBOS)"
-                      >
-                        AS-tauglich
-                      </span>
-                    ) : (
-                      <span
-                        className="rounded border border-border bg-transparent px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-text-3 opacity-50"
-                        style={{ textDecoration: "line-through" }}
-                        title="Keine gültige Atemschutz-Tauglichkeit (laut syBOS)"
-                      >
-                        AS-tauglich
-                      </span>
-                    )}
+                    {/* Review 2026-09-07: "AS-tauglich"-Badge entfernt — der
+                        syBOS-Stand kann veraltet sein (siehe Stand-Hinweis
+                        oben) und die durchgestrichene Darstellung fuer
+                        "nicht tauglich" wirkte wie eine abgesicherte
+                        Aussage, die sie nicht ist. Nur noch Name + Dienst-
+                        grad; AS wird weiterhin ganz normal im Einsatz-
+                        formular selbst angehakt. */}
                     <span className="rounded border border-blue/25 bg-blue/10 px-1.5 py-0.5 font-mono text-[12px] font-bold uppercase tracking-[0.10em] text-blue">
                       {p.dienstgrad}
                     </span>
