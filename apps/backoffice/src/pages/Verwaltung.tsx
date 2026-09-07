@@ -660,24 +660,32 @@ function GeraetePanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => v
     });
   }
 
-  function removeItem(fzg: string, id: string) {
+  // Review 2026-09-07: removeItem/renameItem arbeiten jetzt ueber den
+  // INDEX statt ueber die id. Grund: der Bestand kann (aus der Zeit vor
+  // dem Duplikat-Check in addItem, oder aus einem Alt-Import) Eintraege
+  // mit IDENTISCHER id enthalten — z. B. "Wärmebildkamera" mehrfach als
+  // "waermebildkamera". Mit id-basiertem Filter/Key kollidieren dann
+  // React-Keys, die Reconciliation verwechselt die Chips, und "Löschen"
+  // wirkte wie tot (User-Bug-Report). Index-basiert trifft IMMER genau
+  // den angeklickten Chip, unabhaengig von Duplikaten in den Daten.
+  function removeItem(fzg: string, index: number) {
     if (!data) return;
     setData({
       ...data,
       byFahrzeug: {
         ...data.byFahrzeug,
-        [fzg]: (data.byFahrzeug[fzg] ?? []).filter((it) => it.id !== id),
+        [fzg]: (data.byFahrzeug[fzg] ?? []).filter((_, i) => i !== index),
       },
     });
   }
-  function renameItem(fzg: string, id: string, newBezeichnung: string) {
+  function renameItem(fzg: string, index: number, newBezeichnung: string) {
     if (!data) return;
     setData({
       ...data,
       byFahrzeug: {
         ...data.byFahrzeug,
-        [fzg]: (data.byFahrzeug[fzg] ?? []).map((it) =>
-          it.id === id ? { ...it, bezeichnung: newBezeichnung } : it,
+        [fzg]: (data.byFahrzeug[fzg] ?? []).map((it, i) =>
+          i === index ? { ...it, bezeichnung: newBezeichnung } : it,
         ),
       },
     });
@@ -740,12 +748,12 @@ function GeraetePanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => v
             {items.length === 0 ? (
               <span style={{ fontSize: 13, color: "var(--fg-3)" }}>Noch keine Geräte für {labels[activeFzg]}</span>
             ) : (
-              items.map((it) => (
+              items.map((it, idx) => (
                 <EditableChip
-                  key={it.id}
+                  key={`${it.id}-${idx}`}
                   text={it.bezeichnung}
-                  onUpdate={(next) => renameItem(activeFzg, it.id, next)}
-                  onRemove={() => removeItem(activeFzg, it.id)}
+                  onUpdate={(next) => renameItem(activeFzg, idx, next)}
+                  onRemove={() => removeItem(activeFzg, idx)}
                   className="chip selected"
                   validate={(next) =>
                     next !== it.bezeichnung &&
