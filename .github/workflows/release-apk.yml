@@ -118,36 +118,43 @@ jobs:
           find deploy/apk/apks -name '*-debug.apk' -delete || true
 
       - name: apk-info.json updaten
-        # Release-Notes kommen aus der annotated tag-message (git tag -a vX.X.X -m "…")
-        # bzw. aus einem generischen Fallback wenn workflow_dispatch ohne tag laeuft.
-        # Frueher waren die Notes hier nicht aktualisiert worden - dadurch zeigte
-        # das deployed apk-info.json immer den Text der ersten Release-Build-Version.
+        # Review 2026-09-07: Release-Notes kommen jetzt aus dem RELEASE_NOTES-
+        # Array in packages/shared/src/constants/releaseNotes.ts statt aus
+        # der annotated tag-message. Grund: bei mehreren Releases (v0.1.31,
+        # v0.2.0) enthielt "git tag -l --format='%(contents)'" hier nur noch
+        # die COMMIT-Message statt der tatsaechlich gepushten Tag-Annotation
+        # — actions/checkout scheint aus dem annotierten Tag beim (shallow)
+        # Fetch einen lightweight-Ref zu machen, der die eigentliche Tag-
+        # Message verliert. Ergebnis war zweimal in Folge technischer Commit-
+        # Jargon statt der fuer die Mannschaft geschriebenen Release-Notes.
+        # releaseNotes.ts wird ohnehin bei jedem Release gepflegt (About-
+        # Bildschirm, Backoffice) und ist damit die verlaesslichere Quelle.
+        # packages/shared ist zu diesem Zeitpunkt bereits gebaut (Schritt
+        # oben), das kompilierte dist/ enthaelt also RELEASE_NOTES als JS.
         run: |
           V=${{ steps.version.outputs.v }}
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # tag-message extrahieren - bei annotated tags der ganze Body inkl Subject
-            TAG_MSG=$(git tag -l --format='%(contents)' "${GITHUB_REF_NAME}")
-            if [ -z "$TAG_MSG" ]; then
-              TAG_MSG="v$V - Release-Build via GitHub Actions"
-            fi
-          else
-            TAG_MSG="v$V - manueller Release-Build via workflow_dispatch"
-          fi
-          # TAG_MSG in den shell-Block exportieren damit node sie via
-          # process.env.TAG_MSG lesen kann. Innerhalb desselben run:-Blocks
-          # genuegt das normale export — GITHUB_ENV waere fuer steps DANACH.
-          export TAG_MSG
-          # Notes + Version + URL + Datum in apk-info.json schreiben.
-          node -e "
-            const fs = require('fs');
+          node --input-type=module -e "
+            import { readFileSync, writeFileSync } from 'node:fs';
+            const V = '$V';
             const path = 'deploy/apk/apk-info.json';
-            const data = JSON.parse(fs.readFileSync(path, 'utf-8'));
-            data.currentVersion = '$V';
-            data.apkUrl = '/hotdoc-v$V-release.apk';
+            const data = JSON.parse(readFileSync(path, 'utf-8'));
+            data.currentVersion = V;
+            data.apkUrl = '/hotdoc-v' + V + '-release.apk';
             data.publishedAt = '$DATE';
-            data.releaseNotes = process.env.TAG_MSG && process.env.TAG_MSG.trim() || data.releaseNotes;
-            fs.writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+            try {
+              const mod = await import('./packages/shared/dist/constants/releaseNotes.js');
+              const entry = mod.RELEASE_NOTES.find((e) => e.version === V);
+              if (entry) {
+                const bullets = entry.bullets.map((b) => '• ' + b).join('\n');
+                data.releaseNotes = 'v' + V + ' — ' + entry.title + '\n\n' + bullets;
+              } else {
+                console.warn('Kein RELEASE_NOTES-Eintrag fuer Version', V, '- releaseNotes aus apk-info.json unveraendert gelassen.');
+              }
+            } catch (err) {
+              console.warn('RELEASE_NOTES konnte nicht geladen werden, releaseNotes aus apk-info.json unveraendert gelassen:', err);
+            }
+            writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
             console.log('apk-info.json updated:', data.currentVersion, data.apkUrl);
             console.log('Notes (first 200):', (data.releaseNotes||'').slice(0,200));
           "
