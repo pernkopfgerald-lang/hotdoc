@@ -11,7 +11,7 @@
  */
 
 import { Router } from "express";
-import { asTruppsAus, deriveBerichtNrFromId } from "@hotdoc/shared";
+import { deriveBerichtNrFromId } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
@@ -174,23 +174,35 @@ const FAHRZEUG_FUNKRUF: Record<string, string> = {
 
 // A-02: ah(...) statt nacktem async-Handler — Rejections landen im globalen
 // Error-Handler statt den Request haengen zu lassen. Gilt fuer alle Routen.
+/**
+ * Baut das fertige Hauptbericht-PDF fuer einen Einsatz — Dispatcher pro
+ * einsatzTyp (siehe Datei-Header). Gemeinsam genutzt vom GET-Endpoint unten
+ * UND vom automatischen Mailversand bei Abschluss (routes/einsaetze.ts),
+ * damit beide Wege garantiert dasselbe Dokument erzeugen.
+ */
+export async function buildBerichtPdfBuffer(
+  id: string,
+  doc: Record<string, unknown>,
+): Promise<Buffer> {
+  const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
+  let html: string;
+  if (einsatzTyp === "lotsendienst") {
+    html = await buildLotsendienstHtml(id, doc);
+  } else if (einsatzTyp === "uebung") {
+    html = await buildUebungHtml(id, doc);
+  } else {
+    // alarm + manuell → Papier-Original mit Anhängen
+    html = await buildHauptberichtHtml(id, doc);
+  }
+  return renderPdf(html);
+}
+
 pdfRouter.get("/api/einsaetze/:id/pdf", requireAuth(), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
   try {
     const doc = (await db.get(id)) as Record<string, unknown>;
     const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
-
-    let html: string;
-    if (einsatzTyp === "lotsendienst") {
-      html = await buildLotsendienstHtml(id, doc);
-    } else if (einsatzTyp === "uebung") {
-      html = await buildUebungHtml(id, doc);
-    } else {
-      // alarm + manuell → Papier-Original mit Anhängen
-      html = await buildHauptberichtHtml(id, doc);
-    }
-
-    const pdf = await renderPdf(html);
+    const pdf = await buildBerichtPdfBuffer(id, doc);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -299,8 +311,6 @@ async function buildBerichtDaten(
   // D-12 (Audit R3): "Eingesetzt" zaehlt PERSONEN, nicht Slots — wer als
   // Fahrer im KDO und spaeter in der Mannschaft des TANK steht, ist EINE
   // Person. Dedupe ueber Set<personId> (Fahrer, Kdt, Mannschafts-Slots).
-  // AS-Trupps ueber die geteilte asTruppsAus-Definition (Aufrunden,
-  // NaN-sicher) — identisch zu stats.ts und PWA-Abschluss-Zusammenfassung.
   const eingesetztIds = new Set<number>();
   let asPersonen = 0;
   for (const fz of fzgBerichte) {
@@ -315,10 +325,15 @@ async function buildBerichtDaten(
     if (typeof fz.fahrzeugKdtPersonId === "number") eingesetztIds.add(fz.fahrzeugKdtPersonId);
   }
   const eingesetzt = eingesetztIds.size;
-  const asTrupps = asTruppsAus(asPersonen);
-  const bereitschaft = (
-    (doc.mannschaft as { bereitschaft?: number } | undefined)?.bereitschaft ?? 0
-  );
+  // Audit 2026-09: "Bereitschaft" kommt aus der vom Sachbearbeiter in der
+  // Florianstation gepflegten Reserve-Mannschaft (reservePersonIds) — NICHT
+  // aus dem nie befuellten doc.mannschaft.bereitschaft-Feld. Wer als Reserve
+  // erfasst wurde, spaeter aber doch auf einem Fahrzeug ausgerueckt ist,
+  // zaehlt zu "Eingesetzt" und wird hier herausgerechnet (kein Doppelcount).
+  const bereitschaftIds = (
+    (doc.reservePersonIds as unknown[] | undefined) ?? []
+  ).filter((id): id is number => typeof id === "number" && !eingesetztIds.has(id));
+  const bereitschaft = bereitschaftIds.length;
   const sonstigeMan = (
     (doc.mannschaft as { sonstige?: number } | undefined)?.sonstige ?? 0
   );
@@ -564,7 +579,7 @@ async function buildBerichtDaten(
       eingesetzt,
       bereitschaft,
       sonstige: sonstigeMan,
-      atemschutzTrupps: asTrupps,
+      atemschutzTraeger: asPersonen,
     },
     eingesetzteFahrzeuge,
     chronik,

@@ -108,12 +108,12 @@ export interface BerichtDaten {
   beteiligteStellen?: string[];
   sonstigeAnwesendeFF?: string[];
   sonstigeFreitext?: string;
-  /** Aggregation: Personen-Anzahl, AS-Trupps etc. */
+  /** Aggregation: Personen-Anzahl, AS-Traeger etc. */
   mannschaft?: {
     eingesetzt: number;
     bereitschaft: number;
     sonstige: number;
-    atemschutzTrupps: number;
+    atemschutzTraeger: number;
   };
   /** Welche Fahrzeuge sind im Einsatz (aus Fahrzeugberichten). */
   eingesetzteFahrzeuge?: Array<{ abk: string; funkrufname: string; kmGefahren: number }>;
@@ -573,7 +573,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${isUebung ? "Teilnehmer" : "Eingesetzt"}: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
         Bereitschaft: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.bereitschaft ?? 0}</span><br>
         Sonstige: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.sonstige ?? 0}</span><br>
-        AS-Trupps: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTrupps ?? 0}</span>
+        AS-Träger: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTraeger ?? 0}</span>
       </td>
       ${
         isUebung
@@ -931,7 +931,7 @@ export function renderSpickzettelHtml(d: BerichtDaten): string {
     })
     .join("");
   const mannschaftStr = d.mannschaft
-    ? `${d.mannschaft.eingesetzt} ${istUebung ? "Teilnehmer" : "eingesetzt"} · ${d.mannschaft.bereitschaft} Bereitschaft · ${d.mannschaft.sonstige} Sonstige · ${d.mannschaft.atemschutzTrupps} AS-Trupp(s)`
+    ? `${d.mannschaft.eingesetzt} ${istUebung ? "Teilnehmer" : "eingesetzt"} · ${d.mannschaft.bereitschaft} Bereitschaft · ${d.mannschaft.sonstige} Sonstige · ${d.mannschaft.atemschutzTraeger} AS-Träger`
     : "—";
   return /* html */ `<!doctype html>
 <html lang="de">

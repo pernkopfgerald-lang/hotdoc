@@ -21,8 +21,42 @@ import { logger } from "../lib/logger.js";
 import { writeAuditEvent } from "../services/audit.js";
 import type { SessionPayload } from "../services/auth/jwt.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
+import { sendPdfMail } from "../lib/mailer.js";
+import { buildBerichtPdfBuffer } from "./pdf.js";
 
 export const einsaetzeRouter: Router = Router();
+
+/** Ziel-Adresse fuer den automatischen Bericht-PDF-Versand bei Abschluss. */
+const ABSCHLUSS_MAIL_EMPFAENGER = "info@ff-eberstalzell.at";
+
+/**
+ * 2026-09: Rendert das Hauptbericht-PDF und mailt es an die Florianstation.
+ * Wird vom /abschluss-Handler bewusst NICHT awaited (siehe Aufrufstelle) —
+ * hier best-effort: jeder Fehler wird geloggt, nie geworfen.
+ */
+async function sendAbschlussMail(
+  id: string,
+  doc: Record<string, unknown>,
+  berichtNummer: string | undefined,
+): Promise<void> {
+  try {
+    const pdf = await buildBerichtPdfBuffer(id, doc);
+    const bezeichnung =
+      (doc.einsatzort as string | undefined) ||
+      (doc.einsatzart as string | undefined) ||
+      id.replace(/^einsatz:/, "");
+    const nummer = berichtNummer ?? id.replace(/^einsatz:/, "");
+    await sendPdfMail({
+      to: ABSCHLUSS_MAIL_EMPFAENGER,
+      subject: `Einsatzbericht ${nummer} — ${bezeichnung}`,
+      text: `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}).\n\nAutomatisch von HotDoc versendet.`,
+      pdfBuffer: pdf,
+      filename: `${nummer}.pdf`,
+    });
+  } catch (err) {
+    logger.warn({ err, id }, "Bericht-PDF fuer Abschluss-Mail konnte nicht erzeugt werden");
+  }
+}
 
 /**
  * Helper: laedt einen Einsatz oder schickt direkt 404. Spart in den
@@ -611,8 +645,9 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     ...(offeneFzgber.length > 0 ? { hauptabschlussAm: new Date().toISOString() } : {}),
   });
   let result: Awaited<ReturnType<typeof db.insert>>;
+  let closedDoc = abschlussPatch(doc);
   try {
-    result = await db.insert(abschlussPatch(doc));
+    result = await db.insert(closedDoc);
   } catch (err) {
     if ((err as { statusCode?: number }).statusCode !== 409) throw err;
     // L-03: 409 — parallel hat jemand geschrieben (Doppel-Klick, zweites
@@ -628,7 +663,8 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       });
       return;
     }
-    result = await db.insert(abschlussPatch(fresh));
+    closedDoc = abschlussPatch(fresh);
+    result = await db.insert(closedDoc);
   }
   invalidateEinsatzCache();
   logger.info({ id, by: session.username, berichtNummer }, "Einsatz abgeschlossen");
@@ -715,6 +751,14 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     ...(session.fahrzeugId ? { fahrzeugId: session.fahrzeugId } : {}),
     ...(req.ip ? { ipAddress: req.ip } : {}),
   });
+  // 2026-09: Bericht-PDF an die Florianstation mailen — best-effort, NICHT
+  // awaited: PDF-Rendern (Puppeteer) + SMTP-Versand duerfen die Abschluss-
+  // Antwort ans Tablet nicht verzoegern. Fehler (fehlende SMTP-Config,
+  // Render-Fehler) werden in sendAbschlussMail selbst geloggt und
+  // verschluckt — der Abschluss ist zu diesem Zeitpunkt bereits erfolgreich
+  // durchgelaufen und darf dadurch nicht rueckwirkend scheitern.
+  void sendAbschlussMail(id, closedDoc, berichtNummer);
+
   // AUDIT-11: berichtNummer in der Response mitliefern — bestehende Felder
   // bleiben unveraendert, Clients ohne berichtNummer-Auswertung sind kompatibel.
   res.json({ ok: true, id, rev: result.rev, ...(berichtNummer ? { berichtNummer } : {}) });

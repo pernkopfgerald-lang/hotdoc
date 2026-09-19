@@ -3363,6 +3363,165 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             Einsatz keinen Sinn. */}
         {!istIdle && (
           <>
+        {/* 2026-09: Sachbearbeiter & Reserve ganz nach oben geholt — vorher
+            tief in "Abschluss & Statistik" versteckt (defaultClosed), damit
+            fuer den Sachbearbeiter sofort ersichtlich ist, wer zustaendig
+            ist und wer in Reserve steht, ohne erst scrollen/aufklappen zu
+            muessen. storageKey bleibt (bestehende Auf/Zu-Praeferenz). */}
+        <SectionHead
+          title="Sachbearbeiter & Reserve"
+          collapsible
+          storageKey="reserve-bearbeiter"
+        />
+        <section className="card">
+          <div className="card-head">
+            <div className="card-title">
+              <Users size={20} />
+              Bearbeiter / Reserve
+            </div>
+            <span className="card-meta">
+              <span className="num">{editor.reservePersonIds.length}</span> in Reserve
+            </span>
+          </div>
+
+          {/* ─── Bearbeiter (Sachbearbeiter Florianstation) ─── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="caption" style={{ marginBottom: 2 }}>
+              Sachbearbeiter
+            </div>
+            {editor.bearbeiterPersonId !== null ? (
+              <div
+                className="person filled"
+                style={{
+                  cursor: schreibschutz ? "default" : "pointer",
+                  opacity: schreibschutz ? 0.7 : 1,
+                }}
+              >
+                <span className="avatar color-a">
+                  {initials(personenMap.get(editor.bearbeiterPersonId) ?? "")}
+                </span>
+                <div
+                  className="name"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 2,
+                  }}
+                >
+                  <span>
+                    {personenMap.get(editor.bearbeiterPersonId) ??
+                      `Pers-ID ${editor.bearbeiterPersonId}`}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      letterSpacing: "var(--tracking-caps)",
+                      textTransform: "uppercase",
+                      color: "var(--fg-3)",
+                    }}
+                  >
+                    Sachbearbeiter Florian Eberstalzell
+                  </span>
+                </div>
+                {!schreibschutz ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setPersonPickerOpen("bearbeiter")}
+                      aria-label="Bearbeiter ändern"
+                      title="Bearbeiter ändern"
+                    >
+                      <Users size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn danger"
+                      onClick={() => patchEditor({ bearbeiterPersonId: null })}
+                      aria-label="Bearbeiter entfernen"
+                      title="Bearbeiter entfernen"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="crew-row empty"
+                disabled={schreibschutz}
+                onClick={() => setPersonPickerOpen("bearbeiter")}
+                style={{ cursor: schreibschutz ? "not-allowed" : "pointer", width: "100%" }}
+              >
+                <span className="crew-num">+</span>
+                <span className="crew-name placeholder">
+                  Sachbearbeiter aus Personalliste wählen …
+                </span>
+              </button>
+            )}
+
+            {/* ─── Reserve-Mannschaft ─── */}
+            <div className="caption" style={{ marginTop: 6, marginBottom: 2 }}>
+              Reserve · zur Verfügung gestanden, nicht ausgerückt
+            </div>
+            {editor.reservePersonIds.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {editor.reservePersonIds.map((pid) => (
+                  <div key={pid} className="person filled">
+                    <span className="avatar color-c">
+                      {initials(personenMap.get(pid) ?? "")}
+                    </span>
+                    <span className="name">
+                      {personenMap.get(pid) ?? `Pers-ID ${pid}`}
+                    </span>
+                    {!schreibschutz ? (
+                      <button
+                        type="button"
+                        className="icon-btn danger"
+                        onClick={() =>
+                          patchEditor({
+                            reservePersonIds: editor.reservePersonIds.filter((id) => id !== pid),
+                          })
+                        }
+                        aria-label="Aus Reserve entfernen"
+                        title="Aus Reserve entfernen"
+                      >
+                        <X size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 15.5,
+                  color: "var(--fg-3)",
+                  fontStyle: "italic",
+                  padding: "4px 2px",
+                }}
+              >
+                Keine Reserve-Personen erfasst.
+              </div>
+            )}
+            {!schreibschutz ? (
+              <button
+                type="button"
+                className="crew-row empty"
+                onClick={() => setPersonPickerOpen("reserve")}
+                style={{ cursor: "pointer", width: "100%" }}
+              >
+                <span className="crew-num">+</span>
+                <span className="crew-name placeholder">Person zur Reserve hinzufügen …</span>
+              </button>
+            ) : null}
+          </div>
+        </section>
+
         {/* Z-01/Z-02: Chronik als Teil des Lagebilds direkt unter der Karte —
             Eingabe ZUOBERST, neueste Meldung zuerst. */}
         <SectionHead title="Einsatzbericht / Chronologie" />
@@ -4276,162 +4435,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           </div>
         )}
 
-        <SectionHead
-          // Z-03: Abschluss-Phase — default zugeklappt (storageKey bleibt).
-          title="Sachbearbeiter & Reserve"
-          collapsible
-          defaultClosed
-          storageKey="reserve-bearbeiter"
-        />
-        <section className="card">
-          <div className="card-head">
-            <div className="card-title">
-              <Users size={20} />
-              Bearbeiter / Reserve
-            </div>
-            <span className="card-meta">
-              <span className="num">{editor.reservePersonIds.length}</span> in Reserve
-            </span>
-          </div>
-
-          {/* ─── Bearbeiter (Sachbearbeiter Florianstation) ─── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="caption" style={{ marginBottom: 2 }}>
-              Sachbearbeiter
-            </div>
-            {editor.bearbeiterPersonId !== null ? (
-              <div
-                className="person filled"
-                style={{
-                  cursor: schreibschutz ? "default" : "pointer",
-                  opacity: schreibschutz ? 0.7 : 1,
-                }}
-              >
-                <span className="avatar color-a">
-                  {initials(personenMap.get(editor.bearbeiterPersonId) ?? "")}
-                </span>
-                <div
-                  className="name"
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                    gap: 2,
-                  }}
-                >
-                  <span>
-                    {personenMap.get(editor.bearbeiterPersonId) ??
-                      `Pers-ID ${editor.bearbeiterPersonId}`}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      letterSpacing: "var(--tracking-caps)",
-                      textTransform: "uppercase",
-                      color: "var(--fg-3)",
-                    }}
-                  >
-                    Sachbearbeiter Florian Eberstalzell
-                  </span>
-                </div>
-                {!schreibschutz ? (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={() => setPersonPickerOpen("bearbeiter")}
-                      aria-label="Bearbeiter ändern"
-                      title="Bearbeiter ändern"
-                    >
-                      <Users size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn danger"
-                      onClick={() => patchEditor({ bearbeiterPersonId: null })}
-                      aria-label="Bearbeiter entfernen"
-                      title="Bearbeiter entfernen"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="crew-row empty"
-                disabled={schreibschutz}
-                onClick={() => setPersonPickerOpen("bearbeiter")}
-                style={{ cursor: schreibschutz ? "not-allowed" : "pointer", width: "100%" }}
-              >
-                <span className="crew-num">+</span>
-                <span className="crew-name placeholder">
-                  Sachbearbeiter aus Personalliste wählen …
-                </span>
-              </button>
-            )}
-
-            {/* ─── Reserve-Mannschaft ─── */}
-            <div className="caption" style={{ marginTop: 6, marginBottom: 2 }}>
-              Reserve · zur Verfügung gestanden, nicht ausgerückt
-            </div>
-            {editor.reservePersonIds.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {editor.reservePersonIds.map((pid) => (
-                  <div key={pid} className="person filled">
-                    <span className="avatar color-c">
-                      {initials(personenMap.get(pid) ?? "")}
-                    </span>
-                    <span className="name">
-                      {personenMap.get(pid) ?? `Pers-ID ${pid}`}
-                    </span>
-                    {!schreibschutz ? (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        onClick={() =>
-                          patchEditor({
-                            reservePersonIds: editor.reservePersonIds.filter((id) => id !== pid),
-                          })
-                        }
-                        aria-label="Aus Reserve entfernen"
-                        title="Aus Reserve entfernen"
-                      >
-                        <X size={14} />
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div
-                style={{
-                  fontSize: 15.5,
-                  color: "var(--fg-3)",
-                  fontStyle: "italic",
-                  padding: "4px 2px",
-                }}
-              >
-                Keine Reserve-Personen erfasst.
-              </div>
-            )}
-            {!schreibschutz ? (
-              <button
-                type="button"
-                className="crew-row empty"
-                onClick={() => setPersonPickerOpen("reserve")}
-                style={{ cursor: "pointer", width: "100%" }}
-              >
-                <span className="crew-num">+</span>
-                <span className="crew-name placeholder">Person zur Reserve hinzufügen …</span>
-              </button>
-            ) : null}
-          </div>
-        </section>
-
           </>
         )}
 
@@ -4963,12 +4966,18 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         onSelect={(p) => {
           if (personPickerOpen === "bearbeiter") {
             patchEditor({ bearbeiterPersonId: p.syBosId });
-          } else if (personPickerOpen === "reserve") {
-            if (!editor.reservePersonIds.includes(p.syBosId)) {
-              patchEditor({
-                reservePersonIds: [...editor.reservePersonIds, p.syBosId],
-              });
-            }
+          }
+          setPersonPickerOpen(null);
+        }}
+        multiple={personPickerOpen === "reserve"}
+        onSelectMultiple={(people) => {
+          const neu = people
+            .map((p) => p.syBosId)
+            .filter((id) => !editor.reservePersonIds.includes(id));
+          if (neu.length > 0) {
+            patchEditor({
+              reservePersonIds: [...editor.reservePersonIds, ...neu],
+            });
           }
           setPersonPickerOpen(null);
         }}

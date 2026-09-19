@@ -15,7 +15,6 @@
  * unnötig.
  */
 
-import { asTruppsAus } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 
 export type EinsatzTyp = "alarm" | "manuell" | "lotsendienst" | "uebung";
@@ -41,7 +40,7 @@ export interface StatsResponse {
     mannschaftStundenEinsatz: number;
     /** U-09: Mannschaftsstunden nur aus Uebungen. */
     mannschaftStundenUebung: number;
-    asTrupps: number;
+    asTraeger: number;
     asStunden: number;
     kmGesamt: number;
     kmLotsendienst: number;
@@ -159,7 +158,7 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
     mannschaftStunden: 0,
     mannschaftStundenEinsatz: 0,
     mannschaftStundenUebung: 0,
-    asTrupps: 0,
+    asTraeger: 0,
     asStunden: 0,
     kmGesamt: 0,
     kmLotsendienst: 0,
@@ -238,9 +237,9 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
       }
     }
   }
-  // D-12 (Audit R3): geteilte Trupp-Definition (Aufrunden, NaN-sicher) —
-  // identisch zu pdf.ts (Hauptbericht) und PWA-Abschluss-Zusammenfassung.
-  totals.asTrupps = asTruppsAus(asPersonenGesamt);
+  // Audit 2026-09: AS-Traeger = rohe Anzahl aktiver AS-Personen, kein
+  // Trupp-Aufrunden mehr — identisch zu pdf.ts (Hauptbericht).
+  totals.asTraeger = asPersonenGesamt;
   totals.mannschaftStunden = Math.round(totals.mannschaftStunden * 100) / 100;
   totals.mannschaftStundenEinsatz =
     Math.round(totals.mannschaftStundenEinsatz * 100) / 100;

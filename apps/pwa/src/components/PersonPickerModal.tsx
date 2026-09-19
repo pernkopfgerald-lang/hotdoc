@@ -1,4 +1,4 @@
-import { AlertTriangle, Search, X } from "lucide-react";
+import { AlertTriangle, Check, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { loadPersonenStand } from "../lib/personen-cache";
 
@@ -41,6 +41,15 @@ interface Props {
   bereitsGewaehlt: ReadonlySet<number>;
   onSelect: (p: PickPerson) => void;
   onClose: () => void;
+  /**
+   * 2026-09: Mehrfachauswahl (z. B. Reserve-Mannschaft) — Modal bleibt nach
+   * einem Treffer offen, Auswahl sammelt sich, "Übernehmen" ruft
+   * `onSelectMultiple` einmal mit allen gewählten Personen auf. Ohne diese
+   * Prop verhält sich das Modal wie bisher (Einzelauswahl, sofortiges
+   * `onSelect` + Schließen durch den Aufrufer).
+   */
+  multiple?: boolean;
+  onSelectMultiple?: (people: PickPerson[]) => void;
 }
 
 export function PersonPickerModal({
@@ -51,11 +60,17 @@ export function PersonPickerModal({
   bereitsGewaehlt,
   onSelect,
   onClose,
+  multiple = false,
+  onSelectMultiple,
 }: Props) {
   const [q, setQ] = useState("");
+  const [pickedIds, setPickedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (open) setQ("");
+    if (open) {
+      setQ("");
+      setPickedIds(new Set());
+    }
   }, [open]);
 
   useEffect(() => {
@@ -177,6 +192,7 @@ export function PersonPickerModal({
           ) : (
             filtered.map((p) => {
               const gewaehlt = bereitsGewaehlt.has(p.syBosId);
+              const angehakt = multiple && pickedIds.has(p.syBosId);
               return (
                 <li key={p._id}>
                   {/* KDT-12 (Audit 2026-06-12): Zeilen >=56px hoch + größere
@@ -184,9 +200,33 @@ export function PersonPickerModal({
                   <button
                     type="button"
                     disabled={gewaehlt}
-                    onClick={() => onSelect(p)}
+                    onClick={() => {
+                      if (multiple) {
+                        setPickedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(p.syBosId)) next.delete(p.syBosId);
+                          else next.add(p.syBosId);
+                          return next;
+                        });
+                      } else {
+                        onSelect(p);
+                      }
+                    }}
                     className="flex min-h-[56px] w-full items-center gap-2.5 rounded-md px-3 py-3 text-left transition hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-transparent"
+                    style={angehakt ? { background: "var(--blue-bg, rgba(37,99,235,0.12))" } : undefined}
                   >
+                    {multiple ? (
+                      <span
+                        className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full border-2"
+                        style={{
+                          borderColor: angehakt ? "var(--blue, #2563eb)" : "var(--border)",
+                          background: angehakt ? "var(--blue, #2563eb)" : "transparent",
+                          color: "#fff",
+                        }}
+                      >
+                        {angehakt ? <Check size={14} strokeWidth={3} /> : null}
+                      </span>
+                    ) : null}
                     <span className="flex-1 text-[18px] font-medium text-text-1">
                       {p.nachname} {p.vorname}
                     </span>
@@ -206,6 +246,31 @@ export function PersonPickerModal({
             })
           )}
         </ul>
+
+        {/* 2026-09: Bestaetigungsleiste fuer Mehrfachauswahl — Modal bleibt
+            beim Antippen offen (siehe onClick oben), erst hier wird
+            uebernommen. Ohne das musste man den Picker fuer jede Reserve-
+            Person einzeln neu oeffnen. */}
+        {multiple ? (
+          <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
+            <span className="text-[15px] font-medium text-text-2">
+              {pickedIds.size === 0
+                ? "Keine Person ausgewählt"
+                : `${pickedIds.size} ${pickedIds.size === 1 ? "Person" : "Personen"} ausgewählt`}
+            </span>
+            <button
+              type="button"
+              disabled={pickedIds.size === 0}
+              onClick={() => {
+                const gewaehlte = personen.filter((p) => pickedIds.has(p.syBosId));
+                onSelectMultiple?.(gewaehlte);
+              }}
+              className="rounded-lg bg-blue px-4 py-2.5 text-[16px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Übernehmen
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

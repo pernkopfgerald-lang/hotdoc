@@ -2539,7 +2539,7 @@ interface StatsResponse {
     // U-09: Split der Mannschaftsstunden — optional (aeltere Backends)
     mannschaftStundenEinsatz?: number;
     mannschaftStundenUebung?: number;
-    asTrupps: number;
+    asTraeger: number;
     asStunden: number;
     kmGesamt: number;
     kmLotsendienst: number;
@@ -2677,9 +2677,9 @@ function StatistikPanel() {
               }
             />
             <KpiCard
-              label="AS-Trupps"
-              value={stats.totals.asTrupps}
-              unit={stats.totals.asTrupps === 1 ? "Trupp" : "Trupps"}
+              label="AS-Träger"
+              value={stats.totals.asTraeger}
+              unit={stats.totals.asTraeger === 1 ? "Person" : "Personen"}
               icon={<Wind size={14} />}
               color="#1d4ed8"
             />
