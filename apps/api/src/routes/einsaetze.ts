@@ -21,8 +21,8 @@ import { logger } from "../lib/logger.js";
 import { writeAuditEvent } from "../services/audit.js";
 import type { SessionPayload } from "../services/auth/jwt.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
-import { sendPdfMail } from "../lib/mailer.js";
-import { buildBerichtPdfBuffer } from "./pdf.js";
+import { sendMailWithAttachments } from "../lib/mailer.js";
+import { buildBerichtMailAnhaenge } from "./pdf.js";
 
 export const einsaetzeRouter: Router = Router();
 
@@ -30,9 +30,11 @@ export const einsaetzeRouter: Router = Router();
 const ABSCHLUSS_MAIL_EMPFAENGER = "info@ff-eberstalzell.at";
 
 /**
- * 2026-09: Rendert das Hauptbericht-PDF und mailt es an die Florianstation.
- * Wird vom /abschluss-Handler bewusst NICHT awaited (siehe Aufrufstelle) —
- * hier best-effort: jeder Fehler wird geloggt, nie geworfen.
+ * 2026-09: Rendert PDF + Markdown-Export und mailt beide an die
+ * Florianstation. Das Markdown ist fuer automatisierte Weiterverarbeitung
+ * gedacht (sehr detailliert, gleiche Datenbasis wie das PDF). Wird vom
+ * /abschluss-Handler bewusst NICHT awaited (siehe Aufrufstelle) — hier
+ * best-effort: jeder Fehler wird geloggt, nie geworfen.
  */
 async function sendAbschlussMail(
   id: string,
@@ -40,18 +42,20 @@ async function sendAbschlussMail(
   berichtNummer: string | undefined,
 ): Promise<void> {
   try {
-    const pdf = await buildBerichtPdfBuffer(id, doc);
+    const { pdf, markdown } = await buildBerichtMailAnhaenge(id, doc);
     const bezeichnung =
       (doc.einsatzort as string | undefined) ||
       (doc.einsatzart as string | undefined) ||
       id.replace(/^einsatz:/, "");
     const nummer = berichtNummer ?? id.replace(/^einsatz:/, "");
-    await sendPdfMail({
+    await sendMailWithAttachments({
       to: ABSCHLUSS_MAIL_EMPFAENGER,
       subject: `Einsatzbericht ${nummer} — ${bezeichnung}`,
-      text: `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}).\n\nAutomatisch von HotDoc versendet.`,
-      pdfBuffer: pdf,
-      filename: `${nummer}.pdf`,
+      text: `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}) als PDF sowie als Markdown-Datei zur automatisierten Weiterverarbeitung.\n\nAutomatisch von HotDoc versendet.`,
+      attachments: [
+        { filename: `${nummer}.pdf`, content: pdf, contentType: "application/pdf" },
+        { filename: `${nummer}.md`, content: markdown, contentType: "text/markdown; charset=utf-8" },
+      ],
     });
   } catch (err) {
     logger.warn({ err, id }, "Bericht-PDF fuer Abschluss-Mail konnte nicht erzeugt werden");

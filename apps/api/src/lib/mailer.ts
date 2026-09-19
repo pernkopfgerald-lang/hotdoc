@@ -61,16 +61,22 @@ async function getTransporter(): Promise<Transporter | null> {
   return transporterPromise;
 }
 
+export interface MailAttachment {
+  filename: string;
+  content: Buffer | string;
+  contentType: string;
+}
+
 /**
- * Versendet ein PDF als Anhang. Best-effort: Fehler werden geloggt, nie
- * geworfen — der Aufrufer (Einsatz-Abschluss) laeuft in jedem Fall weiter.
+ * Versendet eine Mail mit beliebigen Anhaengen (PDF, Markdown, …). Best-
+ * effort: Fehler werden geloggt, nie geworfen — der Aufrufer (Einsatz-
+ * Abschluss) laeuft in jedem Fall weiter.
  */
-export async function sendPdfMail(opts: {
+export async function sendMailWithAttachments(opts: {
   to: string;
   subject: string;
   text: string;
-  pdfBuffer: Buffer;
-  filename: string;
+  attachments: MailAttachment[];
 }): Promise<void> {
   try {
     const transporter = await getTransporter();
@@ -81,9 +87,12 @@ export async function sendPdfMail(opts: {
       to: opts.to,
       subject: opts.subject,
       text: opts.text,
-      attachments: [{ filename: opts.filename, content: opts.pdfBuffer, contentType: "application/pdf" }],
+      attachments: opts.attachments,
     });
-    logger.info({ to: opts.to, subject: opts.subject }, "Bericht-PDF per Mail versendet");
+    logger.info(
+      { to: opts.to, subject: opts.subject, dateien: opts.attachments.map((a) => a.filename) },
+      "Bericht per Mail versendet",
+    );
   } catch (err) {
     logger.warn({ err, to: opts.to, subject: opts.subject }, "Mailversand fehlgeschlagen");
   }

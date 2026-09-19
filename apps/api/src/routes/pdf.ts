@@ -29,6 +29,7 @@ import {
   type FahrzeugberichtDaten,
 } from "../services/pdf/fahrzeugbericht.js";
 import { istInhaltlichLeer } from "../workers/phantom-fzgber-cleanup.js";
+import { renderBerichtMarkdown, type ResolvedPerson } from "../services/pdf/markdown.js";
 
 export const pdfRouter: Router = Router();
 
@@ -666,6 +667,57 @@ function applyUebungOverlay(data: BerichtDaten, doc: Record<string, unknown>): v
   delete data.einsatzauftragVia;
   delete data.anrufer;
   delete data.anruferTel;
+}
+
+/**
+ * Baut die vollstaendige `BerichtDaten` inkl. Typ-spezifischem Overlay
+ * (Uebung/Lotsendienst) — dieselbe Weiche wie in der GET-/pdf-Route, aber
+ * ohne HTML/PDF-Rendering. Basis fuer buildBerichtMailAnhaenge.
+ */
+async function buildBerichtDatenFuerTyp(
+  id: string,
+  doc: Record<string, unknown>,
+): Promise<BerichtDaten> {
+  const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
+  const data = await buildBerichtDaten(id, doc);
+  if (einsatzTyp === "lotsendienst") applyLotsendienstOverlay(data, doc);
+  else if (einsatzTyp === "uebung") applyUebungOverlay(data, doc);
+  return data;
+}
+
+async function resolvePerson(syBosId: unknown): Promise<ResolvedPerson | undefined> {
+  if (typeof syBosId !== "number") return undefined;
+  const p = await loadPerson(syBosId);
+  if (!p) return undefined;
+  const name = `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${syBosId}`;
+  return { name, syBosId };
+}
+
+/**
+ * 2026-09: PDF + Markdown-Export in einem Rutsch (gemeinsame BerichtDaten-
+ * Basis, kein doppeltes Laden aus CouchDB). Genutzt vom automatischen
+ * Mailversand bei Abschluss (routes/einsaetze.ts::sendAbschlussMail).
+ * Der Markdown-Export bekommt zusaetzlich Sachbearbeiter + Reserve-Mann-
+ * schaft mit aufgeloesten Namen — diese Felder leben am Einsatz-Doc, nicht
+ * im PDF-Datenmodell (BerichtDaten), und werden deshalb hier separat
+ * nachgeladen statt in buildBerichtDaten mit reinzumischen.
+ */
+export async function buildBerichtMailAnhaenge(
+  id: string,
+  doc: Record<string, unknown>,
+): Promise<{ pdf: Buffer; markdown: string }> {
+  const data = await buildBerichtDatenFuerTyp(id, doc);
+  const reserveIds = ((doc.reservePersonIds as unknown[] | undefined) ?? []).filter(
+    (v): v is number => typeof v === "number",
+  );
+  const [pdf, bearbeiter, reserveResolved] = await Promise.all([
+    renderPdf(renderHauptberichtHtml(data)),
+    resolvePerson(doc.bearbeiterPersonId),
+    Promise.all(reserveIds.map((rid) => resolvePerson(rid))),
+  ]);
+  const reserve = reserveResolved.filter((p): p is ResolvedPerson => !!p);
+  const markdown = renderBerichtMarkdown(data, { bearbeiter, reserve });
+  return { pdf, markdown };
 }
 
 // ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────
