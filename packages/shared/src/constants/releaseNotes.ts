@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.2.1",
+    date: "2026-09-19",
+    title: "Reserve-Mehrfachauswahl, Sachbearbeiter nach oben, AS-Träger-Zählung",
+    bullets: [
+      "Bei der Reserve-Mannschaft in der Florianstation können jetzt mehrere Personen auf einmal ausgewählt werden, statt den Dialog für jede Person einzeln neu zu öffnen.",
+      "Die Karte 'Sachbearbeiter & Reserve' steht jetzt gleich oben in der Florianstation, nicht mehr versteckt und zugeklappt tief unten.",
+      "Abgeschlossene Berichte werden künftig automatisch als PDF an info@ff-eberstalzell.at gemailt.",
+      "Reserve-Personal zählte im Bericht fälschlich als 'eingesetzt' mit — läuft jetzt korrekt unter 'Bereitschaft'.",
+      "Bei Atemschutz wird jetzt die tatsächliche Anzahl der Träger angezeigt statt aufgerundeter 2er-Trupps.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-09-07",
     title: "Going-Live-Stand: Klartext-Personalliste, Geräte-Kürzung repariert, Doppeltipp-Fix",

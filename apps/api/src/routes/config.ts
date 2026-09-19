@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.2.0",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.0-release.apk",
+    currentVersion: "0.2.1",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.1-release.apk",
     releaseNotes:
-      "v0.2.0 — Going-Live-Stand: Klartext-Personalliste, Geräte-Kürzung repariert, Doppeltipp-Fix\n\n• '⋯ Mehr'-Menü in der Kopfzeile ist wieder weg — Fahrzeug wechseln, An Handy übergeben, Hell/Dunkel und Über HotDoc sind wieder direkt sichtbare Buttons.\n• Personalliste zeigt kein 'AS-tauglich' mehr an — nur noch Name und Dienstgrad.\n• Geräte & Mittel: die Kürzung auf die 6 meistgenutzten Geräte wirkt jetzt von Anfang an.\n• Plus/Minus bei der Atemschutz-Zeit reagierte bei schnellem Antippen manchmal nicht — behoben.\n• Löschwasser-Button in der Fahrzeugbericht-Karte sitzt jetzt oben rechts in der Karte.",
+      "v0.2.1 — Reserve-Mehrfachauswahl, Sachbearbeiter nach oben, AS-Träger-Zählung\n\n• Bei der Reserve-Mannschaft können jetzt mehrere Personen auf einmal ausgewählt werden.\n• 'Sachbearbeiter & Reserve' steht jetzt gleich oben in der Florianstation.\n• Abgeschlossene Berichte werden automatisch als PDF an info@ff-eberstalzell.at gemailt.\n• Reserve-Personal zählt jetzt korrekt zu 'Bereitschaft' statt zu 'Eingesetzt'.\n• Atemschutz zeigt die tatsächliche Anzahl Träger statt aufgerundeter 2er-Trupps.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
