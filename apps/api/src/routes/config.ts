@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.2.1",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.1-release.apk",
+    currentVersion: "0.2.2",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.2-release.apk",
     releaseNotes:
-      "v0.2.1 — Reserve-Mehrfachauswahl, Sachbearbeiter nach oben, AS-Träger-Zählung\n\n• Bei der Reserve-Mannschaft können jetzt mehrere Personen auf einmal ausgewählt werden.\n• 'Sachbearbeiter & Reserve' steht jetzt gleich oben in der Florianstation.\n• Abgeschlossene Berichte werden automatisch als PDF an info@ff-eberstalzell.at gemailt.\n• Reserve-Personal zählt jetzt korrekt zu 'Bereitschaft' statt zu 'Eingesetzt'.\n• Atemschutz zeigt die tatsächliche Anzahl Träger statt aufgerundeter 2er-Trupps.",
+      "v0.2.2 — Mehrfachauswahl auch bei der Mannschaft im Fahrzeugbericht\n\n• Beim Besetzen leerer Mannschaftsplätze können jetzt mehrere Personen auf einmal ausgewählt werden.\n• Die Auswahl ist automatisch auf die freien Sitzplätze im Fahrzeug begrenzt.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

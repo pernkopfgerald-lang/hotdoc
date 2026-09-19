@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.2.2",
+    date: "2026-09-19",
+    title: "Mehrfachauswahl auch bei der Mannschaft im Fahrzeugbericht",
+    bullets: [
+      "Beim Besetzen leerer Mannschaftsplätze können jetzt mehrere Personen auf einmal ausgewählt werden — Fahrer und Fahrzeug-Kommandant bleiben Einzelauswahl.",
+      "Die Auswahl ist automatisch auf die noch freien Sitzplätze im Fahrzeug begrenzt, damit nie mehr Personen als Plätze eingetragen werden können.",
+    ],
+  },
+  {
     version: "0.2.1",
     date: "2026-09-19",
     title: "Reserve-Mehrfachauswahl, Sachbearbeiter nach oben, AS-Träger-Zählung",
