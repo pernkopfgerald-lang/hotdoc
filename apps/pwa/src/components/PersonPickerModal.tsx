@@ -50,6 +50,12 @@ interface Props {
    */
   multiple?: boolean;
   onSelectMultiple?: (people: PickPerson[]) => void;
+  /**
+   * 2026-09: Obergrenze fuer die Mehrfachauswahl (z. B. Anzahl noch freier
+   * Mannschaftsplätze im Fahrzeug — mehr Personen als Sitzplätze waeren ein
+   * Fehler). Ohne Limit (Reserve-Mannschaft) einfach weglassen.
+   */
+  maxSelect?: number | undefined;
 }
 
 export function PersonPickerModal({
@@ -62,9 +68,11 @@ export function PersonPickerModal({
   onClose,
   multiple = false,
   onSelectMultiple,
+  maxSelect,
 }: Props) {
   const [q, setQ] = useState("");
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set());
+  const limitReached = maxSelect !== undefined && pickedIds.size >= maxSelect;
 
   useEffect(() => {
     if (open) {
@@ -193,13 +201,14 @@ export function PersonPickerModal({
             filtered.map((p) => {
               const gewaehlt = bereitsGewaehlt.has(p.syBosId);
               const angehakt = multiple && pickedIds.has(p.syBosId);
+              const gesperrt = gewaehlt || (multiple && limitReached && !angehakt);
               return (
                 <li key={p._id}>
                   {/* KDT-12 (Audit 2026-06-12): Zeilen >=56px hoch + größere
                       Schrift — Auswahl mit Einsatzhandschuh am Tablet. */}
                   <button
                     type="button"
-                    disabled={gewaehlt}
+                    disabled={gesperrt}
                     onClick={() => {
                       if (multiple) {
                         setPickedIds((prev) => {
@@ -254,9 +263,11 @@ export function PersonPickerModal({
         {multiple ? (
           <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
             <span className="text-[15px] font-medium text-text-2">
-              {pickedIds.size === 0
-                ? "Keine Person ausgewählt"
-                : `${pickedIds.size} ${pickedIds.size === 1 ? "Person" : "Personen"} ausgewählt`}
+              {maxSelect !== undefined
+                ? `${pickedIds.size} / ${maxSelect} ${maxSelect === 1 ? "Platz" : "Plätze"} ausgewählt`
+                : pickedIds.size === 0
+                  ? "Keine Person ausgewählt"
+                  : `${pickedIds.size} ${pickedIds.size === 1 ? "Person" : "Personen"} ausgewählt`}
             </span>
             <button
               type="button"

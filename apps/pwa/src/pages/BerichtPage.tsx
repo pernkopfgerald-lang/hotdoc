@@ -1860,6 +1860,20 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     return s;
   }, [active]);
 
+  /**
+   * 2026-09: Mehrfachauswahl gilt nur, wenn ueber einen LEEREN Mannschafts-
+   * platz geoeffnet wurde — ein belegter Slot wird weiterhin per Einzel-
+   * auswahl getauscht (siehe MannschaftSlot: onPickPerson feuert fuer
+   * belegte UND leere Zeilen). crewLeereSlots begrenzt die Auswahl auf die
+   * tatsaechlich noch freien Sitzplaetze — mehr Personen als Plaetze im
+   * Mannschaftsraum waere sonst ein Fehler.
+   */
+  const crewLeereSlots = active ? active.mannschaft.filter((m) => !m.person).length : 0;
+  const crewPickerLeer =
+    !!active &&
+    pickerOpen?.kind === "crew" &&
+    !active.mannschaft[pickerOpen.slot - 1]?.person;
+
   function selectPerson(p: PickPerson) {
     if (!pickerOpen) return;
     patchActive((e) => {
@@ -1874,11 +1888,35 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     setPickerOpen(null);
   }
 
+  /**
+   * 2026-09: Mehrfachauswahl fuer die Mannschaft — nur relevant, wenn der
+   * Picker ueber einen LEEREN Slot geoeffnet wurde (Fahrer/Kdt bleiben
+   * Einzelauswahl, ein belegter Slot wird per Einzelauswahl getauscht,
+   * siehe selectPerson). Fuellt die noch leeren Plaetze der Reihe nach —
+   * die Obergrenze (maxSelect am Picker) garantiert bereits, dass nie mehr
+   * Personen ausgewaehlt werden als es freie Sitzplaetze gibt.
+   */
+  function selectMultiplePersons(people: PickPerson[]) {
+    if (!pickerOpen || pickerOpen.kind !== "crew") return;
+    patchActive((e) => {
+      const leereIdx = e.mannschaft
+        .map((m, i) => (m.person ? -1 : i))
+        .filter((i) => i >= 0);
+      const ziel = new Set(leereIdx.slice(0, people.length));
+      let pi = 0;
+      return {
+        ...e,
+        mannschaft: e.mannschaft.map((m, i) => (ziel.has(i) ? { ...m, person: people[pi++]! } : m)),
+      };
+    });
+    setPickerOpen(null);
+  }
+
   function pickerTitle(): string {
     if (!pickerOpen) return "";
     if (pickerOpen.kind === "fahrer") return "Fahrer wählen";
     if (pickerOpen.kind === "kdt") return "Fahrzeug-Kommandant wählen";
-    return `Mannschaftsplatz ${pickerOpen.slot}`;
+    return crewPickerLeer ? "Mannschaft hinzufügen" : `Mannschaftsplatz ${pickerOpen.slot}`;
   }
 
   function toggleMannschaftAs(idx: number) {
@@ -3525,6 +3563,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         personen={personen}
         bereitsGewaehlt={bereitsGewaehlt}
         onSelect={selectPerson}
+        multiple={crewPickerLeer}
+        onSelectMultiple={selectMultiplePersons}
+        maxSelect={crewPickerLeer ? crewLeereSlots : undefined}
         onClose={() => setPickerOpen(null)}
       />
 
