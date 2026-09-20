@@ -1,5 +1,6 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, Download, Trash2, Info, Droplets, Upload } from "lucide-react";
+import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, Download, Trash2, Info, Droplets, Upload, QrCode } from "lucide-react";
 import { AboutPanel } from "../components/AboutPanel";
+import { QrAnchorModal } from "../components/QrAnchorModal";
 import {
   listDevices,
   deleteDevice,
@@ -26,7 +27,7 @@ import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { Florianstation } from "./Florianstation";
-import { FLORIAN_ADDRESS, type AuthResponse } from "@hotdoc/shared";
+import { FLORIAN_ADDRESS, FAHRZEUGE, type AuthResponse } from "@hotdoc/shared";
 
 /** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
 function AddItemForm({ onAdd, placeholder }: { onAdd: (text: string) => void; placeholder: string }) {
@@ -207,6 +208,7 @@ type Tab =
   | "gefaehrliche-stoffe"
   | "stammdaten"
   | "devices"
+  | "qr-sticker"
   | "app-version"
   | "about";
 
@@ -289,6 +291,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
       icon: <Settings size={16} />,
       tabs: [
         { key: "devices", label: "Registrierte Geräte", icon: <Smartphone size={15} /> },
+        { key: "qr-sticker", label: "Fahrzeug-QR", icon: <QrCode size={15} /> },
         { key: "app-version", label: "App-Version", icon: <Download size={15} /> },
         { key: "about", label: "Über", icon: <Info size={15} /> },
       ],
@@ -453,6 +456,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         )}
         {tab === "stammdaten" && <StammdatenPanel onDirtyChange={setPanelDirty} />}
         {tab === "devices" && <DevicesPanel />}
+        {tab === "qr-sticker" && <QrStickerPanel />}
         {tab === "app-version" && <AppVersionPanel onDirtyChange={setPanelDirty} />}
         {tab === "about" && <AboutPanel />}
       </main>
@@ -3256,6 +3260,91 @@ function DevicesPanel() {
           })}
         </div>
       )}
+    </section>
+  );
+}
+
+// ─── QrStickerPanel ─────────────────────────────────────────────────────
+// 2026-09: Pro Fahrzeug ein QR-Code zum Ausdrucken + ins Führerhaus kleben.
+// Der QR ist ein permanenter Login-Anker (kein Ablaufdatum, siehe
+// api/qrAnchor.ts + api/routes/auth.ts "QR-Sticker-Auth") — wer ihn mit dem
+// Handy scannt, landet ohne Tablet und ohne PIN direkt im Fahrzeugbericht
+// dieses Fahrzeugs. Nur die vier Einsatzfahrzeuge (keine Zentrale — die hat
+// kein Führerhaus zum Bekleben).
+const QR_STICKER_FAHRZEUGE = ["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const;
+
+function QrStickerPanel() {
+  const [open, setOpen] = useState<{ fahrzeugId: string } | null>(null);
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <div className="card-title">
+          <QrCode size={20} />
+          Fahrzeug-QR-Codes
+        </div>
+      </div>
+      <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
+        Pro Fahrzeug ein QR-Code zum Ausdrucken — ins Führerhaus geklebt kann
+        der Fahrzeugkommandant ohne Tablet, mit dem eigenen Handy, den Code
+        scannen und landet direkt im Einsatzbericht dieses Fahrzeugs (kein
+        PIN nötig, mehrere Handys gleichzeitig möglich). Bei Tablet-Verlust
+        oder Verdacht, dass ein Sticker fotografiert/kopiert wurde: im
+        jeweiligen QR-Dialog "Rotieren" — macht alle bisherigen Sticker
+        dieses Fahrzeugs ungültig, ein neuer muss gedruckt werden.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {QR_STICKER_FAHRZEUGE.map((fahrzeugId) => {
+          const fzg = FAHRZEUGE[fahrzeugId];
+          return (
+            <div
+              key={fahrzeugId}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "100px 1fr auto",
+                gap: 14,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "var(--glass-3)",
+                border: "1px solid var(--glass-border)",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "var(--fg-2)",
+                }}
+              >
+                {fzg.abk}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{fzg.funkrufname}</div>
+              <button
+                type="button"
+                className="cta"
+                onClick={() => setOpen({ fahrzeugId })}
+                style={{ width: "auto", padding: "8px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <QrCode size={14} /> QR-Code anzeigen
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {open ? (
+        <QrAnchorModal
+          open
+          fahrzeugId={open.fahrzeugId}
+          fahrzeugLabel={FAHRZEUGE[open.fahrzeugId as keyof typeof FAHRZEUGE].abk}
+          funkrufname={FAHRZEUGE[open.fahrzeugId as keyof typeof FAHRZEUGE].funkrufname}
+          onClose={() => setOpen(null)}
+        />
+      ) : null}
     </section>
   );
 }
