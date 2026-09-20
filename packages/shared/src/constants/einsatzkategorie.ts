@@ -52,7 +52,17 @@ export const EINSATZART_KATEGORIE: Record<Einsatzart, Einsatzkategorie> = {
 /** Liefert die Kategorie zu einer Einsatzart (default = technisch). */
 export function kategorieFuer(art: string | undefined): Einsatzkategorie {
   if (!art) return "technisch";
-  return EINSATZART_KATEGORIE[art as Einsatzart] ?? "technisch";
+  const exakt = EINSATZART_KATEGORIE[art as Einsatzart];
+  if (exakt) return exakt;
+  // Audit 2026-09: Freitext-Fallback. Passt die Einsatzart keinem
+  // Katalog-Eintrag (der Kdt/Sachbearbeiter kann frei tippen, wenn oben
+  // nichts passt — z. B. "Brandmelder ausgelöst", "Brandmeldeanlage"),
+  // landete sie bisher immer in "technisch". Case-insensitive Substring-
+  // Check auf die Brand-Indikatoren, damit BMA-Freitexte korrekt als B26
+  // statt T26 nummeriert werden.
+  const norm = art.toLowerCase();
+  if (norm.includes("brand") || norm.includes("bma")) return "brand";
+  return "technisch";
 }
 
 /**
