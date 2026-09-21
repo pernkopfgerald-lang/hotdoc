@@ -49,6 +49,7 @@ import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useSyncStatus } from "../lib/use-sync-status";
 import { haversineKm, useGeolocation, type GeoFix } from "../lib/geo";
+import { getFahrzeugConfig } from "../db/pouch";
 import {
   clearDraft,
   listDraftEinsatzIds,
@@ -463,7 +464,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     activeIdRef.current = activeId;
   }, [activeId]);
 
-  const geo = useGeolocation();
+  // 2026-09: Geraete, die sich per QR-Sticker angemeldet haben (z. B. das
+  // private Handy des Kdt beim Scan des Führerhaus-Stickers), sind
+  // vermutlich NICHT das am Fahrzeug montierte Tablet — deren GPS-Position
+  // waere fuer die Live-Fahrzeugposition (Florianstation-Karte) irrefuehrend.
+  // Einmaliger lokaler Read beim Mount reicht — das Flag aendert sich nicht
+  // waehrend der Session.
+  const [gpsErlaubt, setGpsErlaubt] = useState(true);
+  useEffect(() => {
+    void getFahrzeugConfig().then((cfg) => setGpsErlaubt(!cfg?.viaQr));
+  }, []);
+  const geo = useGeolocation(gpsErlaubt);
   const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
 
   // Personalliste aus /api/admin/personen — Quelle: syBOS-Sync. Keine
@@ -3045,7 +3056,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                     title={
                       geo.fix
                         ? "Aktuelle GPS-Position als Adresse übernehmen"
-                        : "GPS noch nicht verfügbar"
+                        : geo.status === "disabled"
+                          ? "GPS bei QR-Zugriff deaktiviert"
+                          : "GPS noch nicht verfügbar"
                     }
                     aria-label="GPS-Adresse übernehmen"
                     style={{
@@ -3089,7 +3102,9 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                       lineHeight: 1.4,
                     }}
                   >
-                    GPS-Button aktiviert sich, sobald ein Fix da ist.
+                    {geo.status === "disabled"
+                      ? "GPS ist bei Zugriff per QR-Sticker deaktiviert — dieses Gerät ist vermutlich nicht das Fahrzeug-Tablet."
+                      : "GPS-Button aktiviert sich, sobald ein Fix da ist."}
                   </div>
                 ) : null}
               </div>

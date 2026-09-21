@@ -223,7 +223,9 @@ function GeoChip({ geo }: { geo: GeoState }) {
           ? "GPS sucht"
           : geo.status === "denied"
             ? "GPS aus"
-            : "GPS aus";
+            : geo.status === "disabled"
+              ? "GPS aus"
+              : "GPS aus";
   const detailTitle =
     geo.status === "live"
       ? `Genauigkeit ~${(geo.fix?.accuracyM ?? 0).toFixed(0)} m`
@@ -233,7 +235,9 @@ function GeoChip({ geo }: { geo: GeoState }) {
           ? "GPS-Fix wird gesucht …"
           : geo.status === "denied"
             ? (geo.errorMessage ?? "Standortzugriff im Browser blockiert")
-            : (geo.errorMessage ?? "Gerät hat kein GPS-Signal");
+            : geo.status === "disabled"
+              ? "GPS bei QR-Zugriff deaktiviert — vermutlich nicht das Fahrzeug-Tablet"
+              : (geo.errorMessage ?? "Gerät hat kein GPS-Signal");
   return (
     <span className={`status-pill ${variant}`} title={detailTitle}>
       <span className="dot" />
@@ -250,6 +254,7 @@ function variantFor(status: GeoState["status"]): string {
     case "denied":
     case "unavail": return "danger";
     case "loading": return "";
+    case "disabled": return "";
   }
 }
 

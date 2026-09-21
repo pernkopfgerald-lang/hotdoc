@@ -20,8 +20,8 @@ android {
         // versionCode IMMER inkrementieren bei neuem Release — Android
         // erkennt das Update sonst nicht. versionName ist die anzeigte
         // Version (semver), versionCode ist die fortlaufende Integer-ID.
-        versionCode 36
-        versionName "0.2.2"
+        versionCode 37
+        versionName "0.2.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.2.3",
+    date: "2026-09-21",
+    title: "Kein GPS mehr bei QR-Zugriff über privates Handy",
+    bullets: [
+      "Wird der Fahrzeug-QR-Code mit einem privaten Handy statt dem Fahrzeug-Tablet gescannt, wird jetzt gar keine GPS-Position mehr abgefragt oder gesendet — die Position des Handys wäre sonst fälschlich als Fahrzeugposition auf der Florianstation-Karte gelandet.",
+    ],
+  },
+  {
     version: "0.2.2",
     date: "2026-09-19",
     title: "Mehrfachauswahl auch bei der Mannschaft im Fahrzeugbericht",

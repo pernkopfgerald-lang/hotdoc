@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.2.2",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.2-release.apk",
+    currentVersion: "0.2.3",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.3-release.apk",
     releaseNotes:
-      "v0.2.2 — Mehrfachauswahl auch bei der Mannschaft im Fahrzeugbericht\n\n• Beim Besetzen leerer Mannschaftsplätze können jetzt mehrere Personen auf einmal ausgewählt werden.\n• Die Auswahl ist automatisch auf die freien Sitzplätze im Fahrzeug begrenzt.",
+      "v0.2.3 — Kein GPS mehr bei QR-Zugriff über privates Handy\n\n• Wird der Fahrzeug-QR-Code mit einem privaten Handy gescannt, wird keine GPS-Position mehr abgefragt/gesendet — die wäre sonst fälschlich als Fahrzeugposition gezeigt worden.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

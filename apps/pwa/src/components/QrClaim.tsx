@@ -92,12 +92,17 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
           fahrzeugId,
           tabletDeviceId: crypto.randomUUID(),
           setupAm: now,
+          // 2026-09: markiert dieses Geraet als QR-Login — typischerweise ein
+          // privates Handy, nicht das Fahrzeug-Tablet. BerichtPage.tsx fragt
+          // dann bewusst kein GPS ab (Position waere sonst irrefuehrend).
+          viaQr: true,
         });
-      } else if (existing.fahrzeugId !== fahrzeugId) {
+      } else if (existing.fahrzeugId !== fahrzeugId || !existing.viaQr) {
         await db.put({
           ...existing,
           fahrzeugId,
           geaendertAm: now,
+          viaQr: true,
         });
       }
       const funkruf = FAHRZEUGE[fahrzeugId]?.funkrufname ?? fahrzeugId;

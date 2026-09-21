@@ -12,7 +12,8 @@ export type GeoStatus =
   | "live"      // Position kommt regelmäßig
   | "denied"    // Permission verweigert
   | "unavail"   // Gerät hat keine Geolocation (Desktop ohne GPS o.ä.)
-  | "stale";    // Letzte Position älter als STALE_MS
+  | "stale"     // Letzte Position älter als STALE_MS
+  | "disabled"; // 2026-09: bewusst deaktiviert (QR-Login von Nicht-Tablet-Geraet)
 
 export interface GeoFix {
   lat: number;
@@ -47,12 +48,22 @@ const INITIAL: GeoState = {
  * - watchPosition statt Polling → batterie-schonend, Browser regelt Rate
  * - maximumAge 5s → keine uralten Cache-Werte
  * - timeout 20s → erste Antwort darf länger dauern (kalter GPS-Start)
+ *
+ * @param enabled 2026-09: false unterdrückt jede Geolocation-Abfrage
+ *   komplett (kein Permission-Prompt, kein watchPosition) — für Geräte, die
+ *   sich per QR-Sticker angemeldet haben und daher vermutlich NICHT das am
+ *   Fahrzeug montierte Tablet sind (siehe BerichtPage.tsx). Default true =
+ *   bisheriges Verhalten für alle bestehenden Aufrufer.
  */
-export function useGeolocation(): GeoState {
+export function useGeolocation(enabled: boolean = true): GeoState {
   const [state, setState] = useState<GeoState>(INITIAL);
   const fixRef = useRef<GeoFix | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ ...INITIAL, status: "disabled" });
+      return;
+    }
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setState({ ...INITIAL, status: "unavail" });
       return;
@@ -123,7 +134,7 @@ export function useGeolocation(): GeoState {
       document.removeEventListener("visibilitychange", onVisChange);
       clearInterval(staleTimer);
     };
-  }, []);
+  }, [enabled]);
 
   return state;
 }
@@ -141,5 +152,6 @@ export function statusLabel(s: GeoStatus): string {
     case "stale":   return "GPS veraltet";
     case "denied":  return "GPS verweigert";
     case "unavail": return "GPS nicht verfügbar";
+    case "disabled": return "GPS deaktiviert (QR-Zugriff)";
   }
 }
