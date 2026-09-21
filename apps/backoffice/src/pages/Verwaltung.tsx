@@ -3265,13 +3265,15 @@ function DevicesPanel() {
 }
 
 // ─── QrStickerPanel ─────────────────────────────────────────────────────
-// 2026-09: Pro Fahrzeug ein QR-Code zum Ausdrucken + ins Führerhaus kleben.
-// Der QR ist ein permanenter Login-Anker (kein Ablaufdatum, siehe
-// api/qrAnchor.ts + api/routes/auth.ts "QR-Sticker-Auth") — wer ihn mit dem
-// Handy scannt, landet ohne Tablet und ohne PIN direkt im Fahrzeugbericht
-// dieses Fahrzeugs. Nur die vier Einsatzfahrzeuge (keine Zentrale — die hat
-// kein Führerhaus zum Bekleben).
-const QR_STICKER_FAHRZEUGE = ["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const;
+// 2026-09: Pro Fahrzeug (+ Florianstation) ein QR-Code zum Ausdrucken +
+// aufkleben. Der QR ist ein permanenter Login-Anker (kein Ablaufdatum,
+// siehe api/qrAnchor.ts + api/routes/auth.ts "QR-Sticker-Auth") — wer ihn
+// mit dem Handy scannt, landet ohne Tablet und ohne PIN direkt im
+// Einsatzbericht (bei "zentrale": in der Florianstation-Ansicht). Die
+// Backend-Route vergibt fuer "zentrale" automatisch die Rolle
+// "einsatzleiter" statt "mannschaft" (siehe routes/auth.ts, GET
+// /api/auth/qr/:token) — kein zusaetzlicher Code noetig.
+const QR_STICKER_FAHRZEUGE = ["kdo", "tlf-a-4000", "lfa-b", "mtf", "zentrale"] as const;
 
 function QrStickerPanel() {
   const [open, setOpen] = useState<{ fahrzeugId: string } | null>(null);
@@ -3285,13 +3287,15 @@ function QrStickerPanel() {
         </div>
       </div>
       <p style={{ fontSize: 14, color: "var(--fg-2)", lineHeight: 1.55, marginBottom: 16 }}>
-        Pro Fahrzeug ein QR-Code zum Ausdrucken — ins Führerhaus geklebt kann
-        der Fahrzeugkommandant ohne Tablet, mit dem eigenen Handy, den Code
-        scannen und landet direkt im Einsatzbericht dieses Fahrzeugs (kein
-        PIN nötig, mehrere Handys gleichzeitig möglich). Bei Tablet-Verlust
-        oder Verdacht, dass ein Sticker fotografiert/kopiert wurde: im
-        jeweiligen QR-Dialog "Rotieren" — macht alle bisherigen Sticker
-        dieses Fahrzeugs ungültig, ein neuer muss gedruckt werden.
+        Pro Fahrzeug (und für die Florianstation) ein QR-Code zum Ausdrucken —
+        ins Führerhaus bzw. in der Florianstation aufgehängt kann ohne Tablet,
+        mit dem eigenen Handy, der Code gescannt werden und landet direkt im
+        Einsatzbericht bzw. in der Florianstation-Ansicht (kein PIN nötig,
+        mehrere Handys gleichzeitig möglich). Bei Tablet-Verlust oder
+        Verdacht, dass ein Sticker fotografiert/kopiert wurde: im jeweiligen
+        QR-Dialog "Rotieren" — macht alle bisherigen Sticker dieses
+        Fahrzeugs/der Florianstation ungültig, ein neuer muss gedruckt
+        werden.
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {QR_STICKER_FAHRZEUGE.map((fahrzeugId) => {
