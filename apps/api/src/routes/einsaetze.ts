@@ -1334,6 +1334,9 @@ einsaetzeRouter.delete(
  */
 const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "einsatzort",
+  // Hotfix 2026-09: Beginnzeit ist manuell aenderbar (z. B. Bericht erst
+  // 5 min nach Einsatzbeginn am Tablet angelegt) — Tablet + Florian-Editor.
+  "alarmierungZeit",
   "einsatzart",
   "einsatzartFreitext",
   "einsatzartTyp",

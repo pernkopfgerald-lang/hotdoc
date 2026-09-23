@@ -133,6 +133,11 @@ interface EinsatzInstance {
    *  leer ist — wenn der Kdt schon manuell eingetragen hat, ueberschreibt
    *  der Abschluss seine Eingabe nicht. */
   uhrzeitBisHHMM: string;
+  /** Hotfix 2026-09: manuell gesetzte "Uhrzeit von" (HH:MM, gleicher Tag wie
+   *  die Alarmierung). Leer = automatisch die Alarmierungs-/Anlagezeit.
+   *  Betrifft NUR dieses Fahrzeug (zeit.von im Fahrzeugbericht) — die
+   *  Einsatz-Alarmzeit selbst bleibt unangetastet. */
+  uhrzeitVonHHMM: string;
   /** Manueller KM-Override durch den Fahrzeugkdt. null = Auto-Wert aus
    *  GraphHopper-Route × 2 (oder Luftlinie × 1.3 × 2 als Fallback). */
   kmManualOverride: number | null;
@@ -201,6 +206,9 @@ function mergeDraftIntoInstance(
   if (Array.isArray(draft.chronik)) merged.chronik = draft.chronik as ChronikEintrag[];
   if (typeof draft.uhrzeitBisHHMM === "string") {
     merged.uhrzeitBisHHMM = draft.uhrzeitBisHHMM;
+  }
+  if (typeof draft.uhrzeitVonHHMM === "string") {
+    merged.uhrzeitVonHHMM = draft.uhrzeitVonHHMM;
   }
   if (typeof draft.kmManualOverride === "number") {
     merged.kmManualOverride = draft.kmManualOverride;
@@ -721,6 +729,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         chronik: [],
         abgeschlossen: null,
         uhrzeitBisHHMM: "",
+        uhrzeitVonHHMM: "",
         kmManualOverride: null,
         kdtIstEinsatzleiter: fahrzeugId === "kdo",
       };
@@ -828,6 +837,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         chronik: [],
         abgeschlossen: persisted,
         uhrzeitBisHHMM: "",
+        uhrzeitVonHHMM: "",
         kmManualOverride: null,
         // Issue 12 (Einsatz-Test 2026-06-02): KDO-Kdt ist Auto-Default-EL.
         // Wenn der Einsatz von einem KDO-Tablet aus betreut wird, ist der
@@ -1439,7 +1449,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             geraete?: Array<{ materialId: string }>;
             oelbindemittelSaecke?: number;
             taetigkeitsbericht?: string;
-            zeit?: { bis?: string };
+            zeit?: { von?: string; bis?: string };
           }
           const r = await apiCall<{ items?: FzgberSnapshot[] }>(
             `/api/einsaetze/${encodeURIComponent(e.id)}/fahrzeugberichte`,
@@ -1501,8 +1511,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   // ignorieren — Default bleibt leer
                 }
               }
+              // Manuell gesetzte "Uhrzeit von" zurueckparsen: nur wenn sie
+              // von der Alarmzeit abweicht (sonst bleibt es Auto).
+              let uhrzeitVon = x.uhrzeitVonHHMM;
+              if (mine.zeit?.von && !x.uhrzeitVonHHMM) {
+                const dv = new Date(mine.zeit.von);
+                const da = new Date(x.alarm.alarmierungZeit);
+                if (
+                  !Number.isNaN(dv.getTime()) &&
+                  !Number.isNaN(da.getTime()) &&
+                  Math.floor(dv.getTime() / 60_000) !== Math.floor(da.getTime() / 60_000)
+                ) {
+                  uhrzeitVon = `${String(dv.getHours()).padStart(2, "0")}:${String(
+                    dv.getMinutes(),
+                  ).padStart(2, "0")}`;
+                }
+              }
               return {
                 ...x,
+                uhrzeitVonHHMM: uhrzeitVon,
                 fahrer: personById(mine.fahrerPersonId) ?? x.fahrer,
                 kdt: personById(mine.fahrzeugKdtPersonId) ?? x.kdt,
                 mannschaft: m,
@@ -1808,6 +1835,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         // Florianstation-Lagekarte ebenfalls zur korrigierten Adresse passt.
         body: {
           einsatzort: active.alarm.einsatzort,
+          // Hotfix 2026-09: nur bei manueller Aenderung mitschicken, damit ein
+          // unveraenderter Wert nie fremde Korrekturen ueberschreibt.
+          ...(active.uhrzeitVonHHMM
+            ? { alarmierungZeit: effektiveVonISO(active) }
+            : {}),
           ...(active.alarm.koordinaten
             ? { koordinaten: active.alarm.koordinaten }
             : {}),
@@ -1818,7 +1850,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     }, 1500);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, active?.abgeschlossen, active?.alarm.einsatzort, active?.alarm.koordinaten]);
+  }, [
+    active?.id,
+    active?.abgeschlossen,
+    active?.alarm.einsatzort,
+    active?.alarm.koordinaten,
+    active?.uhrzeitVonHHMM,
+  ]);
 
   // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
   // Pausiert wenn Bericht abgeschlossen (kein Schreibschutz-Bypass nötig).
@@ -2227,7 +2265,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
 
       const body = {
         zeit: {
-          von: einsatz.alarm.alarmierungZeit,
+          von: effektiveVonISO(einsatz),
           bis: bisISO,
         },
         km: { gefahrenKm: kmGefahren },
@@ -2463,7 +2501,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     try {
       body = {
         zeit: {
-          von: einsatz.alarm.alarmierungZeit,
+          von: effektiveVonISO(einsatz),
           ...(einsatz.uhrzeitBisHHMM
             ? {
                 bis: hhmmToISOAt(
@@ -2940,9 +2978,40 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 </div>
                 <div className="field">
                   <label className="caption">Uhrzeit von</label>
+                  {/* Hotfix 2026-09: anklickbar/aenderbar (Rueckmeldung
+                      Mannschaft) — leer/Auto = Alarm-/Anlagezeit. */}
                   <div className="input-row filled">
-                    <input value={zeitStr} readOnly className="num" />
-                    <AutoPill title={autoPillTitle} />
+                    <input
+                      type="time"
+                      value={active.uhrzeitVonHHMM || zeitStr}
+                      onChange={(e) =>
+                        patchActive((x) => ({ ...x, uhrzeitVonHHMM: e.target.value }))
+                      }
+                      disabled={!!active.abgeschlossen}
+                      className="num"
+                    />
+                    {active.uhrzeitVonHHMM ? (
+                      <span
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          color: "var(--info)",
+                          background: "var(--info-tint)",
+                          border: "1px solid var(--blue-border)",
+                          borderRadius: 6,
+                          padding: "2px 6px",
+                          marginRight: 4,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        manuell geändert
+                      </span>
+                    ) : (
+                      <AutoPill title={autoPillTitle} />
+                    )}
                   </div>
                 </div>
                 <div className="field">
@@ -4341,6 +4410,18 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
  * der Tag um 24h vorgeschoben. Bei kaputtem Input wird der Alarmierungs-
  * Zeitpunkt selbst zurueckgegeben — defensiv damit kein Crash.
  */
+/** Hotfix 2026-09: "Uhrzeit von" — manueller Override (HH:MM am Tag der
+ *  Alarmierung, KEIN Tages-Rollover) oder Auto = Alarmierungszeit. */
+function effektiveVonISO(e: { alarm: { alarmierungZeit: string }; uhrzeitVonHHMM: string }): string {
+  const auto = e.alarm.alarmierungZeit;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(e.uhrzeitVonHHMM.trim());
+  if (!m) return auto;
+  const base = new Date(auto);
+  if (Number.isNaN(base.getTime())) return auto;
+  base.setHours(Math.min(23, Number(m[1])), Math.min(59, Number(m[2])), 0, 0);
+  return base.toISOString();
+}
+
 function hhmmToISOAt(alarmierungISO: string, hhmm: string): string {
   try {
     const base = new Date(alarmierungISO);
