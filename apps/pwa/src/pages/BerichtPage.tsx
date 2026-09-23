@@ -965,18 +965,30 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             const ortChanged = fresh.einsatzort !== e.alarm.einsatzort;
             const artChanged = fresh.einsatzart !== e.alarm.einsatzart;
             const stwChanged = (fresh.stichwort ?? null) !== (e.alarm.stichwort ?? null);
+            // Hotfix 2026-09: geaenderte Beginnzeit gilt fuer den GANZEN Einsatz
+            // (alle Fahrzeuge) — vom Server nachziehen. Ein Tablet mit eigener
+            // gerade gesetzter Aenderung (uhrzeitVonHHMM) ueberspringt das,
+            // sein PUT ueberschreibt den Server ohnehin.
+            const zeitChanged =
+              !e.uhrzeitVonHHMM &&
+              typeof api.alarmierungZeit === "string" &&
+              !Number.isNaN(Date.parse(api.alarmierungZeit)) &&
+              Date.parse(api.alarmierungZeit) !== Date.parse(e.alarm.alarmierungZeit);
             // N-06 / S-14: Annahme-Zeitpunkt und Doppelalarm-Markierung
             // nachziehen (setzt ein anderes Gerät bzw. der Poller).
             const angChanged = (api.angenommenAm ?? null) !== (e.angenommenAm ?? null);
             const dupChanged =
               (api.moeglichesDuplikatVon ?? null) !== (e.moeglichesDuplikatVon ?? null);
-            if (!ortChanged && !artChanged && !stwChanged && !angChanged && !dupChanged) {
+            if (!ortChanged && !artChanged && !stwChanged && !angChanged && !dupChanged && !zeitChanged) {
               return e;
             }
             const nextAlarm: AlarmDaten = {
               ...e.alarm,
               einsatzart: fresh.einsatzart,
               einsatzort: fresh.einsatzort,
+              ...(zeitChanged && api.alarmierungZeit
+                ? { alarmierungZeit: api.alarmierungZeit }
+                : {}),
             };
             if (fresh.stichwort) {
               nextAlarm.stichwort = fresh.stichwort as NonNullable<AlarmDaten["stichwort"]>;
@@ -1819,6 +1831,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     active?.gearSelected,
     active?.oelSaecke,
     active?.auftraege,
+    active?.alarm.alarmierungZeit,
   ]);
 
   // Issue 7 (Einsatz-Test 2026-06-02): Einsatz-Meta-Sync (Adresse).
