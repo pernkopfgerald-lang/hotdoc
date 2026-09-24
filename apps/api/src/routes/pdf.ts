@@ -496,6 +496,14 @@ async function buildBerichtDaten(
     }
   }
 
+  // Bearbeiter (Sachbearbeiter Florianstation) — lebt als bearbeiterPersonId
+  // am Einsatz-Doc und wurde bisher nie ins PDF uebernommen.
+  const bearbeiterPerson =
+    typeof doc.bearbeiterPersonId === "number" ? await loadPerson(doc.bearbeiterPersonId) : null;
+  const bearbeiterName = bearbeiterPerson
+    ? `${bearbeiterPerson.nachname ?? ""} ${bearbeiterPerson.vorname ?? ""}`.trim()
+    : "";
+
   const data: BerichtDaten = {
     einsatzId: id,
     // AUDIT-11: echte Berichtsnummer vom Doc (beim Abschluss vergeben) —
@@ -519,6 +527,7 @@ async function buildBerichtDaten(
     ...(einsatzleiterName ? { einsatzleiter: einsatzleiterName } : {}),
     ...(typeof einsatzleiterPersonId === "number" ? { einsatzleiterPersonId } : {}),
     meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
+    ...(bearbeiterName ? { bearbeiter: bearbeiterName } : {}),
     oelbindemittelSaecke: oelbindemittelAggregiert,
     reaktivierungen,
     pflichtbereich: (doc.pflichtbereich as boolean | null | undefined) ?? null,

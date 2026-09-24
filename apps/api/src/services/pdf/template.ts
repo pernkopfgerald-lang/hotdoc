@@ -90,6 +90,8 @@ export interface BerichtDaten {
    */
   einsatzleiterPersonId?: number;
   meldungEinsatzleitung?: string;
+  /** Sachbearbeiter Florianstation (aufgeloester Name aus bearbeiterPersonId). */
+  bearbeiter?: string;
   oelbindemittelSaecke?: number;
   reaktivierungen?: Array<{ am: string; grund: string }>;
   // Florianstation-Felder (frueher hartkodiert leer)
@@ -627,7 +629,9 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
       <td class="lbl">Unterschrift</td>
     </tr>
     <tr>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888"></td>
+      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${
+        d.bearbeiter ? `<span style="color:${FILLED};font-weight:600">${escape(d.bearbeiter)}</span>` : ""
+      }</td>
       <td class="val" style="height:10mm;border-top:0.5pt dashed #888"></td>
     </tr>
   </table>
