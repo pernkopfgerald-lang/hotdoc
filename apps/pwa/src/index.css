@@ -231,3 +231,8 @@ html {
 .rounded-full.h-1\.5, .rounded-full.h-2 { border-radius: 50% !important; }
 /* Lesbarkeit: keine Schrift unter 13px, auch wo noch Tailwind-Mini-Klassen haengen */
 .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[12px\] { font-size: 13px !important; }
+/* Handy: Zoom per Fingergeste, die +/- Knoepfe wuerden unter der Karten-
+   Werkzeugleiste liegen */
+@media (max-width: 640px) {
+  .leaflet-control-zoom { display: none; }
+}

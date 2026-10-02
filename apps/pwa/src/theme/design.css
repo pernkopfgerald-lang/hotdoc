@@ -899,6 +899,16 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   .person .name { font-size: 19px; }
 
   .crew-row { padding: 8px 10px; gap: 10px; }
+  /* Fahrzeug-Statuszeile (Florianstation): am Handy umbrechen — Status und
+     Entfernen-Knopf in eigener Zeile statt aus dem Bild zu laufen */
+  .fz-status-row { flex-wrap: wrap; row-gap: 8px; }
+  .fz-status-row .crew-num { width: 56px !important; }
+  .fz-status-row .crew-meta {
+    margin-left: 0 !important;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
   .crew-name { font-size: 19px; }
 
   .dictate { padding: 10px 12px; gap: 10px; }

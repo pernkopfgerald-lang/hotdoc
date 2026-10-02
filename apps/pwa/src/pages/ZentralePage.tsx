@@ -2642,12 +2642,18 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               Keine aktive Einsatzdokumentation. Sobald ein BlaulichtSMS-Alarm eingeht oder ein
               Tablet eine Tätigkeit anlegt, erscheint der Einsatz hier automatisch.
             </p>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                gap: 10,
+              }}
+            >
               <button
                 type="button"
                 className="cta"
                 onClick={() => setNeuerEinsatzOpen("manuell")}
-                style={{ width: "auto", padding: "10px 18px", fontSize: 17, display: "inline-flex" }}
+                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
               >
                 Einsatz anlegen
               </button>
@@ -2655,7 +2661,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 type="button"
                 className="btn"
                 onClick={() => setNeuerEinsatzOpen("uebung")}
-                style={{ fontSize: 17 }}
+                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
               >
                 Übung anlegen
               </button>
@@ -2668,7 +2674,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 // hier bewusst NICHT erscheint (#165) und ein zweiter
                 // Klick sonst ein Duplikat anlegt.
                 disabled={lotsendienstGesperrt}
-                style={{ fontSize: 17 }}
+                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
               >
                 Lotsendienst anlegen
               </button>
@@ -2676,7 +2682,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 type="button"
                 className="btn"
                 onClick={() => setArchivOpenFlorian(true)}
-                style={{ fontSize: 17 }}
+                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
               >
                 Archiv durchsuchen
               </button>
@@ -3157,7 +3163,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   style={{ display: "flex", flexDirection: "column", gap: 0 }}
                 >
                   <div
-                    className="crew-row filled"
+                    className="crew-row filled fz-status-row"
                     onClick={toggleSelect}
                     role={isClickable ? "button" : undefined}
                     tabIndex={isClickable ? 0 : undefined}
