@@ -22,15 +22,15 @@
   --topbar-h: 75px;
 
   /* ─── Flächen (hell, Tageslicht) ─── */
-  --bg:               #E8E7E3;
-  --bg-deep:          #DEDDD8;
-  --bg-page:          #E8E7E3;
+  --bg:               #EBEBEB;
+  --bg-deep:          #E0E0E0;
+  --bg-page:          #EBEBEB;
   --aurora-stack:     none;
 
   --surface:          #FFFFFF;
   --surface-1:        #FFFFFF;
-  --surface-2:        #F3F2EF;
-  --surface-3:        #E6E4DF;
+  --surface-2:        #F4F4F4;
+  --surface-3:        #E4E4E4;
 
   /* Alte Glas-Stufen → Volltonflächen */
   --glass-1:          var(--surface);
@@ -39,16 +39,27 @@
   --glass-4:          var(--surface-2);
 
   /* ─── Linien ─── */
-  --glass-border:     #C7C4BC;
-  --glass-border-strong: #A9A59B;
-  --glass-divider:    #DAD7D0;
-  --border:           #D3D0C8;
-  --border-strong:    #ABA79D;
+  --glass-border:     #CFCFCF;
+  --glass-border-strong: #A8A8A8;
+  --glass-divider:    #DCDCDC;
+  --border:           #D6D6D6;
+  --border-strong:    #ABABAB;
+
+  /* Gefuellte Eingabefelder, dunkelgraue Schaltflaechen, Akzent (wird je
+     Fahrzeug von der Kopfzeile ueberschrieben) */
+  --field:            #EDEDED;
+  --btn:              #4A4A4A;
+  --btn-hover:        #333333;
+  --btn-fg:           #FFFFFF;
+  --hdr-default:      #B3121F;
+  --accent:           #B3121F;
+  --cta:              #B3121F;
+  --cta-hover:        #8E0E18;
 
   /* ─── Text ─── */
   --fg:               #161616;
   --fg-2:             #3F3F3F;
-  --fg-3:             #5C5A55;
+  --fg-3:             #5A5A5A;
   --fg-4:             #B5B2AA;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
@@ -118,7 +129,7 @@
   --radius-m:         4px;
   --radius-l:         5px;
   --radius-xl:        6px;
-  --radius-pill:      999px;
+  --radius-pill:      4px;
 
   /* ─── Blur: aus ─── */
   --blur-1:           none;
@@ -187,6 +198,15 @@
   --glass-2:          var(--surface);
   --glass-3:          var(--surface-2);
   --glass-4:          var(--surface-2);
+
+  --field:            #2C2C2C;
+  --btn:              #4A4A4A;
+  --btn-hover:        #5C5C5C;
+  --btn-fg:           #FFFFFF;
+  --hdr-default:      #8E1520;
+  --accent:           #FF6670;
+  --cta:              #C21F2D;
+  --cta-hover:        #A81925;
 
   --glass-border:     #454545;
   --glass-border-strong: #666666;

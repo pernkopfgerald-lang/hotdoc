@@ -238,7 +238,7 @@ export function BrandAbschlussWizard({
               style={{
                 width: `${(step / totalSteps) * 100}%`,
                 height: "100%",
-                background: "var(--red)",
+                background: "var(--cta)",
                 transition: "width 0.2s ease",
               }}
             />
@@ -506,7 +506,7 @@ export function BrandAbschlussWizard({
               onClick={() => setStep((s) => Math.min(totalSteps, s + 1))}
               style={{
                 padding: "10px 22px",
-                background: "var(--red)",
+                background: "var(--cta)",
                 border: 0,
                 color: "#fff",
                 borderRadius: 4,
@@ -526,7 +526,7 @@ export function BrandAbschlussWizard({
               onClick={() => onComplete(data)}
               style={{
                 padding: "10px 22px",
-                background: "var(--red)",
+                background: "var(--cta)",
                 border: 0,
                 color: "#fff",
                 borderRadius: 4,
@@ -641,7 +641,7 @@ function ChipMultiSelect({
             aria-pressed={on}
             style={{
               padding: "8px 12px",
-              borderRadius: 999,
+              borderRadius: 4,
               border: `1px solid ${on ? "var(--red)" : "var(--border-strong)"}`,
               background: on ? "var(--red)" : "transparent",
               color: on ? "#fff" : "var(--fg)",

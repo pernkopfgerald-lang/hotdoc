@@ -9,7 +9,6 @@ import {
   Clock,
   Download,
 
-  GraduationCap,
   Lock,
   Map as MapIcon,
   MapPin,
@@ -2634,158 +2633,78 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
 
         {/* Hauptbericht-Header bzw. Idle-Karte wenn kein aktiver Einsatz. */}
         {istIdle ? (
-          <section
-            className="alarm"
-            style={{
-              background:
-                "var(--ok-tint)",
-              borderColor: "var(--ok-border)",
-            }}
-          >
-            <div className="alarm-top">
-              <div className="alarm-left">
-                <div
-                  className="alarm-icon"
-                  style={{ background: "var(--ok)", animation: "glow-pulse 2.4s ease-in-out infinite" }}
-                >
-                  <Activity size={30} color="#fff" strokeWidth={2} />
-                </div>
-                <div>
-                  <div className="alarm-tags">
-                    <span className="alarm-tag" style={{ color: "var(--ok)" }}>
-                      <span className="dot" style={{ background: "var(--ok)" }} />
-                      Bereit
-                    </span>
-                    <span className="alarm-tag muted">· Florian Eberstalzell</span>
-                  </div>
-                  <div className="alarm-title">Keine aktive Einsatzdokumentation</div>
-                  <div className="alarm-addr" style={{ color: "var(--fg-3)" }}>
-                    Sobald ein BlaulichtSMS-Alarm eingeht oder ein Tablet eine Tätigkeit anlegt,
-                    erscheint der Einsatz hier automatisch.
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 14,
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() => setNeuerEinsatzOpen("manuell")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center" }}
-                    >
-                      <Siren size={14} /> Einsatz anlegen
-                    </button>
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() => setNeuerEinsatzOpen("uebung")}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--ok) 80%, transparent)" }}
-                    >
-                      <GraduationCap size={14} /> Übung anlegen
-                    </button>
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() => setNeuerEinsatzOpen("lotsendienst")}
-                      // AUDIT-09/EL-06: 30-s-Doppel-Anlage-Guard — direkt nach
-                      // einer Lotsendienst-Anlage gesperrt, weil der Einsatz
-                      // hier bewusst NICHT erscheint (#165) und ein zweiter
-                      // Klick sonst ein Duplikat anlegt.
-                      disabled={lotsendienstGesperrt}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)", ...(lotsendienstGesperrt ? { opacity: 0.55, cursor: "not-allowed" } : {}) }}
-                    >
-                      <MapPin size={14} /> Lotsendienst anlegen
-                    </button>
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() => setArchivOpenFlorian(true)}
-                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "var(--surface-2)", color: "var(--fg)", border: "1px solid var(--border-strong)" }}
-                    >
-                      <Archive size={14} /> Archiv durchsuchen
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="alarm-no" style={{ color: "var(--fg-3)" }}>—</div>
+          <section className="card">
+            <div className="card-head">
+              <div className="card-title">Bereit · Florian Eberstalzell</div>
+              <div className="card-meta">kein aktiver Einsatz</div>
+            </div>
+            <p style={{ margin: "0 0 16px", fontSize: 18, lineHeight: 1.45, color: "var(--fg)" }}>
+              Keine aktive Einsatzdokumentation. Sobald ein BlaulichtSMS-Alarm eingeht oder ein
+              Tablet eine Tätigkeit anlegt, erscheint der Einsatz hier automatisch.
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="cta"
+                onClick={() => setNeuerEinsatzOpen("manuell")}
+                style={{ width: "auto", padding: "10px 18px", fontSize: 17, display: "inline-flex" }}
+              >
+                Einsatz anlegen
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setNeuerEinsatzOpen("uebung")}
+                style={{ fontSize: 17 }}
+              >
+                Übung anlegen
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setNeuerEinsatzOpen("lotsendienst")}
+                // AUDIT-09/EL-06: 30-s-Doppel-Anlage-Guard — direkt nach
+                // einer Lotsendienst-Anlage gesperrt, weil der Einsatz
+                // hier bewusst NICHT erscheint (#165) und ein zweiter
+                // Klick sonst ein Duplikat anlegt.
+                disabled={lotsendienstGesperrt}
+                style={{ fontSize: 17 }}
+              >
+                Lotsendienst anlegen
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setArchivOpenFlorian(true)}
+                style={{ fontSize: 17 }}
+              >
+                Archiv durchsuchen
+              </button>
             </div>
           </section>
         ) : (
           <section
             className="alarm"
-            style={{
-              // #164 (Test 2026-06-03): Theme nach Einsatz-Typ.
-              //  - Übung → GRÜN (--ok), klar von Alarm unterscheidbar.
-              //  - Alarm/manuell → BLAU (--info), wie bisher.
-              // D-02: theme-awares Tint, im Dark-Mode wird automatisch dunkler.
-              background:
-                einsatzTyp === "uebung"
-                  ? "var(--ok-tint)"
-                  : "var(--info-tint)",
-              borderColor:
-                einsatzTyp === "uebung" ? "var(--ok-border)" : "var(--blue-border)",
-            }}
+            style={
+              {
+                // Farbblock nach Einsatz-Typ (wie in der Fahrzeug-Ansicht):
+                // Alarm rot, Übung grün, Lotsendienst braun, sonst blau.
+                "--alarm-bg":
+                  einsatzTyp === "uebung"
+                    ? "#1D6B3B"
+                    : einsatzTyp === "lotsendienst"
+                      ? "#8A5300"
+                      : einsatzTyp === "manuell"
+                        ? "#1B4F94"
+                        : "#B3121F",
+              } as React.CSSProperties
+            }
           >
-            {/* #164: Übung-Banner ganz oben, damit der EL sofort sieht, dass es
-                eine Übung ist — nie ein Einsatz. */}
-            {einsatzTyp === "uebung" && (
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "4px 12px",
-                  borderRadius: "var(--radius-pill)",
-                  background: "var(--ok)",
-                  color: "#fff",
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 800,
-                  fontSize: 14,
-                  letterSpacing: "var(--tracking-caps)",
-                  marginBottom: 12,
-                }}
-              >
-                <GraduationCap size={14} strokeWidth={2.4} />
-                Übung
-              </div>
-            )}
             <div className="alarm-top">
               <div className="alarm-left">
-                <div
-                  className="alarm-icon"
-                  style={{
-                    background:
-                      einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
-                  }}
-                >
-                  {einsatzTyp === "uebung" ? (
-                    <GraduationCap size={30} color="#fff" strokeWidth={2} />
-                  ) : (
-                    <Activity size={30} color="#fff" strokeWidth={2} />
-                  )}
-                </div>
                 <div>
                   <div className="alarm-tags">
-                    <span
-                      className="alarm-tag"
-                      style={{
-                        color:
-                          einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
-                      }}
-                    >
-                      <span
-                        className="dot"
-                        style={{
-                          background:
-                            einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
-                        }}
-                      />
-                      Florian Eberstalzell
-                    </span>
+                    <span className="alarm-tag">Florian Eberstalzell</span>
                     <span className="alarm-tag muted">
                       ·{" "}
                       {einsatzTyp === "uebung" ? "Übungsbericht" : "Hauptbericht"}
@@ -2839,26 +2758,17 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               return (
                 <div
                   style={{
-                    marginTop: 10,
-                    fontSize: 15.5,
-                    color: "var(--fg-2)",
+                    marginTop: 12,
+                    fontSize: 16,
+                    color: "#fff",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                   }}
                 >
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      color: "var(--fg-3)",
-                    }}
-                  >
-                    Letzte Meldung
-                  </span>
+                  <span style={{ fontWeight: 700 }}>Letzte Meldung</span>
                   {" · "}
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
+                  <span style={{ fontWeight: 600 }}>
                     {formatTime(letzteMeldung.zeitstempel)}
                   </span>
                   {" · "}
@@ -3088,7 +2998,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               type="button"
               onClick={() => void editorKonfliktNeuLaden()}
               style={{
-                background: "var(--red)",
+                background: "var(--cta)",
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
@@ -3294,7 +3204,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           alignItems: "center",
                           gap: 5,
                           padding: "3px 10px",
-                          borderRadius: 999,
+                          borderRadius: 4,
                           fontSize: 13.5,
                           fontWeight: 800,
                           color: "var(--ok)",
@@ -4441,7 +4351,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                         }
                         style={{
                           padding: "6px 10px",
-                          borderRadius: 999,
+                          borderRadius: 4,
                           border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
                           background: on ? "var(--accent)" : "transparent",
                           color: on ? "#fff" : "var(--fg)",
@@ -4481,7 +4391,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           }
                           style={{
                             padding: "6px 10px",
-                            borderRadius: 999,
+                            borderRadius: 4,
                             border: `1px solid ${on ? "var(--warn)" : "var(--border-strong)"}`,
                             background: on ? "var(--warn)" : "transparent",
                             color: on ? "#fff" : "var(--fg)",
@@ -4750,7 +4660,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   }}
                   style={{
                     alignSelf: "flex-start",
-                    background: "var(--red)",
+                    background: "var(--cta)",
                     color: "#fff",
                     border: 0,
                     padding: "6px 12px",
@@ -5381,7 +5291,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 onClick={() => void handleAbschluss()}
                 disabled={abschlussBusy}
                 style={{
-                  background: "var(--red)",
+                  background: "var(--cta)",
                   border: 0,
                   color: "#fff",
                   padding: "10px 18px",

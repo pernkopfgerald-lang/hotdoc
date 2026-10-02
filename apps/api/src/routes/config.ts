@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.3.0",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.0-release.apk",
+    currentVersion: "0.3.1",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.1-release.apk",
     releaseNotes:
-      "v0.3.0 — Neues, ruhigeres Design\n\n• Schlichtes Erscheinungsbild wie ein Einsatzformular, keine Effekte/Animationen.\n• Systemschrift, große Schrift und Tippflächen bleiben.\n• Kopfzeile am Handy bricht um.\n• Florianstation: Fahrzeugbericht entfernen/wiederherstellen.",
+      "v0.3.1 — Design nach dem Vorbild professioneller Einsatz-Software\n\n• Kopfzeile in der Farbe des angemeldeten Fahrzeugs.\n• Alarm als Farbblock, Formular-Optik mit gefüllten Feldern.\n• Startseite ohne Kacheln.\n• Handy: kompaktere Kopfzeile.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

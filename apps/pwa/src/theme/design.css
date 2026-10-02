@@ -16,9 +16,9 @@
 /* ─── Card ─────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 18px 22px 22px;
   position: relative;
   overflow: hidden;
 }
@@ -32,26 +32,23 @@
   gap: 12px;
   margin-bottom: 14px;
 }
-/* Kopfzeile als Formular-Titelband (nur wenn direkt erstes Kind der Karte) */
+/* Kartenueberschrift: fette Versalien, darunter eine Linie in Fahrzeugfarbe
+   (wie ein Blockkopf im Papierformular). Keine Icons, kein Titelband. */
 .card > .card-head:first-child {
-  margin: -20px -22px 16px;
-  padding: 11px 22px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  margin: 0 0 16px;
+  padding: 0 0 8px;
+  border-bottom: 2px solid var(--accent);
 }
 .card-title {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 16.5px;
+  font-weight: 800;
+  text-transform: uppercase;
   color: var(--fg);
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.card-title svg {
-  width: 20px;
-  height: 20px;
-  color: var(--fg-2);
-}
+.card-title svg { display: none; }
 .card-meta {
   font-size: 15px;
   color: var(--fg-3);
@@ -77,9 +74,9 @@
 }
 .input {
   width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-s);
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
   padding: 12px 14px;
   font-family: inherit;
   font-size: 20px;
@@ -88,8 +85,9 @@
   outline: none;
 }
 .input::placeholder { color: var(--fg-3); font-weight: 400; }
-.input:hover { border-color: var(--fg-3); }
+.input:hover { border-color: var(--border-strong); }
 .input:focus {
+  background: var(--surface);
   border-color: var(--info);
   box-shadow: inset 0 0 0 1px var(--info);
 }
@@ -97,18 +95,18 @@
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
-.input.filled { background: var(--surface); }
+.input.filled { background: var(--field); }
 
 .input-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface);
-  border-radius: var(--radius-s);
+  background: var(--field);
+  border-radius: var(--radius-m);
   padding: 2px 4px 2px 14px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
 }
-.input-row.filled { background: var(--surface); }
+.input-row.filled { background: var(--field); }
 
 /* Eingabewerte dunkelblau — vom Nutzer getippte/gewählte Werte heben sich
    klar von den (schwarzen) Beschriftungen ab. */
@@ -123,6 +121,7 @@ textarea.input:not(:placeholder-shown) {
 select.input { color: var(--input-value); font-weight: 600; }
 select.input option { color: var(--fg); font-weight: 500; }
 .input-row:focus-within {
+  background: var(--surface);
   border-color: var(--info);
   box-shadow: inset 0 0 0 1px var(--info);
 }
@@ -180,13 +179,15 @@ select.input option { color: var(--fg); font-weight: 500; }
 .badge:empty { display: none; }
 
 /* ─── ALARM-Karte ───────────────────────────────────────────── */
+/* Vollflaechiger Farbblock mit weisser Schrift (Alarm rot, Uebung gruen,
+   manuell blau, Lotsendienst braun) — Farbe kommt ueber --alarm-bg. Kein
+   Icon-Kaestchen, kein Seitenbalken. */
 .alarm {
   position: relative;
-  border-radius: var(--radius-m);
-  padding: 22px 24px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-left: 8px solid var(--red);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px 20px;
+  background: var(--alarm-bg, #B3121F);
+  color: #fff;
   overflow: hidden;
 }
 .alarm-top {
@@ -194,23 +195,14 @@ select.input option { color: var(--fg); font-weight: 500; }
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .alarm-left {
   display: flex;
   align-items: center;
   gap: 16px;
 }
-.alarm-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-m);
-  background: var(--red);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-.alarm-icon svg { width: 28px; height: 28px; color: #fff; }
+.alarm-icon { display: none; }
 .alarm-tags {
   display: flex;
   align-items: center;
@@ -219,36 +211,31 @@ select.input option { color: var(--fg); font-weight: 500; }
   margin-bottom: 4px;
 }
 .alarm-tag {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--red);
+  font-size: 15.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #fff;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-.alarm-tag .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--red);
-}
-.alarm-tag.muted { color: var(--fg-2); }
+.alarm-tag .dot { display: none; }
+.alarm-tag.muted { color: #fff; font-weight: 600; text-transform: none; }
 .alarm-no {
   font-size: 15px;
-  color: var(--fg-3);
+  color: #fff;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .alarm-title {
   font-size: 40px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-display);
-  color: var(--fg);
+  font-weight: 800;
+  color: #fff;
   line-height: 1.08;
 }
 .alarm-addr {
   font-size: 19px;
-  color: var(--fg-2);
+  color: #fff;
   margin-top: 8px;
   display: flex;
   align-items: center;
@@ -259,36 +246,35 @@ select.input option { color: var(--fg); font-weight: 500; }
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 0;
-  margin-top: 18px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
+  margin-top: 16px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: var(--radius-m);
   padding: 12px 4px;
 }
 .alarm-meta .cell {
   text-align: left;
   padding: 0 18px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid rgba(255, 255, 255, 0.35);
 }
 .alarm-meta .cell:last-child { border-right: 0; }
 .alarm-meta .lbl {
   font-size: 14px;
   font-weight: 600;
-  color: var(--fg-3);
+  color: #fff;
   margin-bottom: 2px;
 }
 .alarm-meta .val {
   font-size: 22.5px;
-  font-weight: 700;
-  color: var(--fg);
+  font-weight: 800;
+  color: #fff;
   font-variant-numeric: tabular-nums;
 }
-.alarm-meta .val.red { color: var(--red); }
-.alarm-meta .val.muted { color: var(--fg-3); }
+.alarm-meta .val.red,
+.alarm-meta .val.muted { color: #fff; }
 .alarm-meta .val .unit {
   font-size: 16.5px;
   font-weight: 500;
-  color: var(--fg-2);
+  color: #fff;
   margin-left: 4px;
 }
 
@@ -297,19 +283,16 @@ select.input option { color: var(--fg); font-weight: 500; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 2px 2px;
-  margin-top: 6px;
+  padding: 12px 2px 0;
+  margin-top: 4px;
 }
 .section-head .h {
-  font-size: 17.5px;
-  font-weight: 700;
-  color: var(--fg);
+  font-size: 15.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--fg-2);
 }
-.section-head .line {
-  flex: 1;
-  height: 1px;
-  background: var(--border-strong);
-}
+.section-head .line { display: none; }
 
 /* Klappbarer Section-Head (button). Sibling-Hide blendet die direkt
    folgende Karte aus, solange die Sektion zugeklappt ist. */
@@ -350,8 +333,8 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   margin-top: 2px;
 }
 .vehicle-chip.active {
-  border-color: var(--red);
-  background: var(--red);
+  border-color: var(--cta);
+  background: var(--cta);
   color: #fff;
 }
 .vehicle-chip.active .code { color: #fff; }
@@ -386,12 +369,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   font-family: var(--font-sans);
   flex-shrink: 0;
 }
-.person .avatar.color-a { background: var(--info-tint); color: var(--info); }
-.person .avatar.color-b { background: var(--ok-tint);   color: var(--ok); }
-.person .avatar.color-c { background: var(--warn-tint); color: var(--warn); }
-.person .avatar.color-d { background: var(--as-tint);   color: var(--as); }
-.person .avatar.color-e { background: var(--red-tint);  color: var(--red); }
-.person .avatar.color-f { background: var(--surface-3); color: var(--fg); }
+/* Initialen immer neutral grau — keine bunten Avatar-Kaestchen */
 .person .name {
   flex: 1;
   font-size: 20px;
@@ -518,18 +496,18 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   margin-right: -2px;
 }
 .chip.selected {
-  background: var(--ok-tint);
-  color: var(--ok);
-  border-color: var(--ok);
+  background: var(--btn);
+  color: var(--btn-fg);
+  border-color: var(--btn);
   font-weight: 700;
 }
 .chip.selected .plus,
-.chip.selected .dot { color: var(--ok); }
+.chip.selected .dot { color: var(--btn-fg); }
 .chip .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--ok);
+  background: var(--btn-fg);
   display: inline-block;
 }
 .chip.task {
@@ -537,11 +515,10 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   font-weight: 600;
 }
 .chip.task.selected {
-  background: var(--info-tint);
-  color: var(--info);
-  border-color: var(--info);
+  background: var(--btn);
+  color: var(--btn-fg);
+  border-color: var(--btn);
 }
-.chip.task.selected .dot { background: var(--info); }
 
 /* ─── Freitext-Zeile ────────────────────────────────────────── */
 .freeform {
@@ -646,7 +623,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   width: 44px;
   height: 44px;
   border-radius: var(--radius-m);
-  background: var(--red);
+  background: var(--cta);
   color: #fff;
   display: grid;
   place-items: center;
@@ -697,9 +674,9 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   justify-content: center;
   gap: 12px;
   padding: 18px;
-  background: var(--red);
+  background: var(--cta);
   color: #fff;
-  border: 1px solid var(--red-strong);
+  border: 1px solid var(--cta);
   border-radius: var(--radius-m);
   font-family: inherit;
   font-size: 21px;
@@ -707,8 +684,8 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   cursor: pointer;
   width: 100%;
 }
-.cta:hover { background: var(--red-strong); }
-.cta:active { background: #6E0A12; }
+.cta:hover { background: var(--cta-hover); }
+.cta:active { background: var(--cta-hover); }
 .cta:disabled {
   cursor: not-allowed;
   background: var(--fg-4);
@@ -724,9 +701,9 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .cta-secondary button {
   flex: 1;
   padding: 13px 16px;
-  background: var(--surface);
-  color: var(--fg);
-  border: 1px solid var(--border-strong);
+  background: var(--btn);
+  color: var(--btn-fg);
+  border: 1px solid var(--btn);
   border-radius: var(--radius-m);
   font-family: inherit;
   font-size: 17.5px;
@@ -737,17 +714,20 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   justify-content: center;
   gap: 8px;
 }
-.cta-secondary button:hover { background: var(--surface-2); }
-.cta-secondary button:active { background: var(--surface-3); }
+.cta-secondary button:hover { background: var(--btn-hover); }
+.cta-secondary button:active { background: var(--btn-hover); }
 
 /* ─── Kopfzeile ─────────────────────────────────────────────── */
+/* Vollflaechiges Farbband in der Farbe des angemeldeten Fahrzeugs
+   (--hdr, von Topbar gesetzt), weisse Schrift. */
 .appheader {
+  --hdr-c: var(--hdr, var(--hdr-default));
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 12px 24px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border-strong);
+  padding: 10px 24px;
+  background: var(--hdr-c);
+  color: #fff;
   position: sticky;
   top: 0;
   z-index: 50;
@@ -756,7 +736,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   width: 44px;
   height: 44px;
   border-radius: var(--radius-s);
-  background: #111;
+  background: #fff;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -766,29 +746,25 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .appbrand { flex: 1; min-width: 0; }
 .appname {
   font-size: 21px;
-  font-weight: 700;
-  color: var(--fg);
+  font-weight: 800;
+  color: #fff;
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.appname .dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--red);
-}
+.appname .dot { display: none; }
 .appsub {
-  font-size: 14.5px;
-  color: var(--fg-2);
+  font-size: 15px;
+  color: #fff;
   font-weight: 500;
   margin-top: 1px;
 }
+/* Icon-Knopf (neutral) — in der Kopfzeile eigene Faerbung */
 .themetoggle {
   width: 44px;
   height: 44px;
   min-height: 44px;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   background: var(--surface);
   border: 1px solid var(--border-strong);
   color: var(--fg-2);
@@ -799,6 +775,12 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   font-family: inherit;
 }
 .themetoggle:hover { background: var(--surface-3); color: var(--fg); }
+.appheader .themetoggle {
+  background: color-mix(in srgb, #000 24%, var(--hdr-c));
+  border: 1px solid color-mix(in srgb, #fff 40%, var(--hdr-c));
+  color: #fff !important;
+}
+.appheader .themetoggle:hover { background: color-mix(in srgb, #000 38%, var(--hdr-c)); }
 .headerstamp {
   display: flex;
   flex-direction: column;
@@ -808,14 +790,15 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 }
 .headerstamp .time {
   font-size: 22px;
-  font-weight: 700;
-  color: var(--fg);
+  font-weight: 800;
+  color: #fff;
 }
 .headerstamp .meta {
   font-size: 14px;
-  color: var(--fg-3);
+  color: #fff;
   font-weight: 500;
 }
+.appheader :focus-visible { outline-color: #fff; }
 
 /* ─── Seiteninhalt ──────────────────────────────────────────── */
 .page {
@@ -836,13 +819,13 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   .appheader { padding: 10px 16px; gap: 12px; }
   /* V-02: Hochkant rutscht die dritte Grid-Zelle in die zweite Zeile. */
   .grid-3 { grid-template-columns: 1fr 1fr; }
-  .alarm { padding: 20px 20px 18px; border-left-width: 6px; }
+  .alarm { padding: 18px 20px 18px; }
   .alarm-title { font-size: 34px; }
   .alarm-meta { grid-template-columns: repeat(2, 1fr); gap: 4px 0; }
-  .alarm-meta .cell { padding: 6px 14px; border-right: 1px solid var(--border); }
+  .alarm-meta .cell { padding: 6px 14px; border-right: 1px solid rgba(255, 255, 255, 0.35); }
   .alarm-meta .cell:nth-child(2n) { border-right: 0; }
   .alarm-meta .cell:nth-child(-n+2) {
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.35);
     padding-bottom: 10px;
   }
   .alarm-meta .cell:nth-child(n+3) { padding-top: 10px; }
@@ -854,8 +837,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   /* Handy: Fahrzeug-Badge zeigt bereits, wo man angemeldet ist — der
      Textblock "HotDoc / Fahrzeugbericht" wuerde die Knoepfe aus dem Bild
      druecken. Er bleibt nur, wenn kein Badge da ist (kein Fahrzeug-Kontext). */
-  .appheader .appbrand { flex-basis: 100%; order: 5; }
-  .appheader .appbrand .appname { display: none; }
+  .appheader .appbrand { display: none; }
   .applogo { width: 38px; height: 38px; }
   .applogo svg { width: 22px; height: 22px; }
   .appname { font-size: 19px; }
@@ -876,10 +858,10 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
     margin-bottom: 12px;
   }
   .card > .card-head:first-child {
-    margin: -14px -14px 12px;
-    padding: 9px 14px;
+    margin: 0 0 12px;
+    padding: 0 0 7px;
   }
-  .card-title { font-size: 19px; }
+  .card-title { font-size: 16px; }
 
   .alarm { padding: 16px 14px 14px; }
   .alarm-top { flex-direction: column; gap: 12px; }
@@ -940,7 +922,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   .alarm-meta { grid-template-columns: 1fr; padding: 6px; }
   .alarm-meta .cell {
     border-right: 0 !important;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.35);
     padding: 8px 12px !important;
   }
   .alarm-meta .cell:last-child { border-bottom: 0; }
@@ -956,7 +938,6 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   .page { max-width: 1280px; padding: 28px 32px 64px; gap: 16px; }
   .appheader { padding: 12px 32px; }
   .card { padding: 22px 26px; }
-  .card > .card-head:first-child { margin: -22px -26px 18px; padding: 12px 26px; }
   .alarm { padding: 24px 30px 22px; }
   .alarm-title { font-size: 44px; }
 }
@@ -1048,3 +1029,13 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   border-radius: 50%;
   background: currentColor;
 }
+
+/* GPS-Anzeige auf dem Farbband: weisse Marke mit dunkler Schrift */
+.appheader .status-pill {
+  background: #fff;
+  border-color: #fff;
+  color: #2B2B2B;
+}
+.appheader .status-pill.ok     { color: #14582E; }
+.appheader .status-pill.warn   { color: #7A4A00; }
+.appheader .status-pill.danger { color: #A10F1B; }

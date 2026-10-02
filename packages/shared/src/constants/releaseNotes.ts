@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.3.1",
+    date: "2026-10-02",
+    title: "Design nach dem Vorbild professioneller Einsatz-Software",
+    bullets: [
+      "Kopfzeile als Farbband in der Farbe des angemeldeten Fahrzeugs (KDO blau, TLF rot, LFA-B braun, MTF grün, Florian violett) — sofort erkennbar, wo man angemeldet ist.",
+      "Alarm als ruhiger Farbblock mit weißer Schrift; Übungen, Lotsendienste und manuelle Berichte haben ihre eigene Farbe.",
+      "Formular-Optik: Blocküberschriften mit Linie, gefüllte Eingabefelder, dunkelgraue Schaltflächen, Reiter als schlichte Leiste.",
+      "Startseite ohne Grafik-Kacheln: Status und vier große Schaltflächen.",
+      "Handy: kompaktere Kopfzeile, Reiter-Leiste hängt jetzt an der echten Kopfzeilen-Höhe.",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-10-02",
     title: "Neues, ruhigeres Design",

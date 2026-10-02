@@ -423,7 +423,7 @@ export class ErrorBoundary extends Component<Props, State> {
                       padding: "8px 14px",
                       borderRadius: 4,
                       border: 0,
-                      background: "var(--red)",
+                      background: "var(--cta)",
                       color: "#fff",
                       fontSize: 15,
                       fontWeight: 700,

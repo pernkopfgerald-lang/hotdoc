@@ -457,7 +457,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                           <span
                             style={{
                               padding: "1px 8px",
-                              borderRadius: 999,
+                              borderRadius: 4,
                               background: "var(--red-tint)",
                               color: "var(--red)",
                               border: "1px solid var(--red-border)",
@@ -472,7 +472,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                           <span
                             style={{
                               padding: "1px 8px",
-                              borderRadius: 999,
+                              borderRadius: 4,
                               background: "var(--surface-2)",
                               color: "var(--fg-3)",
                               border: "1px solid var(--border)",

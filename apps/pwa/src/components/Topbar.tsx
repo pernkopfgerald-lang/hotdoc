@@ -8,8 +8,8 @@ import {
   Sun,
   WifiOff,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
@@ -80,6 +80,7 @@ export function Topbar({
   onAbout,
 }: Props) {
   const [hilfeOpen, setHilfeOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
 
@@ -92,6 +93,29 @@ export function Topbar({
     if (!fahrzeugId) return;
     const f = FAHRZEUGE[fahrzeugId];
     document.title = `HotDoc · ${fahrzeugId === "zentrale" ? "FLORIAN" : f.bezeichnung}`;
+  }, [fahrzeugId]);
+
+  // Echte Hoehe der (ggf. umbrechenden) Kopfzeile an die sticky Tab-Leiste
+  // weiterreichen — am Handy ist sie hoeher als die feste CSS-Annahme.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const apply = () =>
+      document.documentElement.style.setProperty("--topbar-h", `${el.offsetHeight}px`);
+    apply();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Fahrzeugfarbe auch als Akzent (Linie unter den Kartenueberschriften)
+  useEffect(() => {
+    const root = document.documentElement;
+    if (fahrzeugId) root.style.setProperty("--accent", FAHRZEUG_FARBE[fahrzeugId]);
+    return () => {
+      root.style.removeProperty("--accent");
+    };
   }, [fahrzeugId]);
 
   useEffect(() => {
@@ -140,10 +164,25 @@ export function Topbar({
 
   return (
     <header
+      ref={headerRef}
       className="appheader"
-      style={fahrzeugId ? { borderBottom: `5px solid ${FAHRZEUG_FARBE[fahrzeugId]}` } : undefined}
+      style={
+        fahrzeugId
+          ? ({ "--hdr": FAHRZEUG_FARBE[fahrzeugId] } as CSSProperties)
+          : undefined
+      }
     >
-      <BrandLogo variant="mark" size={44} />
+      <span
+        style={{
+          display: "inline-flex",
+          background: "#fff",
+          borderRadius: 4,
+          padding: "2px 4px",
+          flexShrink: 0,
+        }}
+      >
+        <BrandLogo variant="mark" size={40} />
+      </span>
 
       {/* Hotfix 2026-09: gross und farbig — sofort erkennbar, an welchem
           Fahrzeug (Kommando / TLF / LFA-B / MTF) bzw. an der Florianstation
@@ -156,18 +195,17 @@ export function Topbar({
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            padding: "4px 16px",
-            borderRadius: 5,
-            background: FAHRZEUG_FARBE[fahrzeugId],
+            padding: "0 16px 0 4px",
+            borderRight: "1px solid rgba(255,255,255,0.5)",
             color: "#fff",
             lineHeight: 1.1,
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.02em" }}>
+          <span style={{ fontSize: 28, fontWeight: 800 }}>
             {fahrzeugId === "zentrale" ? "FLORIAN" : FAHRZEUGE[fahrzeugId].bezeichnung}
           </span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.92 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 500 }}>
             {FAHRZEUGE[fahrzeugId].funkrufname}
           </span>
         </div>

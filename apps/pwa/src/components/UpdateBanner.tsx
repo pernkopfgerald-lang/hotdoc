@@ -261,7 +261,7 @@ export function UpdateBanner() {
           style={{
             height: 3,
             background: "rgba(255,255,255,0.18)",
-            borderRadius: 999,
+            borderRadius: 4,
             overflow: "hidden",
           }}
         >

@@ -1,5 +1,6 @@
 import { STICHWORT_STUFEN, type StichwortStufe } from "@hotdoc/shared";
-import { AlertTriangle, GraduationCap, MapPin, Play, Plus, Siren } from "lucide-react";
+import type { CSSProperties } from "react";
+import { AlertTriangle, GraduationCap, MapPin, Play, Plus } from "lucide-react";
 
 export interface AlarmDaten {
   alarmId: string;
@@ -48,33 +49,9 @@ interface Props {
  * erkennbar.
  */
 const TYP_OPTIK = {
-  uebung: {
-    tag: "Übung",
-    Icon: GraduationCap,
-    farbe: "var(--ok)",
-    tint: "var(--ok-tint)",
-    border: "var(--ok-border)",
-    glow: "var(--glow-ok)",
-    bannerShadow: "0 4px 12px -4px rgba(4,120,87,0.45)",
-  },
-  manuell: {
-    tag: "Manuell angelegt",
-    Icon: Plus,
-    farbe: "var(--info)",
-    tint: "var(--info-tint)",
-    border: "var(--blue-border)",
-    glow: "var(--glow-info)",
-    bannerShadow: "0 4px 12px -4px rgba(29,78,216,0.45)",
-  },
-  lotsendienst: {
-    tag: "Lotsendienst",
-    Icon: MapPin,
-    farbe: "var(--warn)",
-    tint: "var(--warn-tint)",
-    border: "var(--warn-border)",
-    glow: "var(--glow-warn)",
-    bannerShadow: "0 4px 12px -4px rgba(180,83,9,0.45)",
-  },
+  uebung: { tag: "Übung", Icon: GraduationCap, solid: "#1D6B3B" },
+  manuell: { tag: "Manuell angelegt", Icon: Plus, solid: "#1B4F94" },
+  lotsendienst: { tag: "Lotsendienst", Icon: MapPin, solid: "#8A5300" },
 } as const;
 
 /**
@@ -90,7 +67,6 @@ export function AlarmCard({
 }: Props) {
   const optik =
     einsatzTyp && einsatzTyp !== "alarm" ? TYP_OPTIK[einsatzTyp] : null;
-  const TypIcon = optik ? optik.Icon : Siren;
   // E-05/E-06 (Audit 2026-09): Nur ein echter BlaulichtSMS-Alarm hat einen
   // Alarm-Author ("BWST"), ein Stichwort (B-1 …) und eine Alarm-Nummer.
   // Bei Übung/Lotsendienst/manuell waren das leere bzw. irreführende
@@ -100,54 +76,14 @@ export function AlarmCard({
     <section
       className="alarm"
       style={
-        optik
-          ? {
-              // Typ-Optik überschreibt das rote Alarm-Theme.
-              background: `${optik.tint}`,
-              borderColor: optik.border,
-            }
-          : undefined
+        optik ? ({ "--alarm-bg": optik.solid } as CSSProperties) : undefined
       }
     >
-      {optik && (
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 12px",
-            borderRadius: "var(--radius-pill)",
-            background: optik.farbe,
-            color: "#fff",
-            fontFamily: "var(--font-mono)",
-            fontWeight: 800,
-            fontSize: 14,
-            letterSpacing: "var(--tracking-caps)",
-            marginBottom: 12,
-          }}
-        >
-          <TypIcon size={14} strokeWidth={2.4} />
-          {optik.tag}
-        </div>
-      )}
       <div className="alarm-top">
         <div className="alarm-left">
-          <div
-            className="alarm-icon"
-            style={optik ? { background: optik.farbe } : undefined}
-          >
-            <TypIcon size={30} color="#fff" strokeWidth={2} />
-          </div>
           <div>
             <div className="alarm-tags">
-              <span
-                className="alarm-tag"
-                style={optik ? { color: optik.farbe } : undefined}
-              >
-                <span
-                  className="dot"
-                  style={optik ? { background: optik.farbe } : undefined}
-                />
+              <span className="alarm-tag">
                 {optik ? optik.tag : "Aktiver Alarm"}
               </span>
               {istAlarm ? (

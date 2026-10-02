@@ -55,29 +55,29 @@ button,
   gap: 6px;
   min-height: 44px;
   padding: 0 16px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--btn);
   border-radius: var(--radius-m);
-  background: var(--surface);
-  color: var(--fg);
+  background: var(--btn);
+  color: var(--btn-fg);
   font-weight: 600;
   font-size: 17.5px;
   cursor: pointer;
 }
 .btn:hover {
-  background: var(--surface-2);
+  background: var(--btn-hover);
 }
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .btn-primary {
-  background: var(--red);
-  border-color: var(--red-strong);
+  background: var(--cta);
+  border-color: var(--cta);
   color: #fff;
   font-weight: 700;
 }
 .btn-primary:hover {
-  background: var(--red-strong);
+  background: var(--cta-hover);
 }
 
 /* Fokus: deutlicher, einfacher Rahmen (Tastatur/Maus) */
@@ -146,7 +146,7 @@ html {
   font-weight: 700;
 }
 .fzg-self-pin {
-  background: var(--red);
+  background: var(--cta);
   border: 1.5px solid #fff;
   color: #fff;
 }
@@ -226,3 +226,8 @@ html {
 [class*="backdrop-blur"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .shadow-2xl, .shadow-xl, .shadow-lg, .shadow-md { box-shadow: var(--glass-shadow-1) !important; }
 .animate-pulse { animation: none !important; }
+/* v3.1: keine Pillen/Kreise ausser echten Punkten */
+.rounded-full { border-radius: 4px !important; }
+.rounded-full.h-1\.5, .rounded-full.h-2 { border-radius: 50% !important; }
+/* Lesbarkeit: keine Schrift unter 13px, auch wo noch Tailwind-Mini-Klassen haengen */
+.text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[12px\] { font-size: 13px !important; }

@@ -4219,7 +4219,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 display: "inline-block",
                 padding: "4px 14px",
                 borderRadius: "var(--radius-pill)",
-                background: "var(--red)",
+                background: "var(--cta)",
                 color: "#fff",
                 fontWeight: 700,
                 fontSize: "var(--font-sm)",
@@ -4310,7 +4310,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 style={{
                   minWidth: 240,
                   minHeight: 48,
-                  background: "var(--red)",
+                  background: "var(--cta)",
                   borderColor: "var(--red)",
                   color: "#fff",
                   fontWeight: 700,

@@ -83,7 +83,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
                 onClick={() => onSelect(pendingId)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-m px-3 py-3 text-sm font-bold uppercase tracking-[0.06em] text-white"
                 style={{
-                  background: "var(--red)",
+                  background: "var(--cta)",
                   border: "1px solid color-mix(in srgb, var(--red-strong) 60%, #000)",
                   minHeight: 48,
                 }}

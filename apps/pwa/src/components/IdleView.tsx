@@ -1,14 +1,4 @@
-import {
-  AlertTriangle,
-  Archive,
-  CheckCircle2,
-  GraduationCap,
-  Loader2,
-  MapPin,
-  Plus,
-  Radio,
-  UploadCloud,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, UploadCloud } from "lucide-react";
 
 interface Props {
   funkrufname: string;
@@ -62,87 +52,17 @@ export function IdleView({
         paddingTop: 8,
       }}
     >
-      {/* ─── Hero ─── ruhig, kein Alarm, klares „bereit" ──── */}
-      <header
-        style={{
-          textAlign: "center",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 14,
-          padding: "12px 0 4px",
-        }}
-      >
-        <div
-          className="idle-radio-glow"
-          style={{
-            position: "relative",
-            display: "grid",
-            placeItems: "center",
-            width: 76,
-            height: 76,
-            borderRadius: 6,
-            background: "var(--glass-2)",
-            border: "1px solid var(--glass-border)",
-            // D-09: 60px-Halo nur im Default-Light. Lite-Mode killt den
-            // Glow via .idle-radio-glow-Override in design.css.
-            color: "var(--ok)",
-          }}
-        >
-          <Radio size={32} strokeWidth={2} />
-          <span
-            aria-hidden
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: "var(--ok)",
-            }}
-          />
+      {/* ─── Status ─── schlichter Block statt Hero-Grafik ──── */}
+      <section className="card">
+        <div className="card-head">
+          <div className="card-title">Bereit</div>
+          <div className="card-meta">{funkrufname}</div>
         </div>
-        <div>
-          <h1
-            style={{
-              fontSize: 35,
-              fontWeight: 700,
-              letterSpacing: "var(--tracking-display)",
-              color: "var(--fg)",
-              margin: 0,
-              lineHeight: 1.05,
-            }}
-          >
-            Bereit
-          </h1>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 14,
-              fontWeight: 700,
-              letterSpacing: "var(--tracking-caps)",
-              color: "var(--fg-3)",
-              marginTop: 6,
-            }}
-          >
-            {funkrufname} · kein aktiver Einsatz
-          </div>
-        </div>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 16.5,
-            color: "var(--fg-2)",
-            maxWidth: 420,
-            lineHeight: 1.5,
-            letterSpacing: "var(--tracking-ui)",
-          }}
-        >
-          Bei einem Alarm öffnet sich der Bericht automatisch.
-          Sonst kannst du hier selbst einen Bericht starten.
+        <p style={{ margin: 0, fontSize: 18, lineHeight: 1.45, color: "var(--fg)" }}>
+          Kein aktiver Einsatz. Bei einem Alarm öffnet sich der Bericht automatisch.
+          Ohne Alarm kannst du unten selbst einen Bericht starten.
         </p>
-      </header>
+      </section>
 
       {/* ─── Sync-Status (nur sichtbar wenn nicht idle/ok-länger-als-Sekunden) ─ */}
       {syncState && syncState.kind === "uploading" ? (
@@ -262,68 +182,47 @@ export function IdleView({
         </div>
       ) : null}
 
-      {/* ─── Quick-Actions ─── 2×2 große Touch-Cards ────
-          Tablet-Wunsch (2026-06-03): festes 2×2-Raster statt 1×4-Reihe, jede
-          Kachel doppelt so groß → leichter mit Handschuh zu treffen.
-          E-03 (Audit 2026-09): Subtexte als konkrete Beispiele statt
-          Tech-Jargon ("manuell", "AS-Stunden"). */}
+      {/* ─── Bericht starten ─── dunkelgraue Schaltflaechen, 2x2 ────
+          Tablet-Wunsch (2026-06-03): festes 2x2-Raster, grosse Flaechen →
+          mit Handschuh gut zu treffen. Subtexte als konkrete Beispiele. */}
+      <div className="section-head" style={{ paddingTop: 0 }}>
+        <span className="h">Bericht starten</span>
+      </div>
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 16,
+          gap: 12,
         }}
       >
         <QuickActionCard
-          Icon={Plus}
           label="Einsatz ohne Alarm"
           sub="z. B. Türöffnung, Tierrettung"
-          color="var(--info)"
-          glow="var(--glow-info)"
           onClick={() => onNeuerBericht("manuell")}
         />
         <QuickActionCard
-          Icon={GraduationCap}
           label="Übung"
           sub="Schulung, Atemschutz-Training"
-          color="var(--ok)"
-          glow="var(--glow-ok)"
           onClick={() => onNeuerBericht("uebung")}
         />
         <QuickActionCard
-          Icon={MapPin}
           label="Lotsendienst"
           sub="Begleitung für Polizei/Rettung"
-          color="var(--warn)"
-          glow="var(--glow-warn)"
           onClick={() => onNeuerBericht("lotsendienst")}
         />
-        <QuickActionCard
-          Icon={Archive}
-          label="Archiv"
-          sub="letzte Berichte"
-          color="var(--fg-2)"
-          glow="0 12px 28px -8px rgba(15,23,42,0.32)"
-          onClick={onArchiv}
-        />
+        <QuickActionCard label="Archiv" sub="letzte Berichte ansehen" onClick={onArchiv} />
       </div>
     </div>
   );
 }
 
 function QuickActionCard({
-  Icon,
   label,
   sub,
-  color,
-  glow,
   onClick,
 }: {
-  Icon: typeof Plus;
   label: string;
   sub: string;
-  color: string;
-  glow: string;
   onClick: () => void;
 }) {
   return (
@@ -334,64 +233,20 @@ function QuickActionCard({
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
-        gap: 12,
-        // Tablet-Wunsch (2026-06-03): doppelt so große Kacheln.
-        padding: "28px 26px 30px",
-        borderRadius: "var(--radius-l)",
-        border: "1px solid var(--glass-border)",
-        background: "var(--glass-2)",
+        justifyContent: "center",
+        gap: 6,
+        padding: "22px 22px",
+        borderRadius: "var(--radius-m)",
+        border: "1px solid var(--btn)",
+        background: "var(--btn)",
+        color: "var(--btn-fg)",
         cursor: "pointer",
         textAlign: "left",
-        transition:
-          "transform 180ms var(--ease-smooth), box-shadow 180ms var(--ease-smooth), border-color 180ms var(--ease-smooth)",
-        color: "var(--fg)",
-        minHeight: 184,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-2px)";
-        e.currentTarget.style.boxShadow = `var(--glass-shadow-2), ${glow}`;
-        e.currentTarget.style.borderColor = color;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "";
-        e.currentTarget.style.boxShadow = "var(--glass-shadow-2)";
-        e.currentTarget.style.borderColor = "var(--glass-border)";
+        minHeight: 110,
       }}
     >
-      <span
-        style={{
-          display: "grid",
-          placeItems: "center",
-          width: 60,
-          height: 60,
-          borderRadius: 6,
-          background: `color-mix(in srgb, ${color} 16%, transparent)`,
-          color,
-        }}
-      >
-        <Icon size={30} strokeWidth={2.2} />
-      </span>
-      <span
-        style={{
-          fontSize: 26.5,
-          fontWeight: 700,
-          letterSpacing: "var(--tracking-tight)",
-        }}
-      >
-        {label}
-      </span>
-      {/* E-03: Beispiel-Subtexte in Normalschrift — Versalien wuerden
-          "z. B. Türöffnung" unlesbar machen. */}
-      <span
-        style={{
-          fontSize: 15,
-          fontWeight: 500,
-          lineHeight: 1.35,
-          color: "var(--fg-3)",
-        }}
-      >
-        {sub}
-      </span>
+      <span style={{ fontSize: 24, fontWeight: 700 }}>{label}</span>
+      <span style={{ fontSize: 15.5, fontWeight: 400, lineHeight: 1.35 }}>{sub}</span>
     </button>
   );
 }

@@ -137,9 +137,9 @@ function Banner({
   text: string;
 }) {
   const styles = {
-    ok: { color: "var(--ok)", border: "var(--emerald-border)", bg: "var(--ok-tint)", icon: CheckCircle2 },
+    ok: { color: "var(--ok)", border: "var(--border)", bg: "var(--surface)", icon: CheckCircle2 },
     warn: { color: "var(--warn)", border: "var(--amber-border)", bg: "var(--warn-tint)", icon: AlertTriangle },
-    info: { color: "var(--info)", border: "var(--blue-border)", bg: "var(--info-tint)", icon: CheckCircle2 },
+    info: { color: "var(--info)", border: "var(--border)", bg: "var(--surface)", icon: CheckCircle2 },
     danger: { color: "var(--red)", border: "var(--red-border)", bg: "var(--red-tint)", icon: XCircle },
   }[tone];
   const Icon = styles.icon;
@@ -153,7 +153,7 @@ function Banner({
         gap: 10,
         padding: "5px 10px",
         borderRadius: 4,
-        border: `1px ${tone === "danger" ? "solid" : "dashed"} ${styles.border}`,
+        border: `1px solid ${styles.border}`,
         background: styles.bg,
         color: styles.color,
         fontSize: 15,
@@ -164,10 +164,8 @@ function Banner({
         style={{
           padding: "2px 6px",
           borderRadius: 4,
-          background: `${styles.color}26`,
-          fontFamily: "var(--font-mono)",
-          fontSize: 12.5,
-          fontWeight: 700,
+          fontSize: 13,
+          fontWeight: 800,
         }}
       >
         {tag}
