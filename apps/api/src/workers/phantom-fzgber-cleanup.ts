@@ -128,6 +128,10 @@ export function istInhaltlichLeer(b: Record<string, unknown>): boolean {
   if (km.rueckkehr !== undefined && km.rueckkehr !== null) return false;
   const geraete = b.geraete;
   if (Array.isArray(geraete) && geraete.length > 0) return false;
+  // 2026-09: ein mitgefuehrter Anhaenger ist Inhalt (sonst fiele das
+  // Fahrzeug samt Anhaenger-Haken aus dem Hauptbericht).
+  const anhaenger = b.anhaengerMitgenommen;
+  if (Array.isArray(anhaenger) && anhaenger.length > 0) return false;
   const taetigkeit = typeof b.taetigkeitsbericht === "string" ? b.taetigkeitsbericht : "";
   if (taetigkeit.trim().length > 0) return false;
   const saecke = typeof b.oelbindemittelSaecke === "number" ? b.oelbindemittelSaecke : 0;

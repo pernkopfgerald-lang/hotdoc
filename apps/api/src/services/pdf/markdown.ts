@@ -92,6 +92,7 @@ export function renderBerichtMarkdown(d: BerichtDaten, extra: MarkdownExtras): s
       feld("Einsatzende (ISO)", d.einsatzende),
       feld("Einsatzleiter", d.einsatzleiter),
       feld("Einsatzleiter syBOS-Id", d.einsatzleiterPersonId),
+      feld("Stapler eingesetzt", d.staplerEingesetzt ? "Ja" : "Nein"),
       feld("Meldung Einsatzleitung", d.meldungEinsatzleitung ? md(d.meldungEinsatzleitung) : undefined),
     ].join("\n"),
   );
@@ -193,6 +194,7 @@ export function renderBerichtMarkdown(d: BerichtDaten, extra: MarkdownExtras): s
           feld("Fahrer syBOS-Id", fz.fahrerId),
           feld("Fahrzeug-Kdt.", fz.fahrzeugKdt),
           feld("Fahrzeug-Kdt. syBOS-Id", fz.kdtId),
+          feld("Anhänger", fz.anhaenger && fz.anhaenger.length > 0 ? fz.anhaenger.join(", ") : "keine"),
           feld("Ölbindemittel-Säcke", fz.oelSaecke),
         ].join("\n"),
       );

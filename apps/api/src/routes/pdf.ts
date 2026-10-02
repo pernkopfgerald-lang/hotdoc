@@ -407,6 +407,9 @@ async function buildBerichtDaten(
           : {}),
       });
     }
+    const anhaengerLabels = (
+      (fz.anhaengerMitgenommen as string[] | undefined) ?? []
+    ).map((a) => (a === "HR-Anhaenger" ? "HR-Anhänger" : a === "PKW-Anhaenger" ? "PKW-Anhänger" : a));
     const fahrerId = fz.fahrerPersonId as number | undefined;
     const kdtId = fz.fahrzeugKdtPersonId as number | undefined;
     const fahrerName = fahrerId ? await loadPerson(fahrerId) : null;
@@ -441,11 +444,16 @@ async function buildBerichtDaten(
         ? { fahrzeugKdt: `${kdtName.nachname ?? ""} ${kdtName.vorname ?? ""}`.trim() }
         : {}),
       mannschaft: mannschaftResolved,
+      ...(anhaengerLabels.length > 0 ? { anhaenger: anhaengerLabels } : {}),
       // AUDIT-14: Klartext-Bezeichnung aus config:geraete — Fallback auf die
       // Roh-materialId ist Pflicht (unbekannte/gelöschte Material-Ids).
-      geraete: ((fz.geraete as Array<{ materialId: string }> | undefined) ?? []).map(
-        (g) => geraeteLabelMap[fid]?.get(g.materialId) ?? g.materialId,
-      ),
+      // Anhaenger stehen im Fahrzeugblatt zuerst unter "Geraete, Mittel".
+      geraete: [
+        ...anhaengerLabels.map((a) => `${a} (gezogen)`),
+        ...((fz.geraete as Array<{ materialId: string }> | undefined) ?? []).map(
+          (g) => geraeteLabelMap[fid]?.get(g.materialId) ?? g.materialId,
+        ),
+      ],
       oelSaecke: (fz.oelbindemittelSaecke as number | undefined) ?? 0,
       taetigkeitsbericht: String(fz.taetigkeitsbericht ?? ""),
     });
@@ -528,6 +536,7 @@ async function buildBerichtDaten(
     ...(typeof einsatzleiterPersonId === "number" ? { einsatzleiterPersonId } : {}),
     meldungEinsatzleitung: doc.meldungEinsatzleitung as string | undefined,
     ...(bearbeiterName ? { bearbeiter: bearbeiterName } : {}),
+    ...(doc.staplerEingesetzt === true ? { staplerEingesetzt: true } : {}),
     oelbindemittelSaecke: oelbindemittelAggregiert,
     reaktivierungen,
     pflichtbereich: (doc.pflichtbereich as boolean | null | undefined) ?? null,

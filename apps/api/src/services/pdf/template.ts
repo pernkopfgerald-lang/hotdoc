@@ -92,6 +92,8 @@ export interface BerichtDaten {
   meldungEinsatzleitung?: string;
   /** Sachbearbeiter Florianstation (aufgeloester Name aus bearbeiterPersonId). */
   bearbeiter?: string;
+  /** Gabelstapler im Einsatz (von der Florianstation gebucht). */
+  staplerEingesetzt?: boolean;
   oelbindemittelSaecke?: number;
   reaktivierungen?: Array<{ am: string; grund: string }>;
   // Florianstation-Felder (frueher hartkodiert leer)
@@ -166,6 +168,8 @@ export interface BerichtDaten {
       atemschutzDauerMin?: number;
     }>;
     geraete: string[];
+    /** Mitgefuehrte Anhaenger (nur KDO: HR; MTF: HR + PKW), Klartext. */
+    anhaenger?: string[];
     oelSaecke: number;
     taetigkeitsbericht: string;
   }>;
@@ -277,6 +281,13 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   const eingesetzeFzgSet = new Set(
     (d.eingesetzteFahrzeuge ?? []).map((f) => f.abk.toUpperCase()),
   );
+  // Anhaenger/Stapler sind keine eigenen Fahrzeuge mit Tablet — sie werden
+  // ueber die Fahrzeugberichte (KDO/MTF) bzw. die Florianstation gebucht und
+  // hier in der Checkbox-Reihe abgehakt.
+  for (const fz of d.fahrzeugberichte ?? []) {
+    for (const a of fz.anhaenger ?? []) eingesetzeFzgSet.add(a.toUpperCase());
+  }
+  if (d.staplerEingesetzt) eingesetzeFzgSet.add("STAPLER");
   const FAHRZEUGE_REIHE = ["KDO", "TANK", "LFA-B", "PKW-Anhänger", "MTF", "HR-Anhänger", "Stapler"] as const;
 
   return /* html */ `<!doctype html>

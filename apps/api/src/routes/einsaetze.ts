@@ -1353,6 +1353,7 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   "zeitmarken",
   "abschlussOverrideHinweis",
   "bearbeiterPersonId",
+  "staplerEingesetzt",
   "einsatzleiterPersonId",
   "reservePersonIds",
   "lotsendienstAuftraggeber",

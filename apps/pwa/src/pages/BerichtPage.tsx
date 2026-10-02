@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, Map as MapIcon, MapPin, RotateCcw, Save, UploadCloud, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, Map as MapIcon, MapPin, RotateCcw, Save, Truck, UploadCloud, Users } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { APP_VERSION } from "../version";
@@ -63,6 +63,8 @@ import { loadWasserquellen, wasserquelleIconUrl } from "../lib/wasserquellen";
 import { pushGeraeteVerlauf, topGeraeteIds } from "../lib/geraete-recent";
 import { FAHRZEUGE, FLORIAN_POSITION, type FahrzeugId } from "@hotdoc/shared";
 
+type AnhaengerId = "HR-Anhaenger" | "PKW-Anhaenger";
+
 type PickerTarget = { kind: "fahrer" } | { kind: "kdt" } | { kind: "crew"; slot: number };
 
 const ROAD_FACTOR = 1.3;
@@ -125,6 +127,8 @@ interface EinsatzInstance {
   kdt: PickPerson | null;
   mannschaft: MannschaftSlotData[];
   gearSelected: Set<string>;
+  /** 2026-09: mitgefuehrte Anhaenger (nur KDO: HR; MTF: HR + PKW). */
+  anhaenger: AnhaengerId[];
   oelSaecke: number;
   auftraege: Auftrag[];
   chronik: ChronikEintrag[];
@@ -200,6 +204,11 @@ function mergeDraftIntoInstance(
     draft.mannschaft.length === fresh.mannschaft.length
   ) {
     merged.mannschaft = draft.mannschaft as MannschaftSlotData[];
+  }
+  if (Array.isArray(draft.anhaenger)) {
+    merged.anhaenger = (draft.anhaenger as unknown[]).filter(
+      (a): a is AnhaengerId => a === "HR-Anhaenger" || a === "PKW-Anhaenger",
+    );
   }
   if (Array.isArray(draft.gearSelected)) {
     merged.gearSelected = new Set(draft.gearSelected as string[]);
@@ -730,6 +739,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           (_, i) => emptySlot(i + 1),
         ),
         gearSelected: new Set(),
+        anhaenger: [],
         oelSaecke: 0,
         auftraege: [],
         chronik: [],
@@ -839,6 +849,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           (_, i) => emptySlot(i + 1),
         ),
         gearSelected: new Set(),
+        anhaenger: [],
         oelSaecke: 0,
         auftraege: [],
         chronik: [],
@@ -1449,6 +1460,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           !!e.kdt ||
           e.mannschaft.some((m) => m.person) ||
           e.gearSelected.size > 0 ||
+          e.anhaenger.length > 0 ||
           e.oelSaecke > 0 ||
           e.auftraege.length > 0;
         if (hasLocalData || e.abgeschlossen) {
@@ -1468,6 +1480,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               atemschutzDauerMin?: number;
             }>;
             geraete?: Array<{ materialId: string }>;
+            anhaengerMitgenommen?: AnhaengerId[];
             oelbindemittelSaecke?: number;
             taetigkeitsbericht?: string;
             zeit?: { von?: string; bis?: string };
@@ -1562,6 +1575,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 gearSelected: new Set(
                   (mine.geraete ?? []).map((g) => g.materialId),
                 ),
+                anhaenger: mine.anhaengerMitgenommen ?? x.anhaenger,
                 oelSaecke: mine.oelbindemittelSaecke ?? 0,
                 auftraege: restoredAufts,
                 uhrzeitBisHHMM: uhrzeitBis,
@@ -1843,6 +1857,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     active?.kdt,
     active?.mannschaft,
     active?.gearSelected,
+    active?.anhaenger,
     active?.oelSaecke,
     active?.auftraege,
     active?.alarm.alarmierungZeit,
@@ -2315,6 +2330,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           )
           .filter((x): x is NonNullable<typeof x> => x !== null),
         geraete: Array.from(einsatz.gearSelected).map((id) => ({ materialId: id })),
+        anhaengerMitgenommen: einsatz.anhaenger,
         oelbindemittelSaecke: Math.max(0, Math.min(99, Math.floor(einsatz.oelSaecke))),
         taetigkeitsbericht: einsatz.auftraege.map((a) => `· ${a.text}`).join("\n"),
         status: "abgeschlossen" as const,
@@ -2568,6 +2584,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         geraete: Array.from(einsatz.gearSelected).map((id) => ({
           materialId: id,
         })),
+        anhaengerMitgenommen: einsatz.anhaenger,
         oelbindemittelSaecke: Math.max(
           0,
           Math.min(99, Math.floor(einsatz.oelSaecke)),
@@ -3420,6 +3437,91 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 ))}
               </div>
             </section>
+
+            {/* 2026-09: Anhaenger — keine eigenen Fahrzeuge mit Tablet, sondern
+                Zusatzausruestung von KDO (nur HR-Anhaenger) und MTF (HR- und
+                PKW-Anhaenger). Gross und deutlich, damit sie nicht in der
+                Geraeteliste untergehen; im Hauptbericht werden sie in der
+                Fahrzeug-Reihe abgehakt. */}
+            {fahrzeugId === "kdo" || fahrzeugId === "mtf" ? (
+              <section className="card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <Truck size={20} />
+                    Anhänger
+                  </div>
+                  <span className="card-meta">
+                    {active.anhaenger.length > 0
+                      ? `${active.anhaenger.length} angehängt`
+                      : "keiner angehängt"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+                  {(
+                    [
+                      { id: "HR-Anhaenger", label: "Höhenretter-Anhänger (HR)" },
+                      ...(fahrzeugId === "mtf"
+                        ? [{ id: "PKW-Anhaenger", label: "PKW-Transportanhänger" }]
+                        : []),
+                    ] as Array<{ id: AnhaengerId; label: string }>
+                  ).map((opt) => {
+                    const an = active.anhaenger.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={!!active.abgeschlossen}
+                        aria-pressed={an}
+                        onClick={() =>
+                          patchActive((x) => ({
+                            ...x,
+                            anhaenger: an
+                              ? x.anhaenger.filter((i) => i !== opt.id)
+                              : [...x.anhaenger, opt.id],
+                          }))
+                        }
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          minHeight: 64,
+                          padding: "10px 16px",
+                          borderRadius: 12,
+                          textAlign: "left",
+                          fontSize: 18,
+                          fontWeight: 700,
+                          cursor: active.abgeschlossen ? "not-allowed" : "pointer",
+                          color: an ? "#fff" : "var(--fg)",
+                          background: an ? "var(--ok, #059669)" : "var(--surface-2)",
+                          border: an ? "2px solid var(--ok, #059669)" : "2px dashed var(--border-strong)",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "grid",
+                            placeItems: "center",
+                            width: 30,
+                            height: 30,
+                            borderRadius: 8,
+                            border: an ? "2px solid #fff" : "2px solid var(--border-strong)",
+                            fontSize: 20,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {an ? "✓" : ""}
+                        </span>
+                        <span style={{ flex: 1 }}>
+                          {opt.label}
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 500, opacity: 0.85 }}>
+                            {an ? "angehängt — wird im Hauptbericht abgehakt" : "antippen = angehängt"}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
 
             {/* #163 (Test 2026-06-03): Chronik direkt nach Mannschaft — vor
                 Geräte/Auftrag/Karte. Im Live-Einsatz ist der nächste Eintrag

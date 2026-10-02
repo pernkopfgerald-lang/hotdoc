@@ -223,6 +223,13 @@ export const EinsatzSchema = z.object({
    */
   reservePersonIds: z.array(z.number().int().positive()).default([]),
 
+  /**
+   * 2026-09: Gabelstapler im Einsatz — wird nur von der Florianstation
+   * gebucht (kein eigenes Fahrzeug/Tablet) und im Hauptbericht in der
+   * Fahrzeug-Checkbox-Reihe abgehakt. Optional (Bestandsberichte valide).
+   */
+  staplerEingesetzt: z.boolean().optional(),
+
   /** Aggregiert aus Fahrzeugberichten (oelbindemittelSaecke). */
   oelbindemittel: z
     .object({

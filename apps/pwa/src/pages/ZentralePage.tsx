@@ -69,6 +69,8 @@ interface FahrzeugberichtApiDoc {
   fahrerPersonId?: number;
   fahrzeugKdtPersonId?: number;
   oelbindemittelSaecke?: number;
+  /** 2026-09: mitgefuehrte Anhaenger (KDO: HR, MTF: HR + PKW). */
+  anhaengerMitgenommen?: string[];
   status?: "in_arbeit" | "abgeschlossen";
 }
 
@@ -128,6 +130,7 @@ interface EinsatzApiDoc {
   einsatzleiterPersonId?: number;
   bearbeiterPersonId?: number;
   reservePersonIds?: number[];
+  staplerEingesetzt?: boolean;
   // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Block.
   technischeStatistik?: {
     personenRettung?: {
@@ -179,6 +182,8 @@ interface EditorState {
   /** Hotfix 2026-09: Beginn (Alarmierung) manuell aenderbar — Datum "YYYY-MM-DD" + Uhrzeit "HH:MM" (lokal). */
   alarmDatum: string;
   alarmUhrzeit: string;
+  /** 2026-09: Gabelstapler im Einsatz (nur ueber die Florianstation gebucht). */
+  staplerEingesetzt: boolean;
   lageUnterKontrolleHHMM: string;          // "HH:MM" — wird beim Save in ISO konvertiert
   brandAusHHMM: string;
   // String-Listen (vorher Enum-Typen) — die Auswahl im Backoffice gewachsen.
@@ -221,6 +226,7 @@ const EMPTY_EDITOR: EditorState = {
   anruferTel: "",
   alarmDatum: "",
   alarmUhrzeit: "",
+  staplerEingesetzt: false,
   lageUnterKontrolleHHMM: "",
   brandAusHHMM: "",
   beteiligteStellen: [],
@@ -403,6 +409,7 @@ interface FahrzeugStatusEintrag {
   mannschaftNamen: string[];
   asAktiv: number;
   oelSaecke: number;
+  anhaenger?: string[];
   /** Nur bei status "anderswo": Einsatzort + ID des parallelen Einsatzes. */
   anderswoOrt?: string;
   anderswoEinsatzId?: string;
@@ -1388,6 +1395,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       anruferTel: aktiverEinsatz.anruferTel ?? "",
       alarmDatum: isoToYMD(aktiverEinsatz.alarmierungZeit),
       alarmUhrzeit: isoToHHMM(aktiverEinsatz.alarmierungZeit),
+      staplerEingesetzt: aktiverEinsatz.staplerEingesetzt === true,
       lageUnterKontrolleHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.lageUnterKontrolle),
       brandAusHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.brandAus),
       beteiligteStellen: aktiverEinsatz.beteiligteStellen ?? [],
@@ -1555,6 +1563,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           0,
         ).toISOString();
       }
+      body.staplerEingesetzt = editor.staplerEingesetzt;
       if (editor.pflichtbereich !== null) body.pflichtbereich = editor.pflichtbereich;
       if (editor.einsatzzoneEzell !== null) body.einsatzzoneEzell = editor.einsatzzoneEzell;
       if (editor.ueberOertlicheHilfe !== null)
@@ -2208,6 +2217,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       mannschaftNamen,
       asAktiv,
       oelSaecke: bericht.oelbindemittelSaecke ?? 0,
+      ...((bericht.anhaengerMitgenommen ?? []).length > 0
+        ? { anhaenger: bericht.anhaengerMitgenommen }
+        : {}),
     };
   });
 
@@ -3208,6 +3220,28 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     <div className="crew-name" style={{ flex: "0 1 auto" }}>
                       {fz.funkrufname}
                     </div>
+                    {/* 2026-09: Anhaenger deutlich sichtbar (KDO/MTF) */}
+                    {(f.anhaenger ?? []).map((a) => (
+                      <span
+                        key={a}
+                        title="Anhänger angehängt"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "3px 10px",
+                          borderRadius: 999,
+                          fontSize: 13.5,
+                          fontWeight: 800,
+                          color: "#fff",
+                          background: "var(--ok, #059669)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Truck size={13} />
+                        {a === "HR-Anhaenger" ? "HR-Anhänger" : a === "PKW-Anhaenger" ? "PKW-Anhänger" : a}
+                      </span>
+                    ))}
                     <div
                       style={{
                         fontFamily: "var(--font-mono)",
@@ -3695,6 +3729,52 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               lang="de-AT"
             />
           </div>
+
+          {/* 2026-09: Gabelstapler wird nur hier (Florianstation) gebucht —
+              kein eigenes Fahrzeug/Tablet. Haken erscheint im Hauptbericht. */}
+          <button
+            type="button"
+            disabled={schreibschutz}
+            aria-pressed={editor.staplerEingesetzt}
+            onClick={() => patchEditor({ staplerEingesetzt: !editor.staplerEingesetzt })}
+            style={{
+              marginTop: 14,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              width: "100%",
+              minHeight: 56,
+              padding: "8px 16px",
+              borderRadius: 12,
+              fontSize: 17,
+              fontWeight: 700,
+              textAlign: "left",
+              cursor: schreibschutz ? "not-allowed" : "pointer",
+              color: editor.staplerEingesetzt ? "#fff" : "var(--fg)",
+              background: editor.staplerEingesetzt ? "var(--ok, #059669)" : "var(--surface-2)",
+              border: editor.staplerEingesetzt
+                ? "2px solid var(--ok, #059669)"
+                : "2px dashed var(--border-strong)",
+            }}
+          >
+            <span
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                border: editor.staplerEingesetzt ? "2px solid #fff" : "2px solid var(--border-strong)",
+                flexShrink: 0,
+              }}
+            >
+              {editor.staplerEingesetzt ? "✓" : ""}
+            </span>
+            Gabelstapler im Einsatz
+            <span style={{ fontSize: 13, fontWeight: 500, opacity: 0.85 }}>
+              {editor.staplerEingesetzt ? "— wird im Hauptbericht abgehakt" : "— antippen zum Buchen"}
+            </span>
+          </button>
 
           <div
             style={{
