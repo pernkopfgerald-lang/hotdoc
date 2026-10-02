@@ -1,5 +1,6 @@
 import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Clock, Minus, Plus, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Hotfix 2026-09: Datum-/Uhrzeit-Auswahl als Pop-Up (die nativen
@@ -94,7 +95,11 @@ function ModalShell({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  // Per Portal an document.body: die Karten der App haben backdrop-filter/
+  // transform (Glas-Optik) und werden dadurch zum Containing-Block fuer
+  // position:fixed — das Pop-Up wuerde sonst IN der Karte abgeschnitten und
+  // von Nachbar-Elementen ueberdeckt werden.
+  return createPortal(
     <div
       style={{
         position: "fixed",
@@ -148,7 +153,8 @@ function ModalShell({
         </header>
         <div style={{ padding: 16 }}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
