@@ -47,7 +47,7 @@ export function AboutSection() {
               placeItems: "center",
               width: 56,
               height: 56,
-              borderRadius: 6,
+              borderRadius: 10,
               background:
                 "var(--red)",
               color: "#fff",

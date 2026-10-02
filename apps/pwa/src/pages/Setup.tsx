@@ -315,7 +315,7 @@ export function Setup({ onSetupDone }: Props) {
             display: "grid",
             placeItems: "center",
             padding: 22,
-            borderRadius: 6,
+            borderRadius: 10,
             background: "var(--glass-2)",
             border: "1px solid var(--glass-border)",
           }}
@@ -497,7 +497,7 @@ export function Setup({ onSetupDone }: Props) {
                     color: isZentrale ? "#fff" : "var(--bg)",
                     width: 44,
                     height: 44,
-                    borderRadius: 5,
+                    borderRadius: 8,
                     boxShadow: isZentrale ? "var(--glow-red-soft)" : "none",
                   }}
                 >
@@ -592,7 +592,7 @@ export function Setup({ onSetupDone }: Props) {
               placeItems: "center",
               width: 44,
               height: 44,
-              borderRadius: 5,
+              borderRadius: 8,
               background: "var(--ok-tint)",
               color: "var(--ok)",
               flexShrink: 0,
@@ -626,7 +626,7 @@ export function Setup({ onSetupDone }: Props) {
               placeItems: "center",
               width: 36,
               height: 36,
-              borderRadius: 4,
+              borderRadius: 6,
               background: "var(--ok)",
               color: "#fff",
               flexShrink: 0,
@@ -697,7 +697,7 @@ export function Setup({ onSetupDone }: Props) {
               width: "min(460px, 100%)",
               background: "var(--surface)",
               border: "1px solid var(--border-strong)",
-              borderRadius: 6,
+              borderRadius: 10,
               padding: 22,
               display: "flex",
               flexDirection: "column",
@@ -712,7 +712,7 @@ export function Setup({ onSetupDone }: Props) {
                   placeItems: "center",
                   width: 42,
                   height: 42,
-                  borderRadius: 5,
+                  borderRadius: 8,
                   background: "var(--warn-tint)",
                   color: "var(--warn)",
                   border: "1px solid var(--amber-border)",
@@ -780,7 +780,7 @@ export function Setup({ onSetupDone }: Props) {
                   border: confirmPinErr
                     ? "1px solid var(--red)"
                     : "1px solid var(--border-strong)",
-                  borderRadius: 4,
+                  borderRadius: 6,
                   color: "var(--fg)",
                   outline: "none",
                 }}
@@ -795,7 +795,7 @@ export function Setup({ onSetupDone }: Props) {
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
-                  borderRadius: 4,
+                  borderRadius: 6,
                   fontSize: 15,
                 }}
               >
@@ -810,7 +810,7 @@ export function Setup({ onSetupDone }: Props) {
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
-                  borderRadius: 4,
+                  borderRadius: 6,
                   fontSize: 15,
                 }}
               >
@@ -830,7 +830,7 @@ export function Setup({ onSetupDone }: Props) {
                   background: "var(--surface-2)",
                   color: "var(--fg)",
                   border: "1px solid var(--border)",
-                  borderRadius: 4,
+                  borderRadius: 6,
                   cursor: busy ? "wait" : "pointer",
                   minHeight: 48,
                 }}

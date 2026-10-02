@@ -8,7 +8,7 @@ import {
   Sun,
   WifiOff,
 } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
@@ -166,17 +166,12 @@ export function Topbar({
     <header
       ref={headerRef}
       className="appheader"
-      style={
-        fahrzeugId
-          ? ({ "--hdr": FAHRZEUG_FARBE[fahrzeugId] } as CSSProperties)
-          : undefined
-      }
     >
       <span
         style={{
           display: "inline-flex",
           background: "#fff",
-          borderRadius: 4,
+          borderRadius: 6,
           padding: "2px 4px",
           flexShrink: 0,
         }}
@@ -195,8 +190,9 @@ export function Topbar({
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            padding: "0 16px 0 4px",
-            borderRight: "1px solid rgba(255,255,255,0.5)",
+            padding: "5px 16px",
+            borderRadius: 8,
+            background: FAHRZEUG_FARBE[fahrzeugId],
             color: "#fff",
             lineHeight: 1.1,
             flexShrink: 0,

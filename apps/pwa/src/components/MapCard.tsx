@@ -653,7 +653,7 @@ export function MapCard({
             marginTop: 12,
             maxHeight: 200,
             overflowY: "auto",
-            borderRadius: 5,
+            borderRadius: 8,
             border: "1px solid var(--border-strong)",
             background: "var(--surface-2)",
             padding: "6px 4px",
@@ -763,7 +763,7 @@ function MapCardTileLayerSwitch({
         gap: 0,
         background: "color-mix(in srgb, var(--surface) 88%, transparent)",
         border: "1px solid var(--border-strong)",
-        borderRadius: 4,
+        borderRadius: 6,
         padding: 2,
       }}
     >
@@ -803,7 +803,7 @@ function MapCardTileLayerSwitch({
               color: active ? "var(--info)" : "var(--fg-2)",
               background: active ? "var(--info-tint)" : "transparent",
               border: 0,
-              borderRadius: 6,
+              borderRadius: 10,
               cursor: "pointer",
               transition: "color 120ms ease, background 120ms ease",
             }}

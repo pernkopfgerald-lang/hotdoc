@@ -21,6 +21,17 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.3.2",
+    date: "2026-10-02",
+    title: "Moderner, klarer, aufgeräumter",
+    bullets: [
+      "Modernere Optik: schiefergraue Kopfzeile, helle bzw. dunkle Schieferflächen, weiche Karten mit dezenten Rundungen — ohne Effekte und ohne Animationen.",
+      "Das angemeldete Fahrzeug steht als farbiger Block in der Kopfzeile (KDO blau, TLF rot, LFA-B braun, MTF grün, Florian violett).",
+      "Reiter mit Unterstrich in der Fahrzeugfarbe, Karten-Überschriften in normaler Schreibweise, ruhige gefüllte Eingabefelder.",
+      "Alarm weiterhin als deutlicher Farbblock mit weißer Schrift.",
+    ],
+  },
+  {
     version: "0.3.1",
     date: "2026-10-02",
     title: "Design nach dem Vorbild professioneller Einsatz-Software",

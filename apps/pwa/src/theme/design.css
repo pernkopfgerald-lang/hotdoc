@@ -18,7 +18,8 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 18px 22px 22px;
+  box-shadow: var(--shadow-card);
+  padding: 20px 24px 24px;
   position: relative;
   overflow: hidden;
 }
@@ -32,23 +33,20 @@
   gap: 12px;
   margin-bottom: 14px;
 }
-/* Kartenueberschrift: fette Versalien, darunter eine Linie in Fahrzeugfarbe
-   (wie ein Blockkopf im Papierformular). Keine Icons, kein Titelband. */
+/* Kartenueberschrift: ruhig, normale Schreibweise, kein Band, keine Linie. */
 .card > .card-head:first-child {
-  margin: 0 0 16px;
-  padding: 0 0 8px;
-  border-bottom: 2px solid var(--accent);
+  margin: 0 0 14px;
+  padding: 0;
 }
 .card-title {
-  font-size: 16.5px;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: 19px;
+  font-weight: 700;
   color: var(--fg);
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.card-title svg { display: none; }
+.card-title svg { width: 20px; height: 20px; color: var(--fg-3); }
 .card-meta {
   font-size: 15px;
   color: var(--fg-3);
@@ -75,7 +73,7 @@
 .input {
   width: 100%;
   background: var(--field);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--radius-m);
   padding: 12px 14px;
   font-family: inherit;
@@ -89,7 +87,7 @@
 .input:focus {
   background: var(--surface);
   border-color: var(--info);
-  box-shadow: inset 0 0 0 1px var(--info);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 25%, transparent);
 }
 .input.num {
   font-variant-numeric: tabular-nums;
@@ -104,7 +102,7 @@
   background: var(--field);
   border-radius: var(--radius-m);
   padding: 2px 4px 2px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
 }
 .input-row.filled { background: var(--field); }
 
@@ -123,7 +121,7 @@ select.input option { color: var(--fg); font-weight: 500; }
 .input-row:focus-within {
   background: var(--surface);
   border-color: var(--info);
-  box-shadow: inset 0 0 0 1px var(--info);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 25%, transparent);
 }
 .input-row input {
   /* V-02 (Audit R3): flex-basis 0 + min-width 0 + width 0 neutralisieren das
@@ -185,7 +183,8 @@ select.input option { color: var(--fg); font-weight: 500; }
 .alarm {
   position: relative;
   border-radius: var(--radius-xl);
-  padding: 20px 24px 20px;
+  box-shadow: var(--shadow-card);
+  padding: 22px 26px 22px;
   background: var(--alarm-bg, #B3121F);
   color: #fff;
   overflow: hidden;
@@ -211,9 +210,8 @@ select.input option { color: var(--fg); font-weight: 500; }
   margin-bottom: 4px;
 }
 .alarm-tag {
-  font-size: 15.5px;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: 16px;
+  font-weight: 700;
   color: #fff;
   display: inline-flex;
   align-items: center;
@@ -247,9 +245,9 @@ select.input option { color: var(--fg); font-weight: 500; }
   grid-template-columns: repeat(4, 1fr);
   gap: 0;
   margin-top: 16px;
-  background: rgba(0, 0, 0, 0.22);
-  border-radius: var(--radius-m);
-  padding: 12px 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-l);
+  padding: 14px 4px;
 }
 .alarm-meta .cell {
   text-align: left;
@@ -287,9 +285,8 @@ select.input option { color: var(--fg); font-weight: 500; }
   margin-top: 4px;
 }
 .section-head .h {
-  font-size: 15.5px;
-  font-weight: 800;
-  text-transform: uppercase;
+  font-size: 16.5px;
+  font-weight: 700;
   color: var(--fg-2);
 }
 .section-head .line { display: none; }
@@ -718,10 +715,10 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .cta-secondary button:active { background: var(--btn-hover); }
 
 /* ─── Kopfzeile ─────────────────────────────────────────────── */
-/* Vollflaechiges Farbband in der Farbe des angemeldeten Fahrzeugs
-   (--hdr, von Topbar gesetzt), weisse Schrift. */
+/* Dunkle Schieferleiste, weisse Schrift; das angemeldete Fahrzeug steht als
+   Farbblock darin (Farbe kommt von Topbar). */
 .appheader {
-  --hdr-c: var(--hdr, var(--hdr-default));
+  --hdr-c: var(--hdr-bg);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -735,7 +732,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .applogo {
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   background: #fff;
   display: grid;
   place-items: center;
@@ -776,11 +773,11 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 }
 .themetoggle:hover { background: var(--surface-3); color: var(--fg); }
 .appheader .themetoggle {
-  background: color-mix(in srgb, #000 24%, var(--hdr-c));
-  border: 1px solid color-mix(in srgb, #fff 40%, var(--hdr-c));
+  background: color-mix(in srgb, #fff 10%, var(--hdr-c));
+  border: 1px solid transparent;
   color: #fff !important;
 }
-.appheader .themetoggle:hover { background: color-mix(in srgb, #000 38%, var(--hdr-c)); }
+.appheader .themetoggle:hover { background: color-mix(in srgb, #fff 20%, var(--hdr-c)); }
 .headerstamp {
   display: flex;
   flex-direction: column;

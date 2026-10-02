@@ -127,7 +127,7 @@ export function HilfeSheet({ open, onClose }: Props) {
           zIndex: 9999,
           background: "var(--surface)",
           border: "1px solid var(--border-strong)",
-          borderRadius: 6,
+          borderRadius: 10,
           boxShadow: "var(--glass-shadow-1)",
           display: "flex",
           flexDirection: "column",
@@ -152,7 +152,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               placeItems: "center",
               width: 36,
               height: 36,
-              borderRadius: 4,
+              borderRadius: 6,
               background: "var(--info-tint)",
               color: "var(--info)",
               border: "1px solid var(--blue-border)",
@@ -189,7 +189,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               height: 40,
               display: "grid",
               placeItems: "center",
-              borderRadius: 4,
+              borderRadius: 6,
               background: "transparent",
               border: 0,
               color: "var(--fg-2)",
@@ -234,7 +234,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                 fontSize: 17.5,
                 background: "var(--surface-2)",
                 border: "1px solid var(--border)",
-                borderRadius: 4,
+                borderRadius: 6,
                 color: "var(--fg)",
                 outline: "none",
               }}
@@ -251,7 +251,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                   height: 28,
                   display: "grid",
                   placeItems: "center",
-                  borderRadius: 6,
+                  borderRadius: 10,
                   background: "transparent",
                   border: 0,
                   cursor: "pointer",
@@ -299,7 +299,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                     style={{
                       background: "var(--surface)",
                       border: "1px solid var(--border)",
-                      borderRadius: 5,
+                      borderRadius: 8,
                       overflow: "hidden",
                     }}
                   >
@@ -325,7 +325,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                           placeItems: "center",
                           width: 30,
                           height: 30,
-                          borderRadius: 4,
+                          borderRadius: 6,
                           background: kat.tint,
                           color: kat.color,
                           flexShrink: 0,
@@ -388,7 +388,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               padding: "12px 14px",
               background: "var(--info-tint)",
               border: "1px solid var(--blue-border)",
-              borderRadius: 4,
+              borderRadius: 6,
               fontSize: 15.5,
               color: "var(--info)",
               lineHeight: 1.55,
@@ -444,7 +444,7 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
       style={{
         background: "var(--surface-2)",
         border: "1px solid var(--border)",
-        borderRadius: 4,
+        borderRadius: 6,
         padding: "12px 14px",
       }}
     >
@@ -488,7 +488,7 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
                 color: "var(--fg-3)",
                 background: "var(--surface-3)",
                 padding: "2px 6px",
-                borderRadius: 4,
+                borderRadius: 6,
               }}
             >
               {tag}
@@ -517,7 +517,7 @@ function highlight(text: string, query: string): ReactNode {
           background: "var(--warn-tint)",
           color: "var(--fg)",
           padding: "1px 2px",
-          borderRadius: 3,
+          borderRadius: 5,
         }}
       >
         {match}

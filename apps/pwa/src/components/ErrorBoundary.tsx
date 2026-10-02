@@ -172,7 +172,7 @@ export class ErrorBoundary extends Component<Props, State> {
           style={{
             width: "min(540px, 100%)",
             background: "var(--surface)",
-            borderRadius: 6,
+            borderRadius: 10,
             border: "1px solid var(--border-strong)",
             padding: 28,
             display: "flex",
@@ -194,7 +194,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 placeItems: "center",
                 width: 48,
                 height: 48,
-                borderRadius: 5,
+                borderRadius: 8,
                 background:
                   "var(--red)",
                 color: "#fff",
@@ -236,7 +236,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div
             style={{
               padding: 12,
-              borderRadius: 4,
+              borderRadius: 6,
               background: "var(--surface-2)",
               border: "1px solid var(--border)",
               fontFamily: "var(--font-mono)",
@@ -258,7 +258,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 flex: "1 1 200px",
                 padding: "12px 18px",
-                borderRadius: 5,
+                borderRadius: 8,
                 border: 0,
                 background:
                   "var(--info)",
@@ -281,7 +281,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 flex: "1 1 200px",
                 padding: "12px 18px",
-                borderRadius: 5,
+                borderRadius: 8,
                 border: "1px solid var(--border-strong)",
                 background: "var(--surface-2)",
                 color: "var(--fg)",
@@ -316,7 +316,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   marginTop: 8,
                   padding: 12,
-                  borderRadius: 4,
+                  borderRadius: 6,
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
                   fontFamily: "var(--font-mono)",
@@ -351,7 +351,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div
               style={{
                 padding: 12,
-                borderRadius: 4,
+                borderRadius: 6,
                 background: "var(--red-tint)",
                 border: "1px solid var(--red-border)",
                 display: "flex",
@@ -376,7 +376,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     alignItems: "center",
                     gap: 8,
                     padding: "10px 16px",
-                    borderRadius: 4,
+                    borderRadius: 6,
                     border: "1px solid var(--red-border)",
                     background: "transparent",
                     color: "var(--red)",
@@ -400,7 +400,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     disabled={this.state.wiping}
                     style={{
                       padding: "8px 12px",
-                      borderRadius: 4,
+                      borderRadius: 6,
                       border: "1px solid var(--border)",
                       background: "transparent",
                       color: "var(--fg)",
@@ -421,7 +421,7 @@ export class ErrorBoundary extends Component<Props, State> {
                       alignItems: "center",
                       gap: 8,
                       padding: "8px 14px",
-                      borderRadius: 4,
+                      borderRadius: 6,
                       border: 0,
                       background: "var(--cta)",
                       color: "#fff",
@@ -443,7 +443,7 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               marginTop: 0,
               padding: 12,
-              borderRadius: 4,
+              borderRadius: 6,
               background: "var(--info-tint)",
               border: "1px dashed var(--blue-border)",
               fontSize: 15,

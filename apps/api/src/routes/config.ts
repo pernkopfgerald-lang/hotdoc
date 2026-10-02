@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.3.1",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.1-release.apk",
+    currentVersion: "0.3.2",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.2-release.apk",
     releaseNotes:
-      "v0.3.1 — Design nach dem Vorbild professioneller Einsatz-Software\n\n• Kopfzeile in der Farbe des angemeldeten Fahrzeugs.\n• Alarm als Farbblock, Formular-Optik mit gefüllten Feldern.\n• Startseite ohne Kacheln.\n• Handy: kompaktere Kopfzeile.",
+      "v0.3.2 — Moderner, klarer, aufgeräumter\n\n• Schiefergraue Kopfzeile, weiche Karten, ruhige Felder.\n• Fahrzeug als Farbblock in der Kopfzeile.\n• Reiter mit Unterstrich.\n• Keine Effekte, keine Animationen.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

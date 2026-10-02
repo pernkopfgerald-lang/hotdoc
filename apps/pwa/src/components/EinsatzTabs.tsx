@@ -42,12 +42,12 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
   if (visible.length === 0) return null;
   return (
     <div
-      className="sticky z-[15] flex items-stretch gap-2 overflow-x-auto px-4 py-2"
+      className="sticky z-[15] flex items-stretch gap-1 overflow-x-auto px-4"
       style={{
         // V-06 (Audit R3): an die echte Topbar-Hoehe gekoppelt (75/71 px).
         top: "var(--topbar-h, 75px)",
-        background: "var(--bg)",
-        borderBottom: "1px solid var(--border-strong)",
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
       }}
     >
       {visible.map((t) => (
@@ -62,12 +62,12 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
       <button
         type="button"
         onClick={onNew}
-        className="flex shrink-0 items-center gap-1.5 px-4 py-2 text-[15px] font-bold"
+        className="my-1.5 ml-2 flex shrink-0 items-center gap-1.5 px-4 text-[15px] font-bold"
         style={{
-          background: "var(--btn)",
-          border: "1px solid var(--btn)",
-          borderRadius: 4,
-          color: "var(--btn-fg)",
+          background: "var(--surface-3)",
+          border: "1px solid transparent",
+          borderRadius: 8,
+          color: "var(--fg)",
         }}
         // U-13: Tooltip + aria-label klarer — der "+"-Button oeffnet eine
         // Auswahl ueber Einsatz / Uebung / Lotsendienst.
@@ -135,12 +135,11 @@ function EinsatzTab({
       /* EL-05 (Audit 2026-06-12): voller Kontext im Tooltip — Einsatzart UND
          Ort, damit bei mehreren ähnlichen Tabs klar ist welcher gemeint ist. */
       title={`${tab.einsatzart}${tab.einsatzort ? " · " + tab.einsatzort : ""}`}
-      className="group flex shrink-0 items-center gap-2.5 px-3.5 py-1.5 text-left cursor-pointer"
+      className="group flex shrink-0 items-center gap-2.5 px-3.5 py-2 text-left cursor-pointer"
       style={{
-        background: active ? "var(--btn)" : "var(--surface)",
-        border: `1px solid ${active ? "var(--btn)" : "var(--border-strong)"}`,
-        borderRadius: 4,
-        color: active ? "var(--btn-fg)" : "var(--fg)",
+        background: "transparent",
+        borderBottom: `3px solid ${active ? "var(--accent)" : "transparent"}`,
+        color: active ? "var(--fg)" : "var(--fg-3)",
       }}
     >
       {/* Typ-Marke: kleines Quadrat in der Typ-Farbe (Alarm rot, manuell blau,
@@ -152,7 +151,7 @@ function EinsatzTab({
           height: 10,
           flexShrink: 0,
           background: closed ? "#1D6B3B" : typStil.farbe,
-          border: active ? "1px solid #fff" : "none",
+          borderRadius: 2,
         }}
       />
       {/* D-14: Status-Icon (CheckCircle/Plus/Siren) reicht — die Sub-Label
@@ -173,7 +172,7 @@ function EinsatzTab({
         {tab.einsatzort ? (
           <span
             className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate text-[13.5px]"
-            style={{ color: active ? "var(--btn-fg)" : "var(--fg-3)" }}
+            style={{ color: "var(--fg-3)" }}
           >
             {tab.einsatzort.length > 30
               ? `${tab.einsatzort.slice(0, 30)}…`
@@ -213,14 +212,14 @@ function EinsatzTab({
             height: 44,
             marginLeft: 4,
             padding: 8,
-            borderRadius: 4,
+            borderRadius: 6,
             background: "transparent",
             border: 0,
-            color: "var(--btn-fg)",
+            color: "var(--fg-3)",
             cursor: "pointer",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--btn-hover)";
+            e.currentTarget.style.background = "var(--surface-3)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";

@@ -152,7 +152,7 @@ function Banner({
         alignItems: "center",
         gap: 10,
         padding: "5px 10px",
-        borderRadius: 4,
+        borderRadius: 6,
         border: `1px solid ${styles.border}`,
         background: styles.bg,
         color: styles.color,
@@ -163,7 +163,7 @@ function Banner({
       <span
         style={{
           padding: "2px 6px",
-          borderRadius: 4,
+          borderRadius: 6,
           fontSize: 13,
           fontWeight: 800,
         }}
