@@ -146,6 +146,7 @@ export async function computeStats(req: StatsRequest): Promise<StatsResponse> {
   const fzgDocs = fzg.rows
     .map((r) => r.doc as FahrzeugBerichtMin | undefined)
     .filter((d): d is FahrzeugBerichtMin => !!d && !!d.einsatzId)
+    .filter((d) => !(d as { entferntAm?: string }).entferntAm)
     .filter((d) => einsatzIdSet.has(d.einsatzId));
 
   // ─── Aggregation ───

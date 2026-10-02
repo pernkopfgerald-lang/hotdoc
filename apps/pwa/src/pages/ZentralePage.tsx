@@ -15,7 +15,9 @@ import {
   MapPin,
   Phone,
   Siren,
+  Trash2,
   Truck,
+  Undo2,
   Users,
   X,
 } from "lucide-react";
@@ -71,6 +73,8 @@ interface FahrzeugberichtApiDoc {
   oelbindemittelSaecke?: number;
   /** 2026-09: mitgefuehrte Anhaenger (KDO: HR, MTF: HR + PKW). */
   anhaengerMitgenommen?: string[];
+  /** 2026-09: von der Florianstation aus dem Hauptbericht entfernt (Soft-Delete). */
+  entferntAm?: string;
   status?: "in_arbeit" | "abgeschlossen";
 }
 
@@ -410,6 +414,8 @@ interface FahrzeugStatusEintrag {
   asAktiv: number;
   oelSaecke: number;
   anhaenger?: string[];
+  /** 2026-09: Fahrzeugbericht wurde entfernt (Wiederherstellen moeglich). */
+  entfernt?: boolean;
   /** Nur bei status "anderswo": Einsatzort + ID des parallelen Einsatzes. */
   anderswoOrt?: string;
   anderswoEinsatzId?: string;
@@ -489,6 +495,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    *  Einsatz-Doc-ID). Der aktive Einsatz liest seine Liste daraus; die
    *  uebrigen liefern die "anderswo"-Info (Fahrzeug schreibt gerade bei
    *  einem parallelen Einsatz) und den Fleet-Status der Lagekarte. */
+  /** 2026-09: IDs der entfernten Fahrzeugberichte je Einsatz + Reload-Trigger. */
+  const [entfernteByEinsatz, setEntfernteByEinsatz] = useState<Record<string, string[]>>({});
+  const [fzgberTick, setFzgberTick] = useState(0);
+  const [fzgberAktionBusy, setFzgberAktionBusy] = useState<string | null>(null);
+  const [fzgberAktionErr, setFzgberAktionErr] = useState<string | null>(null);
   const [fzgberByEinsatz, setFzgberByEinsatz] = useState<
     Record<string, FahrzeugberichtApiDoc[]>
   >({});
@@ -1175,6 +1186,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           }),
         );
         if (cancelled) return;
+        setEntfernteByEinsatz((prev) => {
+          const next = { ...prev };
+          for (const erg of ergebnisse) {
+            if (erg) {
+              next[erg.id] = erg.items.filter((i) => i.entferntAm).map((i) => i.fahrzeugId);
+            }
+          }
+          return next;
+        });
         setFzgberByEinsatz((prev) => {
           const next: Record<string, FahrzeugberichtApiDoc[]> = {};
           // Nicht mehr aktive Einsaetze fallen raus, Fehlschlaege behalten
@@ -1184,7 +1204,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             if (alt) next[id] = alt;
           }
           for (const erg of ergebnisse) {
-            if (erg) next[erg.id] = erg.items;
+            if (erg) next[erg.id] = erg.items.filter((i) => !i.entferntAm);
           }
           return next;
         });
@@ -1201,7 +1221,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       cancelled = true;
       clearInterval(t);
     };
-  }, [aktiveIdsKey, aktiverEinsatzId]);
+  }, [aktiveIdsKey, aktiverEinsatzId, fzgberTick]);
 
   // Live-Positions-Polling. Tablet-Pings landen in einem In-Memory-State
   // im Backend (services/positions-state). Wir pollen alle 3 s — Fahrzeuge
@@ -2138,6 +2158,37 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    * Mannschafts-Zahl = Slots besetzt + Fahrer + Kdt (falls eingetragen).
    * kdt-Name wird über personenMap aus syBosId aufgelöst (Fallback "—").
    */
+  /** 2026-09: Fahrzeugbericht aus dem Hauptbericht entfernen bzw. wiederherstellen. */
+  async function setzeFzgberEntfernt(fzgId: FahrzeugId, entfernen: boolean): Promise<void> {
+    if (!aktiverEinsatzId || schreibschutz) return;
+    const label = FAHRZEUGE[fzgId].funkrufname;
+    if (
+      entfernen &&
+      !window.confirm(
+        `Fahrzeugbericht „${label}" aus dem Hauptbericht entfernen?
+
+Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksichtigt (auch wenn das Tablet weiter synchronisiert). Du kannst es jederzeit wiederherstellen.`,
+      )
+    ) {
+      return;
+    }
+    setFzgberAktionBusy(fzgId);
+    setFzgberAktionErr(null);
+    try {
+      await apiCall(
+        `/api/einsaetze/${encodeURIComponent(aktiverEinsatzId)}/fahrzeugbericht/${encodeURIComponent(fzgId)}/entfernen`,
+        { method: "POST", body: entfernen ? {} : { rueckgaengig: true } },
+      );
+      setFzgberTick((t) => t + 1);
+    } catch (err) {
+      setFzgberAktionErr(
+        err instanceof Error ? err.message : "Aktion fehlgeschlagen.",
+      );
+    } finally {
+      setFzgberAktionBusy(null);
+    }
+  }
+
   const FAHRZEUG_ORDER: FahrzeugId[] = ["kdo", "tlf-a-4000", "lfa-b", "mtf"];
   /**
    * S-08 (Audit R3): Schreibt das Fahrzeug gerade bei einem ANDEREN aktiven
@@ -2183,6 +2234,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         asAktiv: 0,
         oelSaecke: 0,
         mannschaftNamen: [],
+        ...((entfernteByEinsatz[aktiverEinsatzId ?? ""] ?? []).includes(id)
+          ? { entfernt: true }
+          : {}),
       };
     }
     const mannschaftSlots = (bericht.mannschaft ?? []).filter(
@@ -3139,6 +3193,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               <span className="num">{aktivCount}</span> im Einsatz · <span className="num">{abgeschlossenCount}</span> abgeschlossen
             </span>
           </div>
+          {fzgberAktionErr ? (
+            <div
+              role="alert"
+              style={{
+                marginBottom: 8,
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 15,
+                color: "var(--red)",
+                border: "1px solid var(--red-border, #d93b3b)",
+              }}
+            >
+              {fzgberAktionErr}
+            </div>
+          ) : null}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {fahrzeugStatus.map((f) => {
               const fz = FAHRZEUGE[f.id];
@@ -3255,11 +3324,55 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                     >
                       {f.kdt ?? "—"} · {f.mannschaft} Pers.
                     </div>
-                    <div className="crew-meta" style={{ marginLeft: "auto" }}>
-                      <span className={`badge ${badge.cls}`} style={{ gap: 4 }}>
-                        <Icon size={11} />
-                        {badge.label}
-                      </span>
+                    <div className="crew-meta" style={{ marginLeft: "auto", gap: 8 }}>
+                      {f.entfernt ? (
+                        <span className="badge neutral" style={{ gap: 4 }}>
+                          <Trash2 size={11} /> Entfernt
+                        </span>
+                      ) : (
+                        <span className={`badge ${badge.cls}`} style={{ gap: 4 }}>
+                          <Icon size={11} />
+                          {badge.label}
+                        </span>
+                      )}
+                      {/* 2026-09: Loeschen-Knopf (Rueckmeldung Mannschaft): ein
+                          versehentlich bearbeitetes Fahrzeug soll sich aus dem
+                          Hauptbericht entfernen lassen. */}
+                      {(isClickable || f.entfernt) && !schreibschutz ? (
+                        <button
+                          type="button"
+                          disabled={fzgberAktionBusy === f.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            void setzeFzgberEntfernt(f.id, !f.entfernt);
+                          }}
+                          title={
+                            f.entfernt
+                              ? "Fahrzeugbericht wiederherstellen"
+                              : "Fahrzeugbericht aus dem Hauptbericht entfernen"
+                          }
+                          aria-label={
+                            f.entfernt ? "Fahrzeugbericht wiederherstellen" : "Fahrzeugbericht entfernen"
+                          }
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            minHeight: 40,
+                            padding: "0 12px",
+                            borderRadius: 10,
+                            fontSize: 14.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            background: "transparent",
+                            color: f.entfernt ? "var(--info)" : "var(--red)",
+                            border: `1px solid ${f.entfernt ? "var(--blue-border)" : "var(--red-border, #d93b3b)"}`,
+                          }}
+                        >
+                          {f.entfernt ? <Undo2 size={15} /> : <Trash2 size={15} />}
+                          {f.entfernt ? "Wiederherstellen" : "Entfernen"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                   {isSelected ? (

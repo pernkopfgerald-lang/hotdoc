@@ -74,7 +74,10 @@ async function loadFahrzeugberichte(
   });
   return list.rows
     .map((r) => r.doc as Record<string, unknown> | undefined)
-    .filter((d): d is Record<string, unknown> => !!d && d.type === "fahrzeugbericht");
+    .filter(
+      (d): d is Record<string, unknown> =>
+        !!d && d.type === "fahrzeugbericht" && !d.entferntAm,
+    );
 }
 
 /**

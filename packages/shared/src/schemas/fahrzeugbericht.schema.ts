@@ -86,6 +86,17 @@ export const FahrzeugberichtSchema = z.object({
 
   taetigkeitsbericht: z.string().default(""),
 
+  /**
+   * 2026-09: Soft-Delete durch die Florianstation ("Fahrzeug aus dem
+   * Hauptbericht entfernen", z. B. versehentlich im falschen Fahrzeug
+   * eingetragen). Das Doc bleibt erhalten (Wiederherstellen moeglich) und
+   * wird von PDF, Statistik und Abschluss ignoriert. Weitere Tablet-PUTs
+   * lassen das Flag unberuehrt, ein erneutes Synchronisieren bringt das
+   * Fahrzeug also NICHT zurueck. Optional → Bestandsberichte valide.
+   */
+  entferntAm: z.string().datetime({ offset: true }).optional(),
+  entferntVon: z.string().optional(),
+
   status: z.enum(["in_arbeit", "abgeschlossen"]).default("in_arbeit"),
 
   /**

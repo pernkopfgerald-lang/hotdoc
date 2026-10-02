@@ -553,7 +553,9 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
   });
   const fzgDocs = fzgList.rows
     .map((r) => r.doc)
-    .filter((d): d is NonNullable<typeof d> => !!d);
+    // 2026-09: von der Florianstation entfernte Fahrzeugberichte zaehlen weder
+    // als "offen" noch fuer Oel/Zeiten.
+    .filter((d): d is NonNullable<typeof d> => !!d && !(d as { entferntAm?: string }).entferntAm);
   const inArbeitFzgber = fzgDocs.filter(
     (f) => (f as { status?: string }).status === "in_arbeit",
   );
@@ -1678,6 +1680,64 @@ einsaetzeRouter.put(
   }),
 );
 
+// ─── POST /api/einsaetze/:id/fahrzeugbericht/:fzgId/entfernen ──
+// Florianstation: Fahrzeugbericht aus dem Hauptbericht ENTFERNEN (Soft-Delete,
+// z. B. versehentlich im falschen Fahrzeug eingetragen). Ohne das bliebe das
+// Fahrzeug auch nach dem Leeren aller Eintraege im Hauptbericht (die
+// Auto-Strecke zaehlt als Inhalt, jeder Tablet-Sync legt es neu an).
+// Body { rueckgaengig: true } stellt den Bericht wieder her.
+einsaetzeRouter.post(
+  "/api/einsaetze/:id/fahrzeugbericht/:fzgId/entfernen",
+  requireAuth("einsatzleiter"),
+  ah(async (req, res) => {
+    const einsatzId = decodeURIComponent(String(req.params.id));
+    const fahrzeugId = decodeURIComponent(String(req.params.fzgId));
+    const docId = `fzgber:${einsatzId.replace(/^einsatz:/, "")}:${fahrzeugId}`;
+    const rueckgaengig = (req.body as { rueckgaengig?: unknown } | undefined)?.rueckgaengig === true;
+    const einsatz = (await db.get(einsatzId).catch(() => null)) as Record<string, unknown> | null;
+    if (!einsatz) {
+      res.status(404).json({ error: "einsatz_not_found" });
+      return;
+    }
+    if (einsatz.schreibschutz === true) {
+      res.status(423).json({ error: "schreibschutz_aktiv" });
+      return;
+    }
+    for (let versuch = 0; versuch < 2; versuch++) {
+      let existing: Record<string, unknown>;
+      try {
+        existing = (await db.get(docId)) as Record<string, unknown>;
+      } catch (err) {
+        if ((err as { statusCode?: number }).statusCode === 404) {
+          res.status(404).json({ error: "fahrzeugbericht_not_found" });
+          return;
+        }
+        throw err;
+      }
+      const next: Record<string, unknown> = { ...existing, geaendertAm: new Date().toISOString() };
+      if (rueckgaengig) {
+        delete next.entferntAm;
+        delete next.entferntVon;
+      } else {
+        next.entferntAm = new Date().toISOString();
+        next.entferntVon = req.session!.username;
+      }
+      try {
+        const result = await db.insert(next as Parameters<typeof db.insert>[0]);
+        invalidateEinsatzCache();
+        logger.info(
+          { docId, by: req.session!.username, rueckgaengig },
+          rueckgaengig ? "Fahrzeugbericht wiederhergestellt" : "Fahrzeugbericht aus Hauptbericht entfernt",
+        );
+        res.json({ ok: true, id: docId, rev: result.rev, entfernt: !rueckgaengig });
+        return;
+      } catch (err) {
+        if ((err as { statusCode?: number }).statusCode !== 409 || versuch === 1) throw err;
+      }
+    }
+  }),
+);
+
 // ─── POST /api/einsaetze/:id/chronik ──────────────────────────
 // Append-only Endpoint für Einsatzchronik. Wird von jedem Fahrzeug-
 // Tablet aufgerufen wenn ein Diktat / Auftrag / Status-Event eintritt.
@@ -2140,8 +2200,9 @@ einsaetzeRouter.get(
     }
     // Defensiv nachfiltern (Selektor-Semantik lokal abgesichert).
     const fzgbers = (found.docs as Array<Record<string, unknown>>).filter((d) => {
-      const doc = d as { type?: string; fahrzeugId?: string; status?: string };
+      const doc = d as { type?: string; fahrzeugId?: string; status?: string; entferntAm?: string };
       if (doc.type !== "fahrzeugbericht") return false;
+      if (doc.entferntAm) return false;
       if (doc.fahrzeugId !== fahrzeugId) return false;
       if (statusFilter !== "alle" && doc.status !== statusFilter) return false;
       return true;

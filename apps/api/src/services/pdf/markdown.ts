@@ -174,7 +174,7 @@ export function renderBerichtMarkdown(d: BerichtDaten, extra: MarkdownExtras): s
     teile.push("| Abk. | Funkrufname | km gefahren |");
     teile.push("|---|---|---|");
     for (const f of d.eingesetzteFahrzeuge) {
-      teile.push(`| ${f.abk} | ${f.funkrufname} | ${f.kmGefahren} |`);
+      teile.push(`| ${f.abk} | ${f.funkrufname} | ${Math.round(f.kmGefahren * 10) / 10} |`);
     }
   } else {
     teile.push("(keine)");
@@ -189,7 +189,7 @@ export function renderBerichtMarkdown(d: BerichtDaten, extra: MarkdownExtras): s
           feld("Status", fz.status),
           feld("Zeit von", fz.zeitVon ? formatDateTime(fz.zeitVon) : undefined),
           feld("Zeit bis", fz.zeitBis ? formatDateTime(fz.zeitBis) : undefined),
-          feld("km gefahren", fz.kmGefahren),
+          feld("km gefahren", Math.round(fz.kmGefahren * 10) / 10),
           feld("Fahrer", fz.fahrer),
           feld("Fahrer syBOS-Id", fz.fahrerId),
           feld("Fahrzeug-Kdt.", fz.fahrzeugKdt),

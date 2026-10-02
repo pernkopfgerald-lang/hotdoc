@@ -2311,7 +2311,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           von: effektiveVonISO(einsatz),
           bis: bisISO,
         },
-        km: { gefahrenKm: kmGefahren },
+        km: { gefahrenKm: kmFuerBericht(einsatz, kmGefahren) },
         gpsTrack: [],
         ...(einsatz.fahrer?.syBosId ? { fahrerPersonId: einsatz.fahrer.syBosId } : {}),
         ...(einsatz.kdt?.syBosId ? { fahrzeugKdtPersonId: einsatz.kdt.syBosId } : {}),
@@ -2555,7 +2555,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               }
             : {}),
         },
-        km: { gefahrenKm: computeKm() },
+        km: { gefahrenKm: kmFuerBericht(einsatz, computeKm()) },
         gpsTrack: [],
         ...(einsatz.fahrer?.syBosId
           ? { fahrerPersonId: einsatz.fahrer.syBosId }
@@ -4549,6 +4549,38 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
  * der Tag um 24h vorgeschoben. Bei kaputtem Input wird der Alarmierungs-
  * Zeitpunkt selbst zurueckgegeben — defensiv damit kein Crash.
  */
+/**
+ * 2026-09: Die automatische Strecke (Route/Luftlinie × 2) zaehlt NICHT als
+ * Inhalt. Ist im Bericht sonst nichts erfasst (alles geloescht oder nie
+ * etwas eingetragen) und die Strecke nicht manuell gesetzt, wird 0 gesendet —
+ * dann gilt der Bericht serverseitig als leer und das Fahrzeug erscheint
+ * nicht im Hauptbericht. Vorher blieb es wegen der Auto-Strecke dort stehen.
+ */
+function kmFuerBericht(
+  e: {
+    fahrer: unknown;
+    kdt: unknown;
+    mannschaft: Array<{ person?: unknown }>;
+    gearSelected: Set<string>;
+    auftraege: unknown[];
+    oelSaecke: number;
+    anhaenger: unknown[];
+    kmManualOverride: number | null;
+  },
+  km: number,
+): number {
+  const hatInhalt =
+    !!e.fahrer ||
+    !!e.kdt ||
+    e.mannschaft.some((m) => !!m.person) ||
+    e.gearSelected.size > 0 ||
+    e.auftraege.length > 0 ||
+    e.oelSaecke > 0 ||
+    e.anhaenger.length > 0 ||
+    typeof e.kmManualOverride === "number";
+  return hatInhalt ? km : 0;
+}
+
 /** Hotfix 2026-09: "Uhrzeit von" — manueller Override (HH:MM am Tag der
  *  Alarmierung, KEIN Tages-Rollover) oder Auto = Alarmierungszeit. */
 function effektiveVonISO(e: {
