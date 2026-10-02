@@ -175,6 +175,9 @@ interface EditorState {
   einsatzauftragVia: "WAS" | "Funk" | "Telefon" | "Bote" | "Behoerde" | null;
   anrufer: string;
   anruferTel: string;
+  /** Hotfix 2026-09: Beginn (Alarmierung) manuell aenderbar — Datum "YYYY-MM-DD" + Uhrzeit "HH:MM" (lokal). */
+  alarmDatum: string;
+  alarmUhrzeit: string;
   lageUnterKontrolleHHMM: string;          // "HH:MM" — wird beim Save in ISO konvertiert
   brandAusHHMM: string;
   // String-Listen (vorher Enum-Typen) — die Auswahl im Backoffice gewachsen.
@@ -215,6 +218,8 @@ const EMPTY_EDITOR: EditorState = {
   einsatzauftragVia: null,
   anrufer: "",
   anruferTel: "",
+  alarmDatum: "",
+  alarmUhrzeit: "",
   lageUnterKontrolleHHMM: "",
   brandAusHHMM: "",
   beteiligteStellen: [],
@@ -285,6 +290,13 @@ function isoToHHMM(iso?: string): string {
   } catch {
     return "";
   }
+}
+
+function isoToYMD(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function hhmmToIso(hhmm: string, refDateIso: string): string | undefined {
@@ -1373,6 +1385,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       einsatzauftragVia: aktiverEinsatz.einsatzauftragVia ?? null,
       anrufer: aktiverEinsatz.anrufer ?? "",
       anruferTel: aktiverEinsatz.anruferTel ?? "",
+      alarmDatum: isoToYMD(aktiverEinsatz.alarmierungZeit),
+      alarmUhrzeit: isoToHHMM(aktiverEinsatz.alarmierungZeit),
       lageUnterKontrolleHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.lageUnterKontrolle),
       brandAusHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.brandAus),
       beteiligteStellen: aktiverEinsatz.beteiligteStellen ?? [],
@@ -1520,6 +1534,26 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           gesamtSaecke: Math.max(0, Math.floor(editor.oelSaecke)),
         },
       };
+      // Hotfix 2026-09: Beginn nur senden, wenn Datum/Uhrzeit wirklich vom
+      // Server-Stand abweichen (Sekunden der Auto-Zeit bleiben sonst erhalten).
+      const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(editor.alarmDatum);
+      const tm = /^(\d{2}):(\d{2})$/.exec(editor.alarmUhrzeit);
+      if (
+        dm &&
+        tm &&
+        (editor.alarmDatum !== isoToYMD(aktiverEinsatz?.alarmierungZeit) ||
+          editor.alarmUhrzeit !== isoToHHMM(aktiverEinsatz?.alarmierungZeit))
+      ) {
+        body.alarmierungZeit = new Date(
+          Number(dm[1]),
+          Number(dm[2]) - 1,
+          Number(dm[3]),
+          Number(tm[1]),
+          Number(tm[2]),
+          0,
+          0,
+        ).toISOString();
+      }
       if (editor.pflichtbereich !== null) body.pflichtbereich = editor.pflichtbereich;
       if (editor.einsatzzoneEzell !== null) body.einsatzzoneEzell = editor.einsatzzoneEzell;
       if (editor.ueberOertlicheHilfe !== null)
@@ -3625,8 +3659,28 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             </span>
           </div>
           <div className="grid-3" style={{ gap: 14 }}>
-            <ReadOnly label="Datum" value={datumStr} />
-            <ReadOnly label="Alarmiert" value={formatTime(alarmierungZeit)} />
+            {/* Hotfix 2026-09: Datum + Uhrzeit editierbar (z. B. Bericht erst
+                Minuten nach Einsatzbeginn angelegt). */}
+            <div className="field">
+              <label className="caption">Datum</label>
+              <input
+                type="date"
+                className="input"
+                value={editor.alarmDatum}
+                onChange={(e) => patchEditor({ alarmDatum: e.target.value })}
+                disabled={schreibschutz}
+              />
+            </div>
+            <div className="field">
+              <label className="caption">Alarmiert / Beginn</label>
+              <input
+                type="time"
+                className="input"
+                value={editor.alarmUhrzeit}
+                onChange={(e) => patchEditor({ alarmUhrzeit: e.target.value })}
+                disabled={schreibschutz}
+              />
+            </div>
             <ReadOnly label="Auslöser" value={alarmierungAuthor} />
           </div>
           <div className="field" style={{ marginTop: 14 }}>

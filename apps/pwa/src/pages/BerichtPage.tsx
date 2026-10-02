@@ -138,6 +138,8 @@ interface EinsatzInstance {
    *  Betrifft NUR dieses Fahrzeug (zeit.von im Fahrzeugbericht) — die
    *  Einsatz-Alarmzeit selbst bleibt unangetastet. */
   uhrzeitVonHHMM: string;
+  /** Hotfix 2026-09: manuell gesetztes Datum ("YYYY-MM-DD") des Beginns. Leer = Alarmdatum. */
+  datumVonYMD: string;
   /** Manueller KM-Override durch den Fahrzeugkdt. null = Auto-Wert aus
    *  GraphHopper-Route × 2 (oder Luftlinie × 1.3 × 2 als Fallback). */
   kmManualOverride: number | null;
@@ -209,6 +211,9 @@ function mergeDraftIntoInstance(
   }
   if (typeof draft.uhrzeitVonHHMM === "string") {
     merged.uhrzeitVonHHMM = draft.uhrzeitVonHHMM;
+  }
+  if (typeof draft.datumVonYMD === "string") {
+    merged.datumVonYMD = draft.datumVonYMD;
   }
   if (typeof draft.kmManualOverride === "number") {
     merged.kmManualOverride = draft.kmManualOverride;
@@ -730,6 +735,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         abgeschlossen: null,
         uhrzeitBisHHMM: "",
         uhrzeitVonHHMM: "",
+        datumVonYMD: "",
         kmManualOverride: null,
         kdtIstEinsatzleiter: fahrzeugId === "kdo",
       };
@@ -838,6 +844,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         abgeschlossen: persisted,
         uhrzeitBisHHMM: "",
         uhrzeitVonHHMM: "",
+        datumVonYMD: "",
         kmManualOverride: null,
         // Issue 12 (Einsatz-Test 2026-06-02): KDO-Kdt ist Auto-Default-EL.
         // Wenn der Einsatz von einem KDO-Tablet aus betreut wird, ist der
@@ -971,6 +978,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             // sein PUT ueberschreibt den Server ohnehin.
             const zeitChanged =
               !e.uhrzeitVonHHMM &&
+              !e.datumVonYMD &&
               typeof api.alarmierungZeit === "string" &&
               !Number.isNaN(Date.parse(api.alarmierungZeit)) &&
               Date.parse(api.alarmierungZeit) !== Date.parse(e.alarm.alarmierungZeit);
@@ -1526,7 +1534,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               // Manuell gesetzte "Uhrzeit von" zurueckparsen: nur wenn sie
               // von der Alarmzeit abweicht (sonst bleibt es Auto).
               let uhrzeitVon = x.uhrzeitVonHHMM;
-              if (mine.zeit?.von && !x.uhrzeitVonHHMM) {
+              let datumVon = x.datumVonYMD;
+              if (mine.zeit?.von && !x.uhrzeitVonHHMM && !x.datumVonYMD) {
                 const dv = new Date(mine.zeit.von);
                 const da = new Date(x.alarm.alarmierungZeit);
                 if (
@@ -1537,11 +1546,15 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   uhrzeitVon = `${String(dv.getHours()).padStart(2, "0")}:${String(
                     dv.getMinutes(),
                   ).padStart(2, "0")}`;
+                  datumVon = `${dv.getFullYear()}-${String(dv.getMonth() + 1).padStart(2, "0")}-${String(
+                    dv.getDate(),
+                  ).padStart(2, "0")}`;
                 }
               }
               return {
                 ...x,
                 uhrzeitVonHHMM: uhrzeitVon,
+                datumVonYMD: datumVon,
                 fahrer: personById(mine.fahrerPersonId) ?? x.fahrer,
                 kdt: personById(mine.fahrzeugKdtPersonId) ?? x.kdt,
                 mannschaft: m,
@@ -1850,7 +1863,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           einsatzort: active.alarm.einsatzort,
           // Hotfix 2026-09: nur bei manueller Aenderung mitschicken, damit ein
           // unveraenderter Wert nie fremde Korrekturen ueberschreibt.
-          ...(active.uhrzeitVonHHMM
+          ...(active.uhrzeitVonHHMM || active.datumVonYMD
             ? { alarmierungZeit: effektiveVonISO(active) }
             : {}),
           ...(active.alarm.koordinaten
@@ -1869,6 +1882,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     active?.alarm.einsatzort,
     active?.alarm.koordinaten,
     active?.uhrzeitVonHHMM,
+    active?.datumVonYMD,
   ]);
 
   // Chronik-Cross-Sync — alle 8 s neue Einträge der anderen Fahrzeuge holen.
@@ -2811,7 +2825,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   ];
 
   const datum = active ? new Date(active.alarm.alarmierungZeit) : new Date();
-  const datumStr = `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`;
   const zeitStr = `${pad(datum.getHours())}:${pad(datum.getMinutes())}`;
   // E-05 (Audit 2026-09): Vokabular typabhaengig — nur ein BlaulichtSMS-
   // Alarm wurde "alarmiert", alles andere wurde "angelegt".
@@ -2985,8 +2998,25 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 <div className="field">
                   <label className="caption">Datum</label>
                   <div className="input-row filled">
-                    <input value={datumStr} readOnly />
-                    <AutoPill title={autoPillTitle} />
+                    <input
+                      type="date"
+                      value={
+                        active.datumVonYMD ||
+                        `${datum.getFullYear()}-${pad(datum.getMonth() + 1)}-${pad(datum.getDate())}`
+                      }
+                      onChange={(e) =>
+                        patchActive((x) => ({ ...x, datumVonYMD: e.target.value }))
+                      }
+                      disabled={!!active.abgeschlossen}
+                      className="num"
+                    />
+                    {active.datumVonYMD ? (
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", color: "var(--info)", marginRight: 4, whiteSpace: "nowrap" }}>
+                        manuell geändert
+                      </span>
+                    ) : (
+                      <AutoPill title={autoPillTitle} />
+                    )}
                   </div>
                 </div>
                 <div className="field">
@@ -4425,13 +4455,19 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
  */
 /** Hotfix 2026-09: "Uhrzeit von" — manueller Override (HH:MM am Tag der
  *  Alarmierung, KEIN Tages-Rollover) oder Auto = Alarmierungszeit. */
-function effektiveVonISO(e: { alarm: { alarmierungZeit: string }; uhrzeitVonHHMM: string }): string {
+function effektiveVonISO(e: {
+  alarm: { alarmierungZeit: string };
+  uhrzeitVonHHMM: string;
+  datumVonYMD: string;
+}): string {
   const auto = e.alarm.alarmierungZeit;
-  const m = /^(\d{1,2}):(\d{2})$/.exec(e.uhrzeitVonHHMM.trim());
-  if (!m) return auto;
   const base = new Date(auto);
   if (Number.isNaN(base.getTime())) return auto;
-  base.setHours(Math.min(23, Number(m[1])), Math.min(59, Number(m[2])), 0, 0);
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e.datumVonYMD.trim());
+  const t = /^(\d{1,2}):(\d{2})$/.exec(e.uhrzeitVonHHMM.trim());
+  if (!d && !t) return auto;
+  if (d) base.setFullYear(Number(d[1]), Number(d[2]) - 1, Number(d[3]));
+  if (t) base.setHours(Math.min(23, Number(t[1])), Math.min(59, Number(t[2])), 0, 0);
   return base.toISOString();
 }
 
