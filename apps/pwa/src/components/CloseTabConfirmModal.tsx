@@ -104,7 +104,7 @@ export function CloseTabConfirmModal({
         color: "var(--red)",
         background: "var(--red-tint, rgba(217,59,59,0.12))",
         border: "1px solid var(--red-border, #d93b3b)",
-        borderRadius: 6,
+        borderRadius: 4,
         padding: "12px 14px",
       }}
     >
@@ -181,7 +181,7 @@ export function CloseTabConfirmModal({
           width: "min(480px, 100%)",
           background: "var(--surface)",
           border: "1px solid var(--border-strong)",
-          borderRadius: 10,
+          borderRadius: 6,
           boxShadow: "var(--glass-shadow-1)",
           padding: 0,
           overflow: "hidden",
@@ -215,7 +215,7 @@ export function CloseTabConfirmModal({
               border: 0,
               cursor: "pointer",
               padding: 4,
-              borderRadius: 10,
+              borderRadius: 6,
               color: "var(--fg-2)",
             }}
           >
@@ -248,7 +248,7 @@ export function CloseTabConfirmModal({
                     color: "var(--red)",
                     background: "var(--red-tint, rgba(217,59,59,0.12))",
                     border: "1px solid var(--red-border, #d93b3b)",
-                    borderRadius: 6,
+                    borderRadius: 4,
                     padding: "12px 14px",
                   }}
                 >
@@ -279,7 +279,7 @@ export function CloseTabConfirmModal({
                   background: "var(--ok-tint)",
                   border: "1px solid var(--green-border)",
                   color: "var(--ok)",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontSize: 17.5,
                   fontWeight: 600,
                   cursor: busy ? "wait" : "pointer",
@@ -321,7 +321,7 @@ export function CloseTabConfirmModal({
                     background: "transparent",
                     border: "1px solid var(--red-border, #d93b3b)",
                     color: "var(--red)",
-                    borderRadius: 6,
+                    borderRadius: 4,
                     fontSize: 17.5,
                     fontWeight: 600,
                     cursor: busy ? "wait" : "pointer",
@@ -358,7 +358,7 @@ export function CloseTabConfirmModal({
                   background: "var(--surface-2)",
                   border: "1px solid var(--border)",
                   color: "var(--fg-2)",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontSize: 16.5,
                   fontWeight: 500,
                   cursor: busy ? "wait" : "pointer",
@@ -387,7 +387,7 @@ export function CloseTabConfirmModal({
                   padding: "10px 12px",
                   background: "var(--surface-2)",
                   border: "1px solid var(--border-strong)",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontSize: 17.5,
                   color: "var(--fg)",
                   marginBottom: 12,
@@ -406,7 +406,7 @@ export function CloseTabConfirmModal({
                     background: "var(--surface-2)",
                     border: "1px solid var(--border)",
                     color: "var(--fg-2)",
-                    borderRadius: 6,
+                    borderRadius: 4,
                     fontSize: 16.5,
                     fontWeight: 500,
                     cursor: busy ? "wait" : "pointer",
@@ -424,7 +424,7 @@ export function CloseTabConfirmModal({
                     background: "var(--red, #d93b3b)",
                     border: 0,
                     color: "white",
-                    borderRadius: 6,
+                    borderRadius: 4,
                     fontSize: 16.5,
                     fontWeight: 600,
                     cursor: busy || grund.trim().length < 3 ? "not-allowed" : "pointer",
@@ -445,7 +445,7 @@ export function CloseTabConfirmModal({
                 background: "var(--danger-tint, rgba(217,59,59,0.12))",
                 border: "1px solid var(--red-border, #d93b3b)",
                 color: "var(--red)",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontSize: 15,
               }}
             >

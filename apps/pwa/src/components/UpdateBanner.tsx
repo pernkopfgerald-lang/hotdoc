@@ -159,7 +159,7 @@ export function UpdateBanner() {
         zIndex: 1400,
         maxWidth: 380,
         padding: expanded ? "12px 14px" : "10px 12px 10px 14px",
-        borderRadius: 8,
+        borderRadius: 5,
         background:
           "var(--red)",
         color: "#fff",
@@ -198,7 +198,7 @@ export function UpdateBanner() {
             background: status === "permission" ? "var(--warn)" : "rgba(255,255,255,0.18)",
             color: status === "permission" ? "var(--bg-deep)" : "#fff",
             border: 0,
-            borderRadius: 6,
+            borderRadius: 4,
             padding: "6px 10px",
             fontWeight: 700,
             fontSize: 15,
@@ -221,7 +221,7 @@ export function UpdateBanner() {
               background: "transparent",
               color: "rgba(255,255,255,0.85)",
               border: 0,
-              borderRadius: 10,
+              borderRadius: 6,
               padding: 4,
               cursor: "pointer",
               minHeight: 0,
@@ -245,7 +245,7 @@ export function UpdateBanner() {
             background: "transparent",
             color: "rgba(255,255,255,0.7)",
             border: 0,
-            borderRadius: 10,
+            borderRadius: 6,
             padding: 4,
             cursor: "pointer",
             minHeight: 0,
@@ -261,7 +261,7 @@ export function UpdateBanner() {
           style={{
             height: 3,
             background: "rgba(255,255,255,0.18)",
-            borderRadius: 6,
+            borderRadius: 999,
             overflow: "hidden",
           }}
         >
@@ -284,7 +284,7 @@ export function UpdateBanner() {
             fontWeight: 500,
             background: "rgba(0,0,0,0.18)",
             padding: "6px 8px",
-            borderRadius: 10,
+            borderRadius: 6,
             lineHeight: 1.4,
           }}
         >
@@ -297,7 +297,7 @@ export function UpdateBanner() {
           style={{
             marginTop: 2,
             padding: "8px 10px",
-            borderRadius: 6,
+            borderRadius: 4,
             background: "rgba(0,0,0,0.18)",
             color: "rgba(255,255,255,0.95)",
             fontSize: 14.5,

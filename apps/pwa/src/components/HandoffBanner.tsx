@@ -84,7 +84,7 @@ export function HandoffBanner({ onReleased }: Props) {
           display: "flex",
           alignItems: "center",
           gap: 10,
-          borderRadius: 6,
+          borderRadius: 4,
           background: dringend ? "var(--red-tint)" : "var(--warn-tint)",
           color: dringend ? "var(--red)" : "var(--warn)",
           border: `1px dashed ${dringend ? "var(--red-border)" : "var(--amber-border)"}`,
@@ -99,7 +99,7 @@ export function HandoffBanner({ onReleased }: Props) {
             fontWeight: 700,
             background: `${dringend ? "var(--red)" : "var(--warn)"}26`,
             padding: "2px 6px",
-            borderRadius: 6,
+            borderRadius: 4,
           }}
         >
           Notfall-Sitzung
@@ -115,7 +115,7 @@ export function HandoffBanner({ onReleased }: Props) {
             border: "1px solid var(--info)",
             color: "#fff",
             padding: "4px 10px",
-            borderRadius: 6,
+            borderRadius: 4,
             fontSize: 14,
             fontWeight: 700,
             cursor: "pointer",
@@ -136,7 +136,7 @@ export function HandoffBanner({ onReleased }: Props) {
             border: `1px solid ${dringend ? "var(--red-border)" : "var(--amber-border)"}`,
             color: dringend ? "var(--red)" : "var(--warn)",
             padding: "4px 10px",
-            borderRadius: 6,
+            borderRadius: 4,
             fontSize: 14,
             fontWeight: 700,
             cursor: "pointer",
@@ -182,7 +182,7 @@ export function HandoffBanner({ onReleased }: Props) {
               width: "min(420px, 100%)",
               background: "var(--surface)",
               color: "var(--fg)",
-              borderRadius: 10,
+              borderRadius: 6,
               border: "1px solid var(--border-strong)",
               padding: 22,
               display: "flex",
@@ -198,7 +198,7 @@ export function HandoffBanner({ onReleased }: Props) {
                   placeItems: "center",
                   width: 40,
                   height: 40,
-                  borderRadius: 6,
+                  borderRadius: 4,
                   background: "var(--warn-tint)",
                   color: "var(--warn)",
                 }}
@@ -234,7 +234,7 @@ export function HandoffBanner({ onReleased }: Props) {
                 disabled={busy}
                 style={{
                   padding: "9px 16px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   border: "1px solid var(--border-strong)",
                   background: "var(--surface-2)",
                   color: "var(--fg)",
@@ -251,7 +251,7 @@ export function HandoffBanner({ onReleased }: Props) {
                 disabled={busy}
                 style={{
                   padding: "9px 16px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   border: 0,
                   background:
                     "var(--warn)",

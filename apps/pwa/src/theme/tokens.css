@@ -22,15 +22,15 @@
   --topbar-h: 75px;
 
   /* ─── Flächen (hell, Tageslicht) ─── */
-  --bg:               #EEF1F5;
-  --bg-deep:          #E3E8EE;
-  --bg-page:          #EEF1F5;
+  --bg:               #E8E7E3;
+  --bg-deep:          #DEDDD8;
+  --bg-page:          #E8E7E3;
   --aurora-stack:     none;
 
   --surface:          #FFFFFF;
   --surface-1:        #FFFFFF;
-  --surface-2:        #F5F7FA;
-  --surface-3:        #E7EBF0;
+  --surface-2:        #F3F2EF;
+  --surface-3:        #E6E4DF;
 
   /* Alte Glas-Stufen → Volltonflächen */
   --glass-1:          var(--surface);
@@ -39,28 +39,16 @@
   --glass-4:          var(--surface-2);
 
   /* ─── Linien ─── */
-  --glass-border:     #D5DBE3;
-  --glass-border-strong: #B9C1CC;
-  --glass-divider:    #E1E6EC;
-  --border:           #DDE2E9;
-  --border-strong:    #B9C1CC;
-
-  /* Gefuellte Eingabefelder, dunkelgraue Schaltflaechen, Akzent (wird je
-     Fahrzeug von der Kopfzeile ueberschrieben) */
-  --field:            #F0F3F7;
-  --btn:              #2B3B4C;
-  --btn-hover:        #1E2B39;
-  --btn-fg:           #FFFFFF;
-  --hdr-bg:           #1F2D3B;
-  --hdr-default:      #B3121F;
-  --accent:           #B3121F;
-  --cta:              #B3121F;
-  --cta-hover:        #8E0E18;
+  --glass-border:     #C7C4BC;
+  --glass-border-strong: #A9A59B;
+  --glass-divider:    #DAD7D0;
+  --border:           #D3D0C8;
+  --border-strong:    #ABA79D;
 
   /* ─── Text ─── */
-  --fg:               #14202B;
-  --fg-2:             #3A4856;
-  --fg-3:             #5B6876;
+  --fg:               #161616;
+  --fg-2:             #3F3F3F;
+  --fg-3:             #5C5A55;
   --fg-4:             #B5B2AA;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
@@ -119,18 +107,18 @@
   --glow-ok:          0 0 0 0 transparent;
   --glow-warn:        0 0 0 0 transparent;
   --glow-info:        0 0 0 0 transparent;
-  --shadow-card:      0 1px 2px rgba(16, 32, 48, 0.07), 0 1px 1px rgba(16, 32, 48, 0.04);
+  --shadow-card:      var(--glass-shadow-2);
   --shadow-alarm:     var(--glow-red-soft);
   --shadow-cta:       var(--glow-red);
   --card-gradient:    var(--surface);
 
   /* ─── Radien: klein, wie ein Formularfeld ─── */
-  --radius-xs:        4px;
-  --radius-s:         6px;
-  --radius-m:         8px;
-  --radius-l:         10px;
-  --radius-xl:        12px;
-  --radius-pill:      8px;
+  --radius-xs:        2px;
+  --radius-s:         3px;
+  --radius-m:         4px;
+  --radius-l:         5px;
+  --radius-xl:        6px;
+  --radius-pill:      999px;
 
   /* ─── Blur: aus ─── */
   --blur-1:           none;
@@ -185,40 +173,30 @@
    Kontrast bewusst hoch.
    ============================================================ */
 [data-theme="dark"] {
-  --bg:               #111A23;
-  --bg-deep:          #0B1219;
-  --bg-page:          #111A23;
+  --bg:               #151515;
+  --bg-deep:          #0E0E0E;
+  --bg-page:          #151515;
   --aurora-stack:     none;
 
-  --surface:          #1A2531;
-  --surface-1:        #1A2531;
-  --surface-2:        #223040;
-  --surface-3:        #2B3B4D;
+  --surface:          #1F1F1F;
+  --surface-1:        #1F1F1F;
+  --surface-2:        #282828;
+  --surface-3:        #333333;
 
   --glass-1:          var(--surface);
   --glass-2:          var(--surface);
   --glass-3:          var(--surface-2);
   --glass-4:          var(--surface-2);
 
-  --field:            #223040;
-  --btn:              #34495E;
-  --btn-hover:        #425A72;
-  --btn-fg:           #FFFFFF;
-  --hdr-bg:           #0C131A;
-  --hdr-default:      #8E1520;
-  --accent:           #FF6670;
-  --cta:              #C21F2D;
-  --cta-hover:        #A81925;
+  --glass-border:     #454545;
+  --glass-border-strong: #666666;
+  --glass-divider:    #363636;
+  --border:           #3D3D3D;
+  --border-strong:    #666666;
 
-  --glass-border:     #2E3E50;
-  --glass-border-strong: #4A5E73;
-  --glass-divider:    #2A394A;
-  --border:           #2E3E50;
-  --border-strong:    #4A5E73;
-
-  --fg:               #EEF2F6;
-  --fg-2:             #C6D0DA;
-  --fg-3:             #98A6B4;
+  --fg:               #F0F0F0;
+  --fg-2:             #CFCFCF;
+  --fg-3:             #A6A6A6;
   --fg-4:             #555555;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
@@ -265,7 +243,6 @@
 
   --glass-shadow-1:   0 2px 12px rgba(0, 0, 0, 0.6);
   --card-gradient:    var(--surface);
-  --shadow-card:      none;
 }
 
 /* Kein Dauer-Effekt mehr: die frueheren Animationen (Atmen, Aurora, Puls,

@@ -219,7 +219,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
               placeItems: "center",
               width: 42,
               height: 42,
-              borderRadius: 8,
+              borderRadius: 5,
               background:
                 "var(--fg)",
               color: "var(--bg)",
@@ -398,7 +398,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                       color: typ.color,
                       width: 42,
                       height: 42,
-                      borderRadius: 6,
+                      borderRadius: 4,
                     }}
                   >
                     <Icon size={18} />
@@ -457,7 +457,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                           <span
                             style={{
                               padding: "1px 8px",
-                              borderRadius: 6,
+                              borderRadius: 999,
                               background: "var(--red-tint)",
                               color: "var(--red)",
                               border: "1px solid var(--red-border)",
@@ -472,7 +472,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                           <span
                             style={{
                               padding: "1px 8px",
-                              borderRadius: 6,
+                              borderRadius: 999,
                               background: "var(--surface-2)",
                               color: "var(--fg-3)",
                               border: "1px solid var(--border)",
@@ -555,7 +555,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
               width: "min(540px, calc(100% - 32px))",
               background: "var(--glass-1)",
               border: "1px solid var(--glass-border-strong)",
-              borderRadius: 10,
+              borderRadius: 6,
               padding: 24,
               display: "flex",
               flexDirection: "column",
@@ -590,7 +590,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                   color: "var(--red)",
                   padding: "6px 8px",
                   background: "var(--red-tint)",
-                  borderRadius: 10,
+                  borderRadius: 6,
                 }}
               >
                 {reaktivErr}

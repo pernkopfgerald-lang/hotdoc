@@ -1,4 +1,13 @@
-import { Lock, Plus, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  GraduationCap,
+  Lock,
+  MapPin,
+  Plus,
+  Siren,
+  X,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 
 export interface EinsatzTabSummary {
@@ -42,11 +51,12 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
   if (visible.length === 0) return null;
   return (
     <div
-      className="sticky z-[15] flex items-stretch gap-1 overflow-x-auto px-4"
+      className="sticky z-[15] flex items-end gap-1 overflow-x-auto px-4 pt-1.5"
       style={{
         // V-06 (Audit R3): an die echte Topbar-Hoehe gekoppelt (75/71 px).
         top: "var(--topbar-h, 75px)",
-        background: "var(--surface)",
+        background:
+          "var(--bg)",
         borderBottom: "1px solid var(--border)",
       }}
     >
@@ -62,12 +72,11 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
       <button
         type="button"
         onClick={onNew}
-        className="my-1.5 ml-2 flex shrink-0 items-center gap-1.5 px-4 text-[15px] font-bold"
+        className="ml-1 flex shrink-0 items-center gap-1.5 rounded-t-[12px] border-x border-t px-3 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.08em] transition"
         style={{
-          background: "var(--surface-3)",
-          border: "1px solid transparent",
-          borderRadius: 8,
-          color: "var(--fg)",
+          background: "var(--surface-2)",
+          borderColor: "var(--border)",
+          color: "var(--fg-2)",
         }}
         // U-13: Tooltip + aria-label klarer — der "+"-Button oeffnet eine
         // Auswahl ueber Einsatz / Uebung / Lotsendienst.
@@ -76,7 +85,7 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
         title="Neuen Bericht anlegen — Einsatz ohne Alarm · Übung · Lotsendienst"
         aria-label="Neuen Bericht anlegen — Einsatz ohne Alarm · Übung · Lotsendienst"
       >
-        <Plus size={15} />
+        <Plus size={13} />
         Neuer Bericht
       </button>
     </div>
@@ -101,12 +110,13 @@ function EinsatzTab({
   const typ = tab.einsatzTyp ?? (tab.manuell ? "manuell" : "alarm");
   const typStil =
     typ === "uebung"
-      ? { farbe: "#2E9B58" }
+      ? { Icon: GraduationCap, farbe: "var(--ok)", tint: "var(--ok-tint)" }
       : typ === "manuell"
-        ? { farbe: "#3B7DD8" }
+        ? { Icon: Plus, farbe: "var(--info)", tint: "var(--info-tint)" }
         : typ === "lotsendienst"
-          ? { farbe: "#D98A1E" }
-          : { farbe: "#E5303C" };
+          ? { Icon: MapPin, farbe: "var(--warn)", tint: "var(--warn-tint)" }
+          : { Icon: Siren, farbe: "var(--red)", tint: "var(--red-tint)" };
+  const TypIcon = typStil.Icon;
   // S-14 (Audit 2026-09): den aktiven Tab in der horizontal scrollbaren
   // Leiste sichtbar halten — bei 3+ Einsaetzen lag der per Auto-Open
   // gewaehlte Tab sonst rechts ausserhalb des Viewports.
@@ -135,25 +145,28 @@ function EinsatzTab({
       /* EL-05 (Audit 2026-06-12): voller Kontext im Tooltip — Einsatzart UND
          Ort, damit bei mehreren ähnlichen Tabs klar ist welcher gemeint ist. */
       title={`${tab.einsatzart}${tab.einsatzort ? " · " + tab.einsatzort : ""}`}
-      className="group flex shrink-0 items-center gap-2.5 px-3.5 py-2 text-left cursor-pointer"
+      className="group flex shrink-0 items-center gap-2 rounded-t-[12px] border-x border-t px-3.5 py-2 text-left transition cursor-pointer"
       style={{
-        background: "transparent",
-        borderBottom: `3px solid ${active ? "var(--accent)" : "transparent"}`,
-        color: active ? "var(--fg)" : "var(--fg-3)",
+        background: active ? "var(--surface)" : "var(--surface-2)",
+        borderColor: active ? "var(--border-strong)" : "var(--border)",
+        borderBottom: active ? "1px solid var(--surface)" : "0",
+        marginBottom: active ? "-1px" : "0",
+        color: active ? "var(--fg)" : "var(--fg-2)",
+        boxShadow: active ? "0 -2px 6px rgba(15, 23, 42, 0.04)" : undefined,
       }}
     >
-      {/* Typ-Marke: kleines Quadrat in der Typ-Farbe (Alarm rot, manuell blau,
-          Uebung gruen, Lotsendienst braun) — statt Icon-Kaestchen. */}
       <span
-        aria-hidden
+        className="grid h-6 w-6 place-items-center rounded-md"
         style={{
-          width: 10,
-          height: 10,
-          flexShrink: 0,
-          background: closed ? "#1D6B3B" : typStil.farbe,
-          borderRadius: 2,
+          // Z-05: Typ-Farbe auch am INAKTIVEN Tab (frueher neutrales
+          // --surface-3) — der Funktionaer erkennt Übung/Lotsendienst
+          // in der Leiste, ohne den Tab aktivieren zu muessen.
+          background: closed ? "var(--ok-tint)" : typStil.tint,
+          color: closed ? "var(--ok)" : typStil.farbe,
         }}
-      />
+      >
+        {closed ? <CheckCircle2 size={13} /> : <TypIcon size={13} />}
+      </span>
       {/* D-14: Status-Icon (CheckCircle/Plus/Siren) reicht — die Sub-Label
           "Aktiv"/"Folgeauftrag" sind redundant zum Icon. Nur die
           "geschlossen"-Variante mit Lock-Icon bleibt sichtbar, weil das ein
@@ -166,12 +179,12 @@ function EinsatzTab({
             zweite Zeile mit dem Einsatzort (auf ~30 Zeichen begrenzt). Bei
             zwei gleichzeitigen "Brandeinsatz"-Tabs war vorher nicht
             unterscheidbar, welcher zu welcher Adresse gehört. */}
-        <span className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate text-[16px] font-bold">
+        <span className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate text-[13px] font-semibold tracking-tight">
           {tab.einsatzart}
         </span>
         {tab.einsatzort ? (
           <span
-            className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate text-[13.5px]"
+            className="w-[140px] max-w-[140px] sm:w-[220px] sm:max-w-[220px] truncate font-mono text-[11px]"
             style={{ color: "var(--fg-3)" }}
           >
             {tab.einsatzort.length > 30
@@ -181,13 +194,14 @@ function EinsatzTab({
         ) : null}
         {closed ? (
           <span
-            className="text-[12px] font-medium inline-flex items-center gap-1"
+            className="font-mono text-[9px] font-medium uppercase tracking-[0.1em] inline-flex items-center gap-1"
             style={{ color: "var(--ok)" }}
           >
             <Lock size={9} /> geschlossen
           </span>
         ) : null}
       </div>
+      {active ? <ChevronDown size={12} className="ml-1 opacity-50" /> : null}
       {/* Z-12: X nur am AKTIVEN Tab — auf inaktiven Tabs war das X direkt
           neben der Klickflaeche zum Wechseln und wurde versehentlich
           getroffen (Schliessen-Dialog statt Tab-Wechsel). */}
@@ -212,11 +226,12 @@ function EinsatzTab({
             height: 44,
             marginLeft: 4,
             padding: 8,
-            borderRadius: 6,
+            borderRadius: 4,
             background: "transparent",
             border: 0,
             color: "var(--fg-3)",
             cursor: "pointer",
+            transition: "background 120ms ease",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = "var(--surface-3)";

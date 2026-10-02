@@ -212,7 +212,7 @@ export function BrandAbschlussWizard({
               border: "1px solid var(--border-strong)",
               color: "var(--fg)",
               padding: "8px 12px",
-              borderRadius: 6,
+              borderRadius: 4,
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
@@ -238,7 +238,7 @@ export function BrandAbschlussWizard({
               style={{
                 width: `${(step / totalSteps) * 100}%`,
                 height: "100%",
-                background: "var(--cta)",
+                background: "var(--red)",
                 transition: "width 0.2s ease",
               }}
             />
@@ -254,7 +254,7 @@ export function BrandAbschlussWizard({
               background: "var(--info-tint)",
               border: "1px solid var(--info-border)",
               color: "var(--info)",
-              borderRadius: 6,
+              borderRadius: 4,
               fontSize: 15,
               fontWeight: 600,
             }}
@@ -461,7 +461,7 @@ export function BrandAbschlussWizard({
               background: "transparent",
               border: "1px solid var(--border-strong)",
               color: canBack ? "var(--fg)" : "var(--fg-3)",
-              borderRadius: 6,
+              borderRadius: 4,
               fontWeight: 600,
               cursor: canBack ? "pointer" : "not-allowed",
               opacity: canBack ? 1 : 0.5,
@@ -489,7 +489,7 @@ export function BrandAbschlussWizard({
                 background: "transparent",
                 border: "1px solid var(--border-strong)",
                 color: "var(--fg-2)",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 600,
                 fontSize: 16.5,
                 cursor: "pointer",
@@ -506,10 +506,10 @@ export function BrandAbschlussWizard({
               onClick={() => setStep((s) => Math.min(totalSteps, s + 1))}
               style={{
                 padding: "10px 22px",
-                background: "var(--cta)",
+                background: "var(--red)",
                 border: 0,
                 color: "#fff",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 700,
                 cursor: "pointer",
                 display: "inline-flex",
@@ -526,10 +526,10 @@ export function BrandAbschlussWizard({
               onClick={() => onComplete(data)}
               style={{
                 padding: "10px 22px",
-                background: "var(--cta)",
+                background: "var(--red)",
                 border: 0,
                 color: "#fff",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 700,
                 cursor: "pointer",
                 display: "inline-flex",
@@ -641,7 +641,7 @@ function ChipMultiSelect({
             aria-pressed={on}
             style={{
               padding: "8px 12px",
-              borderRadius: 6,
+              borderRadius: 999,
               border: `1px solid ${on ? "var(--red)" : "var(--border-strong)"}`,
               background: on ? "var(--red)" : "transparent",
               color: on ? "#fff" : "var(--fg)",
@@ -680,7 +680,7 @@ function RadioGroup({
             aria-pressed={on}
             style={{
               padding: "8px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               border: `1px solid ${on ? "var(--red)" : "var(--border-strong)"}`,
               background: on ? "var(--red-tint)" : "transparent",
               color: on ? "var(--red)" : "var(--fg)",
@@ -719,7 +719,7 @@ function NumberField({
         onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
         style={{
           padding: "8px 10px",
-          borderRadius: 6,
+          borderRadius: 4,
           border: "1px solid var(--border-strong)",
           background: "var(--surface)",
           color: "var(--fg)",

@@ -248,7 +248,7 @@ export function AddressAutocomplete({
                       placeItems: "center",
                       width: 28,
                       height: 28,
-                      borderRadius: 6,
+                      borderRadius: 4,
                       background: "var(--info-tint)",
                       color: "var(--info)",
                       flexShrink: 0,

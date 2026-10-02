@@ -95,7 +95,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
           style={{
             marginTop: 18,
             padding: 14,
-            borderRadius: 8,
+            borderRadius: 5,
             border: "1px dashed var(--border-strong)",
             background: "var(--surface-2)",
           }}
@@ -152,7 +152,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                   background: "transparent",
                   color: "var(--fg-2)",
                   border: "1px solid var(--border)",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   cursor: "pointer",
                   minHeight: 44,
                 }}
@@ -169,7 +169,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                   flexWrap: "wrap",
                   background: "var(--warn-tint)",
                   border: "1px solid var(--amber-border)",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   padding: "10px 12px",
                 }}
               >
@@ -186,7 +186,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     background: "transparent",
                     color: "var(--fg)",
                     border: "1px solid var(--border)",
-                    borderRadius: 6,
+                    borderRadius: 4,
                     fontSize: 15,
                     fontWeight: 600,
                     cursor: "pointer",
@@ -207,7 +207,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     background: "var(--warn)",
                     color: "#fff",
                     border: 0,
-                    borderRadius: 6,
+                    borderRadius: 4,
                     fontSize: 15,
                     fontWeight: 700,
                     cursor: "pointer",

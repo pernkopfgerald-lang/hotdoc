@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.3.3",
+    date: "2026-10-02",
+    title: "Zurück zum schlichten Design von 0.3.0",
+    bullets: [
+      "Das Erscheinungsbild entspricht wieder dem schlichten Einsatzformular-Design aus Version 0.3.0.",
+      "Das modernere Schiefer-Design (0.3.1/0.3.2) bleibt als Sicherung im Projekt erhalten.",
+    ],
+  },
+  {
     version: "0.3.2",
     date: "2026-10-02",
     title: "Moderner, klarer, aufgeräumter",

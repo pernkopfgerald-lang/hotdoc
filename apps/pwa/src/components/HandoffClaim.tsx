@@ -109,7 +109,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
         style={{
           width: "min(420px, 100%)",
           background: "var(--surface)",
-          borderRadius: 10,
+          borderRadius: 6,
           border: "1px solid var(--border-strong)",
           padding: 28,
           boxShadow: "var(--glass-shadow-1)",
@@ -212,7 +212,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
             <div
               style={{
                 padding: "10px 12px",
-                borderRadius: 6,
+                borderRadius: 4,
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 border: "1px solid var(--red-border)",
@@ -227,7 +227,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
               onClick={onCancel}
               style={{
                 padding: "10px 16px",
-                borderRadius: 6,
+                borderRadius: 4,
                 border: "1px solid var(--border-strong)",
                 background: "var(--surface-2)",
                 color: "var(--fg)",

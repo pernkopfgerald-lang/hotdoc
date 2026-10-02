@@ -50,7 +50,7 @@ const boxedStyle: CSSProperties = {
   width: "100%",
   background: "var(--surface-2)",
   border: "1px solid var(--border-strong)",
-  borderRadius: 6,
+  borderRadius: 4,
 };
 
 const btnSecondary: CSSProperties = {
@@ -58,7 +58,7 @@ const btnSecondary: CSSProperties = {
   background: "var(--surface-2)",
   border: "1px solid var(--border)",
   color: "var(--fg-2)",
-  borderRadius: 6,
+  borderRadius: 4,
   fontSize: 16.5,
   fontWeight: 500,
   cursor: "pointer",
@@ -70,7 +70,7 @@ const btnPrimary: CSSProperties = {
   background: "var(--info, #2563eb)",
   border: 0,
   color: "#fff",
-  borderRadius: 6,
+  borderRadius: 4,
   fontSize: 16.5,
   fontWeight: 700,
   cursor: "pointer",
@@ -126,7 +126,7 @@ function ModalShell({
           overflowY: "auto",
           background: "var(--surface)",
           border: "1px solid var(--border-strong)",
-          borderRadius: 10,
+          borderRadius: 6,
           boxShadow: "var(--glass-shadow-1)",
         }}
       >
@@ -194,7 +194,7 @@ function KalenderModal({
     placeItems: "center",
     background: "var(--surface-2)",
     border: "1px solid var(--border)",
-    borderRadius: 6,
+    borderRadius: 4,
     color: "var(--fg)",
     cursor: "pointer",
   };
@@ -239,7 +239,7 @@ function KalenderModal({
               onClick={() => onConfirm(ymd)}
               style={{
                 minHeight: 46,
-                borderRadius: 6,
+                borderRadius: 4,
                 fontSize: 17,
                 fontWeight: gewaehlt || istHeute ? 800 : 500,
                 cursor: "pointer",
@@ -355,7 +355,7 @@ function ZeitModal({
     placeItems: "center",
     background: "var(--surface-2)",
     border: "1px solid var(--border)",
-    borderRadius: 6,
+    borderRadius: 4,
     color: "var(--fg)",
     cursor: "pointer",
   };
@@ -370,7 +370,7 @@ function ZeitModal({
     color: "var(--fg)",
     background: "var(--surface-2)",
     border: "2px solid var(--border-strong)",
-    borderRadius: 6,
+    borderRadius: 4,
     outline: "none",
   };
 

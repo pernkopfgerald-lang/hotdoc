@@ -9,6 +9,7 @@ import {
   Clock,
   Download,
 
+  GraduationCap,
   Lock,
   Map as MapIcon,
   MapPin,
@@ -2529,7 +2530,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--ok-tint)",
               border: "1px solid var(--ok-border)",
               color: "var(--ok)",
@@ -2607,7 +2608,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 alignItems: "center",
                 gap: 6,
                 padding: "8px 14px",
-                borderRadius: 6,
+                borderRadius: 4,
                 border: "1px solid var(--ok-border)",
                 background: "var(--surface)",
                 color: "var(--ok)",
@@ -2633,84 +2634,158 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
 
         {/* Hauptbericht-Header bzw. Idle-Karte wenn kein aktiver Einsatz. */}
         {istIdle ? (
-          <section className="card">
-            <div className="card-head">
-              <div className="card-title">Bereit · Florian Eberstalzell</div>
-              <div className="card-meta">kein aktiver Einsatz</div>
-            </div>
-            <p style={{ margin: "0 0 16px", fontSize: 18, lineHeight: 1.45, color: "var(--fg)" }}>
-              Keine aktive Einsatzdokumentation. Sobald ein BlaulichtSMS-Alarm eingeht oder ein
-              Tablet eine Tätigkeit anlegt, erscheint der Einsatz hier automatisch.
-            </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                gap: 10,
-              }}
-            >
-              <button
-                type="button"
-                className="cta"
-                onClick={() => setNeuerEinsatzOpen("manuell")}
-                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
-              >
-                Einsatz anlegen
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setNeuerEinsatzOpen("uebung")}
-                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
-              >
-                Übung anlegen
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setNeuerEinsatzOpen("lotsendienst")}
-                // AUDIT-09/EL-06: 30-s-Doppel-Anlage-Guard — direkt nach
-                // einer Lotsendienst-Anlage gesperrt, weil der Einsatz
-                // hier bewusst NICHT erscheint (#165) und ein zweiter
-                // Klick sonst ein Duplikat anlegt.
-                disabled={lotsendienstGesperrt}
-                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
-              >
-                Lotsendienst anlegen
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setArchivOpenFlorian(true)}
-                style={{ width: "100%", minHeight: 56, padding: "10px 12px", fontSize: 17 }}
-              >
-                Archiv durchsuchen
-              </button>
+          <section
+            className="alarm"
+            style={{
+              background:
+                "var(--ok-tint)",
+              borderColor: "var(--ok-border)",
+            }}
+          >
+            <div className="alarm-top">
+              <div className="alarm-left">
+                <div
+                  className="alarm-icon"
+                  style={{ background: "var(--ok)", animation: "glow-pulse 2.4s ease-in-out infinite" }}
+                >
+                  <Activity size={30} color="#fff" strokeWidth={2} />
+                </div>
+                <div>
+                  <div className="alarm-tags">
+                    <span className="alarm-tag" style={{ color: "var(--ok)" }}>
+                      <span className="dot" style={{ background: "var(--ok)" }} />
+                      Bereit
+                    </span>
+                    <span className="alarm-tag muted">· Florian Eberstalzell</span>
+                  </div>
+                  <div className="alarm-title">Keine aktive Einsatzdokumentation</div>
+                  <div className="alarm-addr" style={{ color: "var(--fg-3)" }}>
+                    Sobald ein BlaulichtSMS-Alarm eingeht oder ein Tablet eine Tätigkeit anlegt,
+                    erscheint der Einsatz hier automatisch.
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 14,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("manuell")}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center" }}
+                    >
+                      <Siren size={14} /> Einsatz anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("uebung")}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--ok) 80%, transparent)" }}
+                    >
+                      <GraduationCap size={14} /> Übung anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setNeuerEinsatzOpen("lotsendienst")}
+                      // AUDIT-09/EL-06: 30-s-Doppel-Anlage-Guard — direkt nach
+                      // einer Lotsendienst-Anlage gesperrt, weil der Einsatz
+                      // hier bewusst NICHT erscheint (#165) und ein zweiter
+                      // Klick sonst ein Duplikat anlegt.
+                      disabled={lotsendienstGesperrt}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "color-mix(in srgb, var(--warn) 80%, transparent)", ...(lotsendienstGesperrt ? { opacity: 0.55, cursor: "not-allowed" } : {}) }}
+                    >
+                      <MapPin size={14} /> Lotsendienst anlegen
+                    </button>
+                    <button
+                      type="button"
+                      className="cta"
+                      onClick={() => setArchivOpenFlorian(true)}
+                      style={{ width: "auto", padding: "10px 16px", fontSize: 16.5, gap: 6, display: "inline-flex", alignItems: "center", background: "var(--surface-2)", color: "var(--fg)", border: "1px solid var(--border-strong)" }}
+                    >
+                      <Archive size={14} /> Archiv durchsuchen
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="alarm-no" style={{ color: "var(--fg-3)" }}>—</div>
             </div>
           </section>
         ) : (
           <section
             className="alarm"
-            style={
-              {
-                // Farbblock nach Einsatz-Typ (wie in der Fahrzeug-Ansicht):
-                // Alarm rot, Übung grün, Lotsendienst braun, sonst blau.
-                "--alarm-bg":
-                  einsatzTyp === "uebung"
-                    ? "#1D6B3B"
-                    : einsatzTyp === "lotsendienst"
-                      ? "#8A5300"
-                      : einsatzTyp === "manuell"
-                        ? "#1B4F94"
-                        : "#B3121F",
-              } as React.CSSProperties
-            }
+            style={{
+              // #164 (Test 2026-06-03): Theme nach Einsatz-Typ.
+              //  - Übung → GRÜN (--ok), klar von Alarm unterscheidbar.
+              //  - Alarm/manuell → BLAU (--info), wie bisher.
+              // D-02: theme-awares Tint, im Dark-Mode wird automatisch dunkler.
+              background:
+                einsatzTyp === "uebung"
+                  ? "var(--ok-tint)"
+                  : "var(--info-tint)",
+              borderColor:
+                einsatzTyp === "uebung" ? "var(--ok-border)" : "var(--blue-border)",
+            }}
           >
+            {/* #164: Übung-Banner ganz oben, damit der EL sofort sieht, dass es
+                eine Übung ist — nie ein Einsatz. */}
+            {einsatzTyp === "uebung" && (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "4px 12px",
+                  borderRadius: "var(--radius-pill)",
+                  background: "var(--ok)",
+                  color: "#fff",
+                  fontFamily: "var(--font-mono)",
+                  fontWeight: 800,
+                  fontSize: 14,
+                  letterSpacing: "var(--tracking-caps)",
+                  marginBottom: 12,
+                }}
+              >
+                <GraduationCap size={14} strokeWidth={2.4} />
+                Übung
+              </div>
+            )}
             <div className="alarm-top">
               <div className="alarm-left">
+                <div
+                  className="alarm-icon"
+                  style={{
+                    background:
+                      einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
+                  }}
+                >
+                  {einsatzTyp === "uebung" ? (
+                    <GraduationCap size={30} color="#fff" strokeWidth={2} />
+                  ) : (
+                    <Activity size={30} color="#fff" strokeWidth={2} />
+                  )}
+                </div>
                 <div>
                   <div className="alarm-tags">
-                    <span className="alarm-tag">Florian Eberstalzell</span>
+                    <span
+                      className="alarm-tag"
+                      style={{
+                        color:
+                          einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
+                      }}
+                    >
+                      <span
+                        className="dot"
+                        style={{
+                          background:
+                            einsatzTyp === "uebung" ? "var(--ok)" : "var(--info)",
+                        }}
+                      />
+                      Florian Eberstalzell
+                    </span>
                     <span className="alarm-tag muted">
                       ·{" "}
                       {einsatzTyp === "uebung" ? "Übungsbericht" : "Hauptbericht"}
@@ -2764,17 +2839,26 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               return (
                 <div
                   style={{
-                    marginTop: 12,
-                    fontSize: 16,
-                    color: "#fff",
+                    marginTop: 10,
+                    fontSize: 15.5,
+                    color: "var(--fg-2)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                   }}
                 >
-                  <span style={{ fontWeight: 700 }}>Letzte Meldung</span>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: "var(--fg-3)",
+                    }}
+                  >
+                    Letzte Meldung
+                  </span>
                   {" · "}
-                  <span style={{ fontWeight: 600 }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
                     {formatTime(letzteMeldung.zeitstempel)}
                   </span>
                   {" · "}
@@ -2797,7 +2881,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -2830,7 +2914,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -2873,7 +2957,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -2898,7 +2982,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "var(--warn)",
                 border: "1px solid var(--warn-border)",
                 padding: "8px 14px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -2937,7 +3021,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -2984,7 +3068,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--red-tint)",
               border: "1px solid var(--red-border)",
               color: "var(--red)",
@@ -3004,11 +3088,11 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               type="button"
               onClick={() => void editorKonfliktNeuLaden()}
               style={{
-                background: "var(--cta)",
+                background: "var(--red)",
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3031,7 +3115,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -3059,7 +3143,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3076,7 +3160,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "inherit",
                 border: "1px solid var(--warn-border)",
                 padding: "8px 14px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontWeight: 600,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3110,7 +3194,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               style={{
                 marginBottom: 8,
                 padding: "8px 12px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontSize: 15,
                 color: "var(--red)",
                 border: "1px solid var(--red-border, #d93b3b)",
@@ -3163,7 +3247,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   style={{ display: "flex", flexDirection: "column", gap: 0 }}
                 >
                   <div
-                    className="crew-row filled fz-status-row"
+                    className="crew-row filled"
                     onClick={toggleSelect}
                     role={isClickable ? "button" : undefined}
                     tabIndex={isClickable ? 0 : undefined}
@@ -3210,7 +3294,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           alignItems: "center",
                           gap: 5,
                           padding: "3px 10px",
-                          borderRadius: 6,
+                          borderRadius: 999,
                           fontSize: 13.5,
                           fontWeight: 800,
                           color: "var(--ok)",
@@ -3270,7 +3354,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                             gap: 6,
                             minHeight: 40,
                             padding: "0 12px",
-                            borderRadius: 6,
+                            borderRadius: 4,
                             fontSize: 14.5,
                             fontWeight: 700,
                             cursor: "pointer",
@@ -3757,7 +3841,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               width: "100%",
               minHeight: 56,
               padding: "8px 16px",
-              borderRadius: 8,
+              borderRadius: 5,
               fontSize: 17,
               fontWeight: 700,
               textAlign: "left",
@@ -3775,7 +3859,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 placeItems: "center",
                 width: 28,
                 height: 28,
-                borderRadius: 6,
+                borderRadius: 4,
                 border: editor.staplerEingesetzt ? "2px solid var(--ok)" : "2px solid var(--border-strong)",
                 flexShrink: 0,
               }}
@@ -4357,7 +4441,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                         }
                         style={{
                           padding: "6px 10px",
-                          borderRadius: 6,
+                          borderRadius: 999,
                           border: `1px solid ${on ? "var(--accent)" : "var(--border-strong)"}`,
                           background: on ? "var(--accent)" : "transparent",
                           color: on ? "#fff" : "var(--fg)",
@@ -4397,7 +4481,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           }
                           style={{
                             padding: "6px 10px",
-                            borderRadius: 6,
+                            borderRadius: 999,
                             border: `1px solid ${on ? "var(--warn)" : "var(--border-strong)"}`,
                             background: on ? "var(--warn)" : "transparent",
                             color: on ? "#fff" : "var(--fg)",
@@ -4446,7 +4530,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                         key={`sel-${g}`}
                         style={{
                           padding: "4px 8px",
-                          borderRadius: 10,
+                          borderRadius: 6,
                           background: "var(--warn-tint)",
                           color: "var(--warn)",
                           fontSize: 14,
@@ -4519,7 +4603,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     background: "var(--surface-2)",
                     color: "var(--fg)",
                     border: "1px solid var(--border-strong)",
-                    borderRadius: 6,
+                    borderRadius: 4,
                     cursor: "pointer",
                     minHeight: 44,
                   }}
@@ -4546,7 +4630,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               right: 20,
               zIndex: 1500,
               padding: "8px 14px",
-              borderRadius: 6,
+              borderRadius: 4,
               background: saveErr
                 ? "var(--red-tint)"
                 : saveBusy
@@ -4599,7 +4683,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             <div
               style={{
                 padding: "10px 12px",
-                borderRadius: 6,
+                borderRadius: 4,
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 fontSize: 16.5,
@@ -4625,7 +4709,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               style={{
                 marginTop: 8,
                 padding: "8px 12px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontSize: 15,
                 background: "var(--ok-tint)",
                 color: "var(--ok)",
@@ -4641,7 +4725,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               style={{
                 marginTop: 8,
                 padding: "8px 12px",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontSize: 15,
                 background: "var(--red-tint)",
                 color: "var(--red)",
@@ -4666,11 +4750,11 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   }}
                   style={{
                     alignSelf: "flex-start",
-                    background: "var(--cta)",
+                    background: "var(--red)",
                     color: "#fff",
                     border: 0,
                     padding: "6px 12px",
-                    borderRadius: 10,
+                    borderRadius: 6,
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 15,
@@ -4874,7 +4958,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             padding: "10px 14px",
             background: "var(--ok)",
             color: "#fff",
-            borderRadius: 6,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
             boxShadow: "var(--glass-shadow-1)",
@@ -4901,7 +4985,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             padding: "10px 14px",
             background: "var(--fg)",
             color: "var(--bg)",
-            borderRadius: 6,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
             boxShadow: "var(--glass-shadow-1)",
@@ -4925,7 +5009,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               color: "#fff",
               border: 0,
               padding: "6px 12px",
-              borderRadius: 6,
+              borderRadius: 4,
               fontWeight: 700,
               fontSize: 15.5,
               cursor: verwerfenUndo.busy ? "wait" : "pointer",
@@ -5169,7 +5253,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   placeItems: "center",
                   width: 42,
                   height: 42,
-                  borderRadius: 8,
+                  borderRadius: 5,
                   background:
                     "var(--red)",
                   color: "#fff",
@@ -5209,7 +5293,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "var(--fg-2)",
                 background: "var(--warn-tint)",
                 border: "1px solid var(--warn-border)",
-                borderRadius: 6,
+                borderRadius: 4,
                 padding: "10px 12px",
                 display: "flex",
                 gap: 10,
@@ -5241,7 +5325,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   fontSize: 15.5,
                   lineHeight: 1.5,
                   padding: "8px 12px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   background: "var(--info-tint)",
                   border: "1px solid var(--info-border)",
                   color: "var(--fg-2)",
@@ -5257,7 +5341,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 style={{
                   fontSize: 15,
                   padding: "8px 12px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
@@ -5284,7 +5368,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   border: "1px solid var(--border-strong)",
                   color: "var(--fg)",
                   padding: "10px 16px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontWeight: 600,
                   cursor: abschlussBusy ? "not-allowed" : "pointer",
                   opacity: abschlussBusy ? 0.55 : 1,
@@ -5297,11 +5381,11 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 onClick={() => void handleAbschluss()}
                 disabled={abschlussBusy}
                 style={{
-                  background: "var(--cta)",
+                  background: "var(--red)",
                   border: 0,
                   color: "#fff",
                   padding: "10px 18px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontWeight: 700,
                   cursor: abschlussBusy ? "wait" : "pointer",
                   opacity: abschlussBusy ? 0.7 : 1,
@@ -5343,7 +5427,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               width: "min(540px, 100%)",
               background: "var(--surface)",
               border: "1px solid var(--border-strong)",
-              borderRadius: 10,
+              borderRadius: 6,
               padding: 22,
               display: "flex",
               flexDirection: "column",
@@ -5370,7 +5454,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   fontSize: 15.5,
                   lineHeight: 1.5,
                   padding: "8px 12px",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   background: "var(--info-tint)",
                   border: "1px solid var(--info-border)",
                   color: "var(--fg-2)",
@@ -5391,7 +5475,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 padding: "10px 12px",
                 background: "var(--surface-2)",
                 border: "1px solid var(--border-strong)",
-                borderRadius: 6,
+                borderRadius: 4,
                 fontSize: 17.5,
                 color: "var(--fg)",
                 resize: "vertical",
@@ -5405,7 +5489,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
-                  borderRadius: 10,
+                  borderRadius: 6,
                 }}
               >
                 {abschlussErr}
@@ -5421,7 +5505,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   background: "transparent",
                   color: "var(--fg)",
                   border: "1px solid var(--border-strong)",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontSize: 16.5,
                   fontWeight: 600,
                   cursor: abschlussBusy ? "not-allowed" : "pointer",
@@ -5447,7 +5531,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   background: "var(--warn)",
                   border: 0,
                   color: "#fff",
-                  borderRadius: 6,
+                  borderRadius: 4,
                   fontSize: 16.5,
                   fontWeight: 700,
                   cursor:
@@ -5720,7 +5804,7 @@ function FreitextAddRow({
           background: "var(--accent)",
           border: 0,
           color: "#fff",
-          borderRadius: 6,
+          borderRadius: 4,
           fontSize: 16.5,
           fontWeight: 700,
           cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
@@ -5913,7 +5997,7 @@ function FlorianChronikInput({
           style={{
             marginBottom: 10,
             padding: "8px 12px",
-            borderRadius: 6,
+            borderRadius: 4,
             background: "var(--red-tint)",
             color: "var(--red)",
             fontSize: 15,

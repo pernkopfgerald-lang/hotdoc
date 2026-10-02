@@ -352,7 +352,7 @@ function QuickActionCard({
           placeItems: "center",
           width: 36,
           height: 36,
-          borderRadius: 6,
+          borderRadius: 4,
           background: `color-mix(in srgb, ${color} 16%, transparent)`,
           color,
           marginBottom: 2,

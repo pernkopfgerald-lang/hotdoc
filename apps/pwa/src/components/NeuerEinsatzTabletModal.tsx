@@ -534,7 +534,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               placeItems: "center",
               width: 44,
               height: 44,
-              borderRadius: 8,
+              borderRadius: 5,
               background:
                 `${TYP_META[typ].color}`,
               color: "#fff",
@@ -874,7 +874,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 background: "var(--info-tint)",
                 color: "var(--info)",
                 border: "1px solid var(--blue-border)",
-                borderRadius: 6,
+                borderRadius: 4,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",

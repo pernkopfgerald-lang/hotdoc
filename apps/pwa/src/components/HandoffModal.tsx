@@ -207,7 +207,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               placeItems: "center",
               width: 42,
               height: 42,
-              borderRadius: 8,
+              borderRadius: 5,
               background: reverse
                 ? "var(--info)"
                 : "var(--red)",
@@ -249,7 +249,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 border: 0,
                 color: "var(--fg-3)",
                 padding: 6,
-                borderRadius: 6,
+                borderRadius: 4,
                 cursor: "pointer",
               }}
             >
@@ -287,7 +287,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               style={{
                 background: "#fff",
                 padding: 16,
-                borderRadius: 8,
+                borderRadius: 5,
                 display: "grid",
                 placeItems: "center",
                 border: "1px solid var(--border)",
@@ -333,7 +333,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             <div
               style={{
                 padding: "10px 12px",
-                borderRadius: 6,
+                borderRadius: 4,
                 background: secondsLeft < 60 ? "var(--warn-tint)" : "var(--surface-2)",
                 border: `1px solid ${secondsLeft < 60 ? "var(--amber-border)" : "var(--border)"}`,
                 color: secondsLeft < 60 ? "var(--warn)" : "var(--fg-2)",
@@ -369,7 +369,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                     background: "var(--warn)",
                     color: "#fff",
                     border: 0,
-                    borderRadius: 10,
+                    borderRadius: 6,
                     cursor: "pointer",
                     minHeight: 0,
                   }}
@@ -436,7 +436,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 background: "var(--warn)",
                 color: "#fff",
                 border: 0,
-                borderRadius: 6,
+                borderRadius: 4,
                 cursor: "pointer",
                 minHeight: 48,
                 display: "inline-flex",
@@ -452,7 +452,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
           <div
             style={{
               padding: 14,
-              borderRadius: 6,
+              borderRadius: 4,
               background: "var(--red-tint)",
               color: "var(--red)",
               border: "1px solid var(--red-border)",

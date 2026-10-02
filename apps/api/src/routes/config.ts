@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.3.2",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.2-release.apk",
+    currentVersion: "0.3.3",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.3-release.apk",
     releaseNotes:
-      "v0.3.2 — Moderner, klarer, aufgeräumter\n\n• Schiefergraue Kopfzeile, weiche Karten, ruhige Felder.\n• Fahrzeug als Farbblock in der Kopfzeile.\n• Reiter mit Unterstrich.\n• Keine Effekte, keine Animationen.",
+      "v0.3.3 — Zurück zum schlichten Design von 0.3.0\n\n• Erscheinungsbild wie in Version 0.3.0.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
