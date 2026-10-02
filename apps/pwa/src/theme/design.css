@@ -1,66 +1,29 @@
 /* ============================================================
-   HotDoc Design v2.0 — Glass System Components
-   Konsumiert Tokens aus theme/tokens.css
+   HotDoc Design v3.0 — „Einsatzformular"
+   Flache Flächen, klare Linien, kleine Radien, keine Effekte.
+   Konsumiert Tokens aus theme/tokens.css. Klassennamen bleiben
+   unverändert (Komponenten greifen darauf zu).
    ============================================================ */
 
-/* ─── Glas-Utilities (composable) ─────────────────────────── */
-.glass-1 {
-  background: var(--glass-1);
-  backdrop-filter: var(--blur-1);
-  -webkit-backdrop-filter: var(--blur-1);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-1);
-}
-.glass-2 {
-  background: var(--glass-2);
-  backdrop-filter: var(--blur-2);
-  -webkit-backdrop-filter: var(--blur-2);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-2);
-}
+/* ─── Alte Glas-Utilities (Kompatibilität) ──────────────────── */
+.glass-1,
+.glass-2,
 .glass-3 {
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
 }
 
-/* ─── Card ─── (Standard-Glas-Container) ─────────────────── */
+/* ─── Card ─────────────────────────────────────────────────── */
 .card {
-  background: var(--glass-2);
-  backdrop-filter: var(--blur-2);
-  -webkit-backdrop-filter: var(--blur-2);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-l);
-  padding: 22px 22px;
-  box-shadow: var(--glass-shadow-2);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  padding: 20px 22px;
   position: relative;
   overflow: hidden;
-  transition:
-    transform var(--dur-base) var(--ease-smooth),
-    box-shadow var(--dur-base) var(--ease-smooth),
-    border-color var(--dur-base) var(--ease-smooth);
 }
-.card::before {
-  /* Subtle top-light „Glanz" */
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-  opacity: 0.6;
-  pointer-events: none;
-}
-[data-theme="dark"] .card::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent);
-}
-.card.flat { box-shadow: var(--glass-shadow-3); }
-.card.hero {
-  background: var(--glass-1);
-  backdrop-filter: var(--blur-1);
-  -webkit-backdrop-filter: var(--blur-1);
-  box-shadow: var(--glass-shadow-1);
-}
+.card.flat { box-shadow: none; }
+.card.hero { border-width: 2px; }
 
 .card-head {
   display: flex;
@@ -69,109 +32,86 @@
   gap: 12px;
   margin-bottom: 14px;
 }
+/* Kopfzeile als Formular-Titelband (nur wenn direkt erstes Kind der Karte) */
+.card > .card-head:first-child {
+  margin: -20px -22px 16px;
+  padding: 11px 22px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
 .card-title {
-  font-size: 21.5px;
-  font-weight: 600;
-  letter-spacing: var(--tracking-tight);
+  font-size: 20px;
+  font-weight: 700;
   color: var(--fg);
   display: flex;
   align-items: center;
   gap: 10px;
 }
 .card-title svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   color: var(--fg-2);
 }
 .card-meta {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--fg-3);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  font-weight: 600;
-  font-family: var(--font-mono);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-.card-meta .num { color: var(--fg); }
+.card-meta .num { color: var(--fg); font-weight: 700; }
 
-/* ─── Caption / kleine Labels ─────────────────────────────── */
+/* ─── Beschriftung über Feldern ─────────────────────────────── */
 .caption {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--fg-3);
-  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-2);
+  margin-bottom: 4px;
   display: block;
-  font-family: var(--font-mono);
 }
 
-/* ─── Inputs ─── glasige Eingabefelder ───────────────────── */
+/* ─── Eingabefelder ─────────────────────────────────────────── */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .input {
   width: 100%;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1.5px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
-  padding: 14px 16px;
+  padding: 12px 14px;
   font-family: inherit;
   font-size: 20px;
   font-weight: 500;
   color: var(--fg);
   outline: none;
-  letter-spacing: var(--tracking-ui);
-  transition:
-    background var(--dur-fast) var(--ease-smooth),
-    border-color var(--dur-fast) var(--ease-smooth),
-    box-shadow var(--dur-fast) var(--ease-smooth);
 }
 .input::placeholder { color: var(--fg-3); font-weight: 400; }
-.input:hover {
-  background: var(--glass-2);
-  border-color: var(--glass-border-strong);
-}
+.input:hover { border-color: var(--fg-3); }
 .input:focus {
-  background: var(--surface);
   border-color: var(--info);
-  box-shadow:
-    0 0 0 4px var(--info-tint),
-    var(--glow-info);
+  box-shadow: inset 0 0 0 1px var(--info);
 }
 .input.num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
-  font-family: var(--font-mono);
 }
-.input.filled {
-  background: var(--glass-2);
-  border-color: var(--glass-border);
-}
+.input.filled { background: var(--surface); }
 
 .input-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
+  gap: 8px;
+  background: var(--surface);
   border-radius: var(--radius-s);
-  padding: 4px 4px 4px 16px;
-  border: 1.5px solid var(--glass-border);
-  transition: all var(--dur-fast) var(--ease-smooth);
+  padding: 2px 4px 2px 14px;
+  border: 1px solid var(--border-strong);
 }
-.input-row.filled { background: var(--glass-2); border-color: var(--glass-border); }
+.input-row.filled { background: var(--surface); }
 
-/* Eingabewerte dunkelblau einfaerben — vom User getippte/gewaehlte Werte
-   sollen sich klar von Labels (schwarz) abheben, damit der Funktionaer
-   auf einen Blick sieht was er selber eingetragen hat. Greift bei
-   user-input (Placeholder-Pruefung), expliziter .filled-Klasse und
-   Select-Boxen mit selektiertem Wert. */
+/* Eingabewerte dunkelblau — vom Nutzer getippte/gewählte Werte heben sich
+   klar von den (schwarzen) Beschriftungen ab. */
 .input:not(:placeholder-shown),
 .input.filled,
 .input-row.filled input,
@@ -184,16 +124,12 @@ select.input { color: var(--input-value); font-weight: 600; }
 select.input option { color: var(--fg); font-weight: 500; }
 .input-row:focus-within {
   border-color: var(--info);
-  box-shadow:
-    0 0 0 4px var(--info-tint),
-    var(--glow-info);
+  box-shadow: inset 0 0 0 1px var(--info);
 }
 .input-row input {
   /* V-02 (Audit R3): flex-basis 0 + min-width 0 + width 0 neutralisieren das
-     Intrinsic-Mass des Inputs (~200 px bei 20 px Schrift). Sonst waechst
-     ein .grid-3-Track hochkant (230 px/Spalte) auf Min-Content und die
-     dritte Spalte ("Uhrzeit bis") wird von .card { overflow: hidden }
-     rechts abgeschnitten. */
+     Intrinsic-Mass des Inputs, sonst wächst ein .grid-3-Track auf Min-Content
+     und die dritte Spalte wird von .card { overflow: hidden } abgeschnitten. */
   flex: 1 1 0;
   min-width: 0;
   width: 0;
@@ -208,77 +144,57 @@ select.input option { color: var(--fg); font-weight: 500; }
   font-variant-numeric: tabular-nums;
 }
 .chev {
-  width: 36px;
+  min-width: 36px;
   height: 36px;
-  border-radius: var(--radius-xs);
-  background: var(--glass-3);
+  padding: 0 4px;
+  white-space: nowrap;
   display: grid;
   place-items: center;
-  color: var(--fg-2);
+  color: var(--fg-3);
 }
 
-/* ─── Grid helpers ─────────────────────────────────────────── */
+/* ─── Grid-Helfer ───────────────────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 
-/* ─── Badges ─── kleine Status-Pillen ───────────────────── */
+/* ─── Badges ────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-s);
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-family: var(--font-mono);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--blur-4);
-  -webkit-backdrop-filter: var(--blur-4);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--fg-2);
 }
-.badge.rank   { color: var(--rank);    background: var(--info-tint);   border-color: var(--blue-border); }
-.badge.as     { color: var(--as);      background: var(--as-tint); }
-.badge.ok     { color: var(--ok);      background: var(--ok-tint);     border-color: var(--ok-border); }
-.badge.warn   { color: var(--warn);    background: var(--warn-tint);   border-color: var(--warn-border); }
-.badge.red    { color: var(--red);     background: var(--red-tint);    border-color: var(--red-border); }
-.badge.neutral{ color: var(--fg-2);    background: var(--glass-3); }
+.badge.rank   { color: var(--rank);  background: var(--info-tint); border-color: var(--blue-border); }
+.badge.as     { color: var(--as);    background: var(--as-tint);   border-color: var(--as-tint); }
+.badge.ok     { color: var(--ok);    background: var(--ok-tint);   border-color: var(--ok-border); }
+.badge.warn   { color: var(--warn);  background: var(--warn-tint); border-color: var(--warn-border); }
+.badge.red    { color: var(--red);   background: var(--red-tint);  border-color: var(--red-border); }
+.badge.neutral{ color: var(--fg-2);  background: var(--surface-2); }
+.badge:empty { display: none; }
 
-/* ─── ALARM CARD ─── Hero-Element bei Live-Alarm ─────────── */
+/* ─── ALARM-Karte ───────────────────────────────────────────── */
 .alarm {
   position: relative;
-  border-radius: var(--radius-xl);
-  padding: 26px 28px 24px;
-  background:
-    radial-gradient(ellipse 60% 50% at 0% 0%, rgba(200, 16, 46, 0.20), transparent 70%),
-    var(--glass-1);
-  backdrop-filter: var(--blur-1);
-  -webkit-backdrop-filter: var(--blur-1);
-  border: 1px solid rgba(200, 16, 46, 0.28);
-  box-shadow: var(--glass-shadow-1), var(--glow-red-soft);
+  border-radius: var(--radius-m);
+  padding: 22px 24px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-left: 8px solid var(--red);
   overflow: hidden;
-}
-[data-theme="dark"] .alarm {
-  background:
-    radial-gradient(ellipse 60% 55% at 0% 0%, rgba(255, 84, 104, 0.32), transparent 70%),
-    var(--glass-1);
-  border-color: rgba(255, 84, 104, 0.40);
-}
-.alarm::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent 0%, var(--red) 18%, var(--red-strong) 50%, var(--red) 82%, transparent 100%);
-  box-shadow: 0 0 18px var(--red-glow);
 }
 .alarm-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 .alarm-left {
   display: flex;
@@ -286,26 +202,15 @@ select.input option { color: var(--fg); font-weight: 500; }
   gap: 16px;
 }
 .alarm-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%);
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-m);
+  background: var(--red);
   display: grid;
   place-items: center;
-  position: relative;
-  box-shadow: var(--glow-red);
   flex-shrink: 0;
 }
-.alarm-icon::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 22px;
-  border: 2px solid var(--red-border);
-  animation: pulse-ring 2.2s ease-out infinite;
-}
-.alarm-icon svg { width: 30px; height: 30px; color: #fff; }
+.alarm-icon svg { width: 28px; height: 28px; color: #fff; }
 .alarm-tags {
   display: flex;
   align-items: center;
@@ -314,40 +219,32 @@ select.input option { color: var(--fg); font-weight: 500; }
   margin-bottom: 4px;
 }
 .alarm-tag {
-  font-size: 12.5px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  font-family: var(--font-mono);
   color: var(--red);
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .alarm-tag .dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--red);
-  box-shadow: 0 0 8px var(--red-glow);
-  animation: blink 1.2s ease-in-out infinite;
 }
-.alarm-tag.muted {
-  color: var(--fg-2);
-}
+.alarm-tag.muted { color: var(--fg-2); }
 .alarm-no {
-  font-size: 14px;
-  font-family: var(--font-mono);
+  font-size: 15px;
   color: var(--fg-3);
-  letter-spacing: 0.06em;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .alarm-title {
-  font-size: 42.5px;
+  font-size: 40px;
   font-weight: 700;
   letter-spacing: var(--tracking-display);
   color: var(--fg);
-  line-height: 1.05;
+  line-height: 1.08;
 }
 .alarm-addr {
   font-size: 19px;
@@ -362,35 +259,29 @@ select.input option { color: var(--fg); font-weight: 500; }
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 0;
-  margin-top: 20px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-m);
-  padding: 14px 4px;
+  margin-top: 18px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 12px 4px;
 }
 .alarm-meta .cell {
   text-align: left;
   padding: 0 18px;
-  border-right: 1px solid var(--glass-divider);
+  border-right: 1px solid var(--border);
 }
 .alarm-meta .cell:last-child { border-right: 0; }
 .alarm-meta .lbl {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--fg-3);
-  margin-bottom: 4px;
-  font-family: var(--font-mono);
+  margin-bottom: 2px;
 }
 .alarm-meta .val {
   font-size: 22.5px;
   font-weight: 700;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
-  letter-spacing: var(--tracking-tight);
 }
 .alarm-meta .val.red { color: var(--red); }
 .alarm-meta .val.muted { color: var(--fg-3); }
@@ -401,119 +292,92 @@ select.input option { color: var(--fg); font-weight: 500; }
   margin-left: 4px;
 }
 
-/* ─── Section divider ─────────────────────────────────────── */
+/* ─── Abschnittstitel ───────────────────────────────────────── */
 .section-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 6px 4px;
+  padding: 10px 2px 2px;
   margin-top: 6px;
 }
 .section-head .h {
-  font-size: 13px;
+  font-size: 17.5px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--fg-3);
-  font-family: var(--font-mono);
+  color: var(--fg);
 }
 .section-head .line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, var(--glass-divider) 0%, transparent 100%);
+  background: var(--border-strong);
 }
 
-/* Klappbarer Section-Head — button-Variante. Sibling-Hide blendet die
-   direkt darunter folgende Karte aus solange die Sektion zugeklappt ist.
-   Greift nur fuer .section-collapsible damit klassische divs unangetastet
-   bleiben (z. B. Section-Heads die ohnehin als Anker dienen). */
+/* Klappbarer Section-Head (button). Sibling-Hide blendet die direkt
+   folgende Karte aus, solange die Sektion zugeklappt ist. */
 button.section-head.section-collapsible {
-  transition: background var(--dur-fast) var(--ease-smooth);
   border-radius: var(--radius-xs);
 }
-button.section-head.section-collapsible:hover {
-  background: var(--glass-3);
-}
-button.section-head.section-collapsible:focus-visible {
-  outline: 2px solid var(--info);
-  outline-offset: 2px;
-}
+button.section-head.section-collapsible:hover { background: var(--surface-3); }
 button.section-head.section-collapsible[data-collapsed="true"] + .card,
 button.section-head.section-collapsible[data-collapsed="true"] + .cta-wrap,
 button.section-head.section-collapsible[data-collapsed="true"] + section {
   display: none;
 }
 
-/* ─── Vehicle selector ────────────────────────────────────── */
+/* ─── Fahrzeugwahl ──────────────────────────────────────────── */
 .vehicle-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 .vehicle-chip {
-  border: 1.5px solid var(--glass-border);
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
   border-radius: var(--radius-s);
   padding: 12px 8px;
   text-align: center;
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-smooth);
 }
-.vehicle-chip:hover {
-  border-color: var(--glass-border-strong);
-  background: var(--glass-2);
-  transform: var(--lift-1);
-}
+.vehicle-chip:hover { background: var(--surface-2); }
 .vehicle-chip .code {
   font-size: 17.5px;
   font-weight: 700;
   color: var(--fg);
-  letter-spacing: 0.02em;
 }
 .vehicle-chip .sub {
-  font-size: 12.5px;
+  font-size: 13.5px;
   color: var(--fg-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 600;
+  font-weight: 500;
   margin-top: 2px;
-  font-family: var(--font-mono);
 }
 .vehicle-chip.active {
   border-color: var(--red);
-  background: linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%);
+  background: var(--red);
   color: #fff;
-  box-shadow: var(--glow-red);
 }
 .vehicle-chip.active .code { color: #fff; }
-.vehicle-chip.active .sub  { color: rgba(255, 255, 255, 0.78); }
+.vehicle-chip.active .sub  { color: rgba(255, 255, 255, 0.85); }
 
-/* ─── Person selector ─────────────────────────────────────── */
+/* ─── Person ────────────────────────────────────────────────── */
 .person {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1.5px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
   padding: 10px 14px 10px 12px;
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-smooth);
   width: 100%;
   text-align: left;
   font-family: inherit;
 }
-.person:hover { background: var(--glass-2); border-color: var(--glass-border-strong); }
-.person.filled { background: var(--glass-2); border-color: var(--glass-border-strong); }
+.person:hover { background: var(--surface-2); }
+.person.filled { background: var(--surface); }
 .person .avatar {
   width: 38px;
   height: 38px;
-  border-radius: 50%;
-  background: var(--glass-2);
+  border-radius: var(--radius-s);
+  background: var(--surface-3);
   color: var(--fg-2);
   display: grid;
   place-items: center;
@@ -521,140 +385,110 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   font-weight: 700;
   font-family: var(--font-sans);
   flex-shrink: 0;
-  border: 1px solid var(--glass-border);
 }
-.person .avatar.color-a { background: rgba(96, 165, 250, 0.18); color: var(--info); }
-.person .avatar.color-b { background: rgba(52, 211, 153, 0.18); color: var(--ok); }
-.person .avatar.color-c { background: rgba(251, 191, 36, 0.18); color: var(--warn); }
-.person .avatar.color-d { background: rgba(196, 181, 253, 0.18); color: var(--as); }
-.person .avatar.color-e { background: rgba(255, 84, 104, 0.18); color: var(--red); }
-.person .avatar.color-f { background: rgba(244, 114, 182, 0.18); color: #EC4899; }
+.person .avatar.color-a { background: var(--info-tint); color: var(--info); }
+.person .avatar.color-b { background: var(--ok-tint);   color: var(--ok); }
+.person .avatar.color-c { background: var(--warn-tint); color: var(--warn); }
+.person .avatar.color-d { background: var(--as-tint);   color: var(--as); }
+.person .avatar.color-e { background: var(--red-tint);  color: var(--red); }
+.person .avatar.color-f { background: var(--surface-3); color: var(--fg); }
 .person .name {
   flex: 1;
   font-size: 20px;
   font-weight: 600;
   color: var(--fg);
-  letter-spacing: var(--tracking-ui);
 }
 .person .name.placeholder { color: var(--fg-3); font-weight: 500; }
 .person .badges { display: flex; gap: 6px; align-items: center; }
 
-/* ─── Crew rows ───────────────────────────────────────────── */
+/* ─── Mannschaftszeilen ─────────────────────────────────────── */
 .crew-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px 12px 12px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-4);
-  -webkit-backdrop-filter: var(--blur-4);
-  border: 1.5px solid var(--glass-border);
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
-  transition: all var(--dur-fast) var(--ease-smooth);
 }
-.crew-row.filled { background: var(--glass-2); border-color: var(--glass-border-strong); }
+.crew-row.filled { background: var(--surface); }
 .crew-row.empty {
-  background: transparent;
-  border: 1.5px dashed var(--glass-border-strong);
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
   cursor: pointer;
 }
-.crew-row.empty:hover {
-  background: var(--glass-3);
-  border-color: var(--info);
-}
+.crew-row.empty:hover { background: var(--surface-3); border-color: var(--info); }
 .crew-num {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-xs);
-  background: var(--glass-2);
+  background: var(--surface-3);
   color: var(--fg-2);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  border: 1px solid var(--glass-border);
 }
 .crew-row.filled .crew-num {
-  background: linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%);
+  background: var(--fg);
   color: var(--bg);
-  border-color: transparent;
-}
-[data-theme="dark"] .crew-row.filled .crew-num {
-  background: linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%);
-  color: var(--bg-deep);
 }
 .crew-row.empty .crew-num {
   background: transparent;
   color: var(--fg-3);
-  border-style: dashed;
+  border: 1px dashed var(--border-strong);
 }
 .crew-name {
   flex: 1;
   font-size: 20px;
   font-weight: 600;
   color: var(--fg);
-  letter-spacing: var(--tracking-ui);
 }
 .crew-name.placeholder { color: var(--fg-3); font-weight: 500; }
 .crew-meta { display: flex; gap: 6px; align-items: center; }
 
-/* ─── AS-Timer Pill ───────────────────────────────────────── */
+/* ─── Atemschutz-Zeit ───────────────────────────────────────── */
 .as-timer {
   display: inline-flex;
   align-items: stretch;
-  border-radius: 999px;
+  border-radius: var(--radius-s);
   overflow: hidden;
   background: var(--as-tint);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 700;
-  border: 1px solid var(--as-tint);
-  backdrop-filter: var(--blur-4);
-  -webkit-backdrop-filter: var(--blur-4);
+  border: 1px solid var(--as);
 }
-.as-timer .tag {
-  padding: 4px 8px;
-  color: var(--as);
-  letter-spacing: 0.06em;
-}
+.as-timer .tag { padding: 4px 8px; color: var(--as); }
 .as-timer .val {
   padding: 4px 10px;
   background: var(--as);
   color: #fff;
   font-variant-numeric: tabular-nums;
 }
-[data-theme="dark"] .as-timer .val { color: #0E1116; font-weight: 700; }
+[data-theme="dark"] .as-timer .val { color: #161616; }
 
-/* ─── Icon button ─────────────────────────────────────────── */
+/* ─── Icon-Button ───────────────────────────────────────────── */
 .icon-btn {
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
   border-radius: var(--radius-s);
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   color: var(--fg-2);
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-smooth);
   font-family: inherit;
 }
-.icon-btn:hover {
-  background: var(--glass-2);
-  border-color: var(--glass-border-strong);
-  color: var(--fg);
-  transform: var(--lift-1);
-}
-.icon-btn:active { transform: var(--press); }
+.icon-btn:hover { background: var(--surface-3); color: var(--fg); }
+.icon-btn:active { background: var(--surface-3); }
 .icon-btn.danger { color: var(--red); border-color: var(--red-border); }
-.icon-btn.danger:hover { background: var(--red-tint); box-shadow: var(--glow-red-soft); }
+.icon-btn.danger:hover { background: var(--red-tint); }
 
-/* ─── Chips (Geräte, Aufträge) ────────────────────────────── */
+/* ─── Chips (Geräte, Aufträge) ──────────────────────────────── */
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -664,27 +498,19 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 14px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-4);
-  -webkit-backdrop-filter: var(--blur-4);
-  border: 1.5px solid var(--glass-border);
-  border-radius: 999px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
   font-size: 17.5px;
-  font-weight: 600;
-  color: var(--fg-2);
+  font-weight: 500;
+  color: var(--fg);
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-smooth);
   white-space: nowrap;
   font-family: inherit;
-  min-height: 36px;
-  letter-spacing: var(--tracking-ui);
+  min-height: 40px;
 }
-.chip:hover {
-  background: var(--glass-2);
-  color: var(--fg);
-  border-color: var(--glass-border-strong);
-}
+.chip:hover { background: var(--surface-2); }
 .chip .plus {
   font-size: 17.5px;
   font-weight: 700;
@@ -694,34 +520,30 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .chip.selected {
   background: var(--ok-tint);
   color: var(--ok);
-  border-color: var(--ok-border);
-  box-shadow: var(--glow-ok);
+  border-color: var(--ok);
+  font-weight: 700;
 }
 .chip.selected .plus,
 .chip.selected .dot { color: var(--ok); }
 .chip .dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--ok);
   display: inline-block;
-  box-shadow: 0 0 8px var(--emerald-glow);
 }
 .chip.task {
-  font-family: var(--font-mono);
-  font-size: 15.5px;
+  font-size: 16.5px;
   font-weight: 600;
-  letter-spacing: var(--tracking-mono);
 }
 .chip.task.selected {
   background: var(--info-tint);
   color: var(--info);
-  border-color: var(--blue-border);
-  box-shadow: var(--glow-info);
+  border-color: var(--info);
 }
-.chip.task.selected .dot { background: var(--info); box-shadow: 0 0 8px var(--blue-glow); }
+.chip.task.selected .dot { background: var(--info); }
 
-/* ─── Freeform input ──────────────────────────────────────── */
+/* ─── Freitext-Zeile ────────────────────────────────────────── */
 .freeform {
   display: flex;
   gap: 10px;
@@ -730,7 +552,7 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .freeform .input { flex: 1; }
 .freeform .add-btn {
   width: 56px;
-  background: linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%);
+  background: var(--fg);
   color: var(--bg);
   border: 0;
   border-radius: var(--radius-s);
@@ -741,13 +563,11 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   place-items: center;
   min-height: 56px;
   font-family: inherit;
-  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.25);
-  transition: all var(--dur-fast) var(--ease-smooth);
 }
-.freeform .add-btn:hover { transform: var(--lift-1); }
-.freeform .add-btn:active { transform: var(--press); }
+.freeform .add-btn:hover { background: var(--fg-2); }
+.freeform .add-btn:disabled { background: var(--fg-4); cursor: not-allowed; }
 
-/* ─── Chronik / Timeline ──────────────────────────────────── */
+/* ─── Chronik ───────────────────────────────────────────────── */
 .timeline {
   display: flex;
   flex-direction: column;
@@ -759,124 +579,89 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   padding: 4px 0;
 }
 .tl-time {
-  font-family: var(--font-mono);
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 17.5px;
+  font-weight: 700;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
   padding-top: 10px;
-  letter-spacing: var(--tracking-mono);
 }
 .tl-body {
   position: relative;
   padding: 8px 0 18px 22px;
-  border-left: 1.5px solid var(--glass-divider);
+  border-left: 2px solid var(--border-strong);
 }
 .tl-row:last-child .tl-body { border-left-color: transparent; }
 .tl-dot {
   position: absolute;
   left: -7px;
-  top: 12px;
+  top: 14px;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--bg);
-  border: 2.5px solid var(--info);
-  box-shadow: 0 0 12px var(--blue-glow);
+  background: var(--info);
+  border: 2px solid var(--surface);
 }
-.tl-dot.red { border-color: var(--red); box-shadow: 0 0 12px var(--red-glow); }
-.tl-dot.ok  { border-color: var(--ok);  box-shadow: 0 0 12px var(--emerald-glow); }
-.tl-dot.warn { border-color: var(--warn); box-shadow: 0 0 12px var(--amber-glow); }
+.tl-dot.red  { background: var(--red); }
+.tl-dot.ok   { background: var(--ok); }
+.tl-dot.warn { background: var(--warn); }
 .tl-source {
-  font-size: 12.5px;
+  font-size: 14.5px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
   color: var(--info);
-  margin-bottom: 4px;
-  font-family: var(--font-mono);
+  margin-bottom: 2px;
 }
-.tl-source.red { color: var(--red); }
-.tl-source.ok  { color: var(--ok); }
+.tl-source.red  { color: var(--red); }
+.tl-source.ok   { color: var(--ok); }
 .tl-source.warn { color: var(--warn); }
 .tl-text {
   font-size: 19px;
   color: var(--fg);
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.4;
-  letter-spacing: var(--tracking-ui);
 }
 .tl-text strong { font-weight: 700; }
 
-/* ─── Dictate ────────────────────────────────────────────── */
+/* ─── Diktat ────────────────────────────────────────────────── */
 .dictate {
   margin-top: 14px;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1.5px solid var(--glass-border);
-  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
   width: 100%;
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  transition: all var(--dur-fast) var(--ease-smooth);
 }
-.dictate:hover {
-  background: var(--glass-2);
-  border-color: var(--glass-border-strong);
-  transform: var(--lift-1);
-}
+.dictate:hover { background: var(--surface-2); }
 .dictate.recording {
-  background:
-    radial-gradient(ellipse at 0% 50%, var(--red-tint-2), var(--glass-2));
-  border-color: var(--red-border);
-  box-shadow: var(--glow-red-soft);
+  background: var(--red-tint);
+  border-color: var(--red);
+  border-width: 2px;
 }
 .dictate-btn {
   width: 44px;
   height: 44px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%);
+  border-radius: var(--radius-m);
+  background: var(--red);
   color: #fff;
   display: grid;
   place-items: center;
-  box-shadow: var(--glow-red);
   flex-shrink: 0;
-}
-.dictate.recording .dictate-btn {
-  animation: dictate-pulse 1.2s ease-in-out infinite;
-}
-@keyframes dictate-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 0 4px var(--red-glow),
-      var(--glow-red);
-  }
-  50% {
-    box-shadow:
-      0 0 0 12px transparent,
-      var(--glow-red);
-  }
 }
 .dictate-text { flex: 1; }
 .dictate-text .t1 {
   font-size: 19px;
   font-weight: 700;
   color: var(--fg);
-  letter-spacing: var(--tracking-tight);
 }
 .dictate-text .t2 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
+  font-size: 14.5px;
   color: var(--fg-3);
-  font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 500;
   margin-top: 2px;
 }
 .dictate-wave {
@@ -887,27 +672,12 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 }
 .dictate-wave span {
   width: 3px;
-  border-radius: 2px;
+  height: 14px;
   background: var(--fg-4);
 }
-.dictate.recording .dictate-wave span {
-  background: var(--red);
-  animation: wave-bounce 0.9s ease-in-out infinite;
-  box-shadow: 0 0 8px var(--red-glow);
-}
-.dictate.recording .dictate-wave span:nth-child(2) { animation-delay: 0.1s; }
-.dictate.recording .dictate-wave span:nth-child(3) { animation-delay: 0.2s; }
-.dictate.recording .dictate-wave span:nth-child(4) { animation-delay: 0.3s; }
-.dictate.recording .dictate-wave span:nth-child(5) { animation-delay: 0.4s; }
-.dictate.recording .dictate-wave span:nth-child(6) { animation-delay: 0.5s; }
-.dictate.recording .dictate-wave span:nth-child(7) { animation-delay: 0.6s; }
-.dictate.recording .dictate-wave span:nth-child(8) { animation-delay: 0.7s; }
-@keyframes wave-bounce {
-  0%, 100% { transform: scaleY(0.5); }
-  50%      { transform: scaleY(1.4); }
-}
+.dictate.recording .dictate-wave span { background: var(--red); height: 22px; }
 
-/* ─── CTA — Primärer Action-Button ───────────────────────── */
+/* ─── Hauptaktion ───────────────────────────────────────────── */
 .cta-wrap {
   margin-top: 8px;
   display: flex;
@@ -916,10 +686,9 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   align-items: stretch;
 }
 .cta-hint {
-  font-size: 15.5px;
+  font-size: 16px;
   color: var(--fg-2);
   text-align: center;
-  letter-spacing: var(--tracking-ui);
 }
 .cta-hint strong { color: var(--fg); font-weight: 600; }
 .cta {
@@ -927,51 +696,25 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 22px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.20) 0%, transparent 50%),
-    linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%);
+  padding: 18px;
+  background: var(--red);
   color: #fff;
-  border: 1px solid var(--red-border);
-  border-radius: var(--radius-l);
+  border: 1px solid var(--red-strong);
+  border-radius: var(--radius-m);
   font-family: inherit;
-  font-size: 21.5px;
+  font-size: 21px;
   font-weight: 700;
-  letter-spacing: var(--tracking-ui);
   cursor: pointer;
-  box-shadow: var(--glow-red);
-  transition:
-    transform var(--dur-base) var(--ease-smooth),
-    box-shadow var(--dur-base) var(--ease-smooth),
-    background var(--dur-base) var(--ease-smooth);
   width: 100%;
-  position: relative;
-  overflow: hidden;
 }
-.cta::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 50% 40% at 50% 0%, rgba(255, 255, 255, 0.30), transparent 70%);
-  pointer-events: none;
-}
-.cta:hover {
-  transform: var(--lift-2);
-  box-shadow:
-    0 0 0 1px rgba(200, 16, 46, 0.45),
-    0 28px 60px -16px rgba(200, 16, 46, 0.55),
-    0 10px 24px -4px rgba(200, 16, 46, 0.40);
-}
-.cta:active { transform: var(--press); }
+.cta:hover { background: var(--red-strong); }
+.cta:active { background: #6E0A12; }
 .cta:disabled {
   cursor: not-allowed;
-  background:
-    linear-gradient(180deg, var(--fg-3) 0%, var(--fg-4) 100%);
-  box-shadow: none;
-  transform: none;
+  background: var(--fg-4);
+  border-color: var(--fg-4);
+  color: var(--surface);
 }
-.cta:disabled::before { display: none; }
 .cta svg { width: 22px; height: 22px; }
 
 .cta-secondary {
@@ -980,12 +723,10 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 }
 .cta-secondary button {
   flex: 1;
-  padding: 14px 16px;
-  background: var(--glass-2);
-  backdrop-filter: var(--blur-2);
-  -webkit-backdrop-filter: var(--blur-2);
+  padding: 13px 16px;
+  background: var(--surface);
   color: var(--fg);
-  border: 1.5px solid var(--glass-border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-m);
   font-family: inherit;
   font-size: 17.5px;
@@ -995,563 +736,259 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  letter-spacing: var(--tracking-ui);
-  transition: all var(--dur-fast) var(--ease-smooth);
 }
-.cta-secondary button:hover {
-  border-color: var(--glass-border-strong);
-  background: var(--glass-1);
-  transform: var(--lift-1);
-}
-.cta-secondary button:active { transform: var(--press); }
+.cta-secondary button:hover { background: var(--surface-2); }
+.cta-secondary button:active { background: var(--surface-3); }
 
-/* ─── App header ─── glasige Sticky-Topbar ────────────────── */
+/* ─── Kopfzeile ─────────────────────────────────────────────── */
 .appheader {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 14px 24px 16px;
-  background: var(--glass-1);
-  backdrop-filter: var(--blur-1);
-  -webkit-backdrop-filter: var(--blur-1);
-  border-bottom: 1px solid var(--glass-border);
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-strong);
   position: sticky;
   top: 0;
   z-index: 50;
-  box-shadow: 0 1px 0 var(--glass-divider);
 }
 .applogo {
   width: 44px;
   height: 44px;
   border-radius: var(--radius-s);
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.20), transparent 60%),
-    linear-gradient(135deg, #0F172A 0%, #050709 100%);
+  background: #111;
   display: grid;
   place-items: center;
-  position: relative;
   overflow: hidden;
   flex-shrink: 0;
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.35);
 }
 .applogo svg { width: 26px; height: 26px; }
 .appbrand { flex: 1; min-width: 0; }
 .appname {
-  font-size: 21.5px;
+  font-size: 21px;
   font-weight: 700;
-  letter-spacing: var(--tracking-tight);
   color: var(--fg);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .appname .dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--red);
-  animation: breathe 2.4s ease-in-out infinite;
 }
-[data-theme="dark"] .appname .dot { animation-name: breathe-dark; }
-[data-theme="dark"] .status-pill.danger .dot { animation-name: breathe-dark; }
 .appsub {
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--fg-2);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  font-weight: 600;
-  margin-top: 2px;
-  font-family: var(--font-mono);
+  font-weight: 500;
+  margin-top: 1px;
 }
 .themetoggle {
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
   border-radius: var(--radius-s);
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1px solid var(--glass-border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   color: var(--fg-2);
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-smooth);
   position: relative;
   font-family: inherit;
 }
-.themetoggle:hover {
-  background: var(--glass-2);
-  color: var(--fg);
-  border-color: var(--glass-border-strong);
-  transform: var(--lift-1);
-}
+.themetoggle:hover { background: var(--surface-3); color: var(--fg); }
 .headerstamp {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  gap: 1px;
   font-variant-numeric: tabular-nums;
 }
 .headerstamp .time {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--fg);
-  font-family: var(--font-mono);
-  letter-spacing: var(--tracking-mono);
 }
 .headerstamp .meta {
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--fg-3);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  font-weight: 600;
-  font-family: var(--font-mono);
+  font-weight: 500;
 }
 
-/* ─── Page content ────────────────────────────────────────── */
+/* ─── Seiteninhalt ──────────────────────────────────────────── */
 .page {
   padding: 24px 24px 56px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   max-width: 1200px;
   margin: 0 auto;
-  /* Subtle initial reveal — page-children inherit */
-  animation: glass-reveal var(--dur-slow) var(--ease-decel) both;
 }
 
-.page > * {
-  animation: glass-reveal var(--dur-med) var(--ease-decel) both;
+/* ============================================================
+   RESPONSIVE — Handy (< 640px) + Tablet-Hochkant (< 920px)
+   ============================================================ */
+@media (max-width: 920px) {
+  :root { --topbar-h: 71px; }
+  .page { padding: 16px 16px 56px; gap: 12px; }
+  .appheader { padding: 10px 16px; gap: 12px; }
+  /* V-02: Hochkant rutscht die dritte Grid-Zelle in die zweite Zeile. */
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+  .alarm { padding: 20px 20px 18px; border-left-width: 6px; }
+  .alarm-title { font-size: 34px; }
+  .alarm-meta { grid-template-columns: repeat(2, 1fr); gap: 4px 0; }
+  .alarm-meta .cell { padding: 6px 14px; border-right: 1px solid var(--border); }
+  .alarm-meta .cell:nth-child(2n) { border-right: 0; }
+  .alarm-meta .cell:nth-child(-n+2) {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+  }
+  .alarm-meta .cell:nth-child(n+3) { padding-top: 10px; }
 }
-.page > *:nth-child(1)  { animation-delay: 0ms;  }
-.page > *:nth-child(2)  { animation-delay: 30ms; }
-.page > *:nth-child(3)  { animation-delay: 60ms; }
-.page > *:nth-child(4)  { animation-delay: 90ms; }
-.page > *:nth-child(5)  { animation-delay: 120ms; }
-.page > *:nth-child(6)  { animation-delay: 150ms; }
-.page > *:nth-child(7)  { animation-delay: 180ms; }
-.page > *:nth-child(8)  { animation-delay: 210ms; }
-.page > *:nth-child(n+9) { animation-delay: 240ms; }
 
-/* Reduzierte Motion — respektiert User-Präferenz */
+@media (max-width: 640px) {
+  .page { padding: 12px 10px 48px; gap: 10px; }
+  .appheader { padding: 8px 10px; gap: 8px; flex-wrap: wrap; }
+  /* Handy: Fahrzeug-Badge zeigt bereits, wo man angemeldet ist — der
+     Textblock "HotDoc / Fahrzeugbericht" wuerde die Knoepfe aus dem Bild
+     druecken. Er bleibt nur, wenn kein Badge da ist (kein Fahrzeug-Kontext). */
+  .appheader .appbrand { flex-basis: 100%; order: 5; }
+  .appheader .appbrand .appname { display: none; }
+  .applogo { width: 38px; height: 38px; }
+  .applogo svg { width: 22px; height: 22px; }
+  .appname { font-size: 19px; }
+  .appsub {
+    font-size: 13.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .headerstamp { display: none; }
+  .themetoggle { width: 40px; height: 40px; min-height: 40px; }
+
+  .card { padding: 14px 14px; }
+  .card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+  .card > .card-head:first-child {
+    margin: -14px -14px 12px;
+    padding: 9px 14px;
+  }
+  .card-title { font-size: 19px; }
+
+  .alarm { padding: 16px 14px 14px; }
+  .alarm-top { flex-direction: column; gap: 12px; }
+  .alarm-left { gap: 12px; }
+  .alarm-icon { width: 48px; height: 48px; }
+  .alarm-icon svg { width: 24px; height: 24px; }
+  .alarm-title { font-size: 27px; line-height: 1.12; }
+  .alarm-addr { font-size: 17.5px; }
+  .alarm-meta { padding: 8px 4px; }
+  .alarm-meta .lbl { font-size: 13.5px; }
+  .alarm-meta .val { font-size: 19px; }
+  .alarm-meta .val .unit { font-size: 14px; }
+
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; gap: 10px; }
+
+  .vehicle-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .vehicle-chip { padding: 10px 6px; }
+  .vehicle-chip .code { font-size: 16px; }
+  .vehicle-chip .sub { font-size: 13px; }
+
+  .chip { padding: 7px 12px; font-size: 16.5px; min-height: 38px; }
+
+  .input { padding: 11px 12px; font-size: 20px; } /* nie < 16px (iOS-Zoom) */
+
+  .tl-row { grid-template-columns: 52px 1fr; gap: 10px; }
+  .tl-time { font-size: 16px; padding-top: 8px; }
+  .tl-text { font-size: 18px; }
+  .tl-body { padding-bottom: 14px; padding-left: 18px; }
+
+  .cta { padding: 16px; font-size: 19px; }
+  .cta-secondary { flex-direction: column; gap: 8px; }
+  .cta-secondary button { width: 100%; }
+
+  .section-head { padding: 6px 2px 0; }
+
+  .person { padding: 8px 10px; gap: 10px; }
+  .person .avatar { width: 34px; height: 34px; font-size: 15px; }
+  .person .name { font-size: 19px; }
+
+  .crew-row { padding: 8px 10px; gap: 10px; }
+  .crew-name { font-size: 19px; }
+
+  .dictate { padding: 10px 12px; gap: 10px; }
+  .dictate-btn { width: 40px; height: 40px; }
+  .dictate-text .t1 { font-size: 17.5px; }
+  .dictate-text .t2 { font-size: 13.5px; }
+
+  .appfoot { padding: 14px 10px; font-size: 13.5px; line-height: 1.8; }
+  .appfoot .sep { margin: 0 5px; }
+}
+
+@media (max-width: 380px) {
+  .page { padding: 10px 8px 48px; gap: 8px; }
+  .appname { font-size: 17.5px; }
+  .appsub { display: none; }
+  .alarm-title { font-size: 24px; }
+  .vehicle-row { grid-template-columns: repeat(2, 1fr); }
+  .alarm-meta { grid-template-columns: 1fr; padding: 6px; }
+  .alarm-meta .cell {
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px !important;
+  }
+  .alarm-meta .cell:last-child { border-bottom: 0; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .page { padding-top: 12px; }
+  .appheader { padding: 6px 16px; }
+}
+
+/* ─── Großer Bildschirm (Florianstation am PC) ──────────────── */
+@media (min-width: 1280px) {
+  .page { max-width: 1280px; padding: 28px 32px 64px; gap: 16px; }
+  .appheader { padding: 12px 32px; }
+  .card { padding: 22px 26px; }
+  .card > .card-head:first-child { margin: -22px -26px 18px; padding: 12px 26px; }
+  .alarm { padding: 24px 30px 22px; }
+  .alarm-title { font-size: 44px; }
+}
+@media (min-width: 1680px) {
+  .page { max-width: 1440px; }
+}
+
+/* ─── Bewegung reduzieren (Systemeinstellung respektieren) ──── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  body::after { animation: none; }
 }
 
-/* ============================================================
-   RESPONSIVE — Phone (< 640px) + Tablet-Hochkant (< 920px)
-   Tablet-Querformat / Desktop = Default-Layout oben.
-   ============================================================ */
-
-/* ─── Tablet-Hochkant + kleines Tablet ────────────────────── */
-@media (max-width: 920px) {
-  /* V-06 (Audit R3): Topbar ist hier 71 px hoch (12 + 44 + 14 + 1 Border). */
-  :root {
-    --topbar-h: 71px;
-  }
-  .page {
-    padding: 18px 18px 56px;
-    gap: 14px;
-  }
-  .appheader {
-    padding: 12px 16px 14px;
-    gap: 12px;
-  }
-  /* V-02 (Audit R3): Hochkant (800 px) rutscht die dritte Grid-Zelle in
-     die zweite Zeile statt aus der Card zu laufen. */
-  .grid-3 {
-    grid-template-columns: 1fr 1fr;
-  }
-  .alarm {
-    padding: 22px 22px 20px;
-    border-radius: var(--radius-l);
-  }
-  .alarm-title {
-    font-size: 35px;
-  }
-  .alarm-meta {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 4px 0;
-  }
-  .alarm-meta .cell {
-    padding: 6px 14px;
-    border-right: 1px solid var(--glass-divider);
-  }
-  /* Bei 2 Spalten den Right-Border in jeder geraden Zelle entfernen */
-  .alarm-meta .cell:nth-child(2n) { border-right: 0; }
-  /* Und in der ersten Zeile (Index 1-2) den Bottom-Border setzen */
-  .alarm-meta .cell:nth-child(-n+2) {
-    border-bottom: 1px solid var(--glass-divider);
-    padding-bottom: 10px;
-  }
-  .alarm-meta .cell:nth-child(n+3) {
-    padding-top: 10px;
-  }
-}
-
-/* ─── Phone (Handy, Hochkant) ─────────────────────────────── */
-/* Issue 11 (Einsatz-Test 2026-06-02): .page links/rechts auf 12px gesetzt
-   (vorher 18px @920px) damit die Cards auf Mobile mehr Innenflaeche haben
-   und der Auto-Save-Hinweis nicht uebersteht. Top/bottom bleibt 14px/48px. */
-@media (max-width: 640px) {
-  .page {
-    padding: 14px 12px 48px;
-    gap: 12px;
-  }
-
-  /* App-Header schmaler, weniger Text */
-  .appheader {
-    padding: 10px 12px 12px;
-    gap: 10px;
-  }
-  .applogo {
-    width: 38px;
-    height: 38px;
-  }
-  .applogo svg { width: 22px; height: 22px; }
-  .appname {
-    font-size: 19px;
-  }
-  .appsub {
-    font-size: 12px;
-    /* Drei Zeilen verhindern — Ellipsis */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  /* Zeitstempel auf Handy in eine Zeile */
-  .headerstamp {
-    display: none;
-  }
-  .themetoggle {
-    width: 38px;
-    height: 38px;
-  }
-
-  /* Card spaciger */
-  .card {
-    padding: 16px 16px;
-    border-radius: var(--radius-m);
-  }
-  .card-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-  .card-title { font-size: 19.5px; }
-
-  /* Alarm: noch kompakter */
-  .alarm {
-    padding: 18px 16px 16px;
-  }
-  .alarm-top {
-    flex-direction: column;
-    gap: 12px;
-  }
-  .alarm-left {
-    gap: 12px;
-  }
-  .alarm-icon {
-    width: 50px;
-    height: 50px;
-    border-radius: 14px;
-  }
-  .alarm-icon svg { width: 24px; height: 24px; }
-  .alarm-title {
-    font-size: 27.5px;
-    line-height: 1.1;
-  }
-  .alarm-addr {
-    font-size: 17.5px;
-  }
-  .alarm-meta {
-    padding: 10px 4px;
-  }
-  .alarm-meta .lbl { font-size: 11.5px; }
-  .alarm-meta .val { font-size: 19px; }
-  .alarm-meta .val .unit { font-size: 14px; }
-
-  /* Grid-Helper: alle auf Single-Column auf Handy */
-  .grid-2,
-  .grid-3,
-  .grid-4 {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  /* Vehicle-Row: 2 oder 3 Spalten, NICHT 5 */
-  .vehicle-row {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-  }
-  .vehicle-chip {
-    padding: 10px 6px;
-  }
-  .vehicle-chip .code { font-size: 15.5px; }
-  .vehicle-chip .sub { font-size: 11.5px; letter-spacing: 0.04em; }
-
-  /* Chips kleiner */
-  .chip {
-    padding: 8px 12px;
-    font-size: 16.5px;
-    min-height: 34px;
-  }
-
-  /* Inputs: Font-Size 16px+ bleibt erhalten (iOS-Auto-Zoom-Prevention) */
-  .input {
-    padding: 12px 14px;
-    font-size: 20px;     /* niemals < 16px sonst iOS zoomt automatisch */
-    border-radius: var(--radius-s);
-  }
-
-  /* Inputs in Setup PIN-Field bleiben groß, aber Padding sanfter */
-
-  /* Timeline: weniger Platz für Zeit-Spalte */
-  .tl-row {
-    grid-template-columns: 52px 1fr;
-    gap: 10px;
-  }
-  .tl-time { font-size: 15.5px; padding-top: 8px; }
-  .tl-text { font-size: 18px; }
-
-  /* Chronik-Body weniger Bottom-Padding */
-  .tl-body { padding-bottom: 14px; padding-left: 18px; }
-
-  /* CTA-Sekundär gleich-große Spalten und kleineres Padding */
-  .cta {
-    padding: 18px;
-    font-size: 19px;
-    border-radius: var(--radius-m);
-  }
-  .cta-secondary {
-    flex-direction: column;
-    gap: 8px;
-  }
-  .cta-secondary button {
-    width: 100%;
-  }
-
-  /* Section-Heads etwas tighter */
-  .section-head { padding: 6px 4px 0; }
-
-  /* Person/Crew Rows: kleinere Avatare + Padding */
-  .person {
-    padding: 8px 12px 8px 10px;
-    gap: 10px;
-  }
-  .person .avatar {
-    width: 34px;
-    height: 34px;
-    font-size: 14.5px;
-  }
-  .person .name { font-size: 19px; }
-
-  .crew-row {
-    padding: 10px 12px 10px 10px;
-    gap: 10px;
-  }
-  .crew-name { font-size: 19px; }
-
-  /* Diktat-Button: kompakter */
-  .dictate {
-    padding: 12px 14px;
-    gap: 10px;
-  }
-  .dictate-btn {
-    width: 40px;
-    height: 40px;
-  }
-  .dictate-text .t1 { font-size: 17.5px; }
-  .dictate-text .t2 { font-size: 12px; }
-
-  /* App-Footer auf Handy: Pipes als Zeilenumbruch (kleinere Mass) */
-  .appfoot {
-    padding: 16px 12px;
-    font-size: 12px;
-    line-height: 1.8;
-  }
-  .appfoot .sep { margin: 0 5px; }
-}
-
-/* ─── Sehr kleine Phones (< 380px) — Notfall ──────────────── */
-@media (max-width: 380px) {
-  .page { padding: 12px 10px 48px; gap: 10px; }
-  .appname { font-size: 17.5px; }
-  .appsub { display: none; }
-  .alarm-title { font-size: 25px; }
-  .vehicle-row { grid-template-columns: repeat(2, 1fr); }
-  .alarm-meta {
-    grid-template-columns: 1fr;
-    padding: 8px;
-  }
-  .alarm-meta .cell {
-    border-right: 0 !important;
-    border-bottom: 1px solid var(--glass-divider);
-    padding: 8px 12px !important;
-  }
-  .alarm-meta .cell:last-child { border-bottom: 0; }
-}
-
-/* ─── Landscape Phone (max-height < 500px) — Modal nicht zu groß ── */
-@media (max-height: 500px) and (orientation: landscape) {
-  .page { padding-top: 14px; }
-  .appheader { padding: 8px 16px; }
-}
-
-/* ============================================================
-   DESKTOP+ — ab 1280px breitere Cards, mehr Whitespace
-   Aktuelles Layout zentriert sich um 1200px — auf großen
-   Bildschirmen hatten Cards sehr viel Margin links/rechts.
-   ============================================================ */
-@media (min-width: 1280px) {
-  .page {
-    max-width: 1280px;
-    padding: 32px 32px 64px;
-    gap: 18px;
-  }
-  .appheader {
-    padding: 16px 32px 18px;
-  }
-  .card {
-    padding: 26px 26px;
-  }
-  .alarm {
-    padding: 28px 32px 24px;
-  }
-  .alarm-title {
-    font-size: 45px;
-  }
-}
-
-@media (min-width: 1680px) {
-  .page {
-    max-width: 1440px;
-  }
-}
-
-/* ============================================================
-   LITE-MODE — Verhaltens-Overrides (Animations + Transforms)
-   Tokens werden in tokens.css [data-fx="lite"] gesetzt.
-   Hier deaktivieren wir nur die teuren GPU-Effekte.
-   ============================================================ */
-[data-fx="lite"] body::after {
-  /* Aurora-Drift-Animation killt GPU auf älteren Tablets */
-  animation: none;
-  opacity: 0.18;
-}
-[data-fx="lite"] body::before {
-  /* Aurora-Stack vereinfachen — nur noch eine sehr dünne Tönung */
-  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
-}
-
-/* D-09: IdleView-Aurora-Glow Lite-Mode-Reduktion. Default-Light:
-   60px-Halo um Radio-Icon ist GPU-intensiv. Lite-Mode killt es ganz —
-   altes Tablet braucht den Effekt nicht. Im Default-Light bleibt der
-   Glow erhalten (visuell wichtig fuer "Bereit"-Geste). */
-[data-fx="lite"] .idle-radio-glow {
-  box-shadow: var(--glass-shadow-2) !important;
-}
-
-/* Page-Reveal-Stagger aus */
-[data-fx="lite"] .page,
-[data-fx="lite"] .page > * {
-  animation: none !important;
-}
-
-/* Modal-Animations aus (sieht nüchtern aus, aber rendert in 1 frame) */
-[data-fx="lite"] [role="dialog"] {
-  animation: none !important;
-}
-[data-fx="lite"] [role="dialog"] > * {
-  animation: none !important;
-}
-
-/* Hover-Lifts aus — auf Touch eh nutzlos, auf alten GPUs teuer */
-[data-fx="lite"] .icon-btn:hover,
-[data-fx="lite"] .chip:hover,
-[data-fx="lite"] .vehicle-chip:hover,
-[data-fx="lite"] .person:hover,
-[data-fx="lite"] .crew-row.empty:hover,
-[data-fx="lite"] .dictate:hover,
-[data-fx="lite"] .cta:hover,
-[data-fx="lite"] .cta-secondary button:hover,
-[data-fx="lite"] .themetoggle:hover,
-[data-fx="lite"] .freeform .add-btn:hover {
-  transform: none;
-}
-
-/* Card-Glanz-Streifen aus */
-[data-fx="lite"] .card::before {
-  display: none;
-}
-
-/* Alarm-Streifen (oben rot) bleibt — ist gradient ohne blur */
-/* Alarm-Pulse-Ring bleibt — wichtige visuelle Markierung */
-
-/* Diktat-Recording-Animation reduziert — @keyframes muss top-level liegen,
-   Lite-Mode-Anwendung via animation-name-Override im Selektor unten. */
-@keyframes dictate-pulse-lite {
-  0%, 100% { box-shadow: 0 0 0 0 var(--red-glow); }
-  50%      { box-shadow: 0 0 0 8px transparent; }
-}
-[data-fx="lite"] .dictate.recording .dictate-btn {
-  animation-name: dictate-pulse-lite;
-}
-
-/* Breathe-Animation auf Brand-Dot reduziert */
-[data-fx="lite"] .appname .dot {
-  animation: blink 1.8s ease-in-out infinite;
-  background: var(--red);
-  box-shadow: 0 0 6px var(--red-glow);
-}
-
-/* Touch-Geräte ohne :hover Support → identisch behandeln (extra Safety) */
-@media (hover: none) {
-  .icon-btn:hover,
-  .chip:hover,
-  .vehicle-chip:hover,
-  .person:hover,
-  .crew-row.empty:hover,
-  .dictate:hover,
-  .cta:hover,
-  .cta-secondary button:hover,
-  .themetoggle:hover,
-  .freeform .add-btn:hover {
-    transform: none;
-  }
-}
-
-/* Lite-Mode Indikator-Badge im Footer */
+/* FX-Schalter (Setup-Fußzeile): Anzeige bleibt, ohne Effekte kein Unterschied */
 .fx-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--glass-3);
-  border: 1px solid var(--glass-border);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--fg-2);
   cursor: pointer;
   min-height: 0;
-  transition: background var(--dur-fast) var(--ease-smooth);
 }
-.fx-badge:hover {
-  background: var(--glass-2);
-  color: var(--fg);
-}
+.fx-badge:hover { background: var(--surface-3); color: var(--fg); }
 .fx-badge .dot {
   width: 6px;
   height: 6px;
@@ -1561,22 +998,15 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
 .fx-badge.lite .dot { background: var(--warn); }
 .fx-badge.auto .dot { background: var(--info); }
 
-/* ─── App footer ──────────────────────────────────────────── */
+/* ─── Fußzeile ──────────────────────────────────────────────── */
 .appfoot {
   text-align: center;
-  padding: 22px;
-  font-size: 13px;
-  font-family: var(--font-mono);
-  font-weight: 600;
+  padding: 20px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--fg-3);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
 }
 .appfoot .sep { margin: 0 8px; color: var(--fg-4); }
-
-/* Inline-Link-Buttons im Footer — frueher 5x identische Inline-Styles
-   in BerichtPage. Variante .danger faerbt den Link in --red (z. B.
-   "An Handy uebergeben"). */
 .foot-link {
   background: transparent;
   border: 0;
@@ -1596,47 +1026,25 @@ button.section-head.section-collapsible[data-collapsed="true"] + section {
   gap: 4px;
 }
 
-/* ─── Status-Pill (GPS / OFFLINE / etc.) ──────────────────── */
+/* ─── Status-Anzeige (GPS / Offline …) ──────────────────────── */
 .status-pill {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 11px 5px 9px;
-  border-radius: 999px;
-  background: var(--glass-3);
-  backdrop-filter: var(--blur-3);
-  -webkit-backdrop-filter: var(--blur-3);
-  border: 1px solid var(--glass-border);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  font-size: 14.5px;
   font-weight: 700;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
   color: var(--fg-2);
-  transition: all var(--dur-base) var(--ease-smooth);
 }
-.status-pill.ok {
-  color: var(--ok);
-  background: var(--ok-tint);
-  border-color: var(--ok-border);
-}
-.status-pill.warn {
-  color: var(--warn);
-  background: var(--warn-tint);
-  border-color: var(--warn-border);
-}
-.status-pill.danger {
-  color: var(--red);
-  background: var(--red-tint);
-  border-color: var(--red-border);
-  box-shadow: var(--glow-red-soft);
-}
+.status-pill.ok     { color: var(--ok);   background: var(--ok-tint);   border-color: var(--ok-border); }
+.status-pill.warn   { color: var(--warn); background: var(--warn-tint); border-color: var(--warn-border); }
+.status-pill.danger { color: var(--red);  background: var(--red-tint);  border-color: var(--red-border); }
 .status-pill .dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 8px currentColor;
 }
-.status-pill.ok .dot { animation: glow-pulse 2s ease-in-out infinite; }
-.status-pill.danger .dot { animation: breathe 1.8s ease-in-out infinite; }

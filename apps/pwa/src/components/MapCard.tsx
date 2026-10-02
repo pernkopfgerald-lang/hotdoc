@@ -493,7 +493,6 @@ export function MapCard({
     : ({
         borderColor: "var(--border-strong)",
         background: "var(--card-gradient)",
-        boxShadow: "var(--shadow-card)",
       });
   // V-04 (Audit R3): Im Vollbild fuellt die Karte den flex-Rest (minHeight 0),
   // statt "100vh - 200px" — die 200 px deckten Abbiegehinweise (~212 px) +
@@ -516,15 +515,12 @@ export function MapCard({
               borderColor: "var(--emerald-border)",
               background: "var(--emerald-bg)",
               color: "var(--emerald)",
-              boxShadow: "0 0 18px -4px var(--emerald-glow)",
             }}
           >
             <span
               className="h-1.5 w-1.5 rounded-full"
               style={{
                 background: "var(--emerald)",
-                boxShadow: "0 0 8px var(--emerald-glow)",
-                animation: "pulse 1.8s ease-in-out infinite",
               }}
             />
             Position-Sharing
@@ -657,7 +653,7 @@ export function MapCard({
             marginTop: 12,
             maxHeight: 200,
             overflowY: "auto",
-            borderRadius: 12,
+            borderRadius: 5,
             border: "1px solid var(--border-strong)",
             background: "var(--surface-2)",
             padding: "6px 4px",
@@ -669,8 +665,6 @@ export function MapCard({
               fontFamily: "var(--font-mono)",
               fontSize: 12.5,
               fontWeight: 700,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
               color: "var(--fg-3)",
               borderBottom: "1px solid var(--border)",
               marginBottom: 4,
@@ -731,9 +725,8 @@ export function MapCard({
           title={navHref ? undefined : "Kein Einsatzort — Adresse tippen oder GPS vor Ort"}
           className="flex flex-1 items-center justify-center gap-2.5 rounded-[14px] px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5"
           style={{
-            background: "linear-gradient(180deg, #1E293B 0%, #0F172A 100%)",
+            background: "#1E293B",
             border: "1px solid #0F172A",
-            boxShadow: "0 6px 18px -6px rgba(15, 23, 42, 0.50)",
             // N-07: ohne Ziel inaktiv (kein href → kein Klick-Ziel).
             opacity: navHref ? 1 : 0.5,
             pointerEvents: navHref ? undefined : "none",
@@ -770,9 +763,8 @@ function MapCardTileLayerSwitch({
         gap: 0,
         background: "color-mix(in srgb, var(--surface) 88%, transparent)",
         border: "1px solid var(--border-strong)",
-        borderRadius: 8,
+        borderRadius: 4,
         padding: 2,
-        backdropFilter: "blur(6px)",
       }}
     >
       <Layers
@@ -808,8 +800,6 @@ function MapCardTileLayerSwitch({
               fontFamily: "var(--font-mono)",
               fontSize: 14,
               fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
               color: active ? "var(--info)" : "var(--fg-2)",
               background: active ? "var(--info-tint)" : "transparent",
               border: 0,

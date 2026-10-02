@@ -63,7 +63,6 @@ export function AbgeschlossenView({
       style={{
         borderColor: "var(--emerald-border)",
         background: "var(--card-gradient)",
-        boxShadow: "0 24px 60px -32px var(--emerald-glow), var(--shadow-card)",
       }}
     >
       {/* Grüner Beacon — Bericht ist im Trockenen */}
@@ -72,7 +71,7 @@ export function AbgeschlossenView({
         className="absolute left-0 top-0 h-[3px] w-full"
         style={{
           background:
-            "linear-gradient(90deg, transparent 0%, var(--emerald) 18%, var(--emerald) 82%, transparent 100%)",
+            "var(--emerald)",
         }}
       />
 
@@ -80,8 +79,7 @@ export function AbgeschlossenView({
         <span
           className="grid h-12 w-12 place-items-center rounded-md text-white"
           style={{
-            background: "linear-gradient(135deg, var(--emerald) 0%, color-mix(in srgb, var(--emerald) 50%, #000) 100%)",
-            boxShadow: "0 0 22px -2px var(--emerald-glow)",
+            background: "var(--emerald)",
           }}
         >
           <CheckCircle2 size={26} strokeWidth={2.2} />
@@ -242,8 +240,6 @@ export function AbgeschlossenView({
               fontFamily: "var(--font-mono)",
               fontSize: 12.5,
               fontWeight: 700,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
               color: "var(--fg-3)",
               marginBottom: 10,
               textAlign: "center",
@@ -333,8 +329,6 @@ function QuickActionCard({
         borderRadius: "var(--radius-m)",
         border: "1px solid var(--glass-border)",
         background: "var(--glass-2)",
-        backdropFilter: "var(--blur-2)",
-        WebkitBackdropFilter: "var(--blur-2)",
         cursor: "pointer",
         textAlign: "left",
         transition: "all 180ms var(--ease-smooth)",
@@ -358,7 +352,7 @@ function QuickActionCard({
           placeItems: "center",
           width: 36,
           height: 36,
-          borderRadius: 10,
+          borderRadius: 4,
           background: `color-mix(in srgb, ${color} 16%, transparent)`,
           color,
           marginBottom: 2,

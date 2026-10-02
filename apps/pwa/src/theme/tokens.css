@@ -1,504 +1,264 @@
 /* ============================================================
-   HotDoc — Design-Tokens v2.0
-   „Calm Command Bridge" — Frozen Glass · Aurora · FF-Rot
+   HotDoc — Design-Tokens v3.0 · „Einsatzformular"
    ============================================================
 
    Konzept:
-     Eine ruhige, autoritative Behörden-Operationssaal-Optik in
-     Apple-Vision-Pro-Glas. FF-Rot ist die einzige laute Farbe.
-     Alles andere wird zur klimatischen Tiefe: Aurora-Gradient-
-     Meshes statt Solid-Backgrounds, vier Glas-Schicht-Stufen,
-     gezielte Glows nur auf aktive Zustände.
+     Nüchtern wie das Papier-Formular, aus dem die App entstanden ist:
+     helle Flächen mit klaren Linien, kleine Radien, keine Verläufe, kein
+     Glas, keine Schatten-Effekte, keine Dauer-Animation. FF-Rot nur dort,
+     wo es etwas bedeutet (Alarm, Hauptaktion, Fehler). Schrift: die
+     System-Schrift des Geräts (Roboto auf Android) — am besten lesbar und
+     immer offline da. Lesbarkeit geht vor Optik: Schriftgrößen und
+     Touch-Flächen bleiben groß.
 
-   Schichten von hinten nach vorne:
-     Aurora        - globaler Mesh-Gradient (fixed, im body::before)
-     Surface       - rein semantisch (z. B. Card-Bezugspunkt)
-     Glass-light   - dünne Schicht für inline-Elemente
-     Glass-medium  - Standard-Card
-     Glass-heavy   - Topbar / Hero / Modal
-     Accent        - solid Glow-Pille (Status, CTA)
+   Kompatibilität: die Token-NAMEN aus v2 (glass-*, blur-*, glow-*, …)
+   bleiben bestehen, damit bestehende Komponenten weiterlaufen — sie sind
+   jetzt aber flache Volltonflächen bzw. wirkungslose Platzhalter.
    ============================================================ */
 
-@import url("https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
-
 :root {
-  /* V-06 (Audit R3): reale Topbar-Hoehe (14 + 44 + 16 + 1 Border) — die
-     sticky Tab-Leiste und der Auto-Save-Toast haengen sich daran, statt an
-     hart codierte 68/80 px, die unter die Topbar rutschten. */
+  /* V-06 (Audit R3): reale Topbar-Hoehe — die sticky Tab-Leiste und der
+     Auto-Save-Toast haengen sich daran. */
   --topbar-h: 75px;
-  /* ────────────────────────────────────────────────
-     LIGHT THEME — Tageinsatz, hoher Außenlicht-Kontrast
-     ──────────────────────────────────────────────── */
 
-  /* Substrat (hinter dem Glas) */
-  --bg:               #EEF0F4;
-  --bg-deep:          #E5E8EE;
-  --bg-page:          #EEF0F4;
+  /* ─── Flächen (hell, Tageslicht) ─── */
+  --bg:               #E8E7E3;
+  --bg-deep:          #DEDDD8;
+  --bg-page:          #E8E7E3;
+  --aurora-stack:     none;
 
-  /* Auroras — gestapelte Radial-Gradients als Background-Image */
-  --aurora-stack:
-    radial-gradient(ellipse 60% 50% at 12% 6%,  rgba(200, 16, 46, 0.18) 0%, transparent 55%),
-    radial-gradient(ellipse 55% 40% at 88% 8%,  rgba(56, 95, 232, 0.10) 0%, transparent 50%),
-    radial-gradient(ellipse 70% 45% at 50% 100%, rgba(124, 58, 237, 0.08) 0%, transparent 60%),
-    linear-gradient(180deg, #F2F4F8 0%, #E8ECF2 100%);
-
-  /* Solide Flächen (für Modals/Drucke wo Transparenz stört) */
   --surface:          #FFFFFF;
   --surface-1:        #FFFFFF;
-  --surface-2:        #F5F7FA;
-  --surface-3:        #EAEEF3;
+  --surface-2:        #F3F2EF;
+  --surface-3:        #E6E4DF;
 
-  /* Glas-Schichten — werden mit backdrop-filter kombiniert */
-  --glass-1:          rgba(255, 255, 255, 0.62);   /* heavy   — Topbar/Hero */
-  --glass-2:          rgba(255, 255, 255, 0.50);   /* medium  — Cards */
-  --glass-3:          rgba(255, 255, 255, 0.38);   /* light   — Inline */
-  --glass-4:          rgba(255, 255, 255, 0.20);   /* ghost   — Subtle */
+  /* Alte Glas-Stufen → Volltonflächen */
+  --glass-1:          var(--surface);
+  --glass-2:          var(--surface);
+  --glass-3:          var(--surface-2);
+  --glass-4:          var(--surface-2);
 
-  /* Glas-Borders */
-  --glass-border:     rgba(15, 23, 42, 0.10);
-  --glass-border-strong: rgba(15, 23, 42, 0.16);
-  --glass-divider:    rgba(15, 23, 42, 0.06);
+  /* ─── Linien ─── */
+  --glass-border:     #C7C4BC;
+  --glass-border-strong: #A9A59B;
+  --glass-divider:    #DAD7D0;
+  --border:           #D3D0C8;
+  --border-strong:    #ABA79D;
 
-  /* Klassische Border-Aliase (Bestandscode kompatibel) */
-  --border:           rgba(15, 23, 42, 0.08);
-  --border-strong:    rgba(15, 23, 42, 0.14);
-
-  /* Text-Hierarchie — präziser Kontrast */
-  --fg:               #0B1220;
-  --fg-2:             #3B4757;
-  --fg-3:             #5A6678;
-  --fg-4:             #B9C2D0;
+  /* ─── Text ─── */
+  --fg:               #161616;
+  --fg-2:             #3F3F3F;
+  --fg-3:             #5C5A55;
+  --fg-4:             #B5B2AA;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
   --text-3:           var(--fg-3);
 
-  /* Eingabe-Wert-Farbe — vom User getippte/gewaehlte Werte heben sich
-     vom (schwarzen) Label ab. Theme-aware: Light dunkelblau auf weiss,
-     Dark hellblau auf dunklem Glas (sonst Kontrast 1.7:1 = unlesbar). */
-  --input-value:      #1e3a8a;
+  /* Vom Nutzer eingegebene Werte: dunkelblau, hebt sich vom Label ab. */
+  --input-value:      #17407A;
 
-  /* FF-Brand
-     --brand-red ist der konstante Brand-Token fuer Logo/FF-Header/
-     Markenanwendung — bleibt in JEDEM Theme auf #C8102E. Der
-     semantische --red dagegen schwingt theme-aware fuer Status-/
-     CTA-Verwendung (Dark-Mode wird heller fuer Kontrast). */
+  /* ─── FF-Rot ─── */
   --brand-red:        #C8102E;
-  --red:              #C8102E;
-  --red-strong:       #A30B25;
-  --red-tint:         rgba(200, 16, 46, 0.10);
-  --red-tint-2:       rgba(200, 16, 46, 0.16);
+  --red:              #B3121F;
+  --red-strong:       #8E0E18;
+  --red-tint:         #F7E4E5;
+  --red-tint-2:       #F1D2D4;
   --red-bg:           var(--red-tint);
-  --red-border:       rgba(200, 16, 46, 0.28);
-  --red-glow:         rgba(200, 16, 46, 0.40);
+  --red-border:       #D79A9F;
+  --red-glow:         transparent;
 
-  /* Status-Farben */
-  --ok:               #047857;
-  --ok-tint:          rgba(4, 120, 87, 0.10);
-  --ok-border:        rgba(4, 120, 87, 0.28);
+  /* ─── Status ─── */
+  --ok:               #1D6B3B;
+  --ok-tint:          #E2F0E7;
+  --ok-border:        #9CC7AB;
   --emerald:          var(--ok);
   --emerald-bg:       var(--ok-tint);
   --emerald-border:   var(--ok-border);
-  --emerald-glow:     rgba(4, 120, 87, 0.35);
+  --emerald-glow:     transparent;
 
-  --warn:             #B45309;
-  --warn-tint:        rgba(180, 83, 9, 0.12);
-  --warn-border:      rgba(180, 83, 9, 0.32);
+  --warn:             #8A5300;
+  --warn-tint:        #F8EBCF;
+  --warn-border:      #D9B66A;
   --amber:            var(--warn);
   --amber-soft:       var(--warn-tint);
   --amber-border:     var(--warn-border);
-  --amber-glow:       rgba(180, 83, 9, 0.35);
+  --amber-glow:       transparent;
 
-  --info:             #1D4ED8;
-  --info-tint:        rgba(29, 78, 216, 0.10);
-  --info-strong:      rgba(29, 78, 216, 0.18);
+  --info:             #1B4F94;
+  --info-tint:        #E1EAF6;
+  --info-strong:      #CBDAEF;
   --blue:             var(--info);
   --blue-bg:          var(--info-tint);
-  --blue-border:      rgba(29, 78, 216, 0.32);
-  --blue-glow:        rgba(29, 78, 216, 0.36);
+  --blue-border:      #9DB6D8;
+  --blue-glow:        transparent;
 
-  --as:               #6D28D9;
-  --as-tint:          rgba(109, 40, 217, 0.12);
+  --as:               #58389B;
+  --as-tint:          #ECE6F6;
   --rank:             var(--info);
 
-  /* ────────────────────────────────────────────────
-     GLAS-SHADOWS — gestapelte Schatten erzeugen Tiefe
-     ──────────────────────────────────────────────── */
-  --glass-shadow-1:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 0 0 1px var(--glass-border),
-    0 24px 64px -24px rgba(15, 23, 42, 0.18),
-    0 8px 32px -16px rgba(15, 23, 42, 0.12);
-  --glass-shadow-2:
-    0 1px 0 rgba(255, 255, 255, 0.75) inset,
-    0 0 0 1px var(--glass-border),
-    0 12px 40px -20px rgba(15, 23, 42, 0.14),
-    0 4px 16px -8px rgba(15, 23, 42, 0.08);
-  --glass-shadow-3:
-    0 1px 0 rgba(255, 255, 255, 0.65) inset,
-    0 0 0 1px var(--glass-border);
-
-  /* Glow-Aura (für aktive Buttons / Status) */
-  --glow-red:
-    0 0 0 1px rgba(200, 16, 46, 0.36),
-    0 18px 48px -12px rgba(200, 16, 46, 0.42),
-    0 6px 18px -4px rgba(200, 16, 46, 0.28);
-  --glow-red-soft:
-    0 12px 32px -10px rgba(200, 16, 46, 0.32),
-    0 4px 12px -2px rgba(200, 16, 46, 0.18);
-  --glow-ok:    0 12px 32px -10px rgba(4, 120, 87, 0.38);
-  --glow-warn:  0 12px 32px -10px rgba(180, 83, 9, 0.40);
-  --glow-info:  0 12px 32px -10px rgba(29, 78, 216, 0.38);
-
-  /* Legacy-Shadow-Aliase (Bestandscode) */
+  /* ─── Schatten: bewusst praktisch keine. Nur schwebende Dialoge
+         bekommen eine einfache, harte Kante. Werte müssen gültige
+         Schatten bleiben (werden in Listen kombiniert) → Null-Schatten. */
+  --glass-shadow-1:   0 2px 10px rgba(0, 0, 0, 0.22);
+  --glass-shadow-2:   0 0 0 0 transparent;
+  --glass-shadow-3:   0 0 0 0 transparent;
+  --glow-red:         0 0 0 0 transparent;
+  --glow-red-soft:    0 0 0 0 transparent;
+  --glow-ok:          0 0 0 0 transparent;
+  --glow-warn:        0 0 0 0 transparent;
+  --glow-info:        0 0 0 0 transparent;
   --shadow-card:      var(--glass-shadow-2);
   --shadow-alarm:     var(--glow-red-soft);
   --shadow-cta:       var(--glow-red);
+  --card-gradient:    var(--surface);
 
-  --card-gradient:    var(--glass-2);
-
-  /* ────────────────────────────────────────────────
-     RADIEN — leicht großzügiger für Glas-Optik
-     ──────────────────────────────────────────────── */
-  --radius-xs:        8px;
-  --radius-s:         12px;
-  --radius-m:         16px;
-  --radius-l:         20px;
-  --radius-xl:        28px;
+  /* ─── Radien: klein, wie ein Formularfeld ─── */
+  --radius-xs:        2px;
+  --radius-s:         3px;
+  --radius-m:         4px;
+  --radius-l:         5px;
+  --radius-xl:        6px;
   --radius-pill:      999px;
 
-  /* ────────────────────────────────────────────────
-     BACKDROP-BLUR Stufen
-     ──────────────────────────────────────────────── */
-  --blur-1:           saturate(180%) blur(40px);   /* heavy */
-  --blur-2:           saturate(170%) blur(24px);   /* medium */
-  --blur-3:           saturate(160%) blur(16px);   /* light */
-  --blur-4:           saturate(150%) blur(8px);    /* subtle */
+  /* ─── Blur: aus ─── */
+  --blur-1:           none;
+  --blur-2:           none;
+  --blur-3:           none;
+  --blur-4:           none;
 
-  /* ────────────────────────────────────────────────
-     TYPOGRAPHIE
-     ──────────────────────────────────────────────── */
-  /* Lesbarkeit > Markenoptik auf dem Einsatz-Tablet: die SYSTEM-UI-Schrift
-     zuerst (Roboto auf den Android-Tablets) — hochoptimiert fuer Bildschirm-
-     Lesbarkeit UND immer offline verfuegbar (kein Google-Fonts-Download im
-     Funkloch). Onest bleibt als spaeter Fallback. */
-  --font-sans:        system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Onest", sans-serif;
+  /* ─── Typografie ─── */
+  --font-sans:        system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-display:     var(--font-sans);
-  --font-mono:        "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  /* Keine Monospace-Optik mehr — Zahlen werden per tabular-nums
+     ausgerichtet (.num, Uhrzeiten), nicht per Code-Schrift. */
+  --font-mono:        var(--font-sans);
 
-  /* Type-Scale — feste Stufen statt verstreuter Inline-Float-Werte
-     (z. B. fontSize: 11.5). Komponenten sollen sich auf diese Tokens
-     stuetzen damit max. 4–5 Groessen pro Screen entstehen. */
-  --font-xs:          12.5px;
+  --font-xs:          13.5px;
   --font-sm:          15px;
   --font-md:          17.5px;
   --font-lg:          20px;
   --font-xl:          25px;
   --font-2xl:         35px;
 
-  /* Modal-Width Stufen — fuer konsistente Modal-Groessen.
-     sm = Bestaetigungs-Dialoge (HandoffModal)
-     md = Standard-Editor (NeuerEinsatzTabletModal)
-     lg = Multi-Spalten-View (ArchivTabletModal) */
   --modal-w-sm:       440px;
   --modal-w-md:       720px;
   --modal-w-lg:       880px;
 
-  /* Letter-Spacing-Tokens */
-  --tracking-display: -0.038em;
-  --tracking-tight:   -0.022em;
-  --tracking-ui:      -0.011em;
-  --tracking-caps:    0.14em;
-  --tracking-mono:    0.04em;
+  /* Kein Sperrsatz, kein Engzug mehr */
+  --tracking-display: -0.01em;
+  --tracking-tight:   0;
+  --tracking-ui:      0;
+  --tracking-caps:    0.01em;
+  --tracking-mono:    0;
 
-  /* ────────────────────────────────────────────────
-     MOTION — vier Curves für unterschiedliche Charaktere
-     ──────────────────────────────────────────────── */
-  --ease-spring:      cubic-bezier(0.34, 1.56, 0.64, 1);    /* playful entry */
-  --ease-smooth:      cubic-bezier(0.32, 0.72, 0.32, 1);    /* UI standard */
-  --ease-decel:       cubic-bezier(0.05, 0.7, 0.1, 1);      /* entering */
-  --ease-accel:       cubic-bezier(0.4, 0, 1, 1);           /* exiting */
-  --ease-glass:       cubic-bezier(0.22, 1, 0.36, 1);       /* glas-typisch */
+  /* ─── Bewegung: nur kurze Zustandswechsel, keine Effekte ─── */
+  --ease-spring:      ease-out;
+  --ease-smooth:      ease-out;
+  --ease-decel:       ease-out;
+  --ease-accel:       ease-in;
+  --ease-glass:       ease-out;
 
-  --dur-fast:         140ms;
-  --dur-base:         220ms;
-  --dur-med:          360ms;
-  --dur-slow:         520ms;
+  --dur-fast:         80ms;
+  --dur-base:         100ms;
+  --dur-med:          120ms;
+  --dur-slow:         150ms;
 
-  /* Hover-Lift / Active-Press */
-  --lift-1:           translateY(-1px);
-  --lift-2:           translateY(-2px);
-  --press:            scale(0.985) translateY(0);
+  --lift-1:           none;
+  --lift-2:           none;
+  --press:            none;
 }
 
 /* ============================================================
-   DARK THEME — Nacht-Einsatz · Priorität
-   Aurora wird tiefer, Glas heller, Brand-Rot strahlender
+   DUNKEL — Nacht-Einsatz. Neutrales Grau (kein Blau-Schwarz),
+   Kontrast bewusst hoch.
    ============================================================ */
 [data-theme="dark"] {
-  --bg:               #06080C;
-  --bg-deep:          #03050A;
-  --bg-page:          #06080C;
+  --bg:               #151515;
+  --bg-deep:          #0E0E0E;
+  --bg-page:          #151515;
+  --aurora-stack:     none;
 
-  --aurora-stack:
-    radial-gradient(ellipse 65% 55% at 14% 6%,  rgba(200, 16, 46, 0.28) 0%, transparent 55%),
-    radial-gradient(ellipse 55% 45% at 86% 10%, rgba(56, 95, 232, 0.16) 0%, transparent 50%),
-    radial-gradient(ellipse 75% 50% at 50% 100%, rgba(124, 58, 237, 0.14) 0%, transparent 60%),
-    linear-gradient(180deg, #0A0E15 0%, #04060B 100%);
+  --surface:          #1F1F1F;
+  --surface-1:        #1F1F1F;
+  --surface-2:        #282828;
+  --surface-3:        #333333;
 
-  --surface:          #11151E;
-  --surface-1:        #11151E;
-  --surface-2:        #161A24;
-  --surface-3:        #1C2230;
+  --glass-1:          var(--surface);
+  --glass-2:          var(--surface);
+  --glass-3:          var(--surface-2);
+  --glass-4:          var(--surface-2);
 
-  --glass-1:          rgba(20, 26, 38, 0.62);
-  --glass-2:          rgba(20, 26, 38, 0.48);
-  --glass-3:          rgba(20, 26, 38, 0.32);
-  --glass-4:          rgba(20, 26, 38, 0.20);
+  --glass-border:     #454545;
+  --glass-border-strong: #666666;
+  --glass-divider:    #363636;
+  --border:           #3D3D3D;
+  --border-strong:    #666666;
 
-  --glass-border:     rgba(255, 255, 255, 0.10);
-  --glass-border-strong: rgba(255, 255, 255, 0.16);
-  --glass-divider:    rgba(255, 255, 255, 0.06);
-
-  --border:           rgba(255, 255, 255, 0.08);
-  --border-strong:    rgba(255, 255, 255, 0.14);
-
-  --fg:               #F2F5FA;
-  --fg-2:             #C2CCDC;
-  --fg-3:             #9AA6BA;
-  --fg-4:             #424B5C;
+  --fg:               #F0F0F0;
+  --fg-2:             #CFCFCF;
+  --fg-3:             #A6A6A6;
+  --fg-4:             #555555;
   --text-1:           var(--fg);
   --text-2:           var(--fg-2);
   --text-3:           var(--fg-3);
 
-  /* Eingabe-Werte im Dark-Mode hellblau (Kontrast ~7:1 auf dunklem Glas)
-     statt dem hartkodierten #1e3a8a (1.7:1 = nachts unsichtbar). */
-  --input-value:      #8FB8FF;
+  --input-value:      #9CC4FF;
 
-  /* --brand-red bleibt #C8102E auch im Dark-Mode — Brand-Konstante.
-     --red dagegen ist semantisch (Status/CTA) und wird heller. */
   --brand-red:        #C8102E;
-  --red:              #FF5468;
-  --red-strong:       #FF3148;
-  --red-tint:         rgba(255, 84, 104, 0.14);
-  --red-tint-2:       rgba(255, 84, 104, 0.22);
+  --red:              #FF6670;
+  --red-strong:       #FF4A57;
+  --red-tint:         #3A1F22;
+  --red-tint-2:       #4A2528;
   --red-bg:           var(--red-tint);
-  --red-border:       rgba(255, 84, 104, 0.38);
-  --red-glow:         rgba(255, 84, 104, 0.55);
+  --red-border:       #8A4046;
+  --red-glow:         transparent;
 
-  --ok:               #34D399;
-  --ok-tint:          rgba(52, 211, 153, 0.14);
-  --ok-border:        rgba(52, 211, 153, 0.34);
+  --ok:               #5CCB8B;
+  --ok-tint:          #1C3326;
+  --ok-border:        #3E7A57;
   --emerald:          var(--ok);
   --emerald-bg:       var(--ok-tint);
   --emerald-border:   var(--ok-border);
-  --emerald-glow:     rgba(52, 211, 153, 0.45);
+  --emerald-glow:     transparent;
 
-  --warn:             #FBBF24;
-  --warn-tint:        rgba(251, 191, 36, 0.14);
-  --warn-border:      rgba(251, 191, 36, 0.40);
+  --warn:             #E8B440;
+  --warn-tint:        #382D12;
+  --warn-border:      #856A22;
   --amber:            var(--warn);
   --amber-soft:       var(--warn-tint);
   --amber-border:     var(--warn-border);
-  --amber-glow:       rgba(251, 191, 36, 0.42);
+  --amber-glow:       transparent;
 
-  --info:             #60A5FA;
-  --info-tint:        rgba(96, 165, 250, 0.14);
-  --info-strong:      rgba(96, 165, 250, 0.24);
+  --info:             #7FB1F2;
+  --info-tint:        #1B2B42;
+  --info-strong:      #24395A;
   --blue:             var(--info);
   --blue-bg:          var(--info-tint);
-  --blue-border:      rgba(96, 165, 250, 0.40);
-  --blue-glow:        rgba(96, 165, 250, 0.42);
+  --blue-border:      #3F6598;
+  --blue-glow:        transparent;
 
-  --as:               #C4B5FD;
-  --as-tint:          rgba(196, 181, 253, 0.16);
+  --as:               #BBA8F2;
+  --as-tint:          #2B2540;
   --rank:             var(--info);
 
-  --glass-shadow-1:
-    0 1px 0 rgba(255, 255, 255, 0.06) inset,
-    0 0 0 1px var(--glass-border),
-    0 28px 80px -24px rgba(0, 0, 0, 0.65),
-    0 12px 32px -12px rgba(0, 0, 0, 0.45);
-  --glass-shadow-2:
-    0 1px 0 rgba(255, 255, 255, 0.05) inset,
-    0 0 0 1px var(--glass-border),
-    0 16px 48px -20px rgba(0, 0, 0, 0.55),
-    0 6px 18px -6px rgba(0, 0, 0, 0.35);
-  --glass-shadow-3:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 0 0 1px var(--glass-border);
-
-  --glow-red:
-    0 0 0 1px rgba(255, 84, 104, 0.45),
-    0 22px 56px -14px rgba(255, 84, 104, 0.55),
-    0 8px 20px -4px rgba(255, 84, 104, 0.38);
-  --glow-red-soft:
-    0 14px 36px -10px rgba(255, 84, 104, 0.42),
-    0 4px 14px -2px rgba(255, 84, 104, 0.22);
-  --glow-ok:    0 14px 36px -10px rgba(52, 211, 153, 0.42);
-  --glow-warn:  0 14px 36px -10px rgba(251, 191, 36, 0.42);
-  --glow-info:  0 14px 36px -10px rgba(96, 165, 250, 0.42);
-
-  --shadow-card:      var(--glass-shadow-2);
-  --shadow-alarm:     var(--glow-red-soft);
-  --shadow-cta:       var(--glow-red);
-
-  --card-gradient:    var(--glass-2);
+  --glass-shadow-1:   0 2px 12px rgba(0, 0, 0, 0.6);
+  --card-gradient:    var(--surface);
 }
 
-/* ============================================================
-   GLOBAL KEYFRAMES — Tiefe via Animation
-   ============================================================ */
-
-/* Sanftes Atmen für aktive Brand-Indikatoren */
-@keyframes breathe {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(200, 16, 46, 0.36),
-                0 8px 20px -6px rgba(200, 16, 46, 0.32);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(200, 16, 46, 0.04),
-                0 12px 28px -8px rgba(200, 16, 46, 0.42);
-  }
-}
-/* Dark-Variante MUSS top-level liegen — @keyframes darf nicht in einem
-   Selektor genested werden (esbuild CSS-Syntax-Error). Anwendung via
-   `animation-name: breathe-dark` im [data-theme="dark"]-Selektor. */
-@keyframes breathe-dark {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 84, 104, 0.45),
-                0 8px 20px -6px rgba(255, 84, 104, 0.40);
-  }
-  50% {
-    box-shadow: 0 0 0 10px rgba(255, 84, 104, 0.05),
-                0 14px 32px -8px rgba(255, 84, 104, 0.55);
-  }
-}
-
-/* Klassische Pulse-Variante — Bestand-kompatibel */
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 4px var(--red-glow); }
-  50%      { box-shadow: 0 0 0 9px transparent; }
-}
-
-/* Rote Pulse-Aureole fuer "Neuer Einsatz"-Popup — frueher inline
-   in BerichtPage. Verwendet theme-aware var(--red-glow) damit es
-   im Dark-Mode auch funktioniert. Wichtig: top-level — @keyframes
-   darf nicht in einem Selektor genested werden (esbuild CSS-Error). */
-@keyframes pulse-red {
-  0%, 100% {
-    box-shadow:
-      0 24px 60px rgba(0, 0, 0, 0.35),
-      0 0 0 0 var(--red-glow);
-  }
-  50% {
-    box-shadow:
-      0 24px 60px rgba(0, 0, 0, 0.35),
-      0 0 0 12px transparent;
-  }
-}
-
+/* Kein Dauer-Effekt mehr: die frueheren Animationen (Atmen, Aurora, Puls,
+   Glas-Reveal) sind entfernt. Die Namen bleiben als leere Platzhalter,
+   falls irgendwo noch per Inline-Style darauf verwiesen wird. */
+@keyframes breathe       { from { opacity: 1; } to { opacity: 1; } }
+@keyframes breathe-dark  { from { opacity: 1; } to { opacity: 1; } }
+@keyframes pulse         { from { opacity: 1; } to { opacity: 1; } }
+@keyframes pulse-red     { from { opacity: 1; } to { opacity: 1; } }
+@keyframes pulse-ring    { from { opacity: 1; } to { opacity: 1; } }
+@keyframes shimmer       { from { opacity: 1; } to { opacity: 1; } }
+@keyframes glass-reveal  { from { opacity: 1; } to { opacity: 1; } }
+@keyframes aurora-drift  { from { opacity: 1; } to { opacity: 1; } }
+@keyframes glow-pulse    { from { opacity: 1; } to { opacity: 1; } }
+/* Einziges echtes Blinken: Ladeindikator-Reste (selten, kurz). */
 @keyframes blink {
   0%, 100% { opacity: 1; }
-  50%      { opacity: 0.25; }
-}
-
-@keyframes pulse-ring {
-  0%   { transform: scale(1);    opacity: 0.85; }
-  100% { transform: scale(1.40); opacity: 0;    }
-}
-
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* Staggered Reveal — wird auf Page-Mount-Children gesetzt */
-@keyframes glass-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-    filter: blur(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-
-/* Aurora-Drift — sehr langsam, sehr subtil */
-@keyframes aurora-drift {
-  0%   { transform: translate(0, 0)     scale(1);    }
-  33%  { transform: translate(2%, -1%) scale(1.04);  }
-  66%  { transform: translate(-1%, 2%) scale(0.98);  }
-  100% { transform: translate(0, 0)    scale(1);     }
-}
-
-/* Pulsendes Glow für Status-Dots */
-@keyframes glow-pulse {
-  0%, 100% { opacity: 1;   transform: scale(1);    }
-  50%      { opacity: 0.4; transform: scale(0.85); }
-}
-
-/* ============================================================
-   LITE-MODE — Performance-Override für ältere Tablets
-   Aktiv per <html data-fx="lite">. Auto-Detection in index.html
-   prüft RAM/Cores/UA. User kann manuell wechseln (Setup-Footer).
-
-   Strategie:
-     - backdrop-filter komplett raus (PowerVR/Mali-GPUs killen)
-     - Glas-Schichten → solide Surface-Farben mit höherer Opazität
-     - Shadows reduziert (einlagig statt vierfach gestapelt)
-     - Aurora-Drift-Animation aus
-     - Page-Reveal-Stagger aus
-     - Hover-Lift transforms aus
-     - color-mix() ausweichen wo möglich
-   ============================================================ */
-[data-fx="lite"] {
-  /* D-08 Audit: Lite-Mode ueberschreibt NUR GPU-teure Tokens (Blur,
-     Shadow, Glow). Status-Farben (--ok, --warn, --info, --red, --as)
-     bleiben absichtlich auf den :root- bzw. [data-theme="dark"]-
-     Definitionen — die Defaults greifen. Brand-/Surface-/Foreground-
-     Tokens ebenfalls. */
-
-  /* Glas → solide Surfaces */
-  --glass-1: var(--surface);
-  --glass-2: var(--surface);
-  --glass-3: var(--surface-2);
-  --glass-4: var(--surface-2);
-
-  /* Blur-Tokens auf no-op — Browser parsen es aber tut nichts */
-  --blur-1: saturate(105%);
-  --blur-2: saturate(105%);
-  --blur-3: saturate(102%);
-  --blur-4: saturate(101%);
-
-  /* Schatten — eine Lage statt vier */
-  --glass-shadow-1: 0 6px 18px rgba(15, 23, 42, 0.16), 0 0 0 1px var(--glass-border);
-  --glass-shadow-2: 0 3px 10px rgba(15, 23, 42, 0.12), 0 0 0 1px var(--glass-border);
-  --glass-shadow-3: 0 1px 3px rgba(15, 23, 42, 0.08), 0 0 0 1px var(--glass-border);
-
-  /* Glow-Aura → einlagige Schatten */
-  --glow-red:  0 8px 22px -8px rgba(200, 16, 46, 0.45);
-  --glow-red-soft: 0 4px 12px -4px rgba(200, 16, 46, 0.25);
-  --glow-ok:   0 6px 18px -8px rgba(4, 120, 87, 0.30);
-  --glow-warn: 0 6px 18px -8px rgba(180, 83, 9, 0.32);
-  --glow-info: 0 6px 18px -8px rgba(29, 78, 216, 0.30);
-}
-
-[data-fx="lite"][data-theme="dark"] {
-  --glass-1: var(--surface-1);
-  --glass-2: var(--surface-2);
-  --glass-3: var(--surface-3);
-  --glass-4: var(--surface-3);
-
-  --glass-shadow-1: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--glass-border);
-  --glass-shadow-2: 0 3px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border);
-  --glass-shadow-3: 0 1px 3px rgba(0, 0, 0, 0.30), 0 0 0 1px var(--glass-border);
-
-  --glow-red:  0 8px 22px -8px rgba(255, 84, 104, 0.50);
-  --glow-red-soft: 0 4px 12px -4px rgba(255, 84, 104, 0.32);
-  --glow-ok:   0 6px 18px -8px rgba(52, 211, 153, 0.36);
-  --glow-warn: 0 6px 18px -8px rgba(251, 191, 36, 0.36);
-  --glow-info: 0 6px 18px -8px rgba(96, 165, 250, 0.36);
+  50%      { opacity: 0.35; }
 }

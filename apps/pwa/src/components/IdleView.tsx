@@ -60,7 +60,6 @@ export function IdleView({
         flexDirection: "column",
         gap: 22,
         paddingTop: 8,
-        animation: "glass-reveal 320ms var(--ease-decel) both",
       }}
     >
       {/* ─── Hero ─── ruhig, kein Alarm, klares „bereit" ──── */}
@@ -82,14 +81,11 @@ export function IdleView({
             placeItems: "center",
             width: 76,
             height: 76,
-            borderRadius: 22,
+            borderRadius: 6,
             background: "var(--glass-2)",
-            backdropFilter: "var(--blur-2)",
-            WebkitBackdropFilter: "var(--blur-2)",
             border: "1px solid var(--glass-border)",
             // D-09: 60px-Halo nur im Default-Light. Lite-Mode killt den
             // Glow via .idle-radio-glow-Override in design.css.
-            boxShadow: "var(--glass-shadow-2), 0 0 60px -16px var(--emerald-glow)",
             color: "var(--ok)",
           }}
         >
@@ -104,8 +100,6 @@ export function IdleView({
               height: 10,
               borderRadius: "50%",
               background: "var(--ok)",
-              boxShadow: "0 0 0 0 var(--emerald-glow)",
-              animation: "breathe 2.4s ease-in-out infinite",
             }}
           />
         </div>
@@ -128,7 +122,6 @@ export function IdleView({
               fontSize: 14,
               fontWeight: 700,
               letterSpacing: "var(--tracking-caps)",
-              textTransform: "uppercase",
               color: "var(--fg-3)",
               marginTop: 6,
             }}
@@ -162,14 +155,11 @@ export function IdleView({
             padding: "10px 14px",
             borderRadius: "var(--radius-s)",
             background: "var(--glass-3)",
-            backdropFilter: "var(--blur-3)",
-            WebkitBackdropFilter: "var(--blur-3)",
             border: "1px solid var(--glass-border)",
             color: "var(--fg-2)",
             fontSize: 15.5,
             fontFamily: "var(--font-mono)",
             letterSpacing: "var(--tracking-caps)",
-            textTransform: "uppercase",
             justifyContent: "center",
           }}
         >
@@ -189,7 +179,6 @@ export function IdleView({
             borderRadius: "var(--radius-s)",
             background: "var(--red-tint)",
             border: "1px solid var(--red-border)",
-            boxShadow: "var(--glow-red-soft)",
             color: "var(--red)",
             fontSize: 15.5,
             fontWeight: 600,
@@ -213,8 +202,6 @@ export function IdleView({
                 fontSize: 14,
                 fontWeight: 700,
                 minHeight: 30,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
               }}
             >
               <UploadCloud size={12} />
@@ -241,7 +228,6 @@ export function IdleView({
             fontWeight: 600,
             fontFamily: "var(--font-mono)",
             letterSpacing: "var(--tracking-caps)",
-            textTransform: "uppercase",
           }}
         >
           <CheckCircle2 size={13} />
@@ -269,7 +255,6 @@ export function IdleView({
             fontWeight: 600,
             fontFamily: "var(--font-mono)",
             letterSpacing: "var(--tracking-caps)",
-            textTransform: "uppercase",
           }}
         >
           <UploadCloud size={13} />
@@ -355,9 +340,6 @@ function QuickActionCard({
         borderRadius: "var(--radius-l)",
         border: "1px solid var(--glass-border)",
         background: "var(--glass-2)",
-        backdropFilter: "var(--blur-2)",
-        WebkitBackdropFilter: "var(--blur-2)",
-        boxShadow: "var(--glass-shadow-2)",
         cursor: "pointer",
         textAlign: "left",
         transition:
@@ -382,7 +364,7 @@ function QuickActionCard({
           placeItems: "center",
           width: 60,
           height: 60,
-          borderRadius: 16,
+          borderRadius: 6,
           background: `color-mix(in srgb, ${color} 16%, transparent)`,
           color,
         }}

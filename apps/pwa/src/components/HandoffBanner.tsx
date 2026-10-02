@@ -84,7 +84,7 @@ export function HandoffBanner({ onReleased }: Props) {
           display: "flex",
           alignItems: "center",
           gap: 10,
-          borderRadius: 10,
+          borderRadius: 4,
           background: dringend ? "var(--red-tint)" : "var(--warn-tint)",
           color: dringend ? "var(--red)" : "var(--warn)",
           border: `1px dashed ${dringend ? "var(--red-border)" : "var(--amber-border)"}`,
@@ -97,8 +97,6 @@ export function HandoffBanner({ onReleased }: Props) {
             fontFamily: "var(--font-mono)",
             fontSize: 12.5,
             fontWeight: 700,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
             background: `${dringend ? "var(--red)" : "var(--warn)"}26`,
             padding: "2px 6px",
             borderRadius: 4,
@@ -117,10 +115,9 @@ export function HandoffBanner({ onReleased }: Props) {
             border: "1px solid var(--info)",
             color: "#fff",
             padding: "4px 10px",
-            borderRadius: 8,
+            borderRadius: 4,
             fontSize: 14,
             fontWeight: 700,
-            letterSpacing: "0.06em",
             cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
@@ -139,10 +136,9 @@ export function HandoffBanner({ onReleased }: Props) {
             border: `1px solid ${dringend ? "var(--red-border)" : "var(--amber-border)"}`,
             color: dringend ? "var(--red)" : "var(--warn)",
             padding: "4px 10px",
-            borderRadius: 8,
+            borderRadius: 4,
             fontSize: 14,
             fontWeight: 700,
-            letterSpacing: "0.06em",
             cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
@@ -179,7 +175,6 @@ export function HandoffBanner({ onReleased }: Props) {
             display: "grid",
             placeItems: "center",
             padding: 16,
-            backdropFilter: "blur(4px)",
           }}
         >
           <div
@@ -187,13 +182,13 @@ export function HandoffBanner({ onReleased }: Props) {
               width: "min(420px, 100%)",
               background: "var(--surface)",
               color: "var(--fg)",
-              borderRadius: 18,
+              borderRadius: 6,
               border: "1px solid var(--border-strong)",
               padding: 22,
               display: "flex",
               flexDirection: "column",
               gap: 16,
-              boxShadow: "0 24px 64px -24px rgba(15,23,42,0.5)",
+              boxShadow: "var(--glass-shadow-1)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -203,7 +198,7 @@ export function HandoffBanner({ onReleased }: Props) {
                   placeItems: "center",
                   width: 40,
                   height: 40,
-                  borderRadius: 10,
+                  borderRadius: 4,
                   background: "var(--warn-tint)",
                   color: "var(--warn)",
                 }}
@@ -220,8 +215,6 @@ export function HandoffBanner({ onReleased }: Props) {
                     fontFamily: "var(--font-mono)",
                     fontSize: 12.5,
                     fontWeight: 600,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
                     color: "var(--fg-3)",
                   }}
                 >
@@ -241,7 +234,7 @@ export function HandoffBanner({ onReleased }: Props) {
                 disabled={busy}
                 style={{
                   padding: "9px 16px",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   border: "1px solid var(--border-strong)",
                   background: "var(--surface-2)",
                   color: "var(--fg)",
@@ -258,16 +251,14 @@ export function HandoffBanner({ onReleased }: Props) {
                 disabled={busy}
                 style={{
                   padding: "9px 16px",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   border: 0,
                   background:
-                    "linear-gradient(180deg, var(--warn) 0%, color-mix(in srgb, var(--warn) 70%, #000) 100%)",
+                    "var(--warn)",
                   color: "#fff",
                   fontSize: 16.5,
                   fontWeight: 700,
-                  letterSpacing: "0.04em",
                   cursor: busy ? "wait" : "pointer",
-                  boxShadow: "0 4px 12px rgba(217,119,6,0.32)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,

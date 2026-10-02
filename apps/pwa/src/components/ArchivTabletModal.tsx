@@ -193,7 +193,6 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
         display: "grid",
         placeItems: "center",
         padding: 16,
-        animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
       <div
@@ -205,15 +204,12 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
           display: "flex",
           flexDirection: "column",
           background: "var(--glass-1)",
-          backdropFilter: "var(--blur-1)",
-          WebkitBackdropFilter: "var(--blur-1)",
           color: "var(--fg)",
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--glass-border-strong)",
           boxShadow: "var(--glass-shadow-1)",
           padding: 22,
           gap: 14,
-          animation: "glass-reveal 320ms var(--ease-spring) both",
         }}
       >
         <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -223,11 +219,10 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
               placeItems: "center",
               width: 42,
               height: 42,
-              borderRadius: 12,
+              borderRadius: 5,
               background:
-                "linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%)",
+                "var(--fg)",
               color: "var(--bg)",
-              boxShadow: "0 8px 20px -6px rgba(0,0,0,0.35)",
             }}
           >
             <Archive size={20} strokeWidth={2.2} />
@@ -250,7 +245,6 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                 fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-caps)",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
                 marginTop: 2,
               }}
@@ -310,7 +304,6 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                   fontFamily: "var(--font-mono)",
                   fontSize: 14,
                   letterSpacing: "var(--tracking-caps)",
-                  textTransform: "uppercase",
                 }}
               >
                 Archiv wird geladen …
@@ -405,7 +398,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                       color: typ.color,
                       width: 42,
                       height: 42,
-                      borderRadius: 10,
+                      borderRadius: 4,
                     }}
                   >
                     <Icon size={18} />
@@ -448,7 +441,6 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                         fontSize: 12.5,
                         fontWeight: 600,
                         letterSpacing: "var(--tracking-caps)",
-                        textTransform: "uppercase",
                         color: "var(--fg-3)",
                         display: "flex",
                         alignItems: "center",
@@ -551,7 +543,6 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
             inset: 0,
             zIndex: 1600,
             background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -564,12 +555,11 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
               width: "min(540px, calc(100% - 32px))",
               background: "var(--glass-1)",
               border: "1px solid var(--glass-border-strong)",
-              borderRadius: 16,
+              borderRadius: 6,
               padding: 24,
               display: "flex",
               flexDirection: "column",
               gap: 14,
-              animation: "glass-reveal 200ms var(--ease-decel) both",
             }}
           >
             <h3

@@ -23,7 +23,7 @@ export function RufnameBar({ fahrzeugId, onSwitch }: Props) {
         style={{
           borderColor: "var(--amber-border)",
           background:
-            "linear-gradient(90deg, color-mix(in srgb, var(--amber-soft) 80%, transparent) 0%, var(--surface-2) 50%, var(--surface-2) 100%)",
+            "var(--amber-soft)",
         }}
       >
         {/* High-Vis-Kante links */}

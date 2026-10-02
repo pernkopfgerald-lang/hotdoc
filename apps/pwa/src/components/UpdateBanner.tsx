@@ -159,11 +159,11 @@ export function UpdateBanner() {
         zIndex: 1400,
         maxWidth: 380,
         padding: expanded ? "12px 14px" : "10px 12px 10px 14px",
-        borderRadius: 12,
+        borderRadius: 5,
         background:
-          "linear-gradient(135deg, color-mix(in srgb, var(--red) 92%, transparent), color-mix(in srgb, var(--red-strong) 90%, transparent))",
+          "var(--red)",
         color: "#fff",
-        boxShadow: "var(--glow-red), 0 12px 28px -10px rgba(0,0,0,0.4)",
+        boxShadow: "var(--glass-shadow-1)",
         display: "flex",
         flexDirection: "column",
         gap: 8,
@@ -171,7 +171,6 @@ export function UpdateBanner() {
         fontSize: 16.5,
         fontWeight: 600,
         letterSpacing: "var(--tracking-ui)",
-        animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -183,8 +182,6 @@ export function UpdateBanner() {
               fontSize: 12.5,
               fontFamily: "var(--font-mono)",
               opacity: 0.85,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
             }}
           >
             aktuell {info.current}
@@ -201,7 +198,7 @@ export function UpdateBanner() {
             background: status === "permission" ? "var(--warn)" : "rgba(255,255,255,0.18)",
             color: status === "permission" ? "var(--bg-deep)" : "#fff",
             border: 0,
-            borderRadius: 8,
+            borderRadius: 4,
             padding: "6px 10px",
             fontWeight: 700,
             fontSize: 15,
@@ -300,7 +297,7 @@ export function UpdateBanner() {
           style={{
             marginTop: 2,
             padding: "8px 10px",
-            borderRadius: 8,
+            borderRadius: 4,
             background: "rgba(0,0,0,0.18)",
             color: "rgba(255,255,255,0.95)",
             fontSize: 14.5,

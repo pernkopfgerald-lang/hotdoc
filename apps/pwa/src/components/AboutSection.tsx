@@ -29,7 +29,7 @@ export function AboutSection() {
         style={{
           padding: 22,
           background:
-            "linear-gradient(135deg, var(--glass-2), color-mix(in srgb, var(--red) 6%, var(--glass-2)))",
+            "var(--red-tint)",
           borderRadius: "var(--radius-l)",
         }}
       >
@@ -47,14 +47,12 @@ export function AboutSection() {
               placeItems: "center",
               width: 56,
               height: 56,
-              borderRadius: 16,
+              borderRadius: 6,
               background:
-                "linear-gradient(135deg, var(--red), var(--red-strong))",
+                "var(--red)",
               color: "#fff",
               fontWeight: 700,
               fontSize: 27.5,
-              letterSpacing: "-0.02em",
-              boxShadow: "var(--glow-red-soft)",
             }}
           >
             HD
@@ -65,7 +63,6 @@ export function AboutSection() {
                 margin: 0,
                 fontSize: 27.5,
                 fontWeight: 700,
-                letterSpacing: "-0.02em",
               }}
             >
               HotDoc
@@ -89,7 +86,6 @@ export function AboutSection() {
             fontFamily: "var(--font-mono)",
             fontSize: 14,
             fontWeight: 600,
-            letterSpacing: "0.06em",
             color: "var(--fg-3)",
           }}
         >
@@ -110,7 +106,6 @@ export function AboutSection() {
           style={{
             fontSize: 21.5,
             fontWeight: 700,
-            letterSpacing: "-0.01em",
           }}
         >
           Ing. Gerald Pernkopf
@@ -280,7 +275,6 @@ export function AboutSection() {
                     fontSize: 16.5,
                     fontWeight: 700,
                     color: "var(--red)",
-                    letterSpacing: "0.04em",
                   }}
                 >
                   v{r.version}
@@ -290,7 +284,6 @@ export function AboutSection() {
                     fontFamily: "var(--font-mono)",
                     fontSize: 14,
                     color: "var(--fg-3)",
-                    letterSpacing: "0.04em",
                   }}
                 >
                   {r.date}
@@ -300,8 +293,6 @@ export function AboutSection() {
                     fontSize: 15.5,
                     fontWeight: 700,
                     color: "var(--fg)",
-                    letterSpacing: "0.02em",
-                    textTransform: "uppercase",
                   }}
                 >
                   {r.title}

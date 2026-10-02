@@ -165,20 +165,20 @@ export class ErrorBoundary extends Component<Props, State> {
           placeItems: "center",
           padding: 24,
           background:
-            "radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--red) 8%, var(--bg)) 0%, var(--bg) 60%)",
+            "var(--red)",
         }}
       >
         <div
           style={{
             width: "min(540px, 100%)",
             background: "var(--surface)",
-            borderRadius: 18,
+            borderRadius: 6,
             border: "1px solid var(--border-strong)",
             padding: 28,
             display: "flex",
             flexDirection: "column",
             gap: 16,
-            boxShadow: "0 24px 64px -24px rgba(15,23,42,0.45)",
+            boxShadow: "var(--glass-shadow-1)",
           }}
         >
           <div
@@ -194,9 +194,9 @@ export class ErrorBoundary extends Component<Props, State> {
                 placeItems: "center",
                 width: 48,
                 height: 48,
-                borderRadius: 12,
+                borderRadius: 5,
                 background:
-                  "linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 60%, #000) 100%)",
+                  "var(--red)",
                 color: "#fff",
               }}
             >
@@ -209,7 +209,6 @@ export class ErrorBoundary extends Component<Props, State> {
                   fontSize: 27.5,
                   fontWeight: 800,
                   color: "var(--fg)",
-                  letterSpacing: "-0.01em",
                 }}
               >
                 Unerwarteter Fehler
@@ -220,8 +219,6 @@ export class ErrorBoundary extends Component<Props, State> {
                   fontFamily: "var(--font-mono)",
                   fontSize: 12.5,
                   fontWeight: 700,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
                   color: "var(--fg-3)",
                 }}
               >
@@ -239,7 +236,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <div
             style={{
               padding: 12,
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--surface-2)",
               border: "1px solid var(--border)",
               fontFamily: "var(--font-mono)",
@@ -261,10 +258,10 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 flex: "1 1 200px",
                 padding: "12px 18px",
-                borderRadius: 12,
+                borderRadius: 5,
                 border: 0,
                 background:
-                  "linear-gradient(180deg, var(--info) 0%, color-mix(in srgb, var(--info) 70%, #000) 100%)",
+                  "var(--info)",
                 color: "#fff",
                 fontWeight: 700,
                 fontSize: 17.5,
@@ -273,7 +270,6 @@ export class ErrorBoundary extends Component<Props, State> {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
-                boxShadow: "0 4px 12px rgba(37,99,235,0.32)",
               }}
             >
               <RefreshCw size={15} />
@@ -285,7 +281,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 flex: "1 1 200px",
                 padding: "12px 18px",
-                borderRadius: 12,
+                borderRadius: 5,
                 border: "1px solid var(--border-strong)",
                 background: "var(--surface-2)",
                 color: "var(--fg)",
@@ -311,8 +307,6 @@ export class ErrorBoundary extends Component<Props, State> {
                   fontFamily: "var(--font-mono)",
                   fontSize: 12.5,
                   fontWeight: 700,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
                   color: "var(--fg-3)",
                 }}
               >
@@ -322,7 +316,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   marginTop: 8,
                   padding: 12,
-                  borderRadius: 8,
+                  borderRadius: 4,
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
                   fontFamily: "var(--font-mono)",
@@ -357,7 +351,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div
               style={{
                 padding: 12,
-                borderRadius: 10,
+                borderRadius: 4,
                 background: "var(--red-tint)",
                 border: "1px solid var(--red-border)",
                 display: "flex",
@@ -382,7 +376,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     alignItems: "center",
                     gap: 8,
                     padding: "10px 16px",
-                    borderRadius: 10,
+                    borderRadius: 4,
                     border: "1px solid var(--red-border)",
                     background: "transparent",
                     color: "var(--red)",
@@ -406,7 +400,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     disabled={this.state.wiping}
                     style={{
                       padding: "8px 12px",
-                      borderRadius: 8,
+                      borderRadius: 4,
                       border: "1px solid var(--border)",
                       background: "transparent",
                       color: "var(--fg)",
@@ -427,7 +421,7 @@ export class ErrorBoundary extends Component<Props, State> {
                       alignItems: "center",
                       gap: 8,
                       padding: "8px 14px",
-                      borderRadius: 8,
+                      borderRadius: 4,
                       border: 0,
                       background: "var(--red)",
                       color: "#fff",
@@ -449,7 +443,7 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               marginTop: 0,
               padding: 12,
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--info-tint)",
               border: "1px dashed var(--blue-border)",
               fontSize: 15,

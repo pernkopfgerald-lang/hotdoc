@@ -45,7 +45,7 @@ export function NeuerAuftragModal({ open, inheritedCount, onConfirm, onCancel }:
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border-strong)",
-          boxShadow: "0 30px 80px -30px rgba(15, 23, 42, 0.5)",
+          boxShadow: "var(--glass-shadow-1)",
         }}
       >
         {/* Header */}

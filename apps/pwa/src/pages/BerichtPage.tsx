@@ -2970,7 +2970,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 style={{
                   margin: "0 0 14px",
                   padding: "10px 14px",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   background: "var(--warn-tint)",
                   border: "1px solid var(--amber-border)",
                   color: "var(--fg)",
@@ -3026,7 +3026,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                       disabled={!!active.abgeschlossen}
                     />
                     {active.datumVonYMD ? (
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", color: "var(--info)", marginRight: 4, whiteSpace: "nowrap" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 700, color: "var(--info)", marginRight: 4, whiteSpace: "nowrap" }}>
                         manuell geändert
                       </span>
                     ) : (
@@ -3050,8 +3050,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                           fontFamily: "var(--font-mono)",
                           fontSize: 11.5,
                           fontWeight: 700,
-                          letterSpacing: "0.08em",
-                          textTransform: "uppercase",
                           color: "var(--info)",
                           background: "var(--info-tint)",
                           border: "1px solid var(--blue-border)",
@@ -3095,8 +3093,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                             fontFamily: "var(--font-mono)",
                             fontSize: 11.5,
                             fontWeight: 700,
-                            letterSpacing: "0.08em",
-                            textTransform: "uppercase",
                             color: "var(--info)",
                             background: "var(--info-tint)",
                             border: "1px solid var(--blue-border)",
@@ -3305,8 +3301,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                         fontSize: 12.5,
                         fontFamily: "var(--font-mono)",
                         fontWeight: 700,
-                        letterSpacing: "0.06em",
-                        textTransform: "uppercase",
                         padding: "2px 6px",
                         background: kmRoute && kmRoute.distanceM > 0 ? "var(--ok-tint)" : "var(--surface-2)",
                         color: kmRoute && kmRoute.distanceM > 0 ? "var(--ok)" : "var(--fg-3)",
@@ -3383,7 +3377,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                     padding: "8px 12px",
                     background: active.kdtIstEinsatzleiter ? "var(--info-tint)" : "var(--surface-2)",
                     border: `1px solid ${active.kdtIstEinsatzleiter ? "var(--info-border)" : "var(--border)"}`,
-                    borderRadius: 10,
+                    borderRadius: 4,
                     cursor: "pointer",
                   }}
                 >
@@ -3486,14 +3480,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                           gap: 12,
                           minHeight: 64,
                           padding: "10px 16px",
-                          borderRadius: 12,
+                          borderRadius: 5,
                           textAlign: "left",
                           fontSize: 18,
                           fontWeight: 700,
                           cursor: active.abgeschlossen ? "not-allowed" : "pointer",
-                          color: an ? "#fff" : "var(--fg)",
-                          background: an ? "var(--ok, #059669)" : "var(--surface-2)",
-                          border: an ? "2px solid var(--ok, #059669)" : "2px dashed var(--border-strong)",
+                          color: an ? "var(--ok)" : "var(--fg)",
+                          background: an ? "var(--ok-tint)" : "var(--surface-2)",
+                          border: an ? "2px solid var(--ok)" : "2px dashed var(--border-strong)",
                         }}
                       >
                         <span
@@ -3502,8 +3496,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                             placeItems: "center",
                             width: 30,
                             height: 30,
-                            borderRadius: 8,
-                            border: an ? "2px solid #fff" : "2px solid var(--border-strong)",
+                            borderRadius: 4,
+                            border: an ? "2px solid var(--ok)" : "2px solid var(--border-strong)",
                             fontSize: 20,
                             flexShrink: 0,
                           }}
@@ -3724,8 +3718,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   fontFamily: "var(--font-mono)",
                   fontSize: 12.5,
                   fontWeight: 600,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
                   color: syncErrAt ? "var(--amber)" : lastAutoSavedAt ? "var(--ok)" : "var(--fg-3)",
                   textAlign: "center",
                   display: "inline-flex",
@@ -4025,10 +4017,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             padding: "10px 14px",
             background: "var(--ok)",
             color: "#fff",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "center",
             gap: 8,
@@ -4052,11 +4044,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             padding: "12px 16px",
             background: "var(--warn)",
             color: "#fff",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
             lineHeight: 1.4,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "flex-start",
             gap: 10,
@@ -4082,11 +4074,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             padding: "12px 16px",
             background: "var(--red, #d93b3b)",
             color: "#fff",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
             lineHeight: 1.4,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "flex-start",
             gap: 10,
@@ -4114,11 +4106,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             padding: "12px 16px",
             background: "var(--red, #d93b3b)",
             color: "#fff",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
             lineHeight: 1.4,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "flex-start",
             gap: 10,
@@ -4142,11 +4134,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             padding: "12px 16px",
             background: "var(--info)",
             color: "#fff",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
             lineHeight: 1.4,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "center",
             gap: 12,
@@ -4166,7 +4158,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               padding: "0 14px",
               background: "rgba(255,255,255,0.18)",
               border: "1px solid rgba(255,255,255,0.55)",
-              borderRadius: 8,
+              borderRadius: 4,
               color: "#fff",
               fontWeight: 700,
               fontSize: 15.5,
@@ -4194,8 +4186,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             left: 0,
             right: 0,
             bottom: 0,
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
             background: "rgba(0,0,0,0.45)",
             display: "flex",
             alignItems: "center",
@@ -4220,7 +4210,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               // keinen Inline-<style>-Block mehr braucht und der Animations-
               // Glow theme-aware ist (via var(--red-glow)).
               border: "3px solid var(--red)",
-              animation: "pulse-red 1.4s ease-in-out infinite",
             }}
           >
             {/* U-02: drei Zeilen statt vier, sprechende Buttons.
@@ -4234,8 +4223,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 color: "#fff",
                 fontWeight: 700,
                 fontSize: "var(--font-sm)",
-                letterSpacing: 0.3,
-                textTransform: "uppercase",
                 marginBottom: 12,
               }}
             >
@@ -4352,8 +4339,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             left: 0,
             right: 0,
             bottom: 0,
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
             background: "rgba(0,0,0,0.45)",
             display: "flex",
             alignItems: "center",
@@ -4385,8 +4370,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 color: "#fff",
                 fontWeight: 700,
                 fontSize: "var(--font-sm)",
-                letterSpacing: 0.3,
-                textTransform: "uppercase",
                 marginBottom: 12,
               }}
             >
@@ -4459,8 +4442,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             left: 0,
             right: 0,
             bottom: 0,
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
             background: "rgba(0,0,0,0.45)",
             display: "flex",
             alignItems: "center",
@@ -4492,8 +4473,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 color: "#fff",
                 fontWeight: 700,
                 fontSize: "var(--font-sm)",
-                letterSpacing: 0.3,
-                textTransform: "uppercase",
                 marginBottom: 12,
               }}
             >
@@ -4644,8 +4623,6 @@ function AutoPill({ title }: { title: string }) {
         fontSize: 12.5,
         fontFamily: "var(--font-mono)",
         fontWeight: 700,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
         padding: "2px 6px",
         background: "var(--surface-2)",
         color: "var(--fg-3)",

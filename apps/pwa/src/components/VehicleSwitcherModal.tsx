@@ -46,7 +46,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
           style={{
             borderColor: "var(--red-border)",
             background: "var(--card-gradient)",
-            boxShadow: "0 30px 80px -30px var(--red-glow), var(--shadow-card)",
+            boxShadow: "var(--glass-shadow-1)",
           }}
         >
           <div className="flex flex-col gap-3 p-5">
@@ -55,7 +55,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
                 className="grid h-10 w-10 place-items-center rounded-md text-white"
                 style={{
                   background:
-                    "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)",
+                    "var(--red)",
                 }}
               >
                 <AlertTriangle size={18} />
@@ -83,7 +83,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
                 onClick={() => onSelect(pendingId)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-m px-3 py-3 text-sm font-bold uppercase tracking-[0.06em] text-white"
                 style={{
-                  background: "linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%)",
+                  background: "var(--red)",
                   border: "1px solid color-mix(in srgb, var(--red-strong) 60%, #000)",
                   minHeight: 48,
                 }}
@@ -110,7 +110,7 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
         style={{
           borderColor: "var(--border-strong)",
           background: "var(--card-gradient)",
-          boxShadow: "0 30px 80px -30px var(--red-glow), var(--shadow-card)",
+          boxShadow: "var(--glass-shadow-1)",
         }}
       >
         <header
@@ -163,9 +163,6 @@ export function VehicleSwitcherModal({ open, current, onSelect, onClose }: Props
                     background: active
                       ? "color-mix(in srgb, var(--amber-soft) 60%, var(--surface-2))"
                       : "var(--surface-2)",
-                    boxShadow: active
-                      ? "0 0 0 1px var(--amber-border), 0 0 18px -6px var(--amber-glow)"
-                      : undefined,
                   }}
                 >
                   <span

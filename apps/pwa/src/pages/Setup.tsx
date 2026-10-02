@@ -315,12 +315,9 @@ export function Setup({ onSetupDone }: Props) {
             display: "grid",
             placeItems: "center",
             padding: 22,
-            borderRadius: 32,
+            borderRadius: 6,
             background: "var(--glass-2)",
-            backdropFilter: "var(--blur-2)",
-            WebkitBackdropFilter: "var(--blur-2)",
             border: "1px solid var(--glass-border)",
-            boxShadow: "var(--glass-shadow-2), 0 0 60px -10px rgba(200,16,46,0.20)",
           }}
         >
           <BrandLogo variant="full" size={64} />
@@ -345,7 +342,6 @@ export function Setup({ onSetupDone }: Props) {
               fontSize: 14,
               fontWeight: 700,
               letterSpacing: "var(--tracking-caps)",
-              textTransform: "uppercase",
               color: "var(--fg-3)",
               marginTop: 6,
             }}
@@ -379,13 +375,10 @@ export function Setup({ onSetupDone }: Props) {
             padding: "14px 16px",
             borderRadius: "var(--radius-m)",
             background: "var(--info-tint)",
-            backdropFilter: "var(--blur-3)",
-            WebkitBackdropFilter: "var(--blur-3)",
             border: "1px solid var(--blue-border)",
             color: "var(--fg)",
             fontSize: 16.5,
             lineHeight: 1.55,
-            boxShadow: "var(--glow-info)",
             display: "flex",
             alignItems: "center",
             gap: 10,
@@ -487,7 +480,7 @@ export function Setup({ onSetupDone }: Props) {
                   ...(isZentrale
                     ? {
                         background:
-                          "linear-gradient(135deg, var(--red-tint) 0%, transparent 60%), var(--glass-2)",
+                          "var(--red-tint)",
                         borderColor: "var(--red-border)",
                       }
                     : {}),
@@ -499,13 +492,12 @@ export function Setup({ onSetupDone }: Props) {
                     fontFamily: "var(--font-mono)",
                     fontSize: 14,
                     background: isZentrale
-                      ? "linear-gradient(135deg, var(--red) 0%, var(--red-strong) 100%)"
-                      : "linear-gradient(135deg, var(--fg) 0%, var(--fg-2) 100%)",
+                      ? "var(--red)"
+                      : "var(--fg)",
                     color: isZentrale ? "#fff" : "var(--bg)",
-                    letterSpacing: "0.06em",
                     width: 44,
                     height: 44,
-                    borderRadius: 12,
+                    borderRadius: 5,
                     boxShadow: isZentrale ? "var(--glow-red-soft)" : "none",
                   }}
                 >
@@ -527,7 +519,6 @@ export function Setup({ onSetupDone }: Props) {
                       fontSize: 13,
                       fontWeight: 600,
                       letterSpacing: "var(--tracking-caps)",
-                      textTransform: "uppercase",
                       color: "var(--fg-3)",
                     }}
                   >
@@ -566,7 +557,6 @@ export function Setup({ onSetupDone }: Props) {
           textAlign: "center",
           fontFamily: "var(--font-mono)",
           fontSize: 12.5,
-          textTransform: "uppercase",
           letterSpacing: "var(--tracking-caps)",
           color: "var(--fg-3)",
         }}
@@ -587,9 +577,8 @@ export function Setup({ onSetupDone }: Props) {
             padding: "14px 16px 14px 14px",
             borderRadius: "var(--radius-m)",
             background:
-              "linear-gradient(135deg, color-mix(in srgb, var(--ok) 14%, transparent), color-mix(in srgb, var(--ok) 6%, transparent))",
+              "var(--ok)",
             border: "1px solid var(--ok-border)",
-            boxShadow: "0 6px 18px -8px var(--emerald-glow)",
             color: "var(--fg)",
             textDecoration: "none",
             transition: "transform 180ms var(--ease-smooth)",
@@ -603,7 +592,7 @@ export function Setup({ onSetupDone }: Props) {
               placeItems: "center",
               width: 44,
               height: 44,
-              borderRadius: 12,
+              borderRadius: 5,
               background: "var(--ok-tint)",
               color: "var(--ok)",
               flexShrink: 0,
@@ -622,7 +611,6 @@ export function Setup({ onSetupDone }: Props) {
                 fontSize: 12.5,
                 fontWeight: 600,
                 letterSpacing: "var(--tracking-caps)",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
               }}
             >
@@ -638,11 +626,10 @@ export function Setup({ onSetupDone }: Props) {
               placeItems: "center",
               width: 36,
               height: 36,
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--ok)",
               color: "#fff",
               flexShrink: 0,
-              boxShadow: "0 4px 12px -2px var(--emerald-glow)",
             }}
           >
             <Download size={16} strokeWidth={2.5} />
@@ -698,7 +685,6 @@ export function Setup({ onSetupDone }: Props) {
             inset: 0,
             zIndex: 2000,
             background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(6px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -711,12 +697,12 @@ export function Setup({ onSetupDone }: Props) {
               width: "min(460px, 100%)",
               background: "var(--surface)",
               border: "1px solid var(--border-strong)",
-              borderRadius: 16,
+              borderRadius: 6,
               padding: 22,
               display: "flex",
               flexDirection: "column",
               gap: 14,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+              boxShadow: "var(--glass-shadow-1)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -726,7 +712,7 @@ export function Setup({ onSetupDone }: Props) {
                   placeItems: "center",
                   width: 42,
                   height: 42,
-                  borderRadius: 12,
+                  borderRadius: 5,
                   background: "var(--warn-tint)",
                   color: "var(--warn)",
                   border: "1px solid var(--amber-border)",
@@ -789,13 +775,12 @@ export function Setup({ onSetupDone }: Props) {
                   width: "100%",
                   padding: "12px 14px",
                   fontSize: 25,
-                  letterSpacing: "0.5em",
                   textAlign: "center",
                   background: "var(--surface-2)",
                   border: confirmPinErr
                     ? "1px solid var(--red)"
                     : "1px solid var(--border-strong)",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   color: "var(--fg)",
                   outline: "none",
                 }}
@@ -810,7 +795,7 @@ export function Setup({ onSetupDone }: Props) {
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
-                  borderRadius: 8,
+                  borderRadius: 4,
                   fontSize: 15,
                 }}
               >
@@ -825,7 +810,7 @@ export function Setup({ onSetupDone }: Props) {
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
-                  borderRadius: 8,
+                  borderRadius: 4,
                   fontSize: 15,
                 }}
               >
@@ -845,7 +830,7 @@ export function Setup({ onSetupDone }: Props) {
                   background: "var(--surface-2)",
                   color: "var(--fg)",
                   border: "1px solid var(--border)",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   cursor: busy ? "wait" : "pointer",
                   minHeight: 48,
                 }}
@@ -899,7 +884,6 @@ export function Setup({ onSetupDone }: Props) {
             fontWeight: 600,
             color: "var(--fg-3)",
             letterSpacing: "var(--tracking-caps)",
-            textTransform: "uppercase",
             fontFamily: "var(--font-mono)",
           }}
         >

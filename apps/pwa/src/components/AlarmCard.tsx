@@ -103,9 +103,8 @@ export function AlarmCard({
         optik
           ? {
               // Typ-Optik überschreibt das rote Alarm-Theme.
-              background: `linear-gradient(135deg, var(--surface) 0%, ${optik.tint} 55%, color-mix(in srgb, ${optik.farbe} 16%, transparent) 100%)`,
+              background: `${optik.tint}`,
               borderColor: optik.border,
-              boxShadow: optik.glow,
             }
           : undefined
       }
@@ -124,9 +123,7 @@ export function AlarmCard({
             fontWeight: 800,
             fontSize: 14,
             letterSpacing: "var(--tracking-caps)",
-            textTransform: "uppercase",
             marginBottom: 12,
-            boxShadow: optik.bannerShadow,
           }}
         >
           <TypIcon size={14} strokeWidth={2.4} />

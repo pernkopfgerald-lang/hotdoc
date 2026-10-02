@@ -179,15 +179,12 @@ export function AddressAutocomplete({
             right: 0,
             zIndex: 10,
             background: "var(--glass-1)",
-            backdropFilter: "var(--blur-1)",
-            WebkitBackdropFilter: "var(--blur-1)",
             border: "1px solid var(--glass-border-strong)",
             borderRadius: "var(--radius-m)",
             boxShadow: "var(--glass-shadow-1)",
             maxHeight: 280,
             overflowY: "auto",
             padding: 6,
-            animation: "glass-reveal 180ms var(--ease-decel) both",
           }}
         >
           {error ? (
@@ -251,7 +248,7 @@ export function AddressAutocomplete({
                       placeItems: "center",
                       width: 28,
                       height: 28,
-                      borderRadius: 8,
+                      borderRadius: 4,
                       background: "var(--info-tint)",
                       color: "var(--info)",
                       flexShrink: 0,
@@ -292,7 +289,6 @@ export function AddressAutocomplete({
                           fontSize: 12.5,
                           fontWeight: 600,
                           letterSpacing: "var(--tracking-caps)",
-                          textTransform: "uppercase",
                           color: "var(--fg-3)",
                         }}
                       >

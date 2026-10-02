@@ -108,8 +108,6 @@ export function HilfeSheet({ open, onClose }: Props) {
           inset: 0,
           zIndex: 9998,
           background: "rgba(0, 0, 0, 0.6)",
-          backdropFilter: "blur(4px)",
-          WebkitBackdropFilter: "blur(4px)",
         }}
         aria-hidden="true"
       />
@@ -129,8 +127,8 @@ export function HilfeSheet({ open, onClose }: Props) {
           zIndex: 9999,
           background: "var(--surface)",
           border: "1px solid var(--border-strong)",
-          borderRadius: 16,
-          boxShadow: "0 20px 60px rgba(0, 0, 0, 0.45)",
+          borderRadius: 6,
+          boxShadow: "var(--glass-shadow-1)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -154,7 +152,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               placeItems: "center",
               width: 36,
               height: 36,
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--info-tint)",
               color: "var(--info)",
               border: "1px solid var(--blue-border)",
@@ -175,8 +173,6 @@ export function HilfeSheet({ open, onClose }: Props) {
                 fontSize: 14,
                 fontFamily: "var(--font-mono)",
                 fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
                 marginTop: 2,
               }}
@@ -193,7 +189,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               height: 40,
               display: "grid",
               placeItems: "center",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "transparent",
               border: 0,
               color: "var(--fg-2)",
@@ -238,7 +234,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                 fontSize: 17.5,
                 background: "var(--surface-2)",
                 border: "1px solid var(--border)",
-                borderRadius: 10,
+                borderRadius: 4,
                 color: "var(--fg)",
                 outline: "none",
               }}
@@ -272,8 +268,6 @@ export function HilfeSheet({ open, onClose }: Props) {
                 fontSize: 14,
                 fontFamily: "var(--font-mono)",
                 fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
                 color: totalHits === 0 ? "var(--warn)" : "var(--fg-3)",
               }}
             >
@@ -305,7 +299,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                     style={{
                       background: "var(--surface)",
                       border: "1px solid var(--border)",
-                      borderRadius: 12,
+                      borderRadius: 5,
                       overflow: "hidden",
                     }}
                   >
@@ -331,7 +325,7 @@ export function HilfeSheet({ open, onClose }: Props) {
                           placeItems: "center",
                           width: 30,
                           height: 30,
-                          borderRadius: 8,
+                          borderRadius: 4,
                           background: kat.tint,
                           color: kat.color,
                           flexShrink: 0,
@@ -354,8 +348,6 @@ export function HilfeSheet({ open, onClose }: Props) {
                             fontSize: 14,
                             fontFamily: "var(--font-mono)",
                             fontWeight: 600,
-                            letterSpacing: "0.06em",
-                            textTransform: "uppercase",
                             color: "var(--fg-3)",
                             marginTop: 1,
                           }}
@@ -396,7 +388,7 @@ export function HilfeSheet({ open, onClose }: Props) {
               padding: "12px 14px",
               background: "var(--info-tint)",
               border: "1px solid var(--blue-border)",
-              borderRadius: 10,
+              borderRadius: 4,
               fontSize: 15.5,
               color: "var(--info)",
               lineHeight: 1.55,
@@ -452,7 +444,7 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
       style={{
         background: "var(--surface-2)",
         border: "1px solid var(--border)",
-        borderRadius: 10,
+        borderRadius: 4,
         padding: "12px 14px",
       }}
     >
@@ -493,8 +485,6 @@ function FaqEintrag({ item, query }: { item: FaqItem; query: string }) {
                 fontSize: 13,
                 fontFamily: "var(--font-mono)",
                 fontWeight: 600,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
                 background: "var(--surface-3)",
                 padding: "2px 6px",

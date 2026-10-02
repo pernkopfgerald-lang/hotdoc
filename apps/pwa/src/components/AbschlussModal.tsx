@@ -91,9 +91,6 @@ export function AbschlussModal({
         style={{
           borderColor: canConfirm ? "var(--emerald-border)" : "var(--amber-border)",
           background: "var(--card-gradient)",
-          boxShadow: canConfirm
-            ? "0 30px 80px -30px var(--emerald-glow), var(--shadow-card)"
-            : "0 30px 80px -30px var(--amber-glow), var(--shadow-card)",
         }}
       >
         {/* Beacon-Balken passend zum Status */}
@@ -102,9 +99,8 @@ export function AbschlussModal({
           className="h-[3px] w-full"
           style={{
             background: canConfirm
-              ? "linear-gradient(90deg, transparent 0%, var(--ok) 18%, var(--ok) 82%, transparent 100%)"
-              : "linear-gradient(90deg, transparent 0%, var(--amber) 18%, var(--amber) 82%, transparent 100%)",
-            animation: "beacon 2.4s ease-in-out infinite",
+              ? "var(--ok)"
+              : "var(--amber)",
           }}
         />
 
@@ -117,11 +113,8 @@ export function AbschlussModal({
               className="grid h-9 w-9 place-items-center rounded-md text-white"
               style={{
                 background: canConfirm
-                  ? "linear-gradient(135deg, var(--ok) 0%, color-mix(in srgb, var(--ok) 70%, #000) 100%)"
-                  : "linear-gradient(135deg, var(--amber) 0%, color-mix(in srgb, var(--amber) 60%, #000) 100%)",
-                boxShadow: canConfirm
-                  ? "0 0 18px -2px var(--emerald-glow)"
-                  : "0 0 18px -2px var(--amber-glow)",
+                  ? "var(--ok)"
+                  : "var(--amber)",
               }}
             >
               {canConfirm ? <Lock size={16} /> : <AlertTriangle size={16} />}
@@ -295,14 +288,11 @@ export function AbschlussModal({
             className="flex-1 rounded-m px-3 py-2.5 text-[17.5px] font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
             style={{
               background: canConfirm
-                ? "linear-gradient(180deg, var(--red) 0%, var(--red-strong) 100%)"
-                : "linear-gradient(180deg, var(--amber) 0%, color-mix(in srgb, var(--amber) 60%, #000) 100%)",
+                ? "var(--red)"
+                : "var(--amber)",
               border: `1px solid color-mix(in srgb, ${
                 canConfirm ? "var(--red-strong)" : "var(--amber)"
               } 60%, #000)`,
-              boxShadow: canConfirm
-                ? "0 10px 24px -8px var(--red-glow), inset 0 1px 0 rgba(255,255,255,0.2)"
-                : "0 10px 24px -8px var(--amber-glow), inset 0 1px 0 rgba(255,255,255,0.2)",
             }}
           >
             {canConfirm ? "Abschließen & übergeben" : "Trotzdem schließen"}

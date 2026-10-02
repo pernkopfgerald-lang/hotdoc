@@ -145,12 +145,9 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
             display: "grid",
             placeItems: "center",
             padding: 18,
-            borderRadius: 28,
+            borderRadius: 6,
             background: "var(--glass-2)",
-            backdropFilter: "var(--blur-2)",
-            WebkitBackdropFilter: "var(--blur-2)",
             border: "1px solid var(--glass-border)",
-            boxShadow: "var(--glass-shadow-2), 0 0 60px -12px var(--blue-glow)",
             color: "var(--info)",
           }}
         >
@@ -165,7 +162,6 @@ export function QrClaim({ token, onComplete, onCancel }: Props) {
             fontSize: 13,
             fontWeight: 700,
             letterSpacing: "var(--tracking-caps)",
-            textTransform: "uppercase",
             color: "var(--fg-3)",
           }}
         >
@@ -274,7 +270,6 @@ function Card({
     <section
       className="card"
       style={{
-        boxShadow: `var(--glass-shadow-2), ${palette.glow}`,
         borderColor: palette.border,
       }}
     >
@@ -285,7 +280,7 @@ function Card({
             placeItems: "center",
             width: 48,
             height: 48,
-            borderRadius: 14,
+            borderRadius: 5,
             background: `color-mix(in srgb, ${palette.color} 16%, transparent)`,
             color: palette.color,
             flexShrink: 0,

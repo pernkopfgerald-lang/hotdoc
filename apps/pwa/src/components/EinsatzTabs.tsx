@@ -56,7 +56,7 @@ export function EinsatzTabs({ tabs, activeId, onSelect, onNew, onCloseTab }: Pro
         // V-06 (Audit R3): an die echte Topbar-Hoehe gekoppelt (75/71 px).
         top: "var(--topbar-h, 75px)",
         background:
-          "linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, var(--bg) 100%)",
+          "var(--bg)",
         borderBottom: "1px solid var(--border)",
       }}
     >
@@ -226,7 +226,7 @@ function EinsatzTab({
             height: 44,
             marginLeft: 4,
             padding: 8,
-            borderRadius: 8,
+            borderRadius: 4,
             background: "transparent",
             border: 0,
             color: "var(--fg-3)",

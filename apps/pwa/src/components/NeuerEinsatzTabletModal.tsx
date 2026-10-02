@@ -498,7 +498,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
         display: "grid",
         placeItems: "center",
         padding: 16,
-        animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
       <div
@@ -512,17 +511,14 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
           maxHeight: "calc(100dvh - 32px)",
           overflow: "auto",
           background: "var(--glass-1)",
-          backdropFilter: "var(--blur-1)",
-          WebkitBackdropFilter: "var(--blur-1)",
           color: "var(--fg)",
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--glass-border-strong)",
-          boxShadow: `var(--glass-shadow-1), ${TYP_META[typ].glow}`,
+          boxShadow: "var(--glass-shadow-1)",
           padding: 24,
           display: "flex",
           flexDirection: "column",
           gap: 16,
-          animation: "glass-reveal 320ms var(--ease-spring) both",
         }}
       >
         <header
@@ -538,11 +534,10 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               placeItems: "center",
               width: 44,
               height: 44,
-              borderRadius: 14,
+              borderRadius: 5,
               background:
-                `linear-gradient(135deg, ${TYP_META[typ].color}, color-mix(in srgb, ${TYP_META[typ].color} 60%, #000))`,
+                `${TYP_META[typ].color}`,
               color: "#fff",
-              boxShadow: TYP_META[typ].glow,
             }}
           >
             <ActiveIcon size={22} strokeWidth={2.2} />
@@ -565,7 +560,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 fontSize: 12.5,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-caps)",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
                 marginTop: 2,
               }}
@@ -637,7 +631,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                     ? {
                         borderColor: TYP_META[t].color,
                         background: `color-mix(in srgb, ${TYP_META[t].color} 18%, var(--glass-2))`,
-                        boxShadow: TYP_META[t].glow,
                       }
                     : {}),
                   display: "flex",
@@ -708,7 +701,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                     fontSize: 12.5,
                     fontWeight: 700,
                     letterSpacing: "var(--tracking-caps)",
-                    textTransform: "uppercase",
                     color: "var(--fg-3)",
                     marginBottom: 6,
                   }}
@@ -744,7 +736,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                                 background: "var(--info-tint)",
                                 color: "var(--info)",
                                 borderColor: "var(--blue-border)",
-                                boxShadow: "var(--glow-info)",
                               }
                             : {}),
                         }}
@@ -808,7 +799,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                               background: "var(--info-tint)",
                               color: "var(--info)",
                               borderColor: "var(--blue-border)",
-                              boxShadow: "var(--glow-info)",
                             }
                           : {}),
                       }}
@@ -827,7 +817,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 fontFamily: "var(--font-mono)",
                 fontSize: 12.5,
                 color: "var(--fg-3)",
-                letterSpacing: "0.06em",
                 marginTop: 6,
               }}
             >
@@ -885,7 +874,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 background: "var(--info-tint)",
                 color: "var(--info)",
                 border: "1px solid var(--blue-border)",
-                borderRadius: 10,
+                borderRadius: 4,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
@@ -903,7 +892,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                 fontFamily: "var(--font-mono)",
                 fontSize: 12.5,
                 fontWeight: 600,
-                letterSpacing: "0.06em",
                 color: "var(--ok)",
                 display: "inline-flex",
                 alignItems: "center",
@@ -982,7 +970,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                     className="avatar"
                     style={{
                       background:
-                        "linear-gradient(135deg, var(--ok-tint), var(--glass-2))",
+                        "var(--ok-tint)",
                       color: "var(--ok)",
                       fontFamily: "var(--font-mono)",
                       fontSize: 15,
@@ -1009,7 +997,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                           fontSize: 12.5,
                           fontWeight: 600,
                           letterSpacing: "var(--tracking-caps)",
-                          textTransform: "uppercase",
                           color: "var(--fg-3)",
                         }}
                       >
@@ -1093,7 +1080,6 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
               fontSize: 16.5,
               fontWeight: 500,
               border: "1px solid var(--red-border)",
-              boxShadow: "var(--glow-red-soft)",
             }}
           >
             {err}

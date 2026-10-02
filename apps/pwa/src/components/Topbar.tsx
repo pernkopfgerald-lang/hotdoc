@@ -18,11 +18,11 @@ import { HilfeSheet } from "./HilfeSheet";
 
 /** Hotfix 2026-09: pro Fahrzeug eine eigene, gut unterscheidbare Farbe. */
 const FAHRZEUG_FARBE: Record<FahrzeugId, string> = {
-  kdo: "#2563eb",
-  "tlf-a-4000": "#dc2626",
-  "lfa-b": "#d97706",
-  mtf: "#059669",
-  zentrale: "#7c3aed",
+  kdo: "#1D4ED8",
+  "tlf-a-4000": "#B91C1C",
+  "lfa-b": "#B45309",
+  mtf: "#047857",
+  zentrale: "#6D28D9",
 };
 
 interface Props {
@@ -157,12 +157,11 @@ export function Topbar({
             flexDirection: "column",
             justifyContent: "center",
             padding: "4px 16px",
-            borderRadius: 12,
+            borderRadius: 5,
             background: FAHRZEUG_FARBE[fahrzeugId],
             color: "#fff",
             lineHeight: 1.1,
             flexShrink: 0,
-            boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
           }}
         >
           <span style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.02em" }}>

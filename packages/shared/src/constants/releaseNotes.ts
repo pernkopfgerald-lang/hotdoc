@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.3.0",
+    date: "2026-10-02",
+    title: "Neues, ruhigeres Design",
+    bullets: [
+      "Komplett überarbeitetes Erscheinungsbild: schlicht wie ein Einsatzformular — helle Flächen mit klaren Linien, kleine Rundungen, keine Verläufe, kein Glas-Effekt, keine Dauer-Animationen.",
+      "Systemschrift des Geräts statt Web-Schriften: schneller geladen, auch offline immer gleich und gut lesbar. Schriftgrößen und Tippflächen bleiben groß.",
+      "Dunkles Design neutral grau mit hohem Kontrast; Farben (Rot, Grün, Gelb, Blau) nur dort, wo sie etwas bedeuten.",
+      "Kopfzeile am Handy bricht um — keine abgeschnittenen Schaltflächen mehr.",
+      "Florianstation: Fahrzeugbericht kann aus dem Hauptbericht entfernt (und wiederhergestellt) werden; Fahrzeug-Kilometer zählen erst, wenn wirklich etwas erfasst wurde.",
+    ],
+  },
+  {
     version: "0.2.4",
     date: "2026-10-02",
     title: "Anhänger & Stapler, Datum/Uhrzeit änderbar, Fahrzeug-Anzeige",

@@ -119,8 +119,6 @@ function LazyFallback() {
         color: "var(--fg-3)",
         fontFamily: "var(--font-mono)",
         fontSize: 15,
-        letterSpacing: "0.12em",
-        textTransform: "uppercase",
       }}
     >
       lädt …
@@ -435,8 +433,6 @@ export function App() {
           color: "var(--fg-3)",
           fontFamily: "var(--font-mono)",
           fontSize: 15,
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
         }}
       >
         lädt …

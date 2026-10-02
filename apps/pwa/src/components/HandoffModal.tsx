@@ -179,7 +179,6 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
         display: "grid",
         placeItems: "center",
         padding: 16,
-        animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
       <div
@@ -191,19 +190,13 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
           maxHeight: "calc(100dvh - 32px)",
           overflowY: "auto",
           background: "var(--glass-1)",
-          backdropFilter: "var(--blur-1)",
-          WebkitBackdropFilter: "var(--blur-1)",
           color: "var(--fg)",
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--glass-border-strong)",
-          boxShadow: reverse
-            ? "var(--glass-shadow-1), var(--glow-info)"
-            : "var(--glass-shadow-1), var(--glow-red-soft)",
           padding: 26,
           display: "flex",
           flexDirection: "column",
           gap: 16,
-          animation: "glass-reveal 320ms var(--ease-spring) both",
         }}
       >
         {/* Header */}
@@ -214,14 +207,11 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               placeItems: "center",
               width: 42,
               height: 42,
-              borderRadius: 12,
+              borderRadius: 5,
               background: reverse
-                ? "linear-gradient(135deg, var(--info) 0%, color-mix(in srgb, var(--info) 60%, #000) 100%)"
-                : "linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 60%, #000) 100%)",
+                ? "var(--info)"
+                : "var(--red)",
               color: "#fff",
-              boxShadow: reverse
-                ? "0 8px 20px -6px rgba(37,99,235,0.5)"
-                : "0 8px 20px -6px rgba(200,16,46,0.5)",
             }}
           >
             <TargetIcon size={20} strokeWidth={2.2} />
@@ -233,7 +223,6 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 margin: 0,
                 fontSize: 21.5,
                 fontWeight: 700,
-                letterSpacing: "-0.01em",
               }}
             >
               {title}
@@ -244,8 +233,6 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 fontFamily: "var(--font-mono)",
                 fontSize: 12.5,
                 fontWeight: 700,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
               }}
             >
@@ -262,7 +249,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 border: 0,
                 color: "var(--fg-3)",
                 padding: 6,
-                borderRadius: 8,
+                borderRadius: 4,
                 cursor: "pointer",
               }}
             >
@@ -288,8 +275,6 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: 14,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
               }}
             >
               Code wird erstellt …
@@ -302,7 +287,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
               style={{
                 background: "#fff",
                 padding: 16,
-                borderRadius: 14,
+                borderRadius: 5,
                 display: "grid",
                 placeItems: "center",
                 border: "1px solid var(--border)",
@@ -324,8 +309,6 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                   fontFamily: "var(--font-mono)",
                   fontSize: 12.5,
                   fontWeight: 700,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
                   color: "var(--fg-3)",
                   marginBottom: 4,
                 }}
@@ -337,7 +320,6 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                   fontFamily: "var(--font-mono)",
                   fontSize: 27.5,
                   fontWeight: 800,
-                  letterSpacing: "0.18em",
                   color: "var(--fg)",
                   fontVariantNumeric: "tabular-nums",
                 }}
@@ -351,7 +333,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
             <div
               style={{
                 padding: "10px 12px",
-                borderRadius: 10,
+                borderRadius: 4,
                 background: secondsLeft < 60 ? "var(--warn-tint)" : "var(--surface-2)",
                 border: `1px solid ${secondsLeft < 60 ? "var(--amber-border)" : "var(--border)"}`,
                 color: secondsLeft < 60 ? "var(--warn)" : "var(--fg-2)",
@@ -454,7 +436,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
                 background: "var(--warn)",
                 color: "#fff",
                 border: 0,
-                borderRadius: 10,
+                borderRadius: 4,
                 cursor: "pointer",
                 minHeight: 48,
                 display: "inline-flex",
@@ -470,7 +452,7 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
           <div
             style={{
               padding: 14,
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--red-tint)",
               color: "var(--red)",
               border: "1px solid var(--red-border)",

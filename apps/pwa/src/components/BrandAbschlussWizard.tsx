@@ -155,7 +155,6 @@ export function BrandAbschlussWizard({
         inset: 0,
         zIndex: 2600,
         background: "rgba(0,0,0,0.7)",
-        backdropFilter: "blur(6px)",
         display: "flex",
         alignItems: "stretch",
         justifyContent: "center",
@@ -213,7 +212,7 @@ export function BrandAbschlussWizard({
               border: "1px solid var(--border-strong)",
               color: "var(--fg)",
               padding: "8px 12px",
-              borderRadius: 8,
+              borderRadius: 4,
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
@@ -255,7 +254,7 @@ export function BrandAbschlussWizard({
               background: "var(--info-tint)",
               border: "1px solid var(--info-border)",
               color: "var(--info)",
-              borderRadius: 8,
+              borderRadius: 4,
               fontSize: 15,
               fontWeight: 600,
             }}
@@ -462,7 +461,7 @@ export function BrandAbschlussWizard({
               background: "transparent",
               border: "1px solid var(--border-strong)",
               color: canBack ? "var(--fg)" : "var(--fg-3)",
-              borderRadius: 10,
+              borderRadius: 4,
               fontWeight: 600,
               cursor: canBack ? "pointer" : "not-allowed",
               opacity: canBack ? 1 : 0.5,
@@ -490,7 +489,7 @@ export function BrandAbschlussWizard({
                 background: "transparent",
                 border: "1px solid var(--border-strong)",
                 color: "var(--fg-2)",
-                borderRadius: 10,
+                borderRadius: 4,
                 fontWeight: 600,
                 fontSize: 16.5,
                 cursor: "pointer",
@@ -510,7 +509,7 @@ export function BrandAbschlussWizard({
                 background: "var(--red)",
                 border: 0,
                 color: "#fff",
-                borderRadius: 10,
+                borderRadius: 4,
                 fontWeight: 700,
                 cursor: "pointer",
                 display: "inline-flex",
@@ -530,7 +529,7 @@ export function BrandAbschlussWizard({
                 background: "var(--red)",
                 border: 0,
                 color: "#fff",
-                borderRadius: 10,
+                borderRadius: 4,
                 fontWeight: 700,
                 cursor: "pointer",
                 display: "inline-flex",
@@ -613,8 +612,6 @@ function Label({
         fontSize: 15,
         fontWeight: 700,
         color: "var(--fg-2)",
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
         ...style,
       }}
     >
@@ -683,7 +680,7 @@ function RadioGroup({
             aria-pressed={on}
             style={{
               padding: "8px 14px",
-              borderRadius: 8,
+              borderRadius: 4,
               border: `1px solid ${on ? "var(--red)" : "var(--border-strong)"}`,
               background: on ? "var(--red-tint)" : "transparent",
               color: on ? "var(--red)" : "var(--fg)",
@@ -722,7 +719,7 @@ function NumberField({
         onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
         style={{
           padding: "8px 10px",
-          borderRadius: 8,
+          borderRadius: 4,
           border: "1px solid var(--border-strong)",
           background: "var(--surface)",
           color: "var(--fg)",

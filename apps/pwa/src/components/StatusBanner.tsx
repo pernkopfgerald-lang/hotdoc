@@ -152,7 +152,7 @@ function Banner({
         alignItems: "center",
         gap: 10,
         padding: "5px 10px",
-        borderRadius: 8,
+        borderRadius: 4,
         border: `1px ${tone === "danger" ? "solid" : "dashed"} ${styles.border}`,
         background: styles.bg,
         color: styles.color,
@@ -168,7 +168,6 @@ function Banner({
           fontFamily: "var(--font-mono)",
           fontSize: 12.5,
           fontWeight: 700,
-          letterSpacing: "0.14em",
         }}
       >
         {tag}

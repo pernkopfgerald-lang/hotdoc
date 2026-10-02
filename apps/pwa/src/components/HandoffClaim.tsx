@@ -102,17 +102,17 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
         minHeight: "100vh",
         padding: 24,
         background:
-          "radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--red) 8%, var(--bg)) 0%, var(--bg) 60%)",
+          "var(--red)",
       }}
     >
       <div
         style={{
           width: "min(420px, 100%)",
           background: "var(--surface)",
-          borderRadius: 18,
+          borderRadius: 6,
           border: "1px solid var(--border-strong)",
           padding: 28,
-          boxShadow: "0 24px 64px -24px rgba(15,23,42,0.4)",
+          boxShadow: "var(--glass-shadow-1)",
           display: "flex",
           flexDirection: "column",
           gap: 18,
@@ -124,8 +124,6 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
             fontFamily: "var(--font-mono)",
             fontSize: 12.5,
             fontWeight: 700,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
             color: "var(--fg-3)",
           }}
         >
@@ -152,7 +150,6 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
                 fontFamily: "var(--font-mono)",
                 fontSize: 16.5,
                 color: "var(--fg-3)",
-                letterSpacing: "0.1em",
               }}
             >
               Code: <strong style={{ color: "var(--fg)" }}>{code}</strong>
@@ -177,8 +174,6 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
                 style={{
                   fontFamily: "var(--font-mono)",
                   fontSize: 14,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
                   color: "var(--fg-3)",
                 }}
               >
@@ -217,7 +212,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
             <div
               style={{
                 padding: "10px 12px",
-                borderRadius: 10,
+                borderRadius: 4,
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 border: "1px solid var(--red-border)",
@@ -232,7 +227,7 @@ export function HandoffClaim({ code, onComplete, onCancel }: Props) {
               onClick={onCancel}
               style={{
                 padding: "10px 16px",
-                borderRadius: 10,
+                borderRadius: 4,
                 border: "1px solid var(--border-strong)",
                 background: "var(--surface-2)",
                 color: "var(--fg)",

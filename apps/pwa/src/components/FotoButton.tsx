@@ -47,7 +47,7 @@ export function FotoButton({ onCapture, busy }: Props) {
           minHeight: 52,
           marginTop: 8,
           padding: "0 16px",
-          borderRadius: 12,
+          borderRadius: 5,
           border: "1px solid var(--border-strong)",
           background: "var(--surface-2)",
           color: "var(--fg)",

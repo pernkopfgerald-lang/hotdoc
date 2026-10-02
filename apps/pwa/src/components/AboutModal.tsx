@@ -44,7 +44,6 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
         display: "grid",
         placeItems: "center",
         padding: 16,
-        animation: "glass-reveal 220ms var(--ease-decel) both",
       }}
     >
       <div
@@ -54,14 +53,11 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
           maxHeight: "calc(100dvh - 32px)",
           overflow: "auto",
           background: "var(--glass-1)",
-          backdropFilter: "var(--blur-1)",
-          WebkitBackdropFilter: "var(--blur-1)",
           color: "var(--fg)",
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--glass-border-strong)",
           boxShadow: "var(--glass-shadow-1)",
           padding: 22,
-          animation: "glass-reveal 320ms var(--ease-spring) both",
         }}
       >
         <header
@@ -77,7 +73,6 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
               margin: 0,
               fontSize: 25,
               fontWeight: 700,
-              letterSpacing: "-0.02em",
             }}
           >
             Über HotDoc
@@ -100,7 +95,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
           style={{
             marginTop: 18,
             padding: 14,
-            borderRadius: 12,
+            borderRadius: 5,
             border: "1px dashed var(--border-strong)",
             background: "var(--surface-2)",
           }}
@@ -110,8 +105,6 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
               fontFamily: "var(--font-mono)",
               fontSize: 12.5,
               fontWeight: 700,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
               color: "var(--fg-3)",
               marginBottom: 8,
             }}
@@ -159,7 +152,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                   background: "transparent",
                   color: "var(--fg-2)",
                   border: "1px solid var(--border)",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   cursor: "pointer",
                   minHeight: 44,
                 }}
@@ -176,7 +169,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                   flexWrap: "wrap",
                   background: "var(--warn-tint)",
                   border: "1px solid var(--amber-border)",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   padding: "10px 12px",
                 }}
               >
@@ -193,7 +186,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     background: "transparent",
                     color: "var(--fg)",
                     border: "1px solid var(--border)",
-                    borderRadius: 8,
+                    borderRadius: 4,
                     fontSize: 15,
                     fontWeight: 600,
                     cursor: "pointer",
@@ -214,7 +207,7 @@ export function AboutModal({ open, onClose, onResetSetup }: Props) {
                     background: "var(--warn)",
                     color: "#fff",
                     border: 0,
-                    borderRadius: 8,
+                    borderRadius: 4,
                     fontSize: 15,
                     fontWeight: 700,
                     cursor: "pointer",

@@ -2530,7 +2530,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--ok-tint)",
               border: "1px solid var(--ok-border)",
               color: "var(--ok)",
@@ -2589,7 +2589,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     style={{
                       fontFamily: "var(--font-mono)",
                       fontWeight: 700,
-                      letterSpacing: "0.04em",
                     }}
                   >
                     {letzterAbschluss.berichtNummer}
@@ -2609,7 +2608,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 alignItems: "center",
                 gap: 6,
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: 4,
                 border: "1px solid var(--ok-border)",
                 background: "var(--surface)",
                 color: "var(--ok)",
@@ -2639,7 +2638,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             className="alarm"
             style={{
               background:
-                "linear-gradient(135deg, var(--glass-2), color-mix(in srgb, var(--ok) 8%, transparent))",
+                "var(--ok-tint)",
               borderColor: "var(--ok-border)",
             }}
           >
@@ -2725,8 +2724,8 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               // D-02: theme-awares Tint, im Dark-Mode wird automatisch dunkler.
               background:
                 einsatzTyp === "uebung"
-                  ? "linear-gradient(135deg, var(--surface) 0%, var(--ok-tint) 55%, color-mix(in srgb, var(--ok) 16%, transparent) 100%)"
-                  : "linear-gradient(135deg, var(--surface) 0%, var(--info-tint) 55%, var(--info-strong) 100%)",
+                  ? "var(--ok-tint)"
+                  : "var(--info-tint)",
               borderColor:
                 einsatzTyp === "uebung" ? "var(--ok-border)" : "var(--blue-border)",
             }}
@@ -2747,9 +2746,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   fontWeight: 800,
                   fontSize: 14,
                   letterSpacing: "var(--tracking-caps)",
-                  textTransform: "uppercase",
                   marginBottom: 12,
-                  boxShadow: "0 4px 12px -4px rgba(4,120,87,0.45)",
                 }}
               >
                 <GraduationCap size={14} strokeWidth={2.4} />
@@ -2855,8 +2852,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                       fontFamily: "var(--font-mono)",
                       fontSize: 12.5,
                       fontWeight: 700,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
                       color: "var(--fg-3)",
                     }}
                   >
@@ -2886,7 +2881,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -2919,7 +2914,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -2962,7 +2957,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -2987,7 +2982,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "var(--warn)",
                 border: "1px solid var(--warn-border)",
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3026,7 +3021,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -3073,7 +3068,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--red-tint)",
               border: "1px solid var(--red-border)",
               color: "var(--red)",
@@ -3097,7 +3092,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3120,7 +3115,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               marginBottom: 14,
               padding: "12px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: "var(--warn-tint)",
               border: "1px solid var(--warn-border)",
               color: "var(--warn)",
@@ -3148,7 +3143,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "#fff",
                 border: 0,
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontWeight: 700,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3165,7 +3160,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "inherit",
                 border: "1px solid var(--warn-border)",
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontWeight: 600,
                 fontSize: 15.5,
                 cursor: "pointer",
@@ -3199,7 +3194,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               style={{
                 marginBottom: 8,
                 padding: "8px 12px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontSize: 15,
                 color: "var(--red)",
                 border: "1px solid var(--red-border, #d93b3b)",
@@ -3302,8 +3297,9 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           borderRadius: 999,
                           fontSize: 13.5,
                           fontWeight: 800,
-                          color: "#fff",
-                          background: "var(--ok, #059669)",
+                          color: "var(--ok)",
+                          background: "var(--ok-tint)",
+                          border: "1px solid var(--ok)",
                           whiteSpace: "nowrap",
                         }}
                       >
@@ -3316,8 +3312,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                         fontFamily: "var(--font-mono)",
                         fontSize: 14,
                         color: "var(--fg-3)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
                         fontWeight: 600,
                         marginLeft: 12,
                       }}
@@ -3360,7 +3354,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                             gap: 6,
                             minHeight: 40,
                             padding: "0 12px",
-                            borderRadius: 10,
+                            borderRadius: 4,
                             fontSize: 14.5,
                             fontWeight: 700,
                             cursor: "pointer",
@@ -3390,17 +3384,13 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                         rowGap: 4,
                         columnGap: 12,
                         fontSize: 15.5,
-                        animation:
-                          "glass-reveal 180ms var(--ease-decel) both",
-                      }}
+                        }}
                     >
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
                           fontSize: 12.5,
                           color: "var(--fg-3)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
                           alignSelf: "center",
                         }}
                       >
@@ -3412,8 +3402,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           fontFamily: "var(--font-mono)",
                           fontSize: 12.5,
                           color: "var(--fg-3)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
                           alignSelf: "center",
                         }}
                       >
@@ -3425,8 +3413,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           fontFamily: "var(--font-mono)",
                           fontSize: 12.5,
                           color: "var(--fg-3)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
                         }}
                       >
                         Mannschaft
@@ -3457,8 +3443,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                               fontFamily: "var(--font-mono)",
                               fontSize: 12.5,
                               color: "var(--warn)",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.06em",
                               alignSelf: "center",
                             }}
                           >
@@ -3602,7 +3586,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                       fontSize: 12.5,
                       fontWeight: 600,
                       letterSpacing: "var(--tracking-caps)",
-                      textTransform: "uppercase",
                       color: "var(--fg-3)",
                     }}
                   >
@@ -3858,15 +3841,15 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               width: "100%",
               minHeight: 56,
               padding: "8px 16px",
-              borderRadius: 12,
+              borderRadius: 5,
               fontSize: 17,
               fontWeight: 700,
               textAlign: "left",
               cursor: schreibschutz ? "not-allowed" : "pointer",
-              color: editor.staplerEingesetzt ? "#fff" : "var(--fg)",
-              background: editor.staplerEingesetzt ? "var(--ok, #059669)" : "var(--surface-2)",
+              color: editor.staplerEingesetzt ? "var(--ok)" : "var(--fg)",
+              background: editor.staplerEingesetzt ? "var(--ok-tint)" : "var(--surface-2)",
               border: editor.staplerEingesetzt
-                ? "2px solid var(--ok, #059669)"
+                ? "2px solid var(--ok)"
                 : "2px dashed var(--border-strong)",
             }}
           >
@@ -3876,8 +3859,8 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 placeItems: "center",
                 width: 28,
                 height: 28,
-                borderRadius: 8,
-                border: editor.staplerEingesetzt ? "2px solid #fff" : "2px solid var(--border-strong)",
+                borderRadius: 4,
+                border: editor.staplerEingesetzt ? "2px solid var(--ok)" : "2px solid var(--border-strong)",
                 flexShrink: 0,
               }}
             >
@@ -4103,8 +4086,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 fontFamily: "var(--font-mono)",
                 fontSize: 12.5,
                 fontWeight: 700,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
                 marginBottom: 8,
               }}
@@ -4144,8 +4125,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 fontFamily: "var(--font-mono)",
                 fontSize: 12.5,
                 fontWeight: 700,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
                 color: "var(--fg-3)",
                 marginBottom: 8,
               }}
@@ -4239,7 +4218,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   fontSize: 15,
                   fontFamily: "var(--font-mono)",
                   color: "var(--fg-3)",
-                  letterSpacing: "0.04em",
                 }}
               >
                 Fahrzeuge melden:{" "}
@@ -4625,7 +4603,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     background: "var(--surface-2)",
                     color: "var(--fg)",
                     border: "1px solid var(--border-strong)",
-                    borderRadius: 10,
+                    borderRadius: 4,
                     cursor: "pointer",
                     minHeight: 44,
                   }}
@@ -4652,7 +4630,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               right: 20,
               zIndex: 1500,
               padding: "8px 14px",
-              borderRadius: 10,
+              borderRadius: 4,
               background: saveErr
                 ? "var(--red-tint)"
                 : saveBusy
@@ -4662,7 +4640,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               border: `1px solid ${saveErr ? "var(--red-border)" : saveBusy ? "var(--blue-border)" : "var(--ok-border)"}`,
               fontSize: 15,
               fontWeight: 600,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -4706,7 +4683,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             <div
               style={{
                 padding: "10px 12px",
-                borderRadius: 10,
+                borderRadius: 4,
                 background: "var(--red-tint)",
                 color: "var(--red)",
                 fontSize: 16.5,
@@ -4732,7 +4709,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               style={{
                 marginTop: 8,
                 padding: "8px 12px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontSize: 15,
                 background: "var(--ok-tint)",
                 color: "var(--ok)",
@@ -4748,7 +4725,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               style={{
                 marginTop: 8,
                 padding: "8px 12px",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontSize: 15,
                 background: "var(--red-tint)",
                 color: "var(--red)",
@@ -4981,10 +4958,10 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             padding: "10px 14px",
             background: "var(--ok)",
             color: "#fff",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "center",
             gap: 8,
@@ -5008,10 +4985,10 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             padding: "10px 14px",
             background: "var(--fg)",
             color: "var(--bg)",
-            borderRadius: 10,
+            borderRadius: 4,
             fontSize: 16.5,
             fontWeight: 600,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+            boxShadow: "var(--glass-shadow-1)",
             display: "inline-flex",
             alignItems: "center",
             gap: 12,
@@ -5032,7 +5009,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               color: "#fff",
               border: 0,
               padding: "6px 12px",
-              borderRadius: 8,
+              borderRadius: 4,
               fontWeight: 700,
               fontSize: 15.5,
               cursor: verwerfenUndo.busy ? "wait" : "pointer",
@@ -5250,7 +5227,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             display: "grid",
             placeItems: "center",
             padding: 16,
-            animation: "glass-reveal 220ms var(--ease-decel) both",
           }}
         >
           <div
@@ -5258,19 +5234,16 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             style={{
               width: "min(460px, 100%)",
               background: "var(--glass-1)",
-              backdropFilter: "var(--blur-1)",
-              WebkitBackdropFilter: "var(--blur-1)",
               color: "var(--fg)",
               borderRadius: "var(--radius-xl)",
               border: "1px solid var(--glass-border-strong)",
-              boxShadow: "var(--glass-shadow-1), var(--glow-red-soft)",
+              boxShadow: "var(--glass-shadow-1)",
               padding: 26,
               display: "flex",
               flexDirection: "column",
               gap: 16,
               position: "relative",
               overflow: "hidden",
-              animation: "glass-reveal 320ms var(--ease-spring) both",
             }}
           >
             <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -5280,11 +5253,10 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   placeItems: "center",
                   width: 42,
                   height: 42,
-                  borderRadius: 12,
+                  borderRadius: 5,
                   background:
-                    "linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 60%, #000) 100%)",
+                    "var(--red)",
                   color: "#fff",
-                  boxShadow: "0 8px 20px -6px rgba(200,16,46,0.5)",
                 }}
               >
                 <Lock size={20} strokeWidth={2.2} />
@@ -5296,7 +5268,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     margin: 0,
                     fontSize: 21.5,
                     fontWeight: 700,
-                    letterSpacing: "-0.01em",
                   }}
                 >
                   Einsatz wirklich abschließen?
@@ -5307,8 +5278,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     fontFamily: "var(--font-mono)",
                     fontSize: 12.5,
                     fontWeight: 700,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
                     color: "var(--fg-3)",
                   }}
                 >
@@ -5324,7 +5293,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 color: "var(--fg-2)",
                 background: "var(--warn-tint)",
                 border: "1px solid var(--warn-border)",
-                borderRadius: 10,
+                borderRadius: 4,
                 padding: "10px 12px",
                 display: "flex",
                 gap: 10,
@@ -5356,7 +5325,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   fontSize: 15.5,
                   lineHeight: 1.5,
                   padding: "8px 12px",
-                  borderRadius: 8,
+                  borderRadius: 4,
                   background: "var(--info-tint)",
                   border: "1px solid var(--info-border)",
                   color: "var(--fg-2)",
@@ -5372,7 +5341,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 style={{
                   fontSize: 15,
                   padding: "8px 12px",
-                  borderRadius: 8,
+                  borderRadius: 4,
                   background: "var(--red-tint)",
                   color: "var(--red)",
                   border: "1px solid var(--red-border)",
@@ -5399,7 +5368,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   border: "1px solid var(--border-strong)",
                   color: "var(--fg)",
                   padding: "10px 16px",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   fontWeight: 600,
                   cursor: abschlussBusy ? "not-allowed" : "pointer",
                   opacity: abschlussBusy ? 0.55 : 1,
@@ -5416,14 +5385,13 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   border: 0,
                   color: "#fff",
                   padding: "10px 18px",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   fontWeight: 700,
                   cursor: abschlussBusy ? "wait" : "pointer",
                   opacity: abschlussBusy ? 0.7 : 1,
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 8,
-                  boxShadow: "0 4px 12px -4px rgba(200,16,46,0.45)",
                 }}
               >
                 <Lock size={16} />
@@ -5447,7 +5415,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             inset: 0,
             zIndex: 2400,
             background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(6px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -5460,12 +5427,12 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               width: "min(540px, 100%)",
               background: "var(--surface)",
               border: "1px solid var(--border-strong)",
-              borderRadius: 16,
+              borderRadius: 6,
               padding: 22,
               display: "flex",
               flexDirection: "column",
               gap: 12,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+              boxShadow: "var(--glass-shadow-1)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5487,7 +5454,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   fontSize: 15.5,
                   lineHeight: 1.5,
                   padding: "8px 12px",
-                  borderRadius: 8,
+                  borderRadius: 4,
                   background: "var(--info-tint)",
                   border: "1px solid var(--info-border)",
                   color: "var(--fg-2)",
@@ -5508,7 +5475,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 padding: "10px 12px",
                 background: "var(--surface-2)",
                 border: "1px solid var(--border-strong)",
-                borderRadius: 8,
+                borderRadius: 4,
                 fontSize: 17.5,
                 color: "var(--fg)",
                 resize: "vertical",
@@ -5538,7 +5505,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   background: "transparent",
                   color: "var(--fg)",
                   border: "1px solid var(--border-strong)",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   fontSize: 16.5,
                   fontWeight: 600,
                   cursor: abschlussBusy ? "not-allowed" : "pointer",
@@ -5564,7 +5531,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                   background: "var(--warn)",
                   border: 0,
                   color: "#fff",
-                  borderRadius: 10,
+                  borderRadius: 4,
                   fontSize: 16.5,
                   fontWeight: 700,
                   cursor:
@@ -5782,7 +5749,6 @@ function SectionHead({
           fontFamily: "var(--font-mono)",
           fontSize: 15,
           fontWeight: 700,
-          letterSpacing: "0.04em",
           marginLeft: 4,
         }}
       >
@@ -5838,7 +5804,7 @@ function FreitextAddRow({
           background: "var(--accent)",
           border: 0,
           color: "#fff",
-          borderRadius: 8,
+          borderRadius: 4,
           fontSize: 16.5,
           fontWeight: 700,
           cursor: disabled || !text.trim() ? "not-allowed" : "pointer",
@@ -6031,7 +5997,7 @@ function FlorianChronikInput({
           style={{
             marginBottom: 10,
             padding: "8px 12px",
-            borderRadius: 8,
+            borderRadius: 4,
             background: "var(--red-tint)",
             color: "var(--red)",
             fontSize: 15,
@@ -6075,7 +6041,6 @@ function FlorianChronikInput({
           fontSize: 14,
           fontFamily: "var(--font-mono)",
           color: schreibschutz ? "var(--warn)" : "var(--fg-3)",
-          letterSpacing: "0.06em",
         }}
       >
         {schreibschutz

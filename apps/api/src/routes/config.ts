@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.2.4",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.2.4-release.apk",
+    currentVersion: "0.3.0",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.0-release.apk",
     releaseNotes:
-      "v0.2.4 — Anhänger & Stapler, Datum/Uhrzeit änderbar, Fahrzeug-Anzeige\n\n• Anhänger (HR/PKW) bei KDO/MTF wählbar, Stapler in der Florianstation.\n• Datum und Uhrzeit des Einsatzbeginns änderbar.\n• Angemeldetes Fahrzeug groß und farbig in der Kopfzeile.\n• Bearbeiter im PDF, kein GPS bei QR-Zugriff.",
+      "v0.3.0 — Neues, ruhigeres Design\n\n• Schlichtes Erscheinungsbild wie ein Einsatzformular, keine Effekte/Animationen.\n• Systemschrift, große Schrift und Tippflächen bleiben.\n• Kopfzeile am Handy bricht um.\n• Florianstation: Fahrzeugbericht entfernen/wiederherstellen.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
