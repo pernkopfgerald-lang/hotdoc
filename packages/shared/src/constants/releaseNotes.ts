@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.2.4",
+    date: "2026-10-02",
+    title: "Anhänger & Stapler, Datum/Uhrzeit änderbar, Fahrzeug-Anzeige",
+    bullets: [
+      "Neu: Anhänger bei KDO (Höhenretter-Anhänger) und MTF (Höhenretter- und PKW-Transportanhänger) per großer Schaltfläche wählbar — im Hauptbericht werden sie automatisch abgehakt. Der Gabelstapler wird in der Florianstation gebucht.",
+      "Datum und Uhrzeit des Einsatzbeginns lassen sich ändern (Kalender bzw. Plus/Minus mit Texteingabe) und gelten für den ganzen Einsatz — am Tablet und in der Florianstation.",
+      "Das angemeldete Fahrzeug (KDO, TLF, LFA-B, MTF, Florian) steht groß und farbig in der Kopfzeile.",
+      "Der Bearbeiter erscheint jetzt im PDF; abgeschlossene Berichte gehen automatisch per Mail (PDF + Datei zur Weiterverarbeitung) an die Info-Adresse.",
+      "Bei QR-Zugriff mit dem privaten Handy wird kein GPS mehr abgefragt.",
+    ],
+  },
+  {
     version: "0.2.3",
     date: "2026-09-21",
     title: "Kein GPS mehr bei QR-Zugriff über privates Handy",
