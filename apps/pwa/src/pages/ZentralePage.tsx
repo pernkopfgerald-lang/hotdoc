@@ -41,6 +41,7 @@ import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 // AUDIT-09/KDT-06 (Audit 2026-06-12): gecachte Personalliste als Offline-Fallback.
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useGeolocation } from "../lib/geo";
+import { DatumFeld, ZeitFeld } from "../components/DatumZeitPicker";
 import {
   BETEILIGTE_STELLEN as DEFAULT_BETEILIGTE_STELLEN,
   // AUDIT-07/EL-11a (Audit 2026-06-12): Fallback-Berichtsnummer fuer die
@@ -3663,21 +3664,19 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 Minuten nach Einsatzbeginn angelegt). */}
             <div className="field">
               <label className="caption">Datum</label>
-              <input
-                type="date"
-                className="input"
+              <DatumFeld
+                boxed
                 value={editor.alarmDatum}
-                onChange={(e) => patchEditor({ alarmDatum: e.target.value })}
+                onChange={(v) => patchEditor({ alarmDatum: v })}
                 disabled={schreibschutz}
               />
             </div>
             <div className="field">
               <label className="caption">Alarmiert / Beginn</label>
-              <input
-                type="time"
-                className="input"
+              <ZeitFeld
+                boxed
                 value={editor.alarmUhrzeit}
-                onChange={(e) => patchEditor({ alarmUhrzeit: e.target.value })}
+                onChange={(v) => patchEditor({ alarmUhrzeit: v })}
                 disabled={schreibschutz}
               />
             </div>

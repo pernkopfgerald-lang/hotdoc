@@ -50,6 +50,7 @@ import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useSyncStatus } from "../lib/use-sync-status";
 import { haversineKm, useGeolocation, type GeoFix } from "../lib/geo";
 import { getFahrzeugConfig } from "../db/pouch";
+import { DatumFeld, ZeitFeld } from "../components/DatumZeitPicker";
 import {
   clearDraft,
   listDraftEinsatzIds,
@@ -2998,17 +2999,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 <div className="field">
                   <label className="caption">Datum</label>
                   <div className="input-row filled">
-                    <input
-                      type="date"
+                    <DatumFeld
                       value={
                         active.datumVonYMD ||
                         `${datum.getFullYear()}-${pad(datum.getMonth() + 1)}-${pad(datum.getDate())}`
                       }
-                      onChange={(e) =>
-                        patchActive((x) => ({ ...x, datumVonYMD: e.target.value }))
-                      }
+                      onChange={(v) => patchActive((x) => ({ ...x, datumVonYMD: v }))}
                       disabled={!!active.abgeschlossen}
-                      className="num"
                     />
                     {active.datumVonYMD ? (
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", color: "var(--info)", marginRight: 4, whiteSpace: "nowrap" }}>
@@ -3024,14 +3021,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   {/* Hotfix 2026-09: anklickbar/aenderbar (Rueckmeldung
                       Mannschaft) — leer/Auto = Alarm-/Anlagezeit. */}
                   <div className="input-row filled">
-                    <input
-                      type="time"
+                    <ZeitFeld
                       value={active.uhrzeitVonHHMM || zeitStr}
-                      onChange={(e) =>
-                        patchActive((x) => ({ ...x, uhrzeitVonHHMM: e.target.value }))
-                      }
+                      onChange={(v) => patchActive((x) => ({ ...x, uhrzeitVonHHMM: v }))}
                       disabled={!!active.abgeschlossen}
-                      className="num"
                     />
                     {active.uhrzeitVonHHMM ? (
                       <span
