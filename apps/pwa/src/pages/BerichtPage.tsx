@@ -2843,6 +2843,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           Alarm-ID sagt dem Kdt nichts und stand bei manuellen Einsaetzen
           als kryptische UUID da. E-10: "Über HotDoc" + Hilfe im Mehr-Menue. */}
       <Topbar
+        fahrzeugId={fahrzeugId}
         funkrufname={fahrzeug.funkrufname}
         geo={geo}
         onSwitchVehicle={() => setVehicleSwitcherOpen(true)}

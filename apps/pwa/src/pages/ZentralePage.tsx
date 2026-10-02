@@ -2417,6 +2417,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           wenn er das Tablet kurz ans Mannschafts-Fahrzeug uebergibt
           bevor er selbst auf die KDO wechselt). */}
       <Topbar
+        fahrzeugId="zentrale"
         funkrufname={fahrzeug.funkrufname}
         einsatzNr={einsatzId}
         geo={geo}

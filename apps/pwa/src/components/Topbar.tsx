@@ -10,12 +10,24 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
 import { BrandLogo } from "./BrandLogo";
 import { HilfeSheet } from "./HilfeSheet";
 
+/** Hotfix 2026-09: pro Fahrzeug eine eigene, gut unterscheidbare Farbe. */
+const FAHRZEUG_FARBE: Record<FahrzeugId, string> = {
+  kdo: "#2563eb",
+  "tlf-a-4000": "#dc2626",
+  "lfa-b": "#d97706",
+  mtf: "#059669",
+  zentrale: "#7c3aed",
+};
+
 interface Props {
+  /** Angemeldetes Fahrzeug — steuert das grosse Fahrzeug-Badge. */
+  fahrzeugId?: FahrzeugId;
   funkrufname?: string;
   einsatzNr?: string;
   geo?: GeoState;
@@ -57,6 +69,7 @@ interface MenuItem {
  * Buttons (Stand vor E-09).
  */
 export function Topbar({
+  fahrzeugId,
   funkrufname,
   einsatzNr,
   geo,
@@ -73,6 +86,13 @@ export function Topbar({
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Browser-Tab/Task-Switcher zeigt ebenfalls das Fahrzeug.
+  useEffect(() => {
+    if (!fahrzeugId) return;
+    const f = FAHRZEUGE[fahrzeugId];
+    document.title = `HotDoc · ${fahrzeugId === "zentrale" ? "FLORIAN" : f.bezeichnung}`;
+  }, [fahrzeugId]);
 
   useEffect(() => {
     const id = setInterval(() => setClock(formatClock(new Date())), 30_000);
@@ -119,8 +139,40 @@ export function Topbar({
   }
 
   return (
-    <header className="appheader">
+    <header
+      className="appheader"
+      style={fahrzeugId ? { borderBottom: `5px solid ${FAHRZEUG_FARBE[fahrzeugId]}` } : undefined}
+    >
       <BrandLogo variant="mark" size={44} />
+
+      {/* Hotfix 2026-09: gross und farbig — sofort erkennbar, an welchem
+          Fahrzeug (Kommando / TLF / LFA-B / MTF) bzw. an der Florianstation
+          man angemeldet ist. */}
+      {fahrzeugId ? (
+        <div
+          role="status"
+          aria-label={`Angemeldet als ${FAHRZEUGE[fahrzeugId].funkrufname}`}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            padding: "4px 16px",
+            borderRadius: 12,
+            background: FAHRZEUG_FARBE[fahrzeugId],
+            color: "#fff",
+            lineHeight: 1.1,
+            flexShrink: 0,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+          }}
+        >
+          <span style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.02em" }}>
+            {fahrzeugId === "zentrale" ? "FLORIAN" : FAHRZEUGE[fahrzeugId].bezeichnung}
+          </span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.92 }}>
+            {FAHRZEUGE[fahrzeugId].funkrufname}
+          </span>
+        </div>
+      ) : null}
 
       <div className="appbrand">
         <div className="appname">
