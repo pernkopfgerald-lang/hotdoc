@@ -21,6 +21,17 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.5.0",
+    date: "2026-10-03",
+    title: "Eintreffzeit per GPS, Wetter im Bericht, Geräte-Vorschläge",
+    bullets: [
+      "Neu: Ist das Fahrzeug-Tablet höchstens 100 m vom Einsatzort entfernt, erscheint „Eingetroffen 14:32 — übernehmen?“. Mit einem Tipp steht die Zeit als „Eingetroffen am Einsatzort“ in der Chronik. Nicht bei QR-Handys.",
+      "Neu: Der Einsatzbericht enthält automatisch die Wetterdaten zum Zeitpunkt der Alarmierung (Wetterstation am Feuerwehrhaus) mit Quellenhinweis. Nachträglich erstellte Berichte oder geänderte Alarmzeiten haben keinen Wetterblock.",
+      "Neu: Die Info-Mail zum abgeschlossenen Bericht führt unter „In Verwendung“ alle verwendeten Geräte, Atemschutz, Ölbindemittel und Anhänger je Fahrzeug an — als Liste für die Nachbereitung.",
+      "Neu: Im Fahrzeugbericht stehen bei den Geräten die üblichen Geräte zum Einsatzstichwort als Vorschlag (nach den Regeln des Ausrüstungs-Checks) — einzeln oder mit „Alle übernehmen“.",
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-10-03",
     title: "Fahrzeug direkt über das Kopf-Label wechseln",

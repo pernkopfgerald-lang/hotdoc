@@ -40,7 +40,7 @@ const VorschauModal = lazyRetry(() =>
 );
 import { useGeraete } from "../lib/geraete-config";
 import { useAusruestungsRegeln } from "../lib/ausruestungs-regeln";
-import { validiereAusruestung } from "@hotdoc/shared";
+import { findeRegeln, validiereAusruestung } from "@hotdoc/shared";
 import { getDeviceId } from "../lib/device-id";
 import type { HotdocAlarmDetail } from "../lib/device-register";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
@@ -123,6 +123,15 @@ interface EinsatzInstance {
    * Nur Session-State (nicht im Draft).
    */
   verlassenAmHHMM?: string;
+  /**
+   * GPS-Eintreffzeit: "angeboten" = das Tablet war <= 100 m am Einsatzort und
+   * fragt, ob die Zeit uebernommen werden soll; danach "uebernommen" oder
+   * "verworfen". Undefined = noch nicht erkannt. Wird mit dem Draft gesichert,
+   * damit nach App-Neustart nicht erneut gefragt wird.
+   */
+  eintreffStatus?: "angeboten" | "uebernommen" | "verworfen";
+  /** Zeitpunkt (ISO) der ersten GPS-Erkennung im 100-m-Radius. */
+  eintreffErkanntUm?: string;
   /** #164: Einsatz-Typ — steuert u.a. die grüne Übungs-Optik der AlarmCard. */
   einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung";
   fahrer: PickPerson | null;
@@ -218,6 +227,16 @@ function mergeDraftIntoInstance(
   if (typeof draft.oelSaecke === "number") merged.oelSaecke = draft.oelSaecke;
   if (Array.isArray(draft.auftraege)) merged.auftraege = draft.auftraege as Auftrag[];
   if (Array.isArray(draft.chronik)) merged.chronik = draft.chronik as ChronikEintrag[];
+  if (
+    draft.eintreffStatus === "angeboten" ||
+    draft.eintreffStatus === "uebernommen" ||
+    draft.eintreffStatus === "verworfen"
+  ) {
+    merged.eintreffStatus = draft.eintreffStatus;
+  }
+  if (typeof draft.eintreffErkanntUm === "string") {
+    merged.eintreffErkanntUm = draft.eintreffErkanntUm;
+  }
   if (typeof draft.uhrzeitBisHHMM === "string") {
     merged.uhrzeitBisHHMM = draft.uhrzeitBisHHMM;
   }
@@ -1750,6 +1769,36 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.einsatzPos?.lat, active?.einsatzPos?.lng]);
 
+  // GPS-Eintreffzeit: ist das Fahrzeug-Tablet <= 100 m vom Einsatzort entfernt,
+  // wird EINMAL pro Einsatz "Eingetroffen HH:MM — uebernehmen?" angeboten.
+  // Nur mit echtem Tablet-GPS (QR-Handys: gpsErlaubt=false → geo.fix bleibt null),
+  // nur bei Einsatz/manuell, nur mit brauchbarer Genauigkeit (<= 50 m), und
+  // nicht mehr, sobald der Bericht abgeschlossen ist oder schon entschieden wurde.
+  useEffect(() => {
+    if (!active || !gpsErlaubt || !geo.fix || geo.status !== "live") return;
+    if (!active.einsatzPos || active.abgeschlossen || active.eintreffStatus) return;
+    if (active.einsatzTyp === "uebung" || active.einsatzTyp === "lotsendienst") return;
+    if (geo.fix.accuracyM > 50) return;
+    const distM = haversineKm({ lat: geo.fix.lat, lng: geo.fix.lng }, active.einsatzPos) * 1000;
+    if (distM > 100) return;
+    const erkannt = new Date(geo.fix.ts).toISOString();
+    patchActive((e) =>
+      e.eintreffStatus ? e : { ...e, eintreffStatus: "angeboten" as const, eintreffErkanntUm: erkannt },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    active?.id,
+    active?.einsatzPos?.lat,
+    active?.einsatzPos?.lng,
+    active?.eintreffStatus,
+    active?.abgeschlossen,
+    geo.fix?.lat,
+    geo.fix?.lng,
+    geo.fix?.accuracyM,
+    geo.status,
+    gpsErlaubt,
+  ]);
+
   // Live-Fleet-Polling: alle 3 s die Positionen aller Fahrzeuge holen.
   // Das eigene Fahrzeug erscheint in der Liste mit isSelf-Flag, damit die
   // Map es hervorheben kann. Florian Eberstalzell wird im Backend nicht
@@ -2236,6 +2285,43 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   }
   function setOelSaecke(n: number) {
     patchActive((e) => ({ ...e, oelSaecke: n }));
+  }
+  /** Vorbefuellung: Vorschlags-Geraete in EINEM Schritt uebernehmen (Oel → mind. 1 Sack). */
+  function uebernehmeGearVorschlag(ids: string[]) {
+    const oelId = gearList.find((g) => g.isOelbindemittel)?.id;
+    patchActive((e) => {
+      const next = new Set(e.gearSelected);
+      let oel = e.oelSaecke;
+      for (const id of ids) {
+        if (id === oelId) oel = Math.max(1, oel);
+        else next.add(id);
+      }
+      return { ...e, gearSelected: next, oelSaecke: oel };
+    });
+  }
+  /** GPS-Eintreffzeit: Vorschlag uebernehmen → Chronik-Eintrag mit der Erkennungszeit. */
+  function uebernehmeEintreffzeit() {
+    if (!active) return;
+    const zeitstempel = active.eintreffErkanntUm ?? new Date().toISOString();
+    const entry = {
+      id: `ein-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      zeitstempel,
+      funkrufname: fahrzeug.funkrufname,
+      fahrzeugId,
+      source: "fahrzeug" as const,
+      text: "Eingetroffen am Einsatzort",
+    };
+    patchActive((e) => ({
+      ...e,
+      eintreffStatus: "uebernommen" as const,
+      chronik: [...e.chronik, entry].sort(
+        (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
+      ),
+    }));
+    sendeChronikEintrag(activeId, entry);
+  }
+  function verwerfeEintreffzeit() {
+    patchActive((e) => ({ ...e, eintreffStatus: "verworfen" as const }));
   }
 
   // createNewAuftrag entfernt — die Anlage neuer Einsätze läuft jetzt
@@ -2843,6 +2929,21 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       regeln: ausruestungsRegeln,
       geraeteNamen: namen,
     });
+  })();
+  // Vorbefuellung nach Einsatzstichwort: dieselben Regeln wie der Abschluss-Check
+  // (Backoffice → Ausruestungs-Check), alle Geraete der passenden Regeln dieses
+  // Fahrzeugs als Ein-Tipp-Vorschlag (MUSS und INFO).
+  const gearVorschlag = (() => {
+    if (!active || ausruestungsRegeln.length === 0) return undefined;
+    const stichwort = (active.alarm.einsatzart ?? "").trim();
+    if (!stichwort) return undefined;
+    const ids = new Set<string>();
+    for (const r of findeRegeln(ausruestungsRegeln, stichwort)) {
+      if (r.fahrzeug !== fahrzeugId) continue;
+      for (const g of r.geraete) ids.add(g);
+    }
+    const items = gearList.filter((g) => ids.has(g.id));
+    return items.length > 0 ? { stichwort, items } : undefined;
   })();
   const ausruestungChecks: AbschlussCheck[] = ausruestungErgebnis
     ? ausruestungErgebnis.warnings.length === 0 &&
@@ -3703,6 +3804,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               onOelChange={setOelSaecke}
               topIds={topGearIds}
               onAddCustom={addCustomGear}
+              vorschlag={gearVorschlag}
+              onUebernehmeVorschlag={uebernehmeGearVorschlag}
             />
 
             <AuftraegeSection
@@ -3925,6 +4028,43 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       {/* NeuerAuftragModal entfernt — Konsolidierung mit NeuerEinsatzTabletModal,
           beide Buttons ("+ Neuer Einsatz" oben im Tab-Header und unten in der
           IdleView) öffnen jetzt das gleiche Modal. */}
+
+      {/* GPS-Eintreffzeit: Angebot, wenn das Tablet <= 100 m am Einsatzort ist. */}
+      {active && active.eintreffStatus === "angeboten" && !active.abgeschlossen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="eintreff-titel"
+          className="fixed inset-0 z-[2100] grid place-items-center bg-black/60 p-4"
+        >
+          <div
+            className="w-full max-w-md"
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-l)",
+              padding: 22,
+              boxShadow: "var(--glass-shadow-1)",
+            }}
+          >
+            <h2 id="eintreff-titel" style={{ margin: 0, fontSize: 26, fontWeight: 800 }}>
+              Eingetroffen {formatEintreffUhr(active.eintreffErkanntUm)} — übernehmen?
+            </h2>
+            <p style={{ margin: "10px 0 18px", fontSize: 17, color: "var(--fg-2)", lineHeight: 1.45 }}>
+              Dieses Fahrzeug ist weniger als 100 m vom Einsatzort entfernt. Die Zeit wird als
+              „Eingetroffen am Einsatzort“ in die Chronik eingetragen.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button type="button" className="btn" style={{ flex: 1 }} onClick={verwerfeEintreffzeit}>
+                Nein
+              </button>
+              <button type="button" className="btn btn-primary" style={{ flex: 2 }} onClick={uebernehmeEintreffzeit}>
+                Übernehmen
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* E-02: Typ fuer das Checkbox-Vokabular; S-12: Verlassen-Uhrzeit als
           Ein-Klick-Angebot fuer "Uhrzeit bis", solange das Feld leer ist. */}
@@ -4718,4 +4858,10 @@ function shortCode(id: FahrzeugId): string {
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+/** "HH:MM" der GPS-Erkennung (lokale Zeit). */
+function formatEintreffUhr(iso: string | undefined): string {
+  const d = iso ? new Date(iso) : new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }

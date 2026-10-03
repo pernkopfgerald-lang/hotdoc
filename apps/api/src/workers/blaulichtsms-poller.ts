@@ -38,6 +38,7 @@ import { isInEberstalzell } from "../routes/geocoding.js";
 import { listAlarms, type BlaulichtAlarmData } from "../services/blaulichtsms/client.js";
 import { pushAlarm } from "../services/fcm.js";
 import { recordBlaulichtSmsPoll } from "../services/state.js";
+import { haengeWetterAn } from "../services/wetter.js";
 
 // RISIKO-1 (Audit 2026-06-03): Defensive UTC-Normalisierung fuer Zeitstempel
 // aus BlaulichtSMS. Bei TZ=Europe/Vienna kann alarmDate einen Sommerzeit-
@@ -585,6 +586,9 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     }
     throw err;
   }
+  // Wetter zum Zeitpunkt der Alarmierung (Wetterstation Feuerwehrhaus) —
+  // best-effort im Hintergrund, blockiert den Alarm-Pfad nicht.
+  void haengeWetterAn(doc._id, doc.alarmierungZeit);
   logger.info(
     {
       alarmId: a.alarmId,

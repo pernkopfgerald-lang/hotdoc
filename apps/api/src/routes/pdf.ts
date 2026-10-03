@@ -30,6 +30,8 @@ import {
 } from "../services/pdf/fahrzeugbericht.js";
 import { istInhaltlichLeer } from "../workers/phantom-fzgber-cleanup.js";
 import { renderBerichtMarkdown, type ResolvedPerson } from "../services/pdf/markdown.js";
+import { wetterGueltig } from "../services/wetter.js";
+import { baueNachbereitungText } from "../services/nachbereitung.js";
 import {
   QR_BLATT_FAHRZEUGE,
   istSichereQrSvg,
@@ -548,6 +550,10 @@ async function buildBerichtDaten(
     ...(doc.staplerEingesetzt === true ? { staplerEingesetzt: true } : {}),
     oelbindemittelSaecke: oelbindemittelAggregiert,
     reaktivierungen,
+    // Automatisches Wetter nur fuer Einsatz/manuell (nicht Uebung/Lotsendienst).
+    ...((einsatzTyp === "alarm" || einsatzTyp === "manuell") && wetterGueltig(doc)
+      ? { wetter: wetterGueltig(doc)! }
+      : {}),
     pflichtbereich: (doc.pflichtbereich as boolean | null | undefined) ?? null,
     einsatzzoneEzell: (doc.einsatzzoneEzell as boolean | null | undefined) ?? null,
     ueberOertlicheHilfe: (doc.ueberOertlicheHilfe as boolean | null | undefined) ?? null,
@@ -732,7 +738,7 @@ async function resolvePerson(syBosId: unknown): Promise<ResolvedPerson | undefin
 export async function buildBerichtMailAnhaenge(
   id: string,
   doc: Record<string, unknown>,
-): Promise<{ pdf: Buffer; markdown: string }> {
+): Promise<{ pdf: Buffer; markdown: string; nachbereitung: string }> {
   const data = await buildBerichtDatenFuerTyp(id, doc);
   const reserveIds = ((doc.reservePersonIds as unknown[] | undefined) ?? []).filter(
     (v): v is number => typeof v === "number",
@@ -744,7 +750,7 @@ export async function buildBerichtMailAnhaenge(
   ]);
   const reserve = reserveResolved.filter((p): p is ResolvedPerson => !!p);
   const markdown = renderBerichtMarkdown(data, { bearbeiter, reserve });
-  return { pdf, markdown };
+  return { pdf, markdown, nachbereitung: baueNachbereitungText(data) };
 }
 
 // ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────

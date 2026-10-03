@@ -210,10 +210,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.4.1",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.4.1-release.apk",
+    currentVersion: "0.5.0",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.5.0-release.apk",
     releaseNotes:
-      "v0.4.1 — Fahrzeug direkt über das Kopf-Label wechseln\n\n• Fahrzeug-Label links oben ist jetzt eine Schaltfläche zum Wechseln.",
+      "v0.5.0 — Eintreffzeit per GPS, Wetter im Bericht, Geräte-Vorschläge\n\n• „Eingetroffen 14:32 — übernehmen?“ bei ≤ 100 m vom Einsatzort.\n• Automatische Wetterdaten zum Zeitpunkt der Alarmierung im Bericht.\n• Info-Mail mit allen verwendeten Geräten (Nachbereitung).\n• Geräte-Vorschläge nach Einsatzstichwort.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

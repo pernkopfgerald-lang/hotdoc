@@ -27,6 +27,13 @@ interface Props {
   /** Freitext-Gerät hinzufügen — Text landet 1:1 als materialId (Backend
    *  erlaubt beliebige Strings, siehe GeraetUseageSchema). */
   onAddCustom: (text: string) => void;
+  /**
+   * Vorbefuellung nach Einsatzstichwort: Geraete, die laut Backoffice-Regeln
+   * (Ausruestungs-Check) bei diesem Stichwort ueblich sind. Zeigt eine Zeile
+   * "Üblich bei …" mit Ein-Tipp-Uebernahme; bereits gewaehlte Geraete fallen weg.
+   */
+  vorschlag?: { stichwort: string; items: GearItem[] } | undefined;
+  onUebernehmeVorschlag?: ((ids: string[]) => void) | undefined;
 }
 
 const MIN_SICHTBAR = 6;
@@ -43,6 +50,8 @@ export function GearChips({
   onOelChange,
   topIds = [],
   onAddCustom,
+  vorschlag,
+  onUebernehmeVorschlag,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [freitext, setFreitext] = useState("");
@@ -100,6 +109,62 @@ export function GearChips({
           <span className="num">{count}</span> ausgewählt
         </span>
       </div>
+
+      {(() => {
+        // Noch nicht uebernommene Vorschlaege (Oelbindemittel zaehlt ueber die Saecke).
+        const offen = (vorschlag?.items ?? []).filter((it) =>
+          it.isOelbindemittel ? !oelOn : !selected.has(it.id),
+        );
+        if (!vorschlag || offen.length === 0 || !onUebernehmeVorschlag) return null;
+        return (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "10px 12px",
+              border: "1px dashed var(--border-strong)",
+              borderRadius: "var(--radius-m)",
+              background: "var(--surface-2)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                flexWrap: "wrap",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 15.5, fontWeight: 700 }}>
+                Üblich bei „{vorschlag.stichwort}“
+              </span>
+              <button
+                type="button"
+                className="chip selected"
+                onClick={() => onUebernehmeVorschlag(offen.map((it) => it.id))}
+                style={{ minHeight: 44 }}
+              >
+                Alle übernehmen
+              </button>
+            </div>
+            <div className="chips">
+              {offen.map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  className="chip"
+                  onClick={() => onUebernehmeVorschlag([it.id])}
+                  style={{ minHeight: 44 }}
+                >
+                  <span className="plus">+</span>
+                  {it.bezeichnung}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="chips">
         {oelItem ? (

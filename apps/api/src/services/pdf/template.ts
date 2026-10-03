@@ -96,6 +96,23 @@ export interface BerichtDaten {
   staplerEingesetzt?: boolean;
   oelbindemittelSaecke?: number;
   reaktivierungen?: Array<{ am: string; grund: string }>;
+  /**
+   * Automatische Wetterdaten zum Zeitpunkt der Alarmierung (Wetterstation am
+   * Feuerwehrhaus). Nur gesetzt, wenn live erfasst und die Alarmzeit seither
+   * nicht geaendert wurde (services/wetter.ts::wetterGueltig).
+   */
+  wetter?: {
+    quelle: string;
+    url: string;
+    messzeit: string;
+    tempC?: number;
+    luftfeuchtePct?: number;
+    luftdruckHpa?: number;
+    windMs?: number;
+    windBoeMs?: number;
+    windRichtungGrad?: number;
+    regenMmH?: number;
+  };
   // Florianstation-Felder (frueher hartkodiert leer)
   pflichtbereich?: boolean | null;
   einsatzzoneEzell?: boolean | null;
@@ -614,6 +631,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   ${isSpezial ? "" : renderTechnischeStatistikBlock(d)}
   ${isSpezial ? "" : renderBrandStatistikBlock(d)}
 
+  ${isSpezial ? "" : renderWetterBlock(d)}
+
   <table class="bx" style="margin-top:1mm">
     <tr>
       <td class="lbl" style="width:50%">${isUebung ? "Übungsleiter" : "Einsatzleiter"}</td>
@@ -652,6 +671,42 @@ ${renderFotoAnhang(d)}
 
 </body>
 </html>`;
+}
+
+/** Wetter-Zeile mit Quellenhinweis (leer, wenn keine gueltigen Daten vorliegen). */
+export function wetterZeile(w: NonNullable<BerichtDaten["wetter"]>): string {
+  const z = (n: number, dez = 1): string =>
+    n.toLocaleString("de-AT", { minimumFractionDigits: dez, maximumFractionDigits: dez, useGrouping: false });
+  const teile: string[] = [];
+  if (w.tempC !== undefined) teile.push(`${z(w.tempC)} °C`);
+  if (w.luftfeuchtePct !== undefined) teile.push(`Luftfeuchte ${z(w.luftfeuchtePct, 0)} %`);
+  if (w.windMs !== undefined) {
+    const richtung = windRichtung(w.windRichtungGrad);
+    const boe = w.windBoeMs !== undefined ? ` (Böen ${z(w.windBoeMs)} m/s)` : "";
+    teile.push(`Wind ${richtung ? richtung + " " : ""}${z(w.windMs)} m/s${boe}`);
+  }
+  if (w.luftdruckHpa !== undefined) teile.push(`Luftdruck ${z(w.luftdruckHpa, 0)} hPa`);
+  if (w.regenMmH !== undefined) teile.push(`Niederschlag ${z(w.regenMmH)} mm/h`);
+  return teile.join(" · ");
+}
+
+function windRichtung(grad: number | undefined): string {
+  if (grad === undefined) return "";
+  const namen = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"];
+  return namen[Math.round((((grad % 360) + 360) % 360) / 45) % 8] ?? "";
+}
+
+function renderWetterBlock(d: BerichtDaten): string {
+  const w = d.wetter;
+  if (!w) return "";
+  const zeile = wetterZeile(w);
+  if (!zeile) return "";
+  return `<table class="bx" style="margin-top:1mm">
+    <tr><td class="lbl">Wetter zum Zeitpunkt der Alarmierung</td></tr>
+    <tr><td class="val" style="font-size:9pt">${escape(zeile)}
+      <div style="font-size:7.5pt;color:#555;margin-top:1pt">Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${escape(formatTime(w.messzeit))}) — ${escape(w.quelle)} — ${escape(w.url)}</div>
+    </td></tr>
+  </table>`;
 }
 
 /**

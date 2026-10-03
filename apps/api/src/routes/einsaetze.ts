@@ -23,6 +23,7 @@ import type { SessionPayload } from "../services/auth/jwt.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 import { sendMailWithAttachments } from "../lib/mailer.js";
 import { buildBerichtMailAnhaenge } from "./pdf.js";
+import { haengeWetterAn } from "../services/wetter.js";
 
 export const einsaetzeRouter: Router = Router();
 
@@ -42,7 +43,7 @@ async function sendAbschlussMail(
   berichtNummer: string | undefined,
 ): Promise<void> {
   try {
-    const { pdf, markdown } = await buildBerichtMailAnhaenge(id, doc);
+    const { pdf, markdown, nachbereitung } = await buildBerichtMailAnhaenge(id, doc);
     const bezeichnung =
       (doc.einsatzort as string | undefined) ||
       (doc.einsatzart as string | undefined) ||
@@ -51,7 +52,10 @@ async function sendAbschlussMail(
     await sendMailWithAttachments({
       to: ABSCHLUSS_MAIL_EMPFAENGER,
       subject: `Einsatzbericht ${nummer} — ${bezeichnung}`,
-      text: `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}) als PDF sowie als Markdown-Datei zur automatisierten Weiterverarbeitung.\n\nAutomatisch von HotDoc versendet.`,
+      text:
+        `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}) als PDF sowie als Markdown-Datei zur automatisierten Weiterverarbeitung.\n\n` +
+        (nachbereitung ? `${nachbereitung}\n\n` : "") +
+        "Automatisch von HotDoc versendet.",
       attachments: [
         { filename: `${nummer}.pdf`, content: pdf, contentType: "application/pdf" },
         { filename: `${nummer}.md`, content: markdown, contentType: "text/markdown; charset=utf-8" },
@@ -60,6 +64,18 @@ async function sendAbschlussMail(
   } catch (err) {
     logger.warn({ err, id }, "Bericht-PDF fuer Abschluss-Mail konnte nicht erzeugt werden");
   }
+}
+
+/** true, wenn der PUT eine ANDERE Alarmzeit setzt als aktuell im Doc steht. */
+function alarmzeitGeaendert(
+  stand: Record<string, unknown>,
+  safeBody: Record<string, unknown>,
+): boolean {
+  const neu = safeBody.alarmierungZeit;
+  if (typeof neu !== "string") return false;
+  const alt = stand.alarmierungZeit;
+  if (typeof alt !== "string") return true;
+  return Date.parse(neu) !== Date.parse(alt);
 }
 
 /**
@@ -456,6 +472,9 @@ einsaetzeRouter.post("/api/einsaetze/manuell", requireAuth("mannschaft"), ah(asy
     const result = await db.insert(doc);
     invalidateEinsatzCache();
     logger.info({ id: doc._id, by: session.username }, "Manueller Einsatz angelegt");
+    // Wetter nur fuer live angelegte Einsaetze ohne Alarm (haengeWetterAn
+    // prueft die Aktualitaet der Alarmzeit); Uebung/Lotsendienst: kein Wetter.
+    if (doc.einsatzTyp === "manuell") void haengeWetterAn(doc._id, doc.alarmierungZeit);
     res.status(201).json({ ok: true, id: doc._id, rev: result.rev });
   } catch (err) {
     // 409 — Race-Condition zwischen dem GET oben und diesem INSERT.
@@ -1455,6 +1474,9 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
     // V4: jeder Editor-PUT stempelt editorGeaendertAm (nur dieser Endpunkt).
     editorGeaendertAm: editorNow,
   };
+  // Wetter gehoert zur Alarmzeit: wird sie nachtraeglich geaendert, faellt der
+  // automatische Wetterblock aus dem Bericht.
+  if (alarmzeitGeaendert(current, safeBody)) delete (merged as Record<string, unknown>).wetter;
   const validated = EinsatzSchema.safeParse(merged);
   if (!validated.success) {
     res.status(400).json({ error: "schema_invalid", details: validated.error.flatten() });
@@ -1498,6 +1520,7 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
       geaendertAm: retryNow,
       editorGeaendertAm: retryNow,
     };
+    if (alarmzeitGeaendert(fresh, safeBody)) delete (retryMerged as Record<string, unknown>).wetter;
     const retryValidated = EinsatzSchema.safeParse(retryMerged);
     if (!retryValidated.success) {
       res

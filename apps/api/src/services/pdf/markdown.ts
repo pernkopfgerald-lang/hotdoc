@@ -12,8 +12,8 @@
  * routes/pdf.ts::buildBerichtMailAnhaenge) — kein Zweit-Mapping, kein Drift.
  */
 
-import type { BerichtDaten } from "./template.js";
-import { formatDateTime } from "./_format.js";
+import { wetterZeile, type BerichtDaten } from "./template.js";
+import { formatDateTime, formatTime } from "./_format.js";
 
 export interface ResolvedPerson {
   name: string;
@@ -126,6 +126,18 @@ export function renderBerichtMarkdown(d: BerichtDaten, extra: MarkdownExtras): s
         feld("Anrufer-Telefon", d.anruferTel),
       ].join("\n"),
     );
+  }
+
+  if (d.wetter) {
+    const zeile = wetterZeile(d.wetter);
+    if (zeile) {
+      teile.push(h2("Wetter"));
+      teile.push(zeile);
+      teile.push(
+        `
+_Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${formatTime(d.wetter.messzeit)}) — ${d.wetter.quelle} — ${d.wetter.url}_`,
+      );
+    }
   }
 
   teile.push(h2("Zeitmarken"));
