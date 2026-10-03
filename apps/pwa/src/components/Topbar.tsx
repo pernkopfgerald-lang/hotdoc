@@ -106,14 +106,6 @@ export function Topbar({
   }
 
   const items: MenuItem[] = [];
-  if (onSwitchVehicle) {
-    items.push({
-      key: "switch",
-      label: "Fahrzeug wechseln",
-      icon: <ArrowLeftRight size={18} strokeWidth={2.2} />,
-      onClick: onSwitchVehicle,
-    });
-  }
   if (onHandoff) {
     items.push({
       key: "handoff",
@@ -149,28 +141,49 @@ export function Topbar({
           Fahrzeug (Kommando / TLF / LFA-B / MTF) bzw. an der Florianstation
           man angemeldet ist. */}
       {fahrzeugId ? (
-        <div
-          role="status"
-          aria-label={`Angemeldet als ${FAHRZEUGE[fahrzeugId].funkrufname}`}
-          style={{
+        (() => {
+          const farbe = FAHRZEUG_FARBE[fahrzeugId];
+          const kurz =
+            fahrzeugId === "zentrale" ? "FLORIAN" : FAHRZEUGE[fahrzeugId].bezeichnung;
+          const inhalt = (
+            <>
+              <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, textAlign: "left" }}>
+                <span style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.02em" }}>{kurz}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.92 }}>
+                  {FAHRZEUGE[fahrzeugId].funkrufname}
+                </span>
+              </span>
+              {onSwitchVehicle ? <ArrowLeftRight size={20} strokeWidth={2.4} style={{ flexShrink: 0 }} /> : null}
+            </>
+          );
+          const stil = {
             display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            padding: "4px 16px",
+            alignItems: "center",
+            gap: 12,
+            padding: "4px 14px 4px 16px",
             borderRadius: 5,
-            background: FAHRZEUG_FARBE[fahrzeugId],
+            background: farbe,
             color: "#fff",
-            lineHeight: 1.1,
             flexShrink: 0,
-          }}
-        >
-          <span style={{ fontSize: 26, fontWeight: 900, letterSpacing: "0.02em" }}>
-            {fahrzeugId === "zentrale" ? "FLORIAN" : FAHRZEUGE[fahrzeugId].bezeichnung}
-          </span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.92 }}>
-            {FAHRZEUGE[fahrzeugId].funkrufname}
-          </span>
-        </div>
+          } as const;
+          // Mit Wechsel-Callback: Schaltflaeche "Fahrzeug wechseln". Ohne:
+          // reine Anzeige wie bisher (z. B. Seiten ohne Wechselmoeglichkeit).
+          return onSwitchVehicle ? (
+            <button
+              type="button"
+              onClick={onSwitchVehicle}
+              aria-label={`Angemeldet als ${FAHRZEUGE[fahrzeugId].funkrufname} — Fahrzeug wechseln`}
+              title="Fahrzeug wechseln"
+              style={{ ...stil, border: `2px solid color-mix(in srgb, #000 30%, ${farbe})`, cursor: "pointer", font: "inherit" }}
+            >
+              {inhalt}
+            </button>
+          ) : (
+            <div role="status" aria-label={`Angemeldet als ${FAHRZEUGE[fahrzeugId].funkrufname}`} style={stil}>
+              {inhalt}
+            </div>
+          );
+        })()
       ) : null}
 
       <div className="appbrand">

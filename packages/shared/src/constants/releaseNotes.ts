@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.4.1",
+    date: "2026-10-03",
+    title: "Fahrzeug direkt über das Kopf-Label wechseln",
+    bullets: [
+      "Das Fahrzeug-Label links oben (KDO, TANK, LFA-B, MTF, Florian) ist jetzt eine Schaltfläche: antippen öffnet „Fahrzeug wechseln“. Der separate Wechsel-Knopf in der Kopfzeile entfällt.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-10-03",
     title: "Ausrüstungs-Check beim Abschluss",
