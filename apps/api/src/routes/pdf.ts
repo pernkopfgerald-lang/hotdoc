@@ -30,6 +30,12 @@ import {
 } from "../services/pdf/fahrzeugbericht.js";
 import { istInhaltlichLeer } from "../workers/phantom-fzgber-cleanup.js";
 import { renderBerichtMarkdown, type ResolvedPerson } from "../services/pdf/markdown.js";
+import {
+  QR_BLATT_FAHRZEUGE,
+  istSichereQrSvg,
+  renderQrBlattHtml,
+  type QrBlattEintrag,
+} from "../services/pdf/qr-blatt.js";
 
 export const pdfRouter: Router = Router();
 
@@ -920,5 +926,43 @@ pdfRouter.get("/api/einsaetze/:id/spickzettel", requireAuth(), ah(async (req, re
       return;
     }
     throw err;
+  }
+}));
+
+/**
+ * QR-Uebersichtsblatt (A4) fuer den zentralen Aushang. Das Backoffice schickt
+ * die QR-Grafiken (SVG) je Fahrzeug; Beschriftung/Layout kommen vom Server.
+ * Nur Funktionaer+ (die QR-Codes enthalten Zugangs-Token).
+ */
+pdfRouter.post("/api/qr-blatt/pdf", requireAuth("funktionaer"), ah(async (req, res) => {
+  const codes = (req.body as { codes?: Record<string, unknown> } | undefined)?.codes;
+  if (!codes || typeof codes !== "object") {
+    res.status(400).json({ error: "invalid_body", message: "codes fehlt" });
+    return;
+  }
+  const eintraege: QrBlattEintrag[] = [];
+  for (const id of QR_BLATT_FAHRZEUGE) {
+    const svg = codes[id];
+    if (svg === undefined) continue;
+    if (!istSichereQrSvg(svg)) {
+      res.status(400).json({ error: "invalid_qr", message: `QR-Grafik für ${id} ungültig` });
+      return;
+    }
+    eintraege.push({ fahrzeugId: id, svg });
+  }
+  if (eintraege.length === 0) {
+    res.status(400).json({ error: "invalid_body", message: "keine QR-Codes übergeben" });
+    return;
+  }
+  try {
+    const pdf = await renderPdf(renderQrBlattHtml(eintraege));
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'inline; filename="HotDoc-Fahrzeug-QR-Aushang.pdf"');
+    res.setHeader("Cache-Control", "no-store");
+    res.send(pdf);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err: msg }, "QR-Blatt-PDF fehlgeschlagen");
+    res.status(msg === "pdf_busy" ? 503 : 500).json({ error: msg === "pdf_busy" ? "pdf_busy" : "pdf_failed" });
   }
 }));

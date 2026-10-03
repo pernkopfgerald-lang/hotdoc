@@ -1,4 +1,4 @@
-import { LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, Download, Trash2, Info, Droplets, Upload, QrCode } from "lucide-react";
+import { Printer, LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Calendar, Clock, GraduationCap, MapPin, Siren, Flame, Wind, Pencil, Download, Trash2, Info, Droplets, Upload, QrCode } from "lucide-react";
 import { AboutPanel } from "../components/AboutPanel";
 import { QrAnchorModal } from "../components/QrAnchorModal";
 import {
@@ -10,7 +10,10 @@ import {
   type AppVersionConfig,
 } from "../api/devices";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiCall, clearToken, fetchAndOpenBlob } from "../api/client";
+import { apiCall, clearToken, fetchAndOpenBlob, postAndOpenBlob } from "../api/client";
+import { QRCodeSVG } from "qrcode.react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { buildQrClaimUrl, getQrAnchor } from "../api/qrAnchor";
 import {
   getConfig,
   putConfig,
@@ -3283,6 +3286,32 @@ const QR_STICKER_FAHRZEUGE = ["kdo", "tlf-a-4000", "lfa-b", "mtf", "zentrale"] a
 
 function QrStickerPanel() {
   const [open, setOpen] = useState<{ fahrzeugId: string } | null>(null);
+  const [blattBusy, setBlattBusy] = useState(false);
+  const [blattErr, setBlattErr] = useState<string | null>(null);
+
+  /**
+   * Uebersichtsblatt: EIN A4-PDF mit den QR-Codes aller Fahrzeuge fuer den
+   * zentralen Aushang. QR-Grafiken entstehen hier (qrcode.react), Layout +
+   * PDF rendert der Server.
+   */
+  async function blattOeffnen() {
+    setBlattBusy(true);
+    setBlattErr(null);
+    try {
+      const codes: Record<string, string> = {};
+      for (const id of QR_STICKER_FAHRZEUGE) {
+        const anchor = await getQrAnchor(id);
+        codes[id] = renderToStaticMarkup(
+          <QRCodeSVG value={buildQrClaimUrl(anchor.token)} size={512} level="M" marginSize={1} />,
+        );
+      }
+      await postAndOpenBlob("/api/qr-blatt/pdf", { codes });
+    } catch (e) {
+      setBlattErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBlattBusy(false);
+    }
+  }
 
   return (
     <section className="card">
@@ -3303,6 +3332,40 @@ function QrStickerPanel() {
         Fahrzeugs/der Florianstation ungültig, ein neuer muss gedruckt
         werden.
       </p>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          padding: "12px 14px",
+          marginBottom: 14,
+          borderRadius: 10,
+          border: "1px solid var(--glass-border)",
+          background: "var(--glass-3)",
+        }}
+      >
+        <div style={{ flex: "1 1 260px", fontSize: 14, lineHeight: 1.5 }}>
+          <strong>Aushang für alle Fahrzeuge</strong>
+          <br />
+          Ein A4-Blatt mit den QR-Codes aller Fahrzeuge und der Florianstation — zum zentralen Aufhängen, damit
+          sich jeder das richtige Fahrzeug einscannen kann.
+        </div>
+        <button
+          type="button"
+          className="cta"
+          disabled={blattBusy}
+          onClick={() => void blattOeffnen()}
+          style={{ width: "auto", padding: "10px 16px", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}
+        >
+          <Printer size={15} /> {blattBusy ? "Erstelle PDF …" : "Aushang als PDF (A4)"}
+        </button>
+        {blattErr ? (
+          <div role="alert" style={{ flexBasis: "100%", fontSize: 13.5, color: "var(--red)" }}>
+            PDF konnte nicht erstellt werden: {blattErr}
+          </div>
+        ) : null}
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {QR_STICKER_FAHRZEUGE.map((fahrzeugId) => {
           const fzg = FAHRZEUGE[fahrzeugId];

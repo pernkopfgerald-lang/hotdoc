@@ -85,3 +85,28 @@ export async function fetchAndOpenBlob(path: string, signal?: AbortSignal): Prom
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
   return url;
 }
+
+/**
+ * POST mit JSON-Body, Antwort ist ein PDF — wird in neuem Tab geoeffnet
+ * (Browser-PDF-Viewer: ansehen, speichern, drucken).
+ */
+export async function postAndOpenBlob(path: string, body: unknown): Promise<string> {
+  const token = getToken();
+  const res = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new ApiError(text || res.statusText, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return url;
+}
