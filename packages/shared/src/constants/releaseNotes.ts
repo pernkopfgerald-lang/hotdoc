@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.4.0",
+    date: "2026-10-03",
+    title: "Ausrüstungs-Check beim Abschluss",
+    bullets: [
+      "Neu: Beim Abschluss eines Fahrzeugberichts prüft die App, ob zum Einsatzstichwort die üblichen Geräte erfasst sind. Fehlt ein MUSS-Gerät, ist der Abschluss gesperrt („Geräte ergänzen“); bei INFO erscheint nur ein Vorschlag.",
+      "Die Regeln pflegt das Backoffice unter „Listen & Stichworte → Ausrüstungs-Check“: Stichwort mit Platzhalter (z. B. VU*), Fahrzeug, Geräte, MUSS/INFO, Gültig ab. Mit Testmodus und Protokoll der letzten Prüfungen.",
+      "Ohne Regeln gibt es keinen Check — nach dem Update ändert sich am Abschluss zunächst nichts.",
+    ],
+  },
+  {
     version: "0.3.4",
     date: "2026-10-03",
     title: "Hauptbericht auf einer Seite, Archiv am Handy",

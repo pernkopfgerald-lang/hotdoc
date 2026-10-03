@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { runSyBosSync } from "../workers/sybos-sync.js";
 import { collectHealth } from "../services/health.js";
-import { loadRecentAuditEvents, writeAuditEvent } from "../services/audit.js";
+import { loadRecentAuditEvents, writeAuditEvent, type AuditEventType } from "../services/audit.js";
 import { computeStats } from "../services/stats.js";
 import { getSyBosState } from "../services/state.js";
 import { readWorkerState } from "../services/worker-state.js";
@@ -101,8 +101,55 @@ async function ermittleStandVom(): Promise<string | null> {
 adminRouter.get("/api/admin/audit", requireAuth("funktionaer"), ah(async (req, res) => {
   const rawLimit = req.query.limit;
   const limit = Math.min(200, Math.max(1, Number(rawLimit) || 50));
-  const items = await loadRecentAuditEvents(limit);
+  const type = typeof req.query.type === "string" && req.query.type ? req.query.type : undefined;
+  const items = await loadRecentAuditEvents(limit, type as AuditEventType | undefined);
   res.json({ ok: true, count: items.length, items });
+}));
+
+/**
+ * Ausruestungs-Check: Das Tablet prueft lokal (offline-faehig) und meldet das
+ * Ergebnis hierher, damit jede Validierung im Audit-Trail steht. Best-effort:
+ * fehlt das Netz, geht der Abschluss trotzdem ohne Log durch.
+ */
+const AusruestungLogSchema = z.object({
+  einsatzId: z.string().max(200),
+  stichwort: z.string().max(300),
+  fahrzeug: z.string().max(50),
+  valid: z.boolean(),
+  /** true = trotz INFO-Hinweis abgeschlossen / MUSS erfuellt; false = nur geprueft. */
+  abgeschlossen: z.boolean().optional(),
+  warnungen: z
+    .array(
+      z.object({
+        severity: z.enum(["MUSS", "INFO"]),
+        message: z.string().max(500),
+        regelId: z.string().max(100).optional(),
+      }),
+    )
+    .max(50),
+});
+adminRouter.post("/api/validierung/ausruestung", requireAuth(), ah(async (req, res) => {
+  const parsed = AusruestungLogSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_body", issues: parsed.error.issues });
+    return;
+  }
+  const b = parsed.data;
+  const session = req.session;
+  await writeAuditEvent({
+    type: "ausruestung-validierung",
+    ...(session?.username ? { actorUsername: session.username } : {}),
+    ...(session?.rolle ? { actorRolle: session.rolle } : {}),
+    fahrzeugId: b.fahrzeug,
+    einsatzId: b.einsatzId,
+    details: {
+      stichwort: b.stichwort,
+      valid: b.valid,
+      ...(b.abgeschlossen !== undefined ? { abgeschlossen: b.abgeschlossen } : {}),
+      warnungen: b.warnungen,
+    },
+  });
+  res.json({ ok: true });
 }));
 
 /**

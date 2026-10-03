@@ -11,7 +11,9 @@ export type ConfigKey =
   // Stoffe fuer die syBOS-Technisch-Statistik. Im Backoffice ueber den
   // gleichen StringListPanel-Editor wie beteiligte-stellen/sonstige-ff
   // pflegbar; erscheint im Florian-Editor als Chip-Mehrfachauswahl.
-  | "gefaehrliche-stoffe";
+  | "gefaehrliche-stoffe"
+  // Ausruestungs-Check beim Abschluss (Regeln Stichwort → Fahrzeug → Geraete).
+  | "ausruestungs-regeln";
 
 export interface StringListData {
   items: string[];

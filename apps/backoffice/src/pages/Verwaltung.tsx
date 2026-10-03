@@ -27,6 +27,7 @@ import { BerichteBrowser } from "../components/BerichteBrowser";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { Florianstation } from "./Florianstation";
+import { AusruestungsRegelnPanel } from "./AusruestungsRegelnPanel";
 import { FLORIAN_ADDRESS, FAHRZEUGE, type AuthResponse } from "@hotdoc/shared";
 
 /** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
@@ -206,6 +207,7 @@ type Tab =
   | "beteiligte-stellen"
   | "sonstige-ff"
   | "gefaehrliche-stoffe"
+  | "ausruestungs-check"
   | "stammdaten"
   | "devices"
   | "qr-sticker"
@@ -283,6 +285,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         { key: "beteiligte-stellen", label: "Beteiligte Stellen", icon: <Siren size={15} /> },
         { key: "sonstige-ff", label: "Sonstige FF", icon: <Flame size={15} /> },
         { key: "gefaehrliche-stoffe", label: "Gefährliche Stoffe", icon: <AlertTriangle size={15} /> },
+        { key: "ausruestungs-check", label: "Ausrüstungs-Check", icon: <CheckCircle2 size={15} /> },
       ],
     },
     {
@@ -454,6 +457,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
             onDirtyChange={setPanelDirty}
           />
         )}
+        {tab === "ausruestungs-check" && <AusruestungsRegelnPanel onDirtyChange={setPanelDirty} />}
         {tab === "stammdaten" && <StammdatenPanel onDirtyChange={setPanelDirty} />}
         {tab === "devices" && <DevicesPanel />}
         {tab === "qr-sticker" && <QrStickerPanel />}
@@ -2517,6 +2521,8 @@ function describeEvent(type: string): { Icon: React.ReactNode; label: string; co
       return { Icon: <RefreshCw size={16} />, label: "Einsatz reaktiviert", color: "var(--warn)" };
     case "config-changed":
       return { Icon: <Settings size={16} />, label: "Konfiguration geändert", color: "var(--info)" };
+    case "ausruestung-validierung":
+      return { Icon: <CheckCircle2 size={16} />, label: "Ausrüstungs-Check", color: "var(--info)" };
     default:
       return { Icon: <History size={16} />, label: type, color: "var(--fg-2)" };
   }

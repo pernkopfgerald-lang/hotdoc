@@ -11,6 +11,12 @@ export interface AbschlussCheck {
    * ("Trotzdem schliessen"). Default amber.
    */
   tone?: "red";
+  /**
+   * Ausruestungs-Check: "muss" = Abschluss gesperrt (kein "Trotzdem schliessen"),
+   * "info" = nur Hinweis/Empfehlung — zaehlt nicht als offener Pflichtpunkt.
+   * Ohne Angabe: normaler, ueberschreibbarer Pflicht-Check.
+   */
+  severity?: "muss" | "info";
 }
 
 interface Props {
@@ -65,7 +71,8 @@ export function AbschlussModal({
     if (open) setAlsoCloseEinsatz(false);
   }, [open]);
   if (!open) return null;
-  const offene = checks.filter((c) => !c.ok);
+  const offene = checks.filter((c) => !c.ok && c.severity !== "info");
+  const gesperrt = checks.some((c) => !c.ok && c.severity === "muss");
   const canConfirm = offene.length === 0;
 
   return (
@@ -129,7 +136,12 @@ export function AbschlussModal({
                 Bericht abschließen
               </h2>
               <span className="font-mono text-[12.5px] font-semibold uppercase tracking-[0.16em] text-text-3">
-                {funkrufname} · {canConfirm ? "alle Pflichtfelder erfüllt" : `${offene.length} offen · trotzdem schließen?`}
+                {funkrufname} ·{" "}
+                {gesperrt
+                  ? "Geräte erforderlich — bitte ergänzen"
+                  : canConfirm
+                    ? "alle Pflichtfelder erfüllt"
+                    : `${offene.length} offen · trotzdem schließen?`}
               </span>
             </div>
           </div>
@@ -285,8 +297,11 @@ export function AbschlussModal({
           <button
             type="button"
             onClick={() => onConfirm(alsoCloseEinsatz)}
+            disabled={gesperrt}
+            aria-disabled={gesperrt}
             className="flex-1 rounded-m px-3 py-2.5 text-[17.5px] font-bold uppercase tracking-[0.08em] text-white transition active:translate-y-px"
             style={{
+              ...(gesperrt ? { opacity: 0.45, cursor: "not-allowed" } : {}),
               background: canConfirm
                 ? "var(--red)"
                 : "var(--amber)",
@@ -295,7 +310,11 @@ export function AbschlussModal({
               } 60%, #000)`,
             }}
           >
-            {canConfirm ? "Abschließen & übergeben" : "Trotzdem schließen"}
+            {gesperrt
+              ? "Geräte ergänzen"
+              : canConfirm
+                ? "Abschließen & übergeben"
+                : "Trotzdem schließen"}
           </button>
         </footer>
       </div>

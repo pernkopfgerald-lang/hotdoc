@@ -38,6 +38,9 @@ const KEYS = [
   // die Chip-Auswahl "Gefaehrliche Stoffe" im Florian-Editor (technische
   // Statistik). Kein Secret — die normalen Lese-/Schreib-Rollen gelten.
   "gefaehrliche-stoffe",
+  // Ausruestungs-Check beim Fahrzeug-Abschluss: Regeln (Stichwort-Wildcard →
+  // Fahrzeug → Geraete, MUSS/INFO). Default leer = kein Check.
+  "ausruestungs-regeln",
 ] as const;
 type ConfigKey = (typeof KEYS)[number];
 
@@ -207,10 +210,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.3.4",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.4-release.apk",
+    currentVersion: "0.4.0",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.4.0-release.apk",
     releaseNotes:
-      "v0.3.4 — Hauptbericht auf einer Seite, Archiv am Handy\n\n• Hauptbericht-PDF passt auf eine A4-Seite (außer bei sehr vielen Einträgen).\n• Reaktivierungs-Audit nicht mehr im Einsatzbericht.\n• Archiv/Übergabe/Neuer Bericht am Handy korrekt dargestellt.",
+      "v0.4.0 — Ausrüstungs-Check beim Abschluss\n\n• Prüfung der erfassten Geräte gegen das Einsatzstichwort (MUSS sperrt, INFO schlägt vor).\n• Regeln im Backoffice pflegbar, mit Testmodus und Protokoll.\n• Ohne Regeln keine Änderung am Abschluss.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
@@ -218,6 +221,9 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // pflegt sie ueber das Backoffice (StringListPanel).
   "gefaehrliche-stoffe": {
     items: [] as string[],
+  },
+  "ausruestungs-regeln": {
+    regeln: [] as unknown[],
   },
 };
 

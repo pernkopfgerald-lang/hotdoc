@@ -38,7 +38,10 @@ export type AuditEventType =
   // D-11 (Audit R3): Soft-Delete eines Chronik-Eintrags (Test-Diktat,
   // Eintrag im falschen Einsatz) — bleibt im Doc, faellt aus PDF/Anzeige.
   | "chronik-delete"
-  | "config-changed";
+  | "config-changed"
+  // Ausruestungs-Check beim Abschluss (Regeln passen zum Stichwort): Ergebnis
+  // mit Stichwort, Fahrzeug, Warnungen — details.valid / details.warnungen.
+  | "ausruestung-validierung";
 
 export interface AuditEvent {
   type: AuditEventType;
@@ -97,14 +100,20 @@ export async function writeAuditEvent(event: AuditEvent): Promise<void> {
  * Lädt die letzten `limit` Audit-Events. Sortiert DESC (jüngste zuerst)
  * dank Reverse-Timestamp im _id.
  */
-export async function loadRecentAuditEvents(limit = 50): Promise<AuditEventDoc[]> {
+export async function loadRecentAuditEvents(
+  limit = 50,
+  type?: AuditEventType,
+): Promise<AuditEventDoc[]> {
+  // Mit Typ-Filter mehr Docs lesen und danach auf `limit` kuerzen, sonst
+  // verdraengen Login-Events den gesuchten Typ aus den juengsten N.
   const result = await db.list({
     startkey: "audit:",
     endkey: "audit:￰",
     include_docs: true,
-    limit,
+    limit: type ? Math.max(limit * 20, 1000) : limit,
   });
-  return result.rows
+  const docs = result.rows
     .map((r) => r.doc as AuditEventDoc | undefined)
     .filter((d): d is AuditEventDoc => !!d && d.docType === "audit-event");
+  return type ? docs.filter((d) => d.type === type).slice(0, limit) : docs;
 }

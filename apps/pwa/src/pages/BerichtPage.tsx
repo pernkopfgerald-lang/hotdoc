@@ -39,6 +39,8 @@ const VorschauModal = lazyRetry(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
 import { useGeraete } from "../lib/geraete-config";
+import { useAusruestungsRegeln } from "../lib/ausruestungs-regeln";
+import { validiereAusruestung } from "@hotdoc/shared";
 import { getDeviceId } from "../lib/device-id";
 import type { HotdocAlarmDetail } from "../lib/device-register";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
@@ -249,6 +251,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // statt der hartkodierten Default-Liste — sonst zeigen Fahrzeugbericht und
   // Backoffice unterschiedliche Geräte. Fallback auf Defaults bleibt offline.
   const gearList = useGeraete(fahrzeugId);
+  const ausruestungsRegeln = useAusruestungsRegeln();
   // Review 2026-09-06: die 6 meistgenutzten Geraete der letzten 40 Berichte
   // dieses Fahrzeugs — GearChips zeigt nur diese + bereits Ausgewaehltes
   // offen, der Rest sitzt hinter "weitere Geraete" (siehe lib/geraete-recent).
@@ -2383,8 +2386,42 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     }
   }
 
+  /**
+   * Ausruestungs-Check ins Audit-Log melden (best-effort, nie blockierend).
+   * Nur wenn mindestens eine Regel fuer dieses Fahrzeug zum Stichwort passt.
+   */
+  function meldeAusruestungsCheck(abgeschlossen: boolean) {
+    const erg = ausruestungErgebnis;
+    if (!active || !erg || !erg.matchingRules.some((r) => r.fahrzeug === fahrzeugId)) return;
+    void apiCall("/api/validierung/ausruestung", {
+      method: "POST",
+      body: {
+        einsatzId: active.id,
+        stichwort: erg.stichwort,
+        fahrzeug: fahrzeugId,
+        valid: erg.valid,
+        abgeschlossen,
+        warnungen: erg.warnings.map((w) => ({
+          severity: w.severity,
+          message: w.message,
+          regelId: w.regelId,
+        })),
+      },
+    }).catch(() => {
+      /* offline / 401 — der Abschluss selbst darf nie am Log scheitern */
+    });
+  }
+
+  function oeffneAbschluss() {
+    meldeAusruestungsCheck(false);
+    setAbschlussModalOpen(true);
+  }
+
   function abschliessen(alsoCloseEinsatz: boolean) {
     if (!active) return;
+    // Doppelte Absicherung: ein gesperrter MUSS-Check darf nie durchrutschen.
+    if (ausruestungErgebnis && !ausruestungErgebnis.valid) return;
+    meldeAusruestungsCheck(true);
     // OPT-6b (Audit 2026-06-03): Doppel-Submit-Guard. Ohne ihn könnte ein
     // schnelles Doppel-Tap auf "Abschließen" zwei uploadFahrzeugbericht- +
     // zwei /abschluss-POSTs auslösen (Backend ist zwar idempotent, aber
@@ -2789,7 +2826,38 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   const uhrzeitBisPruefen =
     !!active && Number.isFinite(alarmAlterMs) && alarmAlterMs > 2 * 60 * 60 * 1000;
 
+  // Ausruestungs-Check: passt die erfasste Ausruestung zum Einsatzstichwort?
+  // Lokal berechnet (offline-faehig); keine Regeln / kein Treffer = kein Check.
+  const ausruestungErgebnis = (() => {
+    if (!active || ausruestungsRegeln.length === 0) return null;
+    const ids = [...active.gearSelected];
+    const oelItem = gearList.find((g) => g.isOelbindemittel);
+    if (oelItem && active.oelSaecke > 0) ids.push(oelItem.id);
+    const namen: Record<string, string> = {};
+    for (const g of gearList) namen[g.id] = g.bezeichnung;
+    const stichwort = (active.alarm.einsatzart ?? "").trim();
+    if (!stichwort) return null;
+    return validiereAusruestung({
+      stichwort,
+      ausruestungProFahrzeug: { [fahrzeugId]: ids },
+      regeln: ausruestungsRegeln,
+      geraeteNamen: namen,
+    });
+  })();
+  const ausruestungChecks: AbschlussCheck[] = ausruestungErgebnis
+    ? ausruestungErgebnis.warnings.length === 0 &&
+      ausruestungErgebnis.matchingRules.some((r) => r.fahrzeug === fahrzeugId)
+      ? [{ ok: true, label: "Ausrüstungs-Check OK" }]
+      : ausruestungErgebnis.warnings.map((w) => ({
+        ok: false,
+        label: `Ausrüstung: ${w.message}`,
+        severity: w.severity === "MUSS" ? ("muss" as const) : ("info" as const),
+        ...(w.severity === "MUSS" ? { tone: "red" as const } : {}),
+      }))
+    : [];
+
   const checks: AbschlussCheck[] = [
+    ...ausruestungChecks,
     { ok: !!active?.fahrer, label: "Fahrer eingetragen" },
     { ok: !!active?.kdt, label: "Fahrzeug-Kommandant eingetragen" },
     { ok: mannschaftCount >= 1, label: `Mindestens 1 Mannschaftsplatz besetzt (aktuell ${mannschaftCount})` },
@@ -3698,7 +3766,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                   Vorschau Bericht
                 </button>
               </div>
-              <button type="button" className="cta" onClick={() => setAbschlussModalOpen(true)}>
+              <button type="button" className="cta" onClick={oeffneAbschluss}>
                 <CheckCircle2 size={22} />
                 Fahrzeugbericht abschließen
                 <ArrowRight size={22} />
@@ -3825,7 +3893,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           // Abschluss), KEIN direkter abschliessen(true)-Aufruf mehr.
           if (tabToClose.id === activeId) {
             setTabToClose(null);
-            setAbschlussModalOpen(true);
+            oeffneAbschluss();
             return;
           }
           // Nicht-aktiver Tab: Einsatz im Backend schließen (der rote
