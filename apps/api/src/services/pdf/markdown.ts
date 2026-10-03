@@ -279,14 +279,7 @@ export function renderBerichtMarkdown(d: BerichtDaten, extra: MarkdownExtras): s
     teile.push(liste(bs.lagen));
   }
 
-  if (d.reaktivierungen && d.reaktivierungen.length > 0) {
-    teile.push(h2("Reaktivierungen"));
-    teile.push("| Zeitpunkt | Grund |");
-    teile.push("|---|---|");
-    for (const r of d.reaktivierungen) {
-      teile.push(`| ${formatDateTime(r.am)} | ${md(r.grund).replace(/\|/g, "\\|")} |`);
-    }
-  }
+  // Reaktivierungs-Audit steht bewusst NICHT im Einsatzbericht (nur Backoffice).
 
   if (d.abschlussOverrideHinweis) {
     teile.push(h2("Abschluss-Hinweis"));

@@ -64,6 +64,42 @@ let renderChain: Promise<void> = Promise.resolve();
 const MAX_PENDING_RENDERS = 3;
 let pendingRenders = 0;
 
+/**
+ * Der Hauptbericht (Seite 1, Markierung `data-fit-page`) soll auf EINE
+ * A4-Seite passen. Reihenfolge, wenn er zu hoch ist:
+ *   1. Leerraum der Freitext-Box (min-height) freigeben,
+ *   2. Seite stufenlos verkleinern (CSS zoom) — aber nicht unter MIN_FIT_ZOOM,
+ *      sonst wird die Schrift zu klein. Bei sehr vielen Chronik-Eintraegen
+ *      bleibt es bei natuerlicher Groesse und laeuft auf eine 2. Seite.
+ * Gemessen wird mit Druck-Layout (Seitenbreite 178 mm = A4 minus 2x16 mm).
+ */
+const PAGE_CONTENT_WIDTH_PX = Math.round((178 / 25.4) * 96);
+const PAGE_CONTENT_HEIGHT_MM = 265;
+const MIN_FIT_ZOOM = 0.8;
+
+async function fitFirstPage(page: import("puppeteer").Page): Promise<void> {
+  await page.emulateMediaType("print");
+  await page.setViewport({ width: PAGE_CONTENT_WIDTH_PX, height: 1200 });
+  // Als String statt Funktion: der API-Build hat keine DOM-Typen (lib "dom").
+  await page.evaluate(`(() => {
+    const el = document.querySelector("[data-fit-page]");
+    if (!el) return;
+    const availPx = ((${PAGE_CONTENT_HEIGHT_MM} / 25.4) * 96) * 0.985;
+    const minZoom = ${MIN_FIT_ZOOM};
+    const height = () => el.getBoundingClientRect().height;
+    if (height() <= availPx) return;
+    el.querySelectorAll(".freitext").forEach((n) => { n.style.minHeight = "0"; });
+    if (height() <= availPx) return;
+    let zoom = 1;
+    for (let i = 0; i < 8; i += 1) {
+      zoom = Math.max(minZoom, (zoom * availPx) / height() * 0.995);
+      el.style.setProperty("zoom", String(zoom));
+      if (height() <= availPx || zoom <= minZoom) break;
+    }
+    if (height() > availPx) el.style.removeProperty("zoom");
+  })()`);
+}
+
 /** Rendert HTML → A4-PDF (Bytes). */
 export async function renderPdf(html: string): Promise<Buffer> {
   if (pendingRenders > MAX_PENDING_RENDERS) {
@@ -89,6 +125,12 @@ export async function renderPdf(html: string): Promise<Buffer> {
       // "load" statt "networkidle0": wir warten auf das Laden der (eingebetteten)
       // Ressourcen, nicht auf 500 ms Netz-Ruhe — Letzteres ist unnoetig fragil.
       await page.setContent(html, { waitUntil: "load", timeout: RENDER_TIMEOUT_MS });
+      try {
+        await fitFirstPage(page);
+      } catch (err) {
+        // Anpassung ist Komfort — nie das PDF dafuer verlieren.
+        logger.warn({ err }, "PDF-Render: Seite-1-Anpassung fehlgeschlagen");
+      }
       const pdf = await page.pdf({
         format: "A4",
         printBackground: true,

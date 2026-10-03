@@ -191,8 +191,12 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
         // behaelt ihren EINEN Glas-Effekt.
         background: "rgba(0,0,0,0.6)",
         display: "grid",
+        // minmax(0,1fr): die Spalte darf nie breiter werden als der Bildschirm
+        // (am Handy wuchs sie sonst auf Inhaltsbreite → Dialog nach rechts
+        // verschoben und abgeschnitten).
+        gridTemplateColumns: "minmax(0, 1fr)",
         placeItems: "center",
-        padding: 16,
+        padding: 12,
       }}
     >
       <div
@@ -269,7 +273,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Suche · Stichwort, Ort, Datum"
+            placeholder="Stichwort, Ort, Datum"
             autoFocus
           />
         </div>
@@ -391,7 +395,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                   }}
                 >
                   <span
-                    className="avatar"
+                    className="avatar archiv-avatar"
                     style={{
                       background:
                         `color-mix(in srgb, ${typ.color} 18%, var(--glass-2))`,
@@ -417,9 +421,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                         fontSize: 19,
                         fontWeight: 600,
                         color: "var(--fg)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        overflowWrap: "break-word",
                       }}
                     >
                       {title}
@@ -428,9 +430,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                       style={{
                         fontSize: 15,
                         color: "var(--fg-2)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        overflowWrap: "break-word",
                       }}
                     >
                       {i.einsatzort ?? "—"}
@@ -443,6 +443,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                         letterSpacing: "var(--tracking-caps)",
                         color: "var(--fg-3)",
                         display: "flex",
+                        flexWrap: "wrap",
                         alignItems: "center",
                         gap: 6,
                       }}
@@ -571,8 +572,7 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
             <div style={{ fontSize: 16.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
               <strong>{reaktivOpen.title}</strong> wird wieder geöffnet.
               Bitte einen Grund angeben (mind. 6 Zeichen) — wird ins
-              Audit-Log eingetragen und auf dem PDF als Reaktivierungs-Hinweis
-              gerendert.
+              Audit-Log eingetragen (steht nicht im Einsatzbericht).
             </div>
             <textarea
               className="input"

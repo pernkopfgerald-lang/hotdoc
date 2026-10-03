@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.3.4",
+    date: "2026-10-03",
+    title: "Hauptbericht auf einer Seite, Archiv am Handy",
+    bullets: [
+      "Der Hauptbericht (PDF) passt jetzt auf eine A4-Seite — nur bei sehr vielen Chronik-Einträgen läuft er auf eine zweite Seite.",
+      "Die Reaktivierungs-Historie steht nicht mehr im Einsatzbericht (PDF und Datei zur Weiterverarbeitung); sie bleibt im Backoffice einsehbar.",
+      "Archiv, Fahrzeug-Übergabe und „Neuer Bericht“ am Handy: Dialog sitzt wieder mittig und wird vollständig dargestellt.",
+    ],
+  },
+  {
     version: "0.3.3",
     date: "2026-10-02",
     title: "Zurück zum schlichten Design von 0.3.0",

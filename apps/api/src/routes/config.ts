@@ -207,10 +207,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.3.3",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.3-release.apk",
+    currentVersion: "0.3.4",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.3.4-release.apk",
     releaseNotes:
-      "v0.3.3 — Zurück zum schlichten Design von 0.3.0\n\n• Erscheinungsbild wie in Version 0.3.0.",
+      "v0.3.4 — Hauptbericht auf einer Seite, Archiv am Handy\n\n• Hauptbericht-PDF passt auf eine A4-Seite (außer bei sehr vielen Einträgen).\n• Reaktivierungs-Audit nicht mehr im Einsatzbericht.\n• Archiv/Übergabe/Neuer Bericht am Handy korrekt dargestellt.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

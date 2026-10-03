@@ -177,8 +177,12 @@ export function HandoffModal({ open, onClose, einsatzId, onClaimed, mode = "forw
         // Modal laeuft auf dem uebergebenen Handy!).
         background: "rgba(0,0,0,0.6)",
         display: "grid",
+        // minmax(0,1fr): die Spalte darf nie breiter werden als der Bildschirm
+        // (am Handy wuchs sie sonst auf Inhaltsbreite → Dialog nach rechts
+        // verschoben und abgeschnitten).
+        gridTemplateColumns: "minmax(0, 1fr)",
         placeItems: "center",
-        padding: 16,
+        padding: 12,
       }}
     >
       <div

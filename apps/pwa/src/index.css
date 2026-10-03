@@ -226,3 +226,7 @@ html {
 [class*="backdrop-blur"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 .shadow-2xl, .shadow-xl, .shadow-lg, .shadow-md { box-shadow: var(--glass-shadow-1) !important; }
 .animate-pulse { animation: none !important; }
+/* Archiv-Zeilen am Handy: Typ-Icon weglassen, damit der Titel Platz hat */
+@media (max-width: 640px) {
+  .archiv-avatar { display: none !important; }
+}

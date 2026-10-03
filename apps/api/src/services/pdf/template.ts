@@ -220,6 +220,10 @@ export interface BerichtDaten {
 // ist robust und einsparsamer.
 const ALARMQUELLEN = ["WAS", "Funk", "Telefon", "Bote", "Behoerde"] as const;
 
+// Hauptbericht (Seite 1 passt auf eine A4-Seite, siehe generator.ts
+// fitFirstPage). Die Reaktivierungs-Historie (d.reaktivierungen) wird hier
+// bewusst NICHT ausgegeben — sie gehoert nicht in den Einsatzbericht und
+// bleibt im Backoffice (BerichtDetail) bzw. im Audit-Trail der Datenbank.
 export function renderHauptberichtHtml(d: BerichtDaten): string {
   const isUebung = d.istUebung === true;
   const isLotsen = d.istLotsendienst === true;
@@ -381,7 +385,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
   </style>
 </head>
 <body>
-<div class="page">
+<div class="page" data-fit-page>
 
   ${abschlussHinweis ? `<div class="override-warn">⚠️ ABSCHLUSS-HINWEIS: ${escape(abschlussHinweis)}</div>` : ""}
 
@@ -609,17 +613,6 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 
   ${isSpezial ? "" : renderTechnischeStatistikBlock(d)}
   ${isSpezial ? "" : renderBrandStatistikBlock(d)}
-
-  ${
-    d.reaktivierungen && d.reaktivierungen.length > 0
-      ? `<div class="audit">
-           <strong>Reaktivierungs-Audit-Trail:</strong><br>
-           ${d.reaktivierungen
-             .map((r) => `• ${formatDateTime(r.am)} · ${escape(r.grund)}`)
-             .join("<br>")}
-         </div>`
-      : ""
-  }
 
   <table class="bx" style="margin-top:1mm">
     <tr>
