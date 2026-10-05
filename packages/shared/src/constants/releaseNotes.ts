@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.5.1",
+    date: "2026-10-05",
+    title: "Einsatzende im Hauptbericht manuell änderbar",
+    bullets: [
+      "Florianstation → Stammdaten Einsatz: Einsatzende (Datum und Uhrzeit) lässt sich jetzt manuell eintragen oder korrigieren — unabhängig von den Fahrzeug-Zeiten (z. B. wenn die Nachbereitung länger dauert). Nur die Uhrzeit eingeben = Datum des Beginns; ein Ende vor dem Beginn wird abgewiesen.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-10-03",
     title: "Eintreffzeit per GPS, Wetter im Bericht, Geräte-Vorschläge",

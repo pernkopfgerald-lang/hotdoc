@@ -92,6 +92,8 @@ interface EinsatzApiDoc {
   einsatzartFreitext?: string;
   alarmId?: string;
   alarmierungZeit?: string;
+  /** Einsatzende (ISO) — beim Abschluss aus den Fahrzeug-Rueckkehrzeiten gesetzt, manuell aenderbar. */
+  einsatzende?: string;
   alarmierungAuthor?: string;
   alarmierungText?: string;
   koordinaten?: { lat: number; lng: number };
@@ -186,6 +188,9 @@ interface EditorState {
   /** Hotfix 2026-09: Beginn (Alarmierung) manuell aenderbar — Datum "YYYY-MM-DD" + Uhrzeit "HH:MM" (lokal). */
   alarmDatum: string;
   alarmUhrzeit: string;
+  /** Einsatzende manuell aenderbar (Nachbereitung kann laenger dauern als die Fahrzeuge): Datum + Uhrzeit, lokal. Leer = nicht gesetzt. */
+  endeDatum: string;
+  endeUhrzeit: string;
   /** 2026-09: Gabelstapler im Einsatz (nur ueber die Florianstation gebucht). */
   staplerEingesetzt: boolean;
   lageUnterKontrolleHHMM: string;          // "HH:MM" — wird beim Save in ISO konvertiert
@@ -230,6 +235,8 @@ const EMPTY_EDITOR: EditorState = {
   anruferTel: "",
   alarmDatum: "",
   alarmUhrzeit: "",
+  endeDatum: "",
+  endeUhrzeit: "",
   staplerEingesetzt: false,
   lageUnterKontrolleHHMM: "",
   brandAusHHMM: "",
@@ -1415,6 +1422,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       anruferTel: aktiverEinsatz.anruferTel ?? "",
       alarmDatum: isoToYMD(aktiverEinsatz.alarmierungZeit),
       alarmUhrzeit: isoToHHMM(aktiverEinsatz.alarmierungZeit),
+      endeDatum: isoToYMD(aktiverEinsatz.einsatzende),
+      endeUhrzeit: isoToHHMM(aktiverEinsatz.einsatzende),
       staplerEingesetzt: aktiverEinsatz.staplerEingesetzt === true,
       lageUnterKontrolleHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.lageUnterKontrolle),
       brandAusHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.brandAus),
@@ -1582,6 +1591,32 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           0,
           0,
         ).toISOString();
+      }
+      // Einsatzende: nur senden, wenn beide Teile gesetzt sind und vom Server-
+      // Stand abweichen. Leer lassen = Server-Stand bleibt (kann nicht geleert werden).
+      // Nur Uhrzeit eingetragen → Datum des Beginns. Ende vor Beginn wird nicht gesendet.
+      const endeDatumEff = editor.endeDatum || editor.alarmDatum;
+      const em = /^(\d{4})-(\d{2})-(\d{2})$/.exec(endeDatumEff);
+      const en = /^(\d{2}):(\d{2})$/.exec(editor.endeUhrzeit);
+      if (
+        em &&
+        en &&
+        (endeDatumEff !== isoToYMD(aktiverEinsatz?.einsatzende) ||
+          editor.endeUhrzeit !== isoToHHMM(aktiverEinsatz?.einsatzende))
+      ) {
+        const endeIso = new Date(
+          Number(em[1]),
+          Number(em[2]) - 1,
+          Number(em[3]),
+          Number(en[1]),
+          Number(en[2]),
+          0,
+          0,
+        ).toISOString();
+        const beginnMs = Date.parse(
+          (body.alarmierungZeit as string | undefined) ?? aktiverEinsatz?.alarmierungZeit ?? "",
+        );
+        if (!(Number.isFinite(beginnMs) && Date.parse(endeIso) < beginnMs)) body.einsatzende = endeIso;
       }
       body.staplerEingesetzt = editor.staplerEingesetzt;
       if (editor.pflichtbereich !== null) body.pflichtbereich = editor.pflichtbereich;
@@ -2288,6 +2323,18 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
   const einsatzart =
     e?.einsatzart ?? e?.einsatzartFreitext ?? e?.alarmierungText ?? "";
   const alarmierungZeit = e?.alarmierungZeit ?? "";
+  // Einsatzende vor Beginn? (Anzeige im Editor; der Save sendet es dann nicht)
+  const endeVorBeginn = (() => {
+    const d = editor.endeDatum || editor.alarmDatum;
+    const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+    const tm = /^(\d{2}):(\d{2})$/.exec(editor.endeUhrzeit);
+    const am = /^(\d{4})-(\d{2})-(\d{2})$/.exec(editor.alarmDatum);
+    const at = /^(\d{2}):(\d{2})$/.exec(editor.alarmUhrzeit);
+    if (!dm || !tm || !am || !at) return false;
+    const ende = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2])).getTime();
+    const beginn = new Date(Number(am[1]), Number(am[2]) - 1, Number(am[3]), Number(at[1]), Number(at[2])).getTime();
+    return ende < beginn;
+  })();
   const alarmierungAuthor = e?.alarmierungAuthor ?? "";
   const einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung" =
     e?.einsatzTyp === "manuell" ||
@@ -3812,6 +3859,41 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               />
             </div>
             <ReadOnly label="Auslöser" value={alarmierungAuthor} />
+          </div>
+          {/* Einsatzende: wird beim Abschluss aus den Fahrzeug-Rueckkehrzeiten
+              gesetzt, kann aber abweichen (z. B. Nachbereitung) — hier manuell
+              aenderbar, auch das Datum (Einsaetze ueber Mitternacht). */}
+          <div className="grid-3" style={{ gap: 14, marginTop: 14 }}>
+            <div className="field">
+              <label className="caption">Einsatzende · Datum</label>
+              <DatumFeld
+                boxed
+                value={editor.endeDatum}
+                onChange={(v) => patchEditor({ endeDatum: v })}
+                disabled={schreibschutz}
+              />
+            </div>
+            <div className="field">
+              <label className="caption">Einsatzende · Uhrzeit</label>
+              <ZeitFeld
+                boxed
+                value={editor.endeUhrzeit}
+                onChange={(v) => patchEditor({ endeUhrzeit: v })}
+                disabled={schreibschutz}
+              />
+            </div>
+            <div className="field" style={{ alignSelf: "end" }}>
+              {endeVorBeginn ? (
+                <span role="alert" style={{ fontSize: 14, color: "var(--red)", fontWeight: 700, lineHeight: 1.4 }}>
+                  Einsatzende liegt vor dem Beginn — wird so nicht gespeichert.
+                </span>
+              ) : (
+                <span style={{ fontSize: 14, color: "var(--fg-3)", lineHeight: 1.4 }}>
+                  Leer = beim Abschluss aus den Fahrzeug-Zeiten. Hier eintragen, wenn der Einsatz
+                  länger dauerte als die Fahrzeuge. Nur Uhrzeit = Datum des Beginns.
+                </span>
+              )}
+            </div>
           </div>
           <div className="field" style={{ marginTop: 14 }}>
             <label className="caption">Einsatzort</label>
