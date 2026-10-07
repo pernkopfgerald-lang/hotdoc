@@ -380,6 +380,13 @@ async function buildBerichtDaten(
     (doc.reservePersonIds as unknown[] | undefined) ?? []
   ).filter((id): id is number => typeof id === "number" && !eingesetztIds.has(id));
   const bereitschaft = bereitschaftIds.length;
+  const reserveNamen: string[] = [];
+  for (const rid of bereitschaftIds) {
+    const p = await loadPerson(rid);
+    reserveNamen.push(
+      p ? `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${rid}` : `Pers-${rid}`,
+    );
+  }
   const sonstigeMan = (
     (doc.mannschaft as { sonstige?: number } | undefined)?.sonstige ?? 0
   );
@@ -660,6 +667,7 @@ async function buildBerichtDaten(
       sonstige: sonstigeMan,
       atemschutzTraeger: asPersonen,
     },
+    ...(reserveNamen.length > 0 ? { reserve: reserveNamen } : {}),
     eingesetzteFahrzeuge,
     chronik,
     fahrzeugberichte: fahrzeugberichteOut,

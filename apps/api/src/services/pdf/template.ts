@@ -136,6 +136,8 @@ export interface BerichtDaten {
     sonstige: number;
     atemschutzTraeger: number;
   };
+  /** Namen der Reserve-/Bereitschafts-Mannschaft (Florianstation, ohne bereits Ausgerueckte). */
+  reserve?: string[];
   /** Welche Fahrzeuge sind im Einsatz (aus Fahrzeugberichten). */
   eingesetzteFahrzeuge?: Array<{ abk: string; funkrufname: string; kmGefahren: number }>;
   /** Komplette Einsatz-Chronik fuer Anhang-Seite. */
@@ -606,8 +608,27 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
         ${d.sonstigeFreitext ? `<div style="margin-top:2pt;color:${FILLED}">+ ${escape(d.sonstigeFreitext)}</div>` : ""}
       </td>
       <td class="val" style="vertical-align:top">
-        ${isUebung ? "Teilnehmer" : "Eingesetzt"}: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
+        ${
+          isUebung
+            ? // Uebung: Reserve-Personen sind Teilnehmer ohne Fahrzeug (z. B. Schulung/Vortrag)
+              `Teilnehmer: <span style="color:${FILLED};font-weight:700">${(d.mannschaft?.eingesetzt ?? 0) + (d.mannschaft?.bereitschaft ?? 0)}</span> Personen<br>
+        ${
+          (d.mannschaft?.eingesetzt ?? 0) > 0
+            ? `<span style="font-size:8pt">davon auf Fahrzeugen: <b style="color:${FILLED}">${d.mannschaft?.eingesetzt ?? 0}</b></span><br>`
+            : ""
+        }${
+          d.reserve && d.reserve.length > 0
+            ? `<span style="font-size:8pt">ohne Fahrzeug (Reserve):</span><div style="font-size:8.5pt;color:${FILLED};margin:0 0 2pt 6pt">${d.reserve.map((n) => escape(n)).join("<br>")}</div>`
+            : ""
+        }`
+            : `Eingesetzt: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
         Bereitschaft: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.bereitschaft ?? 0}</span><br>
+        ${
+          d.reserve && d.reserve.length > 0
+            ? `<div style="font-size:8pt;color:${FILLED};margin:0 0 2pt 6pt">${d.reserve.map((n) => escape(n)).join("<br>")}</div>`
+            : ""
+        }`
+        }
         Sonstige: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.sonstige ?? 0}</span><br>
         AS-Träger: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTraeger ?? 0}</span>
       </td>

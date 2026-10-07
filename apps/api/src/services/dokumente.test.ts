@@ -63,3 +63,30 @@ describe("Uebungskategorie", () => {
     expect(EINSATZ_POLL_FELDER).toContain("uebungsTyp");
   });
 });
+
+describe("Uebungsbericht: Reserve = Teilnehmer ohne Fahrzeug", () => {
+  const ueb = {
+    einsatzId: "u-1",
+    einsatzort: "FF-Haus",
+    alarmierungZeit: "2026-10-07T17:00:00.000Z",
+    einsatzTyp: "manuell",
+    istUebung: true,
+    status: "abgeschlossen",
+    mannschaft: { eingesetzt: 2, bereitschaft: 3, sonstige: 0, atemschutzTraeger: 0 },
+    reserve: ["Mustermann Max", "Gruber Anna", "Huber Sepp"],
+  } as unknown as BerichtDaten;
+
+  it("zaehlt Reserve zu den Teilnehmern und nennt die Namen", () => {
+    const html = renderHauptberichtHtml(ueb);
+    expect(html).toContain("Teilnehmer:");
+    expect(html).toMatch(/Teilnehmer: <span[^>]*>5<\/span> Personen/);
+    expect(html).toContain("ohne Fahrzeug (Reserve)");
+    expect(html).toContain("Mustermann Max");
+    expect(html).not.toContain("Bereitschaft:");
+  });
+  it("beim Einsatz bleibt es bei Eingesetzt/Bereitschaft", () => {
+    const html = renderHauptberichtHtml({ ...ueb, istUebung: false } as BerichtDaten);
+    expect(html).toContain("Bereitschaft:");
+    expect(html).toContain("Eingesetzt:");
+  });
+});

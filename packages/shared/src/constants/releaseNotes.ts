@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.5.4",
+    date: "2026-10-07",
+    title: "Übungsbericht: Reserve-Personen als Teilnehmer",
+    bullets: [
+      "Übungsbericht (PDF): Die Reserve-Personen zählen jetzt als Teilnehmer („Teilnehmer: 13 Personen“) und stehen mit Namen unter „ohne Fahrzeug (Reserve)“ — vorher stand dort „Teilnehmer: 0“ und „Bereitschaft: 13“.",
+      "Florianstation: Im Kopf der Übung steht „Teilnehmer“ mit den Personen auf Fahrzeugen plus „+ n ohne Fzg.“ statt nur „Mannschaft 0“.",
+    ],
+  },
+  {
     version: "0.5.3",
     date: "2026-10-07",
     title: "Übungskategorie nachträglich änderbar",

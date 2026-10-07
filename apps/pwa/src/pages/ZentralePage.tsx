@@ -2885,10 +2885,16 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                 </div>
               </div>
               <div className="cell">
-                <div className="lbl">Mannschaft</div>
+                <div className="lbl">{einsatzTyp === "uebung" ? "Teilnehmer" : "Mannschaft"}</div>
                 <div className="val">
                   {aggregateMannschaft}
                   <span className="unit">Pers.</span>
+                  {/* Reserve (bei Uebungen = Teilnehmer ohne Fahrzeug) sichtbar machen */}
+                  {editor.reservePersonIds.length > 0 ? (
+                    <span className="unit">
+                      {" "}+ {editor.reservePersonIds.length} {einsatzTyp === "uebung" ? "ohne Fzg." : "Reserve"}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div className="cell">
