@@ -21,6 +21,14 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.5.3",
+    date: "2026-10-07",
+    title: "Übungskategorie nachträglich änderbar",
+    bullets: [
+      "Die Kategorie einer Übung (z. B. Atemschutz, Schulung/Vortrag) lässt sich jetzt auch bei bereits geöffneter Übung ändern: am Fahrzeug-Tablet in der Karte „Übung“, auf der Florianstation in den Stammdaten. Die Änderung gilt für den ganzen Einsatz.",
+    ],
+  },
+  {
     version: "0.5.2",
     date: "2026-10-07",
     title: "Fotos & PDFs in der Florian-Chronik, Schulung/Vortrag, ASFINAG",

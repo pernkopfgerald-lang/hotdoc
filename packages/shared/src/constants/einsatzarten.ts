@@ -57,6 +57,19 @@ export const BETEILIGTE_STELLEN = [
   "ASFINAG Traffic Manager",
 ] as const;
 
+/** Uebungskategorien (Reihenfolge wie im Formular). Muss zum Enum in einsatz.schema.ts passen. */
+export const UEBUNGS_TYPEN = [
+  "Atemschutz",
+  "Technische Hilfeleistung",
+  "Höhenrettung",
+  "Sanitätsdienst",
+  "Funk",
+  "Allgemeine Übung",
+  "Schulung/Vortrag",
+  "Bewerb",
+  "Sonstige",
+] as const;
+
 export type BeteiligteStelle = (typeof BETEILIGTE_STELLEN)[number];
 
 /**

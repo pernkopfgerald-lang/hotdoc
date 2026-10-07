@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FotoSchema } from "@hotdoc/shared";
+import { EinsatzSchema, EINSATZ_POLL_FELDER, FotoSchema, UEBUNGS_TYPEN } from "@hotdoc/shared";
 import { renderHauptberichtHtml, type BerichtDaten } from "./pdf/template.js";
 import { renderBerichtMarkdown } from "./pdf/markdown.js";
 
@@ -50,5 +50,16 @@ describe("Bericht mit PDF-Dokumenten", () => {
     const md = renderBerichtMarkdown(d, { bearbeiter: undefined, reserve: [] });
     expect(md).toContain("Dokumente (PDF, als Mail-Anhang)");
     expect(md).toContain("Lageplan");
+  });
+});
+
+describe("Uebungskategorie", () => {
+  it("Schema, gemeinsame Liste und Poll-Projektion kennen Schulung/Vortrag", () => {
+    expect(EinsatzSchema.shape.uebungsTyp.safeParse("Schulung/Vortrag").success).toBe(true);
+    expect(EinsatzSchema.shape.uebungsTyp.safeParse("Quatsch").success).toBe(false);
+    // jede Kategorie der UI-Liste muss das Schema akzeptieren
+    for (const t of UEBUNGS_TYPEN) expect(EinsatzSchema.shape.uebungsTyp.safeParse(t).success).toBe(true);
+    // Tablet pollt nur die projizierten Felder — uebungsTyp muss dabei sein
+    expect(EINSATZ_POLL_FELDER).toContain("uebungsTyp");
   });
 });

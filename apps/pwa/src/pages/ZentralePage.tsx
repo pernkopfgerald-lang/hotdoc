@@ -54,6 +54,7 @@ import {
   FAHRZEUGE,
   FLORIAN_POSITION,
   SONSTIGE_FF as DEFAULT_SONSTIGE_FF,
+  UEBUNGS_TYPEN,
   type FahrzeugId,
   // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Listen.
   kategorieFuer,
@@ -94,6 +95,8 @@ interface EinsatzApiDoc {
   einsatzartFreitext?: string;
   alarmId?: string;
   alarmierungZeit?: string;
+  /** Uebungskategorie (nur Uebung). */
+  uebungsTyp?: string;
   /** Einsatzende (ISO) — beim Abschluss aus den Fahrzeug-Rueckkehrzeiten gesetzt, manuell aenderbar. */
   einsatzende?: string;
   alarmierungAuthor?: string;
@@ -193,6 +196,8 @@ interface EditorState {
   /** Einsatzende manuell aenderbar (Nachbereitung kann laenger dauern als die Fahrzeuge): Datum + Uhrzeit, lokal. Leer = nicht gesetzt. */
   endeDatum: string;
   endeUhrzeit: string;
+  /** Uebungskategorie (nur bei Uebungen); leer = nicht gewaehlt. */
+  uebungsTyp: string;
   /** 2026-09: Gabelstapler im Einsatz (nur ueber die Florianstation gebucht). */
   staplerEingesetzt: boolean;
   lageUnterKontrolleHHMM: string;          // "HH:MM" — wird beim Save in ISO konvertiert
@@ -239,6 +244,7 @@ const EMPTY_EDITOR: EditorState = {
   alarmUhrzeit: "",
   endeDatum: "",
   endeUhrzeit: "",
+  uebungsTyp: "",
   staplerEingesetzt: false,
   lageUnterKontrolleHHMM: "",
   brandAusHHMM: "",
@@ -1426,6 +1432,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       alarmUhrzeit: isoToHHMM(aktiverEinsatz.alarmierungZeit),
       endeDatum: isoToYMD(aktiverEinsatz.einsatzende),
       endeUhrzeit: isoToHHMM(aktiverEinsatz.einsatzende),
+      uebungsTyp: aktiverEinsatz.uebungsTyp ?? "",
       staplerEingesetzt: aktiverEinsatz.staplerEingesetzt === true,
       lageUnterKontrolleHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.lageUnterKontrolle),
       brandAusHHMM: isoToHHMM(aktiverEinsatz.zeitmarken?.brandAus),
@@ -1619,6 +1626,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           (body.alarmierungZeit as string | undefined) ?? aktiverEinsatz?.alarmierungZeit ?? "",
         );
         if (!(Number.isFinite(beginnMs) && Date.parse(endeIso) < beginnMs)) body.einsatzende = endeIso;
+      }
+      // Uebungskategorie: nur senden, wenn gewaehlt und geaendert.
+      if (editor.uebungsTyp && editor.uebungsTyp !== (aktiverEinsatz?.uebungsTyp ?? "")) {
+        body.uebungsTyp = editor.uebungsTyp;
       }
       body.staplerEingesetzt = editor.staplerEingesetzt;
       if (editor.pflichtbereich !== null) body.pflichtbereich = editor.pflichtbereich;
@@ -3876,6 +3887,26 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             </div>
             <ReadOnly label="Auslöser" value={alarmierungAuthor} />
           </div>
+          {/* Uebungskategorie — auch bei geoeffneter Uebung aenderbar. */}
+          {einsatzTyp === "uebung" ? (
+            <div className="field" style={{ marginTop: 14 }}>
+              <label className="caption" htmlFor="florian-uebungs-kategorie">Übungskategorie</label>
+              <select
+                id="florian-uebungs-kategorie"
+                className="input"
+                value={editor.uebungsTyp}
+                onChange={(ev) => patchEditor({ uebungsTyp: ev.target.value })}
+                disabled={schreibschutz}
+              >
+                <option value="">— nicht gewählt —</option>
+                {UEBUNGS_TYPEN.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {/* Einsatzende: wird beim Abschluss aus den Fahrzeug-Rueckkehrzeiten
               gesetzt, kann aber abweichen (z. B. Nachbereitung) — hier manuell
               aenderbar, auch das Datum (Einsaetze ueber Mitternacht). */}

@@ -40,7 +40,7 @@ const VorschauModal = lazyRetry(() =>
 );
 import { useGeraete } from "../lib/geraete-config";
 import { useAusruestungsRegeln } from "../lib/ausruestungs-regeln";
-import { findeRegeln, validiereAusruestung } from "@hotdoc/shared";
+import { findeRegeln, UEBUNGS_TYPEN, validiereAusruestung } from "@hotdoc/shared";
 import { getDeviceId } from "../lib/device-id";
 import type { HotdocAlarmDetail } from "../lib/device-register";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
@@ -132,6 +132,10 @@ interface EinsatzInstance {
   eintreffStatus?: "angeboten" | "uebernommen" | "verworfen";
   /** Zeitpunkt (ISO) der ersten GPS-Erkennung im 100-m-Radius. */
   eintreffErkanntUm?: string;
+  /** Uebungskategorie (nur Uebung) — aus dem Einsatz-Doc, am Tablet aenderbar. */
+  uebungsTyp?: string;
+  /** true, solange die eigene Aenderung noch nicht am Server angekommen ist (Poll darf sie nicht zuruecksetzen). */
+  uebungsTypPending?: boolean;
   /** #164: Einsatz-Typ — steuert u.a. die grüne Übungs-Optik der AlarmCard. */
   einsatzTyp: "alarm" | "manuell" | "lotsendienst" | "uebung";
   fahrer: PickPerson | null;
@@ -815,6 +819,8 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       alarmierungAuthor?: string;
       koordinaten?: { lat: number; lng: number };
       stichwort?: string;
+      /** Uebungskategorie (nur Uebung). */
+      uebungsTyp?: string;
       /** N-06: Alarm-Annahme (irgendein Gerät) — Teil der Poll-Projektion. */
       angenommenAm?: string;
       /** S-14: Server-Markierung "möglicher Doppelalarm" (Doc-ID des Originals). */
@@ -857,6 +863,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         ...(api.moeglichesDuplikatVon
           ? { moeglichesDuplikatVon: api.moeglichesDuplikatVon }
           : {}),
+        ...(api.uebungsTyp ? { uebungsTyp: api.uebungsTyp } : {}),
         manuell: api.einsatzTyp === "manuell" || api.einsatzTyp === "uebung" || api.einsatzTyp === "lotsendienst",
         einsatzTyp:
           api.einsatzTyp === "manuell" ||
@@ -1021,7 +1028,13 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             const angChanged = (api.angenommenAm ?? null) !== (e.angenommenAm ?? null);
             const dupChanged =
               (api.moeglichesDuplikatVon ?? null) !== (e.moeglichesDuplikatVon ?? null);
-            if (!ortChanged && !artChanged && !stwChanged && !angChanged && !dupChanged && !zeitChanged) {
+            // Uebungskategorie vom Server nachziehen (Florian/anderes Tablet hat
+            // sie geaendert) — ausser die eigene Aenderung ist noch unterwegs.
+            const uebTypChanged =
+              e.einsatzTyp === "uebung" &&
+              !e.uebungsTypPending &&
+              (api.uebungsTyp ?? "") !== (e.uebungsTyp ?? "");
+            if (!ortChanged && !artChanged && !stwChanged && !angChanged && !dupChanged && !zeitChanged && !uebTypChanged) {
               return e;
             }
             const nextAlarm: AlarmDaten = {
@@ -1039,6 +1052,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             }
             const nextEinsatzPos = api.koordinaten ?? e.einsatzPos;
             const next: EinsatzInstance = { ...e, alarm: nextAlarm, einsatzPos: nextEinsatzPos };
+            if (uebTypChanged) {
+              if (api.uebungsTyp) next.uebungsTyp = api.uebungsTyp;
+              else delete next.uebungsTyp;
+            }
             if (api.angenommenAm) next.angenommenAm = api.angenommenAm;
             else delete next.angenommenAm;
             if (api.moeglichesDuplikatVon) next.moeglichesDuplikatVon = api.moeglichesDuplikatVon;
@@ -2286,6 +2303,30 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   function setOelSaecke(n: number) {
     patchActive((e) => ({ ...e, oelSaecke: n }));
   }
+  /** Uebungskategorie aendern: lokal setzen und per PUT an den Einsatz (gilt fuer alle). */
+  function setzeUebungsTyp(wert: string) {
+    if (!active || active.abgeschlossen) return;
+    const id = active.id;
+    patchActive((e) => ({ ...e, uebungsTyp: wert, uebungsTypPending: true }));
+    apiCall(`/api/einsaetze/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: { uebungsTyp: wert },
+    })
+      .catch((err) => {
+        console.warn("[einsatz-sync] Übungskategorie konnte nicht gespeichert werden:", err);
+        setFehlerToast({ at: Date.now(), text: "Kategorie konnte nicht gespeichert werden — bitte erneut wählen." });
+      })
+      .finally(() => {
+        setEinsaetze((prev) =>
+          prev.map((e) => {
+            if (e.id !== id) return e;
+            const { uebungsTypPending: _p, ...rest } = e;
+            void _p;
+            return rest;
+          }),
+        );
+      });
+  }
   /** Vorbefuellung: Vorschlags-Geraete in EINEM Schritt uebernehmen (Oel → mind. 1 Sack). */
   function uebernehmeGearVorschlag(ids: string[]) {
     const oelId = gearList.find((g) => g.isOelbindemittel)?.id;
@@ -3164,6 +3205,32 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               einsatzortFehlt={einsatzortFehlt}
               moeglichesDuplikat={!!active.moeglichesDuplikatVon}
             />
+
+            {active.einsatzTyp === "uebung" ? (
+              <section className="card" style={{ marginBottom: 14 }}>
+                <div className="card-head">
+                  <div className="card-title">Übung</div>
+                  <span className="card-meta">auch nach dem Anlegen änderbar</span>
+                </div>
+                <div className="field">
+                  <label className="caption" htmlFor="uebungs-kategorie">Kategorie</label>
+                  <select
+                    id="uebungs-kategorie"
+                    className="input"
+                    value={active.uebungsTyp ?? ""}
+                    onChange={(ev) => setzeUebungsTyp(ev.target.value)}
+                    disabled={!!active.abgeschlossen}
+                  >
+                    <option value="">— nicht gewählt —</option>
+                    {UEBUNGS_TYPEN.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </section>
+            ) : null}
 
             <SectionHead title="Einsatzdaten" />
             <section className="card">

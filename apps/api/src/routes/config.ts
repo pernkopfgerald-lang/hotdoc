@@ -211,10 +211,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.5.2",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.5.2-release.apk",
+    currentVersion: "0.5.3",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.5.3-release.apk",
     releaseNotes:
-      "v0.5.2 — Fotos & PDFs in der Florian-Chronik\n\n• Florianstation: Fotos (JPG, PNG) und PDFs zur Chronik hinzufügen.\n• Übungen: Kategorie „Schulung/Vortrag“.\n• Beteiligte Stellen: „ASFINAG Traffic Manager“.",
+      "v0.5.3 — Übungskategorie nachträglich änderbar\n\n• Kategorie einer geöffneten Übung am Tablet und auf der Florianstation änderbar.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

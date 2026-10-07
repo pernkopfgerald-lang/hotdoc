@@ -32,6 +32,8 @@ export const EINSATZ_POLL_FELDER = [
   "alarmierungAuthor",
   "koordinaten",
   "stichwort",
+  // Uebungskategorie (auch bei geoeffneter Uebung am Tablet aenderbar)
+  "uebungsTyp",
   // Audit R3: Duplikat-Hinweis (Poller-Heuristik) + Annahme-Zeitpunkt am
   // Florian — das Tablet zeigt beides im Neuer-Einsatz-Popup.
   "moeglichesDuplikatVon",
