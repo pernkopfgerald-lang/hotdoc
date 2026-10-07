@@ -18,6 +18,7 @@ const UEBUNGS_TYPEN: UebungsTyp[] = [
   "Sanitätsdienst",
   "Funk",
   "Allgemeine Übung",
+  "Schulung/Vortrag",
   "Bewerb",
   "Sonstige",
 ];

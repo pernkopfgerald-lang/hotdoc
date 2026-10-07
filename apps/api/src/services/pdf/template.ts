@@ -151,6 +151,8 @@ export interface BerichtDaten {
    * Foto-Funktion (2026-06-03): Einsatz-Fotos. Inline als 4×3-cm-Thumbnail in
    * der Chronik (verknüpft über fotoId), groß im Anhang (8,5×10,5 cm, 4 pro A4).
    */
+  /** PDF-Dokumente aus der Chronik (liegen der Info-Mail bei, nicht im Bericht-PDF). */
+  dokumente?: Array<{ name: string; aufgenommenAm: string; aufgenommenVon?: string }>;
   fotos?: Array<{
     fotoId: string;
     dataUrl: string;
@@ -633,6 +635,8 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 
   ${isSpezial ? "" : renderWetterBlock(d)}
 
+  ${renderDokumenteBlock(d)}
+
   <table class="bx" style="margin-top:1mm">
     <tr>
       <td class="lbl" style="width:50%">${isUebung ? "Übungsleiter" : "Einsatzleiter"}</td>
@@ -694,6 +698,20 @@ function windRichtung(grad: number | undefined): string {
   if (grad === undefined) return "";
   const namen = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"];
   return namen[Math.round((((grad % 360) + 360) % 360) / 45) % 8] ?? "";
+}
+
+/** Aufgelistete PDF-Dokumente aus der Chronik (Datei liegt der Info-Mail bei). */
+function renderDokumenteBlock(d: BerichtDaten): string {
+  const dok = d.dokumente ?? [];
+  if (dok.length === 0) return "";
+  return `<table class="bx" style="margin-top:1mm">
+    <tr><td class="lbl">Angehängte Dokumente (PDF)</td></tr>
+    <tr><td class="val" style="font-size:9pt">${dok
+      .map((x) => `${escape(x.name)} <span style="color:#555">(${escape(formatTime(x.aufgenommenAm))}${x.aufgenommenVon ? ", " + escape(x.aufgenommenVon) : ""})</span>`)
+      .join("<br>")}
+      <div style="font-size:7.5pt;color:#555;margin-top:1pt">Die Dokumente liegen der Info-Mail zum Bericht als Anhang bei und sind in der Einsatzchronik abrufbar.</div>
+    </td></tr>
+  </table>`;
 }
 
 function renderWetterBlock(d: BerichtDaten): string {

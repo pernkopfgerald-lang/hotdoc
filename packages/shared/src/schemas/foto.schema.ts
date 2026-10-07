@@ -26,8 +26,17 @@ export const FotoSchema = z.object({
   einsatzId: z.string(),
   fahrzeugId: z.string(),
 
-  /** Komprimierte JPEG-Data-URL (data:image/jpeg;base64,…). */
-  dataUrl: z.string().regex(/^data:image\/(jpeg|png|webp);base64,/, "Erwartet Bild-Data-URL"),
+  /**
+   * Komprimierte JPEG-Data-URL (data:image/jpeg;base64,…) ODER ein PDF-
+   * Dokument (data:application/pdf;base64,…) — PDFs kommen von der
+   * Florianstation und werden im Bericht nur aufgelistet / der Info-Mail
+   * beigelegt (nicht ins Foto-Raster gesetzt).
+   */
+  dataUrl: z
+    .string()
+    .regex(/^data:(image\/(jpeg|png|webp)|application\/pdf);base64,/, "Erwartet Bild- oder PDF-Data-URL"),
+  /** Originaldateiname (bei PDF-Dokumenten), z. B. "Lageplan.pdf". */
+  dateiName: z.string().max(200).optional(),
   /** Optionaler Beschreibungstext (z. B. „Brandausbruchstelle Keller"). */
   beschreibung: z.string().max(500).optional(),
 

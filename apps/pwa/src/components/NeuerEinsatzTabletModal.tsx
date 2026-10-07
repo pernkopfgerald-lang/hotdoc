@@ -86,6 +86,7 @@ const UEBUNGS_TYPEN = [
   "Sanitätsdienst",
   "Funk",
   "Allgemeine Übung",
+  "Schulung/Vortrag",
   "Bewerb",
   "Sonstige",
 ] as const;

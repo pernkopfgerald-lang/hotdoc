@@ -22,7 +22,7 @@ import { writeAuditEvent } from "../services/audit.js";
 import type { SessionPayload } from "../services/auth/jwt.js";
 import { vergebeBerichtNummer } from "../services/bericht-nummer.js";
 import { sendMailWithAttachments } from "../lib/mailer.js";
-import { buildBerichtMailAnhaenge } from "./pdf.js";
+import { buildBerichtMailAnhaenge, loadDokumentAnhaenge } from "./pdf.js";
 import { haengeWetterAn } from "../services/wetter.js";
 
 export const einsaetzeRouter: Router = Router();
@@ -44,6 +44,8 @@ async function sendAbschlussMail(
 ): Promise<void> {
   try {
     const { pdf, markdown, nachbereitung } = await buildBerichtMailAnhaenge(id, doc);
+    // PDF-Dokumente aus der Chronik (Florianstation) beilegen.
+    const dokumente = await loadDokumentAnhaenge(id).catch(() => []);
     const bezeichnung =
       (doc.einsatzort as string | undefined) ||
       (doc.einsatzart as string | undefined) ||
@@ -55,10 +57,14 @@ async function sendAbschlussMail(
       text:
         `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}) als PDF sowie als Markdown-Datei zur automatisierten Weiterverarbeitung.\n\n` +
         (nachbereitung ? `${nachbereitung}\n\n` : "") +
+        (dokumente.length > 0
+          ? `DOKUMENTE aus der Einsatzchronik (im Anhang): ${dokumente.map((x) => x.filename).join(", ")}\n\n`
+          : "") +
         "Automatisch von HotDoc versendet.",
       attachments: [
         { filename: `${nummer}.pdf`, content: pdf, contentType: "application/pdf" },
         { filename: `${nummer}.md`, content: markdown, contentType: "text/markdown; charset=utf-8" },
+        ...dokumente,
       ],
     });
   } catch (err) {
@@ -369,6 +375,7 @@ const ManuellAnlageBodySchema = z.object({
       "Sanitätsdienst",
       "Funk",
       "Allgemeine Übung",
+      "Schulung/Vortrag",
       "Bewerb",
       "Sonstige",
     ])

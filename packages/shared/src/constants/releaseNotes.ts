@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.5.2",
+    date: "2026-10-07",
+    title: "Fotos & PDFs in der Florian-Chronik, Schulung/Vortrag, ASFINAG",
+    bullets: [
+      "Florianstation: In der Einsatzchronik lassen sich jetzt Fotos (JPG, PNG) und PDF-Dokumente (bis 4 MB) hinzufügen. Der Text im Eingabefeld wird zur Beschreibung. Fotos kommen ins Foto-Raster des Berichts, PDFs stehen als „Angehängte Dokumente“ im Bericht und liegen der Info-Mail als Anhang bei; in der Chronik öffnet „PDF öffnen“ das Dokument.",
+      "Übungen: neue Kategorie „Schulung/Vortrag“.",
+      "Beteiligte Stellen: „ASFINAG Traffic Manager“ ergänzt.",
+    ],
+  },
+  {
     version: "0.5.1",
     date: "2026-10-05",
     title: "Einsatzende im Hauptbericht manuell änderbar",

@@ -9,6 +9,7 @@ export type UebungsTyp =
   | "Sanitätsdienst"
   | "Funk"
   | "Allgemeine Übung"
+  | "Schulung/Vortrag"
   | "Bewerb"
   | "Sonstige";
 

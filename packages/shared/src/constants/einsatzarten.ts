@@ -54,6 +54,7 @@ export const BETEILIGTE_STELLEN = [
   "Arzt",
   "Bestatt.",
   "STM",
+  "ASFINAG Traffic Manager",
 ] as const;
 
 export type BeteiligteStelle = (typeof BETEILIGTE_STELLEN)[number];

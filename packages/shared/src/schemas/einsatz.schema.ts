@@ -135,6 +135,7 @@ export const EinsatzSchema = z.object({
       "Sanitätsdienst",
       "Funk",
       "Allgemeine Übung",
+      "Schulung/Vortrag",
       "Bewerb",
       "Sonstige",
     ])

@@ -298,6 +298,13 @@ _Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${formatTime(d
     teile.push(`> ${md(d.abschlussOverrideHinweis)}`);
   }
 
+  if (d.dokumente && d.dokumente.length > 0) {
+    teile.push(h2("Dokumente (PDF, als Mail-Anhang)"));
+    for (const x of d.dokumente) {
+      teile.push(`- ${md(x.name)} (${formatDateTime(x.aufgenommenAm)}${x.aufgenommenVon ? `, ${md(x.aufgenommenVon)}` : ""})`);
+    }
+  }
+
   teile.push(h2("Fotos"));
   if (d.fotos && d.fotos.length > 0) {
     // Bewusst OHNE dataUrl (Base64) — die Bilddaten sind bereits im PDF

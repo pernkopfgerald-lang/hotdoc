@@ -25,7 +25,15 @@ export const fotosRouter: Router = Router();
 const FotoUploadBodySchema = z.object({
   fotoId: z.string().regex(/^foto:.+$/),
   fahrzeugId: z.string().min(1),
-  dataUrl: z.string().regex(/^data:image\/(jpeg|png|webp);base64,/),
+  dataUrl: z
+    .string()
+    .regex(/^data:(image\/(jpeg|png|webp)|application\/pdf);base64,/)
+    // PDF: echte PDF-Kennung (%PDF → "JVBER") und Groessenlimit (~4,2 MB Datei)
+    .refine((v) => !v.startsWith("data:application/pdf") || /^data:application\/pdf;base64,JVBER/.test(v), {
+      message: "Keine gueltige PDF-Datei",
+    })
+    .refine((v) => v.length <= 5_650_000, { message: "Datei zu gross (max. 4 MB)" }),
+  dateiName: z.string().max(200).optional(),
   beschreibung: z.string().max(500).optional(),
   aufgenommenAm: z.string(),
   aufgenommenVon: z.string().optional(),
@@ -80,6 +88,7 @@ fotosRouter.put(
       einsatzId,
       fahrzeugId: b.fahrzeugId,
       dataUrl: b.dataUrl,
+      ...(b.dateiName ? { dateiName: b.dateiName } : {}),
       ...(b.beschreibung ? { beschreibung: b.beschreibung } : {}),
       aufgenommenAm: b.aufgenommenAm,
       ...(b.aufgenommenVon ? { aufgenommenVon: b.aufgenommenVon } : {}),

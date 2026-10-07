@@ -35,6 +35,8 @@ interface FotoDocLocal {
   einsatzId: string;
   fahrzeugId: string;
   dataUrl: string;
+  /** Originaldateiname (nur bei PDF-Dokumenten). */
+  dateiName?: string;
   beschreibung?: string;
   aufgenommenAm: string;
   aufgenommenVon?: string;
@@ -190,6 +192,106 @@ export async function captureFoto(args: {
   });
 
   return { fotoId, dataUrl, aufgenommenAm: now };
+}
+
+/** Maximale PDF-Dateigroesse (Base64-Body muss unter dem 6-MB-API-Limit bleiben). */
+export const MAX_PDF_BYTES = 4 * 1024 * 1024;
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("Datei konnte nicht gelesen werden"));
+    r.readAsDataURL(file);
+  });
+}
+
+/**
+ * PDF-Dokument zur Chronik (Florianstation): wird unveraendert als foto:-Doc
+ * abgelegt (mit dateiName) und wie ein Foto ueber die Outbox hochgeladen.
+ * Der Bericht listet es auf, die Info-Mail zum Abschluss enthaelt es als Anhang.
+ */
+export async function captureDokument(args: {
+  einsatzId: string;
+  fahrzeugId: string;
+  funkrufname?: string;
+  file: File;
+  beschreibung?: string;
+}): Promise<CaptureResult> {
+  if (args.file.size > MAX_PDF_BYTES) {
+    throw new Error("PDF ist zu groß (max. 4 MB).");
+  }
+  const raw = await readAsDataUrl(args.file);
+  // Manche Browser liefern fuer PDFs application/octet-stream — vereinheitlichen.
+  const dataUrl = raw.replace(/^data:[^;,]*;base64,/, "data:application/pdf;base64,");
+  if (!dataUrl.startsWith("data:application/pdf;base64,JVBER")) {
+    throw new Error("Die Datei ist kein gültiges PDF.");
+  }
+  const fotoId = buildFotoId(args.einsatzId, args.fahrzeugId);
+  const now = new Date().toISOString();
+  const dateiName = args.file.name.slice(0, 200);
+
+  const doc: FotoDocLocal = {
+    _id: fotoId,
+    type: "foto",
+    einsatzId: args.einsatzId,
+    fahrzeugId: args.fahrzeugId,
+    dataUrl,
+    dateiName,
+    ...(args.beschreibung ? { beschreibung: args.beschreibung } : {}),
+    aufgenommenAm: now,
+    ...(args.funkrufname ? { aufgenommenVon: args.funkrufname } : {}),
+    erstelltAm: now,
+    geaendertAm: now,
+  };
+  try {
+    await db.put(doc);
+  } catch (err) {
+    if ((err as { status?: number }).status !== 409) {
+      console.warn("[dokument] lokales Speichern fehlgeschlagen:", err);
+    }
+  }
+  await enqueueRequest(
+    3,
+    `foto:${fotoId}`,
+    "PUT",
+    `/api/einsaetze/${encodeURIComponent(args.einsatzId)}/fotos`,
+    {
+      fotoId,
+      fahrzeugId: args.fahrzeugId,
+      dataUrl,
+      dateiName,
+      ...(args.beschreibung ? { beschreibung: args.beschreibung } : {}),
+      aufgenommenAm: now,
+      ...(args.funkrufname ? { aufgenommenVon: args.funkrufname } : {}),
+    },
+  ).catch((err) => {
+    console.warn("[dokument] Outbox-Enqueue fehlgeschlagen:", err);
+  });
+  return { fotoId, dataUrl, aufgenommenAm: now };
+}
+
+/** Data-URL eines PDFs in einem neuen Tab oeffnen (Blob statt data:-URL, die Browser blockieren). */
+export function oeffnePdfDataUrl(dataUrl: string, dateiName?: string): void {
+  try {
+    const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = dateiName || "Dokument.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    console.warn("[dokument] Öffnen fehlgeschlagen:", err);
+  }
 }
 
 /**

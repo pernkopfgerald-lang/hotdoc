@@ -94,9 +94,17 @@ async function loadFahrzeugberichte(
  * Foto-Anhang). Fehler werden geschluckt — fehlt der Anhang, ist das PDF
  * trotzdem gültig.
  */
-async function loadFotos(
-  einsatzId: string,
-): Promise<NonNullable<BerichtDaten["fotos"]>> {
+interface FotoDocLite {
+  fotoId: string;
+  dataUrl: string;
+  beschreibung?: string;
+  aufgenommenAm: string;
+  aufgenommenVon?: string;
+  dateiName?: string;
+}
+
+/** Alle foto:-Docs (Bilder UND PDF-Dokumente) eines Einsatzes. */
+async function loadFotoDocs(einsatzId: string): Promise<FotoDocLite[]> {
   const prefix = `foto:${einsatzId.replace(/^einsatz:/, "")}:`;
   try {
     const list = await db.list({ startkey: prefix, endkey: `${prefix}￰`, include_docs: true });
@@ -109,11 +117,37 @@ async function loadFotos(
         ...(typeof d.beschreibung === "string" ? { beschreibung: d.beschreibung } : {}),
         aufgenommenAm: String(d.aufgenommenAm ?? ""),
         ...(typeof d.aufgenommenVon === "string" ? { aufgenommenVon: d.aufgenommenVon } : {}),
+        ...(typeof d.dateiName === "string" ? { dateiName: d.dateiName } : {}),
       }));
   } catch (err) {
     logger.warn({ err, einsatzId }, "Foto-Laden für PDF fehlgeschlagen — Anhang entfällt");
     return [];
   }
+}
+
+const istPdfDataUrl = (u: string): boolean => u.startsWith("data:application/pdf");
+
+/**
+ * PDF-Dokumente aus der Chronik (Florianstation) als Mail-Anhaenge. Sie
+ * werden nicht in das Berichts-PDF eingebettet (kein PDF-Merge im System),
+ * sondern der Info-Mail beigelegt und im Bericht aufgelistet.
+ */
+export async function loadDokumentAnhaenge(
+  einsatzId: string,
+): Promise<Array<{ filename: string; content: Buffer; contentType: string }>> {
+  const docs = (await loadFotoDocs(einsatzId)).filter((f) => istPdfDataUrl(f.dataUrl));
+  const benutzt = new Set<string>();
+  return docs.map((f, i) => {
+    let name = (f.dateiName ?? `Dokument-${i + 1}.pdf`).replace(/[^\w.\- äöüÄÖÜß()]/g, "_");
+    if (!/\.pdf$/i.test(name)) name += ".pdf";
+    while (benutzt.has(name.toLowerCase())) name = name.replace(/(\.pdf)$/i, `-${i + 1}$1`);
+    benutzt.add(name.toLowerCase());
+    return {
+      filename: name,
+      content: Buffer.from(f.dataUrl.slice(f.dataUrl.indexOf(",") + 1), "base64"),
+      contentType: "application/pdf",
+    };
+  });
 }
 
 /**
@@ -385,7 +419,18 @@ async function buildBerichtDaten(
   // Inline-Thumbnails in der Chronik + Foto-Anhang-Seiten 9×12 cm).
   // D-08: Der Spickzettel (HTML ohne Bilder) laedt die Foto-Docs nicht — die
   // Base64-DataUrls sind der groesste Teil des Einsatz-Payloads.
-  const fotos: NonNullable<BerichtDaten["fotos"]> = opts.ohneFotos ? [] : await loadFotos(id);
+  const alleFotoDocs = opts.ohneFotos ? [] : await loadFotoDocs(id);
+  // Foto-Raster nur mit Bildern; PDFs werden separat als Dokumente aufgelistet.
+  const fotos: NonNullable<BerichtDaten["fotos"]> = alleFotoDocs
+    .filter((f) => !istPdfDataUrl(f.dataUrl))
+    .map(({ dateiName: _n, ...rest }) => rest);
+  const dokumente: NonNullable<BerichtDaten["dokumente"]> = alleFotoDocs
+    .filter((f) => istPdfDataUrl(f.dataUrl))
+    .map((f) => ({
+      name: f.dateiName ?? "Dokument.pdf",
+      aufgenommenAm: f.aufgenommenAm,
+      ...(f.aufgenommenVon ? { aufgenommenVon: f.aufgenommenVon } : {}),
+    }));
 
   // Fahrzeug-Anhang-Daten mit Personen-Namen aufgeloest
   const fahrzeugberichteOut: NonNullable<BerichtDaten["fahrzeugberichte"]> = [];
@@ -620,6 +665,7 @@ async function buildBerichtDaten(
     fahrzeugberichte: fahrzeugberichteOut,
     // Foto-Funktion (2026-06-03): Fotos für Inline-Thumbnail + Anhang-Seiten.
     ...(fotos.length > 0 ? { fotos } : {}),
+    ...(dokumente.length > 0 ? { dokumente } : {}),
     ...(abschlussHinweis ? { abschlussOverrideHinweis: abschlussHinweis } : {}),
     // Issue 16/17 (Einsatz-Test 2026-06-02): syBOS-Statistik-Bloecke durch-
     // reichen. Wenn das Doc keinen entsprechenden Block hat, bleibt das

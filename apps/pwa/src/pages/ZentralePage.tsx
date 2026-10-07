@@ -13,6 +13,7 @@ import {
   Lock,
   Map as MapIcon,
   MapPin,
+  Paperclip,
   Phone,
   Siren,
   Trash2,
@@ -40,6 +41,7 @@ import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { apiCall, ApiError, describeApiError, getTabletToken } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
+import { captureDokument, captureFoto, MAX_PDF_BYTES } from "../lib/foto";
 // AUDIT-09/KDT-06 (Audit 2026-06-12): gecachte Personalliste als Offline-Fallback.
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useGeolocation } from "../lib/geo";
@@ -2152,10 +2154,21 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const fotoLoadPromiseRef = useRef<Promise<void> | null>(null);
   const fotosLoadedForRef = useRef<string | null>(null);
 
+  const fotoFetchAtRef = useRef(0);
   async function loadFotoFlorian(fotoId: string): Promise<string | null> {
     const einsatzId = aktiverEinsatzIdRef.current;
     if (!einsatzId) return null;
+    // Nicht im Cache, aber der Abruf ist schon aelter → ein Foto/PDF kam
+    // inzwischen dazu (anderes Tablet, Florian selbst): einmal neu laden.
+    if (
+      fotosLoadedForRef.current === einsatzId &&
+      !fotoCacheRef.current.has(fotoId) &&
+      Date.now() - fotoFetchAtRef.current > 8_000
+    ) {
+      fotosLoadedForRef.current = null;
+    }
     if (fotosLoadedForRef.current !== einsatzId) {
+      fotoFetchAtRef.current = Date.now();
       // Einsatz-Wechsel → Cache verwerfen und genau EINEN Fetch starten.
       // Das Promise wird gecacht — parallele loadFoto-Aufrufe der Timeline
       // warten alle auf denselben Request statt N-mal /fotos zu treffen.
@@ -3755,6 +3768,9 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               wachsen. */}
           <FlorianChronikInput
             einsatzId={aktiverEinsatzId}
+            onFotoLokal={(fotoId, dataUrl) => {
+              fotoCacheRef.current.set(fotoId, dataUrl);
+            }}
             // AUDIT-09/EL-03-UI: bei Schreibschutz gesperrt + Hinweis statt
             // Eingaben, die der Server ohnehin mit 423 ablehnt.
             schreibschutz={schreibschutz}
@@ -6019,8 +6035,11 @@ function FlorianChronikInput({
   schreibschutz,
   onAdded,
   onRejected,
+  onFotoLokal,
 }: {
   einsatzId: string | null;
+  /** Foto/PDF gerade hochgeladen → dataUrl direkt in den Anzeige-Cache. */
+  onFotoLokal?: (fotoId: string, dataUrl: string) => void;
   /** AUDIT-09/EL-03-UI: bei abgeschlossenem Einsatz ist die Eingabe gesperrt
    *  — der Server wuerde den POST ohnehin mit 423 ablehnen. */
   schreibschutz: boolean;
@@ -6032,6 +6051,83 @@ function FlorianChronikInput({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const dateiRef = useRef<HTMLInputElement | null>(null);
+
+  /**
+   * Foto (JPG/PNG) oder PDF zur Chronik. Der Text im Eingabefeld wird (falls
+   * vorhanden) als Beschreibung verwendet. Fotos kommen wie am Tablet ins
+   * Foto-Raster des Berichts; PDFs werden im Bericht aufgelistet und der
+   * Info-Mail beigelegt.
+   */
+  async function dateiAnhaengen(file: File) {
+    if (schreibschutz) return;
+    if (!einsatzId) {
+      setErr("Kein aktiver Einsatz — kann Datei nicht zuordnen.");
+      return;
+    }
+    const istPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    const istBild = /^image\/(jpeg|png)$/.test(file.type) || /\.(jpe?g|png)$/i.test(file.name);
+    if (!istPdf && !istBild) {
+      setErr("Nur JPG, PNG oder PDF können angehängt werden.");
+      return;
+    }
+    if (istPdf && file.size > MAX_PDF_BYTES) {
+      setErr(`PDF ist zu groß (${(file.size / 1048576).toFixed(1)} MB) — maximal 4 MB.`);
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const beschreibung = text.trim();
+      const res = istPdf
+        ? await captureDokument({
+            einsatzId,
+            fahrzeugId: "zentrale",
+            funkrufname: "Florian Eberstalzell",
+            file,
+            ...(beschreibung ? { beschreibung } : {}),
+          })
+        : await captureFoto({
+            einsatzId,
+            fahrzeugId: "zentrale",
+            funkrufname: "Florian Eberstalzell",
+            file,
+            ...(beschreibung ? { beschreibung } : {}),
+          });
+      onFotoLokal?.(res.fotoId, res.dataUrl);
+      const id = `florian-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const eintragText = istPdf
+        ? `Dokument: ${file.name}${beschreibung ? ` — ${beschreibung}` : ""}`
+        : beschreibung || "Foto";
+      const eintrag: ChronikEintrag = {
+        id,
+        zeitstempel: res.aufgenommenAm,
+        funkrufname: "Florian Eberstalzell",
+        source: "manuell",
+        text: eintragText,
+        fotoId: res.fotoId,
+      };
+      onAdded(eintrag);
+      setText("");
+      const result = await broadcastChronikEntry(einsatzId, {
+        id,
+        zeitstempel: res.aufgenommenAm,
+        funkrufname: "Florian Eberstalzell",
+        fahrzeugId: "zentrale",
+        source: "manuell",
+        text: eintragText,
+        fotoId: res.fotoId,
+      });
+      if (result === "rejected") {
+        onRejected(id);
+        setErr("Eintrag NICHT gespeichert — Bericht ist abgeschlossen.");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Datei konnte nicht verarbeitet werden.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     const cleaned = text.trim();
@@ -6117,6 +6213,29 @@ function FlorianChronikInput({
           +
         </button>
       </div>
+      {/* Foto / PDF anhaengen (JPG, PNG, PDF) — Text im Feld wird zur Beschreibung. */}
+      <input
+        ref={dateiRef}
+        type="file"
+        accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void dateiAnhaengen(f);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => dateiRef.current?.click()}
+        disabled={busy || !einsatzId || schreibschutz}
+        aria-label="Foto oder PDF zur Chronik hinzufügen"
+        className="btn"
+        style={{ marginTop: 8, width: "100%", gap: 8 }}
+      >
+        <Paperclip size={18} />
+        {busy ? "Datei wird verarbeitet …" : "Foto / PDF hinzufügen (JPG, PNG, PDF)"}
+      </button>
       <p
         style={{
           marginTop: 8,
@@ -6127,7 +6246,7 @@ function FlorianChronikInput({
       >
         {schreibschutz
           ? "Bericht abgeschlossen — erst reaktivieren."
-          : "Eintrag erscheint binnen 8 s in der Chronik aller Fahrzeug-Tablets."}
+          : "Eintrag erscheint binnen 8 s in der Chronik aller Fahrzeug-Tablets. PDFs sind max. 4 MB groß und liegen der Info-Mail bei."}
       </p>
     </div>
   );

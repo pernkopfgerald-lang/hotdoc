@@ -1,4 +1,5 @@
 import { Pencil, X, Check } from "lucide-react";
+import { oeffnePdfDataUrl } from "../lib/foto";
 import { memo, useEffect, useRef, useState } from "react";
 
 export interface ChronikEintrag {
@@ -325,7 +326,35 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                   {/* Foto-Funktion (2026-06-03): Thumbnail (4:3) wenn der
                       Eintrag ein Foto trägt. Tipp öffnet die Großansicht. */}
                   {e.fotoId ? (
-                    fotoCache[e.fotoId] ? (
+                    fotoCache[e.fotoId]?.startsWith("data:application/pdf") ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          oeffnePdfDataUrl(
+                            fotoCache[e.fotoId!] ?? "",
+                            e.text.replace(/^Dokument:\s*/, "").split(" — ")[0],
+                          )
+                        }
+                        aria-label="PDF-Dokument öffnen"
+                        style={{
+                          marginTop: 6,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 14px",
+                          minHeight: 44,
+                          border: "1px solid var(--border-strong)",
+                          borderRadius: 4,
+                          background: "var(--surface-2)",
+                          color: "var(--fg)",
+                          fontSize: 16,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        📄 PDF öffnen
+                      </button>
+                    ) : fotoCache[e.fotoId] ? (
                       <button
                         type="button"
                         onClick={() => setLightbox(fotoCache[e.fotoId!] ?? null)}
@@ -364,7 +393,9 @@ export const ChronikTimeline = memo(function ChronikTimeline({
                             verfuegbar; ohne loadFoto-Prop gibt es NIE ein
                             Bild (frueher stand dann ewig "Foto laedt …"). */}
                         {fotoCache[e.fotoId] === null
-                          ? "📷 Foto (im Bericht enthalten)"
+                          ? e.text.startsWith("Dokument:")
+                            ? "📄 PDF-Dokument (liegt der Info-Mail bei)"
+                            : "📷 Foto (im Bericht enthalten)"
                           : loadFoto
                             ? "📷 Foto lädt …"
                             : "📷 Foto am Tablet — im PDF enthalten"}
