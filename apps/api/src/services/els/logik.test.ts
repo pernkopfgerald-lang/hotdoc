@@ -116,6 +116,14 @@ describe("Einheiten", () => {
     expect(ordneUnitZu({ ...tank, callname: "Kommando Eberstalzell" })).toBe("kdo");
     expect(ordneUnitZu({ ...tank, callname: "MTF" })).toBe("mtf");
   });
+  it("ordnet auch zu, wenn die Leitstelle nur den ersten Teil des Funkrufnamens führt", () => {
+    const u = parseUnit(unitRoh)!;
+    expect(ordneUnitZu({ ...u, callname: "Kommando" })).toBe("kdo");
+    expect(ordneUnitZu({ ...u, callname: "Tank" })).toBe("tlf-a-4000");
+    expect(ordneUnitZu({ ...u, callname: "Pumpe" })).toBe("lfa-b");
+    expect(ordneUnitZu({ ...u, callname: "Höhenretter-STP" })).toBeNull();
+    expect(ordneUnitZu({ ...u, callname: "Ta" })).toBeNull(); // zu kurz fuer einen Praefix-Treffer
+  });
   it("kein Treffer -> null, manuelle Zuordnung hat Vorrang", () => {
     const fremd = { ...parseUnit(unitRoh)!, callname: "RLFA 2000", unid: "777" };
     expect(ordneUnitZu(fremd)).toBeNull();

@@ -124,6 +124,8 @@ export interface ElsUnit {
   num1: string;
   lat: number | null;
   lng: number | null;
+  /** Alle Felder, wie sie die Schnittstelle liefert (Diagnose: welche Felder gibt es wirklich?). */
+  roh: Record<string, unknown>;
 }
 
 export function parseUnit(raw: Record<string, unknown>): ElsUnit | null {
@@ -146,6 +148,7 @@ export function parseUnit(raw: Record<string, unknown>): ElsUnit | null {
     ...(ts ? { lastStatusTimestamp: ts } : {}),
     ...(eid !== null ? { eid } : {}),
     num1: str(raw.num_1),
+    roh: raw,
     // 0/0 heisst bei GPS-Feeds "keine Position".
     lat: lat !== null && lng !== null && !(lat === 0 && lng === 0) ? lat : null,
     lng: lat !== null && lng !== null && !(lat === 0 && lng === 0) ? lng : null,
@@ -197,6 +200,12 @@ export function ordneUnitZu(
     const f = FAHRZEUGE[id];
     const kandidaten = [f.abk, f.funkrufname, f.bezeichnung].map(normName);
     if (namen.some((n) => kandidaten.includes(n))) return id;
+  }
+  // Die Leitstelle fuehrt oft nur den ersten Teil des Funkrufnamens ("Kommando"
+  // statt "Kommando Eberstalzell", "Tank" statt "Tank Eberstalzell").
+  for (const id of ZUORDENBAR) {
+    const voll = normName(FAHRZEUGE[id].funkrufname);
+    if (namen.some((n) => n.length >= 3 && voll.startsWith(n))) return id;
   }
   return null;
 }
