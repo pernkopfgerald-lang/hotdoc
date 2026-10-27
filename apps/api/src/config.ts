@@ -52,8 +52,12 @@ const EnvSchema = z
     ELS_STATION_ID: z.string().optional(),
     /** Frei waehlbare Systemkennung, die beim Register mitgeschickt wird. */
     ELS_SYSTEM_NAME: z.string().default("HotDoc"),
-    /** Funkstatus/Positionen: Limit der Schnittstelle ist 60 s. */
-    ELS_UNITS_POLL_SEC: z.coerce.number().int().min(60).default(60),
+    /**
+     * Funkstatus/Positionen: Limit der Schnittstelle ist 60 s. Default 65 s —
+     * ein Intervall von exakt 60 s unterschreitet durch Timer-Drift gelegentlich
+     * das Limit und wuerde dann abgelehnt.
+     */
+    ELS_UNITS_POLL_SEC: z.coerce.number().int().min(60).default(65),
     /** Offene Einsaetze: Limit der Schnittstelle ist 5 s. */
     ELS_EVENTS_POLL_SEC: z.coerce.number().int().min(5).default(15),
     /** "0" = Einsaetze aus ELS nie selbst anlegen (nur verknuepfen/anreichern). */

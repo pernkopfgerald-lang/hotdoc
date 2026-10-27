@@ -243,12 +243,19 @@ async function getJson(pfad: string, token: string): Promise<{ status: number; j
   return { status: res.status, json: await res.json() };
 }
 
-/** GET mit Bearer; bei 401/403 genau einmal Token erneuern und wiederholen. */
-async function abruf(pfad: string): Promise<unknown> {
+/**
+ * GET mit Bearer; bei 401/403 genau einmal Token erneuern und wiederholen.
+ * `key` stempelt den Abruf fuer den Limit-Schutz — erst wenn ein Token da ist
+ * und die Anfrage wirklich rausgeht (ein gescheiterter Token-Vorgang verbraucht
+ * das Abruf-Limit nicht).
+ */
+async function abruf(pfad: string, key: string): Promise<unknown> {
   let token = await getAccessToken();
+  letzterAbruf.set(key, Date.now());
   let r = await getJson(pfad, token);
   if (r.status === 401 || r.status === 403) {
     token = await getAccessToken(true);
+    letzterAbruf.set(key, Date.now());
     r = await getJson(pfad, token);
     if (r.status === 401 || r.status === 403) throw new ElsFehler(`ELS ${pfad}: nicht autorisiert (${r.status})`, r.status);
   }
@@ -263,23 +270,23 @@ const MIN_INTERVALL_MS: Record<string, number> = {
   events: 5_000,
 };
 
-function limitIntervall(key: string): void {
+/** Wirft, wenn der letzte tatsaechliche Abruf noch kein volles Limit zurueckliegt. */
+function pruefeLimit(key: string): void {
   const min = MIN_INTERVALL_MS[key] ?? 0;
   const last = letzterAbruf.get(key) ?? 0;
   if (Date.now() - last < min) {
     throw new ElsFehler(`ELS ${key}: Abruf-Limit (${Math.round(min / 1000)} s) — zu früh`, 429);
   }
-  letzterAbruf.set(key, Date.now());
 }
 
 /** Alle Einheiten der Feuerwehr (Limit der Schnittstelle: 60 s). */
 export async function holeUnitsRoh(): Promise<Record<string, unknown>[]> {
-  limitIntervall("units");
-  return extractList(await abruf("/API/v1/export/units"), "unit");
+  pruefeLimit("units");
+  return extractList(await abruf("/API/v1/export/units", "units"), "unit");
 }
 
 /** Alle offenen Einsaetze der Feuerwehr (Limit der Schnittstelle: 5 s). */
 export async function holeEventsRoh(): Promise<Record<string, unknown>[]> {
-  limitIntervall("events");
-  return extractList(await abruf("/API/v1/export/events"), "event");
+  pruefeLimit("events");
+  return extractList(await abruf("/API/v1/export/events", "events"), "event");
 }

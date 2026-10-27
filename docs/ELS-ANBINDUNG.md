@@ -27,7 +27,7 @@ Optionale Einstellungen (ebenfalls `fly secrets set` / `[env]`):
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `ELS_UNITS_POLL_SEC` | 60 | Funkstatus/Position (Mindestwert der Schnittstelle: 60) |
+| `ELS_UNITS_POLL_SEC` | 65 | Funkstatus/Position (Mindestwert der Schnittstelle: 60; 65 wegen Timer-Drift) |
 | `ELS_EVENTS_POLL_SEC` | 15 | offene Einsätze (Mindestwert der Schnittstelle: 5) |
 | `ELS_AUTOSTART` | 1 | `0` = Einsätze nie selbst anlegen, nur verknüpfen |
 | `ELS_AUTOSTART_GRACE_SEC` | 120 | Wartezeit nach der Alarmierung, bevor ein Einsatz selbst angelegt wird |
