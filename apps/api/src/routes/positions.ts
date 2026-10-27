@@ -22,7 +22,7 @@ import { z } from "zod";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { mitElsVorrang } from "../services/els/positionen.js";
-import { getElsSnapshot } from "../services/els/state.js";
+import { holeSnapshot } from "../services/els/state.js";
 import {
   getAllPings,
   setPing,
@@ -121,5 +121,5 @@ positionsRouter.get("/api/positions", requireAuth(), ah(async (_req, res) => {
   const pings = await getAllPings();
   // Funkposition aus ELS hat Vorrang vor dem Tablet-GPS (services/els/positionen);
   // das Tablet bleibt Rueckfall, wenn ELS aus ist oder keine Position kennt.
-  res.json({ ok: true, items: mitElsVorrang(pings, getElsSnapshot()) });
+  res.json({ ok: true, items: mitElsVorrang(pings, await holeSnapshot()) });
 }));

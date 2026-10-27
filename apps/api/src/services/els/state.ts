@@ -75,6 +75,7 @@ export interface ElsSnapshot {
 
 let snapshot: ElsSnapshot | null = null;
 
+/** Nur der lokal (von dieser Instanz) abgerufene Stand. Fuer Anzeige/Routen `holeSnapshot` nutzen. */
 export function getElsSnapshot(): ElsSnapshot | null {
   return snapshot;
 }
@@ -84,6 +85,60 @@ export async function setElsUnits(units: ElsUnit[]): Promise<void> {
   const status = baueFahrzeugStatus(units, override);
   const nichtZugeordnet = units.filter((u) => ordneUnitZu(u, override) === null);
   snapshot = { fetchedAt: new Date().toISOString(), units, status, nichtZugeordnet };
+  await speichereSnapshot(snapshot);
+}
+
+// ─── Gemeinsamer Stand (alle Instanzen) ──────────────────────────────
+
+const SNAPSHOT_DOC = "state:els-snapshot";
+const SNAPSHOT_CACHE_MS = 4000;
+let geteilt: { at: number; value: ElsSnapshot | null } | null = null;
+let snapshotRev: string | undefined;
+
+/** Der abfragende Server legt den Stand ab, damit alle Instanzen ihn lesen koennen (ein Doc, wird ueberschrieben). */
+async function speichereSnapshot(s: ElsSnapshot): Promise<void> {
+  try {
+    const r = await db.insert({
+      _id: SNAPSHOT_DOC,
+      ...(snapshotRev ? { _rev: snapshotRev } : {}),
+      type: "state",
+      snapshot: s,
+    });
+    snapshotRev = r.rev;
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 409) {
+      snapshotRev = undefined; // naechster Versuch holt die _rev frisch
+      try {
+        const d = (await db.get(SNAPSHOT_DOC)) as { _rev?: string };
+        snapshotRev = d._rev;
+        const r = await db.insert({ _id: SNAPSHOT_DOC, _rev: snapshotRev, type: "state", snapshot: s });
+        snapshotRev = r.rev;
+      } catch {
+        snapshotRev = undefined;
+      }
+    }
+    // Andere Fehler: lokaler Stand bleibt gueltig, Anzeige faellt auf RAM zurueck.
+  }
+}
+
+/**
+ * Neuester bekannter Stand: lokal abgerufen oder von einer anderen Instanz
+ * gespeichert (4 s zwischengespeichert). Wirft nie.
+ */
+export async function holeSnapshot(): Promise<ElsSnapshot | null> {
+  if (!geteilt || Date.now() - geteilt.at > SNAPSHOT_CACHE_MS) {
+    let value: ElsSnapshot | null = geteilt?.value ?? null;
+    try {
+      const d = (await db.get(SNAPSHOT_DOC)) as { snapshot?: ElsSnapshot };
+      value = d.snapshot ?? null;
+    } catch {
+      // nicht lesbar/noch nicht vorhanden → vorhandenen Wert behalten
+    }
+    geteilt = { at: Date.now(), value };
+  }
+  const fremd = geteilt.value;
+  if (snapshot && (!fremd || Date.parse(snapshot.fetchedAt) >= Date.parse(fremd.fetchedAt))) return snapshot;
+  return fremd ?? snapshot;
 }
 
 // ─── Manuelle Zuordnung (config:els-zuordnung) ───────────────────────
@@ -119,7 +174,7 @@ export function verwerfeZuordnungCache(): void {
   zuordnungCache = null;
 }
 
-/** Alter der Einheiten-Daten in Sekunden (null = noch keine). */
-export function snapshotAlterSec(): number | null {
-  return snapshot ? Math.round((Date.now() - Date.parse(snapshot.fetchedAt)) / 1000) : null;
+/** Alter eines Stands in Sekunden (null = kein Stand). */
+export function snapshotAlterSec(s: ElsSnapshot | null): number | null {
+  return s ? Math.round((Date.now() - Date.parse(s.fetchedAt)) / 1000) : null;
 }

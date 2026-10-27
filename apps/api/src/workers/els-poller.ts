@@ -38,6 +38,7 @@ import {
   type EinsatzKandidat,
   type ElsEvent,
 } from "../services/els/logik.js";
+import { istLeader } from "../services/els/leader.js";
 import { dokumentiereStatus } from "../services/els/protokoll.js";
 import {
   getElsSnapshot,
@@ -73,6 +74,8 @@ export async function pollUnitsOnce(): Promise<void> {
   if (unitsInFlight) return;
   unitsInFlight = true;
   try {
+    // Nur die Instanz mit der Leihe fragt ab (siehe services/els/leader.ts).
+    if (!(await istLeader())) return;
     const units = (await holeUnitsRoh())
       .map(parseUnit)
       .filter((u): u is NonNullable<typeof u> => u !== null);
@@ -120,6 +123,7 @@ export async function pollEventsOnce(): Promise<void> {
   if (eventsInFlight) return;
   eventsInFlight = true;
   try {
+    if (!(await istLeader())) return;
     const events = (await holeEventsRoh())
       .map(parseEvent)
       .filter((e): e is ElsEvent => e !== null)

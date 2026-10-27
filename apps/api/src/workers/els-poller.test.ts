@@ -80,6 +80,11 @@ async function lade() {
   return { poller, state };
 }
 
+/** Nur Einsatz-Dokumente zaehlen (daneben liegen Sperre und Stand der ELS-Anbindung). */
+function einsatzAnzahl(): number {
+  return [...docs.keys()].filter((k) => k.startsWith("einsatz:")).length;
+}
+
 function vorhandenerEinsatz(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     _id: "einsatz:bls-1",
@@ -130,7 +135,7 @@ describe("ELS-Poller: Einsaetze", () => {
     holeEventsRoh.mockResolvedValue([eventRoh({ firstdispatch_time: jetztMinus(30) })]);
     const { poller } = await lade();
     await poller.pollEventsOnce();
-    expect(docs.size).toBe(0);
+    expect(einsatzAnzahl()).toBe(0);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -202,7 +207,7 @@ describe("ELS-Poller: Einsaetze", () => {
     ]);
     const { poller, state } = await lade();
     await poller.pollEventsOnce();
-    expect(docs.size).toBe(0);
+    expect(einsatzAnzahl()).toBe(0);
     expect(state.getElsPollStand().eventsOffen).toBe(0);
   });
 
@@ -213,14 +218,14 @@ describe("ELS-Poller: Einsaetze", () => {
     const { env } = await import("../config.js");
     (env as { ELS_AUTOSTART: string }).ELS_AUTOSTART = "0";
     await poller.pollEventsOnce();
-    expect(docs.size).toBe(0);
+    expect(einsatzAnzahl()).toBe(0);
   });
 
   it("legt keine Einsaetze an, die schon laenger als 6 h laufen", async () => {
     holeEventsRoh.mockResolvedValue([eventRoh({ firstdispatch_time: jetztMinus(7 * 3600) })]);
     const { poller } = await lade();
     await poller.pollEventsOnce();
-    expect(docs.size).toBe(0);
+    expect(einsatzAnzahl()).toBe(0);
   });
 
   it("Fehler beim Abruf: wird festgehalten, nichts angelegt, kein Wurf", async () => {
@@ -228,7 +233,40 @@ describe("ELS-Poller: Einsaetze", () => {
     const { poller, state } = await lade();
     await expect(poller.pollEventsOnce()).resolves.toBeUndefined();
     expect(state.getElsPollStand().eventsLastError).toBe("ELS down");
-    expect(docs.size).toBe(0);
+    expect(einsatzAnzahl()).toBe(0);
+  });
+});
+
+describe("ELS-Poller: nur eine Instanz fragt ab", () => {
+  it("fragt nicht ab, solange eine andere Instanz die Leihe hält", async () => {
+    docs.set("state:els-leader", { _id: "state:els-leader", type: "state", holder: "andere-instanz", until: Date.now() + 60_000 });
+    holeEventsRoh.mockResolvedValue([eventRoh()]);
+    holeUnitsRoh.mockResolvedValue([{ unid: "1", callname: "TANK", status_florianstation: "3" }]);
+    const { poller } = await lade();
+    await poller.pollEventsOnce();
+    await poller.pollUnitsOnce();
+    expect(holeEventsRoh).not.toHaveBeenCalled();
+    expect(holeUnitsRoh).not.toHaveBeenCalled();
+    expect(einsatzAnzahl()).toBe(0);
+  });
+
+  it("übernimmt, wenn die Leihe der anderen Instanz abgelaufen ist", async () => {
+    docs.set("state:els-leader", { _id: "state:els-leader", type: "state", holder: "andere-instanz", until: Date.now() - 1000 });
+    holeUnitsRoh.mockResolvedValue([{ unid: "1", callname: "TANK", status_florianstation: "3" }]);
+    const { poller } = await lade();
+    await poller.pollUnitsOnce();
+    expect(holeUnitsRoh).toHaveBeenCalledTimes(1);
+    expect((docs.get("state:els-leader") as { holder: string }).holder).not.toBe("andere-instanz");
+  });
+
+  it("legt den Einheiten-Stand gemeinsam ab, damit andere Instanzen ihn lesen", async () => {
+    holeUnitsRoh.mockResolvedValue([{ unid: "1", callname: "TANK", status_florianstation: "4", latitude: 48.1, longitude: 14.2 }]);
+    const { poller, state } = await lade();
+    await poller.pollUnitsOnce();
+    const doc = docs.get("state:els-snapshot") as { snapshot: { status: Array<{ fahrzeugId: string }> } };
+    expect(doc.snapshot.status[0]?.fahrzeugId).toBe("tlf-a-4000");
+    const geteilt = await state.holeSnapshot();
+    expect(geteilt?.status).toHaveLength(1);
   });
 });
 

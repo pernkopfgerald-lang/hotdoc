@@ -16,7 +16,7 @@
 import { env, hasBlaulichtSMS, hasEls, hasSyBos, hasWasserkarte } from "../config.js";
 import { couch, db } from "../couch/client.js";
 import { getTokenHinweis } from "./els/client.js";
-import { getElsPollStand, getElsSnapshot } from "./els/state.js";
+import { getElsPollStand, holeSnapshot } from "./els/state.js";
 import { getBlaulichtSmsState, getSyBosState } from "./state.js";
 import { readWorkerState, type WorkerState } from "./worker-state.js";
 
@@ -78,7 +78,7 @@ export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt:
   const items: HealthItem[] = [
     await checkBlaulichtSms(persisted),
     await checkSyBos(persisted),
-    checkEls(),
+    await checkEls(),
     await checkCouch(),
     await checkFcm(),
   ];
@@ -86,7 +86,7 @@ export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt:
 }
 
 /** ELS-Schnittstelle (Funkstatus/Position + Einsatzstart): Konfig, Token, letzte Abrufe. */
-function checkEls(): HealthItem {
+async function checkEls(): Promise<HealthItem> {
   const sub = `Funkstatus alle ${env.ELS_UNITS_POLL_SEC} s · Einsätze alle ${env.ELS_EVENTS_POLL_SEC} s`;
   if (!hasEls()) {
     return {
@@ -105,6 +105,19 @@ function checkEls(): HealthItem {
     angelegt: p.angelegt,
     verknuepft: p.verknuepft,
   };
+  const snap = await holeSnapshot();
+  // Die Abfrage laeuft nur auf EINER Instanz; hat diese keinen eigenen Abruf, gilt der gemeinsame Stand.
+  if (!p.unitsLastAt && !p.eventsLastAt && snap) {
+    const alterSec = Math.floor((Date.now() - Date.parse(snap.fetchedAt)) / 1000);
+    return {
+      key: "els",
+      name: "ELS-Schnittstelle (Landesverband)",
+      sub,
+      state: alterSec > 5 * 60 ? "warn" : "ok",
+      detail: `Abruf läuft auf einer anderen Instanz · Funkstatus zuletzt vor ${formatSec(alterSec)} · ${snap.status.length} Fahrzeug(e) zugeordnet, ${snap.nichtZugeordnet.length} Einheit(en) ohne Zuordnung`,
+      metrics: { alterSec },
+    };
+  }
   if (!p.unitsLastAt && !p.eventsLastAt) {
     return {
       key: "els",
@@ -117,7 +130,6 @@ function checkEls(): HealthItem {
   const fehler = p.unitsLastError ?? p.eventsLastError;
   const okAlterSec = p.unitsLastOkAt ? Math.floor((Date.now() - Date.parse(p.unitsLastOkAt)) / 1000) : null;
   const luecke = okAlterSec === null || okAlterSec > 5 * 60;
-  const snap = getElsSnapshot();
   const zuordnung = snap
     ? `${snap.status.length} Fahrzeug(e) zugeordnet, ${snap.nichtZugeordnet.length} Einheit(en) ohne Zuordnung`
     : "noch keine Einheiten";

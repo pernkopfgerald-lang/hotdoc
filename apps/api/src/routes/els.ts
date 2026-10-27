@@ -16,7 +16,7 @@ import { Router } from "express";
 import { hasEls } from "../config.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
-import { getElsPollStand, getElsSnapshot, ladeZuordnung, snapshotAlterSec } from "../services/els/state.js";
+import { getElsPollStand, holeSnapshot, ladeZuordnung, snapshotAlterSec } from "../services/els/state.js";
 import { ordneUnitZu } from "../services/els/logik.js";
 
 export const elsRouter: Router = Router();
@@ -24,9 +24,9 @@ export const elsRouter: Router = Router();
 /** Daten, die aelter sind, gelten als veraltet (Poll alle 60 s). */
 const STALE_SEC = 5 * 60;
 
-elsRouter.get("/api/els/status", requireAuth(), (_req, res) => {
-  const snap = getElsSnapshot();
-  const alter = snapshotAlterSec();
+elsRouter.get("/api/els/status", requireAuth(), ah(async (_req, res) => {
+  const snap = await holeSnapshot();
+  const alter = snapshotAlterSec(snap);
   const frisch = snap !== null && alter !== null && alter <= STALE_SEC;
   res.json({
     ok: true,
@@ -47,10 +47,10 @@ elsRouter.get("/api/els/status", requireAuth(), (_req, res) => {
         }))
       : [],
   });
-});
+}));
 
 elsRouter.get("/api/els/diagnose", requireAuth("funktionaer"), ah(async (_req, res) => {
-  const snap = getElsSnapshot();
+  const snap = await holeSnapshot();
   const override = await ladeZuordnung();
   res.json({
     ok: true,
