@@ -31,6 +31,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { Florianstation } from "./Florianstation";
 import { AusruestungsRegelnPanel } from "./AusruestungsRegelnPanel";
+import { ElsZuordnungPanel } from "./ElsZuordnungPanel";
 import { FLORIAN_ADDRESS, FAHRZEUGE, type AuthResponse } from "@hotdoc/shared";
 
 /** Kleine Helper-Form für „Item hinzufügen"-Pattern. */
@@ -420,7 +421,12 @@ export function Verwaltung({ auth, onLogout }: Props) {
         {tab === "archiv" && <ArchivPanel />}
         {tab === "statistik" && <StatistikPanel />}
         {tab === "aktivitaet" && <AktivitaetPanel />}
-        {tab === "schnittstellen" && <SchnittstellenPanel />}
+        {tab === "schnittstellen" && (
+          <>
+            <SchnittstellenPanel />
+            <ElsZuordnungPanel />
+          </>
+        )}
         {tab === "einsatzstichworte" && <EinsatzstichwortePanel onDirtyChange={setPanelDirty} />}
         {tab === "nummerierung" && <NummerierungPanel />}
         {tab === "personal" && <PersonalPanel />}
@@ -1368,7 +1374,7 @@ function formatDate(iso: string): string {
 
 interface HealthItem {
   // wasserkarte ausgeklammert in V1.0 — Key bleibt zur Vorwärts-Kompat im Typ
-  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch";
+  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch" | "els";
   // (Backend liefert "wasserkarte" aktuell nicht mehr — die Variante bleibt nur
   // damit alte gecachte Responses nicht crashen.)
   name: string;

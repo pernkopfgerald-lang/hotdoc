@@ -533,6 +533,11 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [positions, setPositions] = useState<
     Array<{ fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string }>
   >([]);
+  /** Funkstatus je Fahrzeug aus der ELS-Schnittstelle (leer, solange ELS nicht
+   *  eingerichtet ist oder die Daten veraltet sind). */
+  const [funkstatus, setFunkstatus] = useState<
+    Partial<Record<FahrzeugId, { status: string; statusText: string; since: string | null }>>
+  >({});
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   // Dynamische Listen aus /api/config/beteiligte-stellen + sonstige-ff.
   // Fallback auf Shared-Defaults wenn das Backend noch nichts hat. Die Listen
@@ -1268,6 +1273,45 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       if (pollingPaused()) return; // Akku-Gate: kein Positions-Poll im Standby
       void tick();
     }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+
+  // Funkstatus aus der ELS-Schnittstelle (Backend pollt max. alle 60 s) — hier
+  // alle 15 s abholen. Ohne ELS-Einrichtung bleibt die Liste leer und die
+  // Anzeige unsichtbar; ein Fehler laesst den letzten Stand stehen.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await apiCall<{
+          enabled: boolean;
+          items: Array<{ fahrzeugId: string; status: string; statusText: string; since: string | null }>;
+        }>("/api/els/status");
+        if (cancelled) return;
+        if (!r.enabled) {
+          setFunkstatus({});
+          return;
+        }
+        const next: Partial<Record<FahrzeugId, { status: string; statusText: string; since: string | null }>> = {};
+        for (const i of r.items) {
+          if (!i.status) continue;
+          if (["kdo", "tlf-a-4000", "lfa-b", "mtf"].includes(i.fahrzeugId)) {
+            next[i.fahrzeugId as FahrzeugId] = { status: i.status, statusText: i.statusText, since: i.since };
+          }
+        }
+        setFunkstatus(next);
+      } catch {
+        // Netz weg / 401: letzter Stand bleibt, naechster Tick versucht es erneut
+      }
+    };
+    void tick();
+    const t = setInterval(() => {
+      if (pollingPaused()) return;
+      void tick();
+    }, 15000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -3395,6 +3439,28 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     >
                       {f.kdt ?? "—"} · {f.mannschaft} Pers.
                     </div>
+                    {funkstatus[f.id] ? (
+                      <span
+                        title={`Funkstatus laut Leitstelle (ELS)${funkstatus[f.id]?.statusText ? `: ${funkstatus[f.id]?.statusText}` : ""}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          marginLeft: 12,
+                          padding: "3px 10px",
+                          borderRadius: 4,
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: "var(--fg)",
+                          background: "var(--surface-2)",
+                          border: "1px solid var(--border)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Funk {funkstatus[f.id]?.status}
+                        {funkstatus[f.id]?.since ? ` · seit ${isoToHHMM(funkstatus[f.id]?.since ?? undefined)}` : ""}
+                      </span>
+                    ) : null}
                     <div className="crew-meta" style={{ marginLeft: "auto", gap: 8 }}>
                       {f.entfernt ? (
                         <span className="badge neutral" style={{ gap: 4 }}>

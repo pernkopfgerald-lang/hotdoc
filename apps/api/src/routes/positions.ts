@@ -21,6 +21,8 @@ import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
+import { mitElsVorrang } from "../services/els/positionen.js";
+import { getElsSnapshot } from "../services/els/state.js";
 import {
   getAllPings,
   setPing,
@@ -116,6 +118,8 @@ positionsRouter.post("/api/positions", requireAuth(), (async (req, res) => {
 // getAllPings merged persistierte Docs + RAM und filtert > 5 min alte Pings
 // (I-05). Response-Shape unveraendert (V15): { ok, items }.
 positionsRouter.get("/api/positions", requireAuth(), ah(async (_req, res) => {
-  const items = await getAllPings();
-  res.json({ ok: true, items });
+  const pings = await getAllPings();
+  // Funkposition aus ELS hat Vorrang vor dem Tablet-GPS (services/els/positionen);
+  // das Tablet bleibt Rueckfall, wenn ELS aus ist oder keine Position kennt.
+  res.json({ ok: true, items: mitElsVorrang(pings, getElsSnapshot()) });
 }));

@@ -13,7 +13,9 @@ export type ConfigKey =
   // pflegbar; erscheint im Florian-Editor als Chip-Mehrfachauswahl.
   | "gefaehrliche-stoffe"
   // Ausruestungs-Check beim Abschluss (Regeln Stichwort → Fahrzeug → Geraete).
-  | "ausruestungs-regeln";
+  | "ausruestungs-regeln"
+  // ELS-Schnittstelle: manuelle Zuordnung ELS-Einheit → Fahrzeug.
+  | "els-zuordnung";
 
 export interface StringListData {
   items: string[];

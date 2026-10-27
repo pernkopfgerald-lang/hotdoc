@@ -43,6 +43,28 @@ const EnvSchema = z
     SYBOS_TOKEN: z.string().optional(),
     SYBOS_SYNC_CRON: z.string().default("0 4 * * *"),
 
+    // ELS-Schnittstelle des Landesfeuerwehrverbands (einsatz-api.ooelfv.at):
+    // Funkstatus + Position der Fahrzeuge und offene Einsaetze. Der Register-
+    // Token kommt aus syBOS (Weitere Daten der Dienststelle) und darf NUR als
+    // Secret gesetzt werden (fly secrets set ELS_REGISTER_TOKEN=... ELS_STATION_ID=...).
+    ELS_API_URL: z.string().url().default("https://einsatz-api.ooelfv.at"),
+    ELS_REGISTER_TOKEN: z.string().optional(),
+    ELS_STATION_ID: z.string().optional(),
+    /** Frei waehlbare Systemkennung, die beim Register mitgeschickt wird. */
+    ELS_SYSTEM_NAME: z.string().default("HotDoc"),
+    /** Funkstatus/Positionen: Limit der Schnittstelle ist 60 s. */
+    ELS_UNITS_POLL_SEC: z.coerce.number().int().min(60).default(60),
+    /** Offene Einsaetze: Limit der Schnittstelle ist 5 s. */
+    ELS_EVENTS_POLL_SEC: z.coerce.number().int().min(5).default(15),
+    /** "0" = Einsaetze aus ELS nie selbst anlegen (nur verknuepfen/anreichern). */
+    ELS_AUTOSTART: z.string().default("1"),
+    /**
+     * Wartezeit nach der Alarmierung, bevor ein ELS-Einsatz selbst angelegt wird.
+     * In der Zeit kann BlaulichtSMS den Alarm liefern; der ELS-Einsatz wird dann
+     * nur verknuepft (kein Doppel-Einsatz).
+     */
+    ELS_AUTOSTART_GRACE_SEC: z.coerce.number().int().min(0).default(120),
+
     // wasserkarte.info — Phase 4
     WASSERKARTE_ACCESS_KEY: z.string().optional(),
     WASSERKARTE_BASE_URL: z.string().url().default("https://api.wasserkarte.info"),
@@ -203,6 +225,10 @@ export function hasBlaulichtSMS(): boolean {
 
 export function hasSyBos(): boolean {
   return !!(env.SYBOS_API_URL && env.SYBOS_TOKEN);
+}
+
+export function hasEls(): boolean {
+  return !!(env.ELS_REGISTER_TOKEN && env.ELS_STATION_ID);
 }
 
 export function hasWasserkarte(): boolean {

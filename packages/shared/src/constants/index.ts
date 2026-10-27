@@ -5,6 +5,7 @@ export * from "./einsatzarten.js";
 export * from "./einsatzkategorie.js";
 export * from "./fahrzeuge.js";
 export * from "./florian.js";
+export * from "./funkstatus.js";
 // Issue 25 (Einsatz-Test 2026-06-02): basemap.at-Tiles fuer Layer-Switch
 export * from "./map-tiles.js";
 // ING-10 Stufe 2 (4-Personas-Audit, 2026-06-12): Feld-Inventar fuer

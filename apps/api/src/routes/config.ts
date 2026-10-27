@@ -22,6 +22,7 @@ import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
+import { verwerfeZuordnungCache } from "../services/els/state.js";
 
 export const configRouter: Router = Router();
 
@@ -41,6 +42,9 @@ const KEYS = [
   // Ausruestungs-Check beim Fahrzeug-Abschluss: Regeln (Stichwort-Wildcard →
   // Fahrzeug → Geraete, MUSS/INFO). Default leer = kein Check.
   "ausruestungs-regeln",
+  // ELS-Schnittstelle: manuelle Zuordnung ELS-Einheit (unid oder callname) →
+  // Fahrzeug. Default leer = automatische Zuordnung ueber Rufname/Kuerzel.
+  "els-zuordnung",
 ] as const;
 type ConfigKey = (typeof KEYS)[number];
 
@@ -211,10 +215,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.5.4",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.5.4-release.apk",
+    currentVersion: "0.6.0",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.0-release.apk",
     releaseNotes:
-      "v0.5.4 — Übungsbericht: Reserve-Personen als Teilnehmer\n\n• Reserve zählt im Übungsbericht als Teilnehmer, mit Namen.\n• Florianstation zeigt Teilnehmer inkl. Personen ohne Fahrzeug.",
+      "v0.6.0 — ELS-Anbindung: Funkstatus, Fahrzeugposition, Einsatzstart\n\n• Jede Änderung des Funkstatus (ausgerückt, am Einsatzort, Sprechwunsch, eingerückt) steht mit Uhrzeit in der Einsatzchronik.\n• Fahrzeugposition kommt aus der Leitstelle (ELS) statt vom Tablet-GPS.\n• Einsätze können automatisch aus ELS angelegt oder mit dem Alarm verknüpft werden.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
@@ -225,6 +229,9 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   },
   "ausruestungs-regeln": {
     regeln: [] as unknown[],
+  },
+  "els-zuordnung": {
+    fahrzeuge: {} as Record<string, string>,
   },
 };
 
@@ -294,5 +301,6 @@ configRouter.put("/api/config/:key", requireAuth("funktionaer"), ah(async (req, 
   };
   const result = await db.insert(doc);
   logger.info({ key, rev: result.rev, by: req.session?.username }, "Config aktualisiert");
+  if (key === "els-zuordnung") verwerfeZuordnungCache();
   res.json({ ok: true, key, data, geaendertAm: doc.geaendertAm, rev: result.rev });
 }));

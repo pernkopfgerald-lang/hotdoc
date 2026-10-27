@@ -40,7 +40,7 @@ const VorschauModal = lazyRetry(() =>
 );
 import { useGeraete } from "../lib/geraete-config";
 import { useAusruestungsRegeln } from "../lib/ausruestungs-regeln";
-import { findeRegeln, UEBUNGS_TYPEN, validiereAusruestung } from "@hotdoc/shared";
+import { findeRegeln, funkstatusAusChronikText, UEBUNGS_TYPEN, validiereAusruestung } from "@hotdoc/shared";
 import { getDeviceId } from "../lib/device-id";
 import type { HotdocAlarmDetail } from "../lib/device-register";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
@@ -431,6 +431,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // Live-Fleet aus /api/positions — wird unten alle 3 s gepollt. Eigener Eintrag
   // wird per Ping hochgeladen, Florianstation und alle Tablets teilen die Sicht.
   const [fleet, setFleet] = useState<MapPosition[]>([]);
+  // Eigene Fahrzeugposition aus der ELS-Funkortung (statt Tablet-GPS). null =
+  // ELS liefert fuer dieses Fahrzeug nichts (aus, nicht zugeordnet, veraltet) →
+  // dann gilt weiter das Tablet-GPS. Kommt aus dem Fleet-Poll (/api/positions).
+  const [elsSelf, setElsSelf] = useState<{ lat: number; lng: number; ts: string } | null>(null);
+  const elsSelfRef = useRef<{ lat: number; lng: number; ts: string } | null>(null);
   // Loeschwasser-Entnahmestellen (wasserkarte.info-Import, statisch — siehe
   // lib/wasserquellen.ts). Einmaliger Boot-Fetch, kein Poll: die Stellen
   // aendern sich nicht waehrend eines Einsatzes.
@@ -1678,6 +1683,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   useEffect(() => {
     const id = setInterval(() => {
       if (pollingPaused()) return; // Akku-Gate: kein GPS-Push im Standby
+      // ELS liefert die Fahrzeugposition → Tablet-GPS wird nicht mehr gesendet
+      // (Rueckfall: faellt ELS aus, meldet der naechste Fleet-Poll keine
+      // ELS-Position mehr und das Tablet sendet wieder).
+      if (elsSelfRef.current) return;
       const fix = geoFixRef.current;
       if (!fix) return;
       const body: Record<string, number> = {
@@ -1792,13 +1801,33 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   // nur bei Einsatz/manuell, nur mit brauchbarer Genauigkeit (<= 50 m), und
   // nicht mehr, sobald der Bericht abgeschlossen ist oder schon entschieden wurde.
   useEffect(() => {
-    if (!active || !gpsErlaubt || !geo.fix || geo.status !== "live") return;
+    if (!active || !gpsErlaubt) return;
     if (!active.einsatzPos || active.abgeschlossen || active.eintreffStatus) return;
     if (active.einsatzTyp === "uebung" || active.einsatzTyp === "lotsendienst") return;
-    if (geo.fix.accuracyM > 50) return;
-    const distM = haversineKm({ lat: geo.fix.lat, lng: geo.fix.lng }, active.einsatzPos) * 1000;
+    // Hat der Statusfunk (ELS) die Ankunft schon protokolliert ("Funkstatus 4"),
+    // braucht es keinen GPS-Vorschlag mehr — sonst stuende sie doppelt in der Chronik.
+    if (
+      active.chronik.some(
+        (c) => c.fahrzeugId === fahrzeugId && funkstatusAusChronikText(c.text) === "4",
+      )
+    ) {
+      patchActive((e) => (e.eintreffStatus ? e : { ...e, eintreffStatus: "uebernommen" as const }));
+      return;
+    }
+    // Position: Funkposition aus ELS hat Vorrang vor dem Tablet-GPS.
+    let pos: { lat: number; lng: number };
+    let erkannt: string;
+    if (elsSelf) {
+      pos = elsSelf;
+      erkannt = new Date(elsSelf.ts).toISOString();
+    } else if (geo.fix && geo.status === "live" && geo.fix.accuracyM <= 50) {
+      pos = { lat: geo.fix.lat, lng: geo.fix.lng };
+      erkannt = new Date(geo.fix.ts).toISOString();
+    } else {
+      return;
+    }
+    const distM = haversineKm(pos, active.einsatzPos) * 1000;
     if (distM > 100) return;
-    const erkannt = new Date(geo.fix.ts).toISOString();
     patchActive((e) =>
       e.eintreffStatus ? e : { ...e, eintreffStatus: "angeboten" as const, eintreffErkanntUm: erkannt },
     );
@@ -1809,6 +1838,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     active?.einsatzPos?.lng,
     active?.eintreffStatus,
     active?.abgeschlossen,
+    active?.chronik.length,
+    elsSelf?.lat,
+    elsSelf?.lng,
+    elsSelf?.ts,
     geo.fix?.lat,
     geo.fix?.lng,
     geo.fix?.accuracyM,
@@ -1830,9 +1863,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             lat: number;
             lng: number;
             ts: string;
+            source?: "tablet" | "els";
           }>;
         }>("/api/positions");
         if (cancelled) return;
+        const self = r.items.find((p) => p.fahrzeugId === fahrzeugId && p.source === "els");
+        const selfPos = self ? { lat: self.lat, lng: self.lng, ts: self.ts } : null;
+        elsSelfRef.current = selfPos;
+        setElsSelf((alt) => (alt?.ts === selfPos?.ts && alt?.lat === selfPos?.lat ? alt : selfPos));
         const mapped: MapPosition[] = r.items
           .filter((p) => p.fahrzeugId in FAHRZEUGE)
           .map((p) => {

@@ -14,6 +14,7 @@ import { configRouter } from "./routes/config.js";
 import { devicesRouter } from "./routes/devices.js";
 import { devRouter } from "./routes/dev.js";
 import { einsaetzeRouter } from "./routes/einsaetze.js";
+import { elsRouter } from "./routes/els.js";
 import { geocodeRouter } from "./routes/geocode.js";
 import { geocodingRouter } from "./routes/geocoding.js";
 import { healthRouter } from "./routes/health.js";
@@ -37,6 +38,7 @@ import {
   startBlaulichtSmsPoller,
   stopBlaulichtSmsPoller,
 } from "./workers/blaulichtsms-poller.js";
+import { startElsPoller, stopElsPoller } from "./workers/els-poller.js";
 import { startPhantomCleanupCron } from "./workers/phantom-fzgber-cleanup.js";
 import { startSyBosSyncCron } from "./workers/sybos-sync.js";
 
@@ -137,6 +139,7 @@ async function main(): Promise<void> {
   app.use(geocodeRouter);
   app.use(geocodingRouter);
   app.use(positionsRouter);
+  app.use(elsRouter);
   app.use(routingRouter);
   app.use(devicesRouter);
   app.use(devRouter);
@@ -182,6 +185,9 @@ async function main(): Promise<void> {
   // — Worker —
   startSyBosSyncCron();
   startBlaulichtSmsPoller();
+  // ELS-Schnittstelle des Landesverbands: Funkstatus/Position + Einsatzstart.
+  // Startet nur, wenn ELS_REGISTER_TOKEN und ELS_STATION_ID gesetzt sind.
+  startElsPoller();
   startAudioRetentionCron();
   // Audit-Retention: löscht audit:*-Events älter als AUDIT_RETENTION_DAYS.
   // Schließt die in der Spec §24.1 als Gap markierte DSGVO-Lücke.
@@ -234,6 +240,7 @@ async function main(): Promise<void> {
     // BlaulichtSMS-Poller stoppen — sonst feuert das setInterval noch
     // einmal mit halb-runtergefahrener DB-Connection.
     stopBlaulichtSmsPoller();
+    stopElsPoller();
     // Positions-State Eviction-Interval stoppen.
     stopEviction();
     // Letzte Sicherheits-Mauer: nach 9 s hart raus. Im Normalfall ist

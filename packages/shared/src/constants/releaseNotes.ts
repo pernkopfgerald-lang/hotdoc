@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.0",
+    date: "2026-10-27",
+    title: "ELS-Anbindung: Funkstatus, Position, Einsatzstart",
+    bullets: [
+      "Jede Änderung des Funkstatus eines Fahrzeugs (ausgerückt, am Einsatzort, Sprechwunsch, eingerückt …) wird mit der Uhrzeit der Statusmeldung in der Einsatzchronik festgehalten – auch im Bericht-PDF.",
+      "Die Fahrzeugposition kommt aus der Funkortung der Leitstelle (ELS) statt vom Tablet-GPS; das Tablet sendet seine Position nur noch, wenn ELS keine liefert. Die Eintreffzeit-Erkennung nutzt die ELS-Position bzw. den Funkstatus „am Einsatzort“.",
+      "Florianstation: Funkstatus je Fahrzeug in der Fahrzeugliste.",
+      "Einsätze aus ELS werden mit dem vorhandenen Alarm verknüpft oder – nach kurzer Wartezeit – automatisch angelegt (Übungen der Leitstelle ausgenommen).",
+      "Backoffice: Schnittstellen-Status für ELS und Zuordnung der ELS-Einheiten zu den Fahrzeugen.",
+    ],
+  },
+  {
     version: "0.5.4",
     date: "2026-10-07",
     title: "Übungsbericht: Reserve-Personen als Teilnehmer",

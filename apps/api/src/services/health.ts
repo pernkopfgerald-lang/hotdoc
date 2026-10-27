@@ -13,8 +13,10 @@
  * - CouchDB-Stats für den Replication-Status
  */
 
-import { env, hasBlaulichtSMS, hasSyBos, hasWasserkarte } from "../config.js";
+import { env, hasBlaulichtSMS, hasEls, hasSyBos, hasWasserkarte } from "../config.js";
 import { couch, db } from "../couch/client.js";
+import { getTokenHinweis } from "./els/client.js";
+import { getElsPollStand, getElsSnapshot } from "./els/state.js";
 import { getBlaulichtSmsState, getSyBosState } from "./state.js";
 import { readWorkerState, type WorkerState } from "./worker-state.js";
 
@@ -50,7 +52,7 @@ export type HealthState = "ok" | "warn" | "off" | "error";
 
 export interface HealthItem {
   /** Maschinen-Key — UI mappt das auf Icons/Titel. */
-  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch" | "fcm";
+  key: "blaulichtsms" | "sybos" | "wasserkarte" | "couch" | "fcm" | "els";
   /** Anzeigename. */
   name: string;
   /** Untertitel (z. B. "Alarm-Polling alle 15 s"). */
@@ -76,10 +78,60 @@ export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt:
   const items: HealthItem[] = [
     await checkBlaulichtSms(persisted),
     await checkSyBos(persisted),
+    checkEls(),
     await checkCouch(),
     await checkFcm(),
   ];
   return { items, checkedAt };
+}
+
+/** ELS-Schnittstelle (Funkstatus/Position + Einsatzstart): Konfig, Token, letzte Abrufe. */
+function checkEls(): HealthItem {
+  const sub = `Funkstatus alle ${env.ELS_UNITS_POLL_SEC} s · Einsätze alle ${env.ELS_EVENTS_POLL_SEC} s`;
+  if (!hasEls()) {
+    return {
+      key: "els",
+      name: "ELS-Schnittstelle (Landesverband)",
+      sub,
+      state: "off",
+      detail:
+        "ELS_REGISTER_TOKEN / ELS_STATION_ID nicht gesetzt — kein Funkstatus, keine Fahrzeugpositionen aus ELS, kein automatischer Einsatzstart. Register-Token in syBOS (Weitere Daten der Dienststelle) abrufen und als fly secrets setzen.",
+    };
+  }
+  const p = getElsPollStand();
+  const hinweis = getTokenHinweis();
+  const metrics: Record<string, number | string> = {
+    eventsOffen: p.eventsOffen,
+    angelegt: p.angelegt,
+    verknuepft: p.verknuepft,
+  };
+  if (!p.unitsLastAt && !p.eventsLastAt) {
+    return {
+      key: "els",
+      name: "ELS-Schnittstelle (Landesverband)",
+      sub,
+      state: "warn",
+      detail: `Konfiguriert, aber noch kein Abruf abgeschlossen${hinweis ? ` · ${hinweis}` : ""}.`,
+    };
+  }
+  const fehler = p.unitsLastError ?? p.eventsLastError;
+  const okAlterSec = p.unitsLastOkAt ? Math.floor((Date.now() - Date.parse(p.unitsLastOkAt)) / 1000) : null;
+  const luecke = okAlterSec === null || okAlterSec > 5 * 60;
+  const snap = getElsSnapshot();
+  const zuordnung = snap
+    ? `${snap.status.length} Fahrzeug(e) zugeordnet, ${snap.nichtZugeordnet.length} Einheit(en) ohne Zuordnung`
+    : "noch keine Einheiten";
+  let detail = `Funkstatus zuletzt vor ${okAlterSec === null ? "—" : formatSec(okAlterSec)} · ${zuordnung} · ${p.eventsOffen} offene(r) Einsatz/Einsätze · ${p.angelegt} angelegt, ${p.verknuepft} verknüpft seit Start`;
+  if (fehler) detail = `Letzter Abruf fehlgeschlagen: ${fehler} · ${detail}`;
+  if (hinweis) detail += ` · ${hinweis}`;
+  return {
+    key: "els",
+    name: "ELS-Schnittstelle (Landesverband)",
+    sub,
+    state: fehler && luecke ? "error" : fehler || hinweis || luecke ? "warn" : "ok",
+    detail,
+    metrics,
+  };
 }
 
 /** FCM-Konfig + Anzahl registrierte Tablets. */

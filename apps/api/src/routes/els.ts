@@ -1,0 +1,75 @@
+/**
+ * ELS-Endpoints (Funkstatus + Positionen der Fahrzeuge).
+ *
+ *  - GET /api/els/status     Funkstatus + Position je Fahrzeug (Florianstation,
+ *                            Fahrzeug-Tablets lesen mit — wie /api/positions).
+ *  - GET /api/els/diagnose   Funktionaer: alle Einheiten roh (mit Zuordnung),
+ *                            damit die Zuordnung zu unseren Fahrzeugen geprueft
+ *                            werden kann. Keine Anruferdaten.
+ *
+ * Die Zuordnung ELS-Einheit -> Fahrzeug steht in config:els-zuordnung
+ * (PUT /api/config/els-zuordnung, Backoffice).
+ */
+
+import { funkstatusText } from "@hotdoc/shared";
+import { Router } from "express";
+import { hasEls } from "../config.js";
+import { ah } from "../lib/async-handler.js";
+import { requireAuth } from "../lib/auth-middleware.js";
+import { getElsPollStand, getElsSnapshot, ladeZuordnung, snapshotAlterSec } from "../services/els/state.js";
+import { ordneUnitZu } from "../services/els/logik.js";
+
+export const elsRouter: Router = Router();
+
+/** Daten, die aelter sind, gelten als veraltet (Poll alle 60 s). */
+const STALE_SEC = 5 * 60;
+
+elsRouter.get("/api/els/status", requireAuth(), (_req, res) => {
+  const snap = getElsSnapshot();
+  const alter = snapshotAlterSec();
+  const frisch = snap !== null && alter !== null && alter <= STALE_SEC;
+  res.json({
+    ok: true,
+    enabled: hasEls(),
+    fetchedAt: snap?.fetchedAt ?? null,
+    stale: !frisch,
+    items: frisch
+      ? snap.status.map((s) => ({
+          fahrzeugId: s.fahrzeugId,
+          callname: s.callname,
+          status: s.status,
+          statusText: funkstatusText(s.status),
+          unitStatus: s.unitStatus,
+          since: s.since ?? null,
+          lat: s.lat,
+          lng: s.lng,
+          num1: s.num1 || null,
+        }))
+      : [],
+  });
+});
+
+elsRouter.get("/api/els/diagnose", requireAuth("funktionaer"), ah(async (_req, res) => {
+  const snap = getElsSnapshot();
+  const override = await ladeZuordnung();
+  res.json({
+    ok: true,
+    enabled: hasEls(),
+    poll: getElsPollStand(),
+    fetchedAt: snap?.fetchedAt ?? null,
+    zuordnung: override,
+    units: (snap?.units ?? []).map((u) => ({
+      unid: u.unid,
+      callname: u.callname,
+      unidLong: u.unidLong,
+      sName: u.sName,
+      unityp: u.unityp,
+      unitStatus: u.unitStatus,
+      status: u.statusFlorian,
+      statusText: funkstatusText(u.statusFlorian),
+      since: u.lastStatusTimestamp ?? null,
+      hatPosition: u.lat !== null,
+      fahrzeugId: ordneUnitZu(u, override),
+    })),
+  });
+}));
