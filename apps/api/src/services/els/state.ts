@@ -6,6 +6,7 @@
 
 import type { FahrzeugId } from "@hotdoc/shared";
 import { db } from "../../couch/client.js";
+import { logger } from "../../lib/logger.js";
 import { baueFahrzeugStatus, ordneUnitZu, type ElsUnit, type ElsZuordnungOverride, type FahrzeugFunkstatus } from "./logik.js";
 
 export interface ElsPollStand {
@@ -84,8 +85,36 @@ export async function setElsUnits(units: ElsUnit[]): Promise<void> {
   const override = await ladeZuordnung();
   const status = baueFahrzeugStatus(units, override);
   const nichtZugeordnet = units.filter((u) => ordneUnitZu(u, override) === null);
+  protokolliereWechsel(snapshot, units);
   snapshot = { fetchedAt: new Date().toISOString(), units, status, nichtZugeordnet };
   await speichereSnapshot(snapshot);
+}
+
+/**
+ * Jeder Wechsel von Funkstatus / Einsatznummer einer Einheit kommt als Logzeile
+ * ins Server-Log — zur Nachvollziehbarkeit, welche Werte die Leitstelle wirklich
+ * liefert (die Schnittstellenbeschreibung nennt keine Werte-Tabelle). Keine
+ * personenbezogenen Daten, keine Positionen.
+ */
+function protokolliereWechsel(alt: ElsSnapshot | null, units: ElsUnit[]): void {
+  if (!alt) return;
+  for (const u of units) {
+    const v = alt.units.find((x) => x.unid === u.unid);
+    if (!v) continue;
+    if (v.statusFlorian !== u.statusFlorian || v.unitStatus !== u.unitStatus || v.num1 !== u.num1) {
+      logger.info(
+        {
+          unid: u.unid,
+          callname: u.callname,
+          status: { von: v.statusFlorian, nach: u.statusFlorian },
+          unitStatus: { von: v.unitStatus, nach: u.unitStatus },
+          num1: { von: v.num1, nach: u.num1 },
+          since: u.lastStatusTimestamp,
+        },
+        "ELS-Einheit: Statuswechsel",
+      );
+    }
+  }
 }
 
 // ─── Gemeinsamer Stand (alle Instanzen) ──────────────────────────────
