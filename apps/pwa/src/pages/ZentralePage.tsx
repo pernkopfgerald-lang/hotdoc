@@ -3554,13 +3554,22 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
           <>
             <SectionHead title="Funkstatus · Fahrzeuge" />
             <section className="card">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => (
                   <div
                     key={id}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      gap: 8,
+                      padding: "12px 14px",
+                      borderRadius: "var(--radius-s)",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                    }}
                   >
-                    <strong style={{ fontSize: 17 }}>{FAHRZEUGE[id].funkrufname}</strong>
+                    <strong style={{ fontSize: 16, lineHeight: 1.2 }}>{FAHRZEUGE[id].funkrufname}</strong>
                     <FunkstatusBadge eintrag={funk.map[id]} stale={funk.stale} />
                   </div>
                 ))}
