@@ -40,6 +40,8 @@ import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
 import { apiCall, ApiError, describeApiError, getTabletToken } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
+import { useFunkstatus } from "../lib/use-funkstatus";
+import { FunkstatusBadge } from "../components/FunkstatusBadge";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { captureDokument, captureFoto, MAX_PDF_BYTES } from "../lib/foto";
 // AUDIT-09/KDT-06 (Audit 2026-06-12): gecachte Personalliste als Offline-Fallback.
@@ -533,11 +535,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [positions, setPositions] = useState<
     Array<{ fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string }>
   >([]);
-  /** Funkstatus je Fahrzeug aus der ELS-Schnittstelle (leer, solange ELS nicht
-   *  eingerichtet ist oder die Daten veraltet sind). */
-  const [funkstatus, setFunkstatus] = useState<
-    Partial<Record<FahrzeugId, { status: string; statusText: string; since: string | null }>>
-  >({});
+  /** Funkstatus je Fahrzeug aus der ELS-Schnittstelle (Backend pollt max. alle 60 s). */
+  const funk = useFunkstatus();
   const [personen, setPersonen] = useState<PickPerson[]>([]);
   // Dynamische Listen aus /api/config/beteiligte-stellen + sonstige-ff.
   // Fallback auf Shared-Defaults wenn das Backend noch nichts hat. Die Listen
@@ -1273,45 +1272,6 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       if (pollingPaused()) return; // Akku-Gate: kein Positions-Poll im Standby
       void tick();
     }, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
-
-  // Funkstatus aus der ELS-Schnittstelle (Backend pollt max. alle 60 s) — hier
-  // alle 15 s abholen. Ohne ELS-Einrichtung bleibt die Liste leer und die
-  // Anzeige unsichtbar; ein Fehler laesst den letzten Stand stehen.
-  useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const r = await apiCall<{
-          enabled: boolean;
-          items: Array<{ fahrzeugId: string; status: string; statusText: string; since: string | null }>;
-        }>("/api/els/status");
-        if (cancelled) return;
-        if (!r.enabled) {
-          setFunkstatus({});
-          return;
-        }
-        const next: Partial<Record<FahrzeugId, { status: string; statusText: string; since: string | null }>> = {};
-        for (const i of r.items) {
-          if (!i.status) continue;
-          if (["kdo", "tlf-a-4000", "lfa-b", "mtf"].includes(i.fahrzeugId)) {
-            next[i.fahrzeugId as FahrzeugId] = { status: i.status, statusText: i.statusText, since: i.since };
-          }
-        }
-        setFunkstatus(next);
-      } catch {
-        // Netz weg / 401: letzter Stand bleibt, naechster Tick versucht es erneut
-      }
-    };
-    void tick();
-    const t = setInterval(() => {
-      if (pollingPaused()) return;
-      void tick();
-    }, 15000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -3439,26 +3399,9 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     >
                       {f.kdt ?? "—"} · {f.mannschaft} Pers.
                     </div>
-                    {funkstatus[f.id] ? (
-                      <span
-                        title={`Funkstatus laut Leitstelle (ELS)${funkstatus[f.id]?.statusText ? `: ${funkstatus[f.id]?.statusText}` : ""}`}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          marginLeft: 12,
-                          padding: "3px 10px",
-                          borderRadius: 4,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "var(--fg)",
-                          background: "var(--surface-2)",
-                          border: "1px solid var(--border)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Funk {funkstatus[f.id]?.status}
-                        {funkstatus[f.id]?.since ? ` · seit ${isoToHHMM(funkstatus[f.id]?.since ?? undefined)}` : ""}
+                    {funk.enabled ? (
+                      <span style={{ marginLeft: 12 }}>
+                        <FunkstatusBadge eintrag={funk.map[f.id]} stale={funk.stale} />
                       </span>
                     ) : null}
                     <div className="crew-meta" style={{ marginLeft: "auto", gap: 8 }}>
@@ -3605,6 +3548,26 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
         </section>
           </>
         )}
+
+        {/* Funkstatus ALLER Fahrzeuge laut Leitstelle (ELS) — auch ohne Einsatz. */}
+        {funk.enabled ? (
+          <>
+            <SectionHead title="Funkstatus · Fahrzeuge" />
+            <section className="card">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+                {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => (
+                  <div
+                    key={id}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}
+                  >
+                    <strong style={{ fontSize: 17 }}>{FAHRZEUGE[id].funkrufname}</strong>
+                    <FunkstatusBadge eintrag={funk.map[id]} stale={funk.stale} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
+        ) : null}
 
         {/* Z-01: Karte bleibt auch im Idle sichtbar (Standort-Übersicht). */}
         <SectionHead title="Karte · Live-Positionen" />

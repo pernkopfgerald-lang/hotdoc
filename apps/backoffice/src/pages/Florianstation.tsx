@@ -56,6 +56,7 @@ import {
 } from "../api/einsaetze";
 import { listPersonen, personLabel, sortPersonen, type PersonItem } from "../api/personen";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
+import { FunkstatusKarte } from "../components/FunkstatusKarte";
 
 /** Feuerwehrhaus FF Eberstalzell — Solarstraße 1, 4653 Eberstalzell.
  *  Quelle: @hotdoc/shared constants/florian.ts. */
@@ -783,6 +784,8 @@ export function Florianstation() {
             )}
           </ul>
         </section>
+
+        <FunkstatusKarte />
 
         <section className="card">
           <div className="card-head">

@@ -3205,6 +3205,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         ) : istIdle || !active ? (
           <IdleView
             funkrufname={fahrzeug.funkrufname}
+            fahrzeugId={fahrzeugId}
             onNeuerBericht={(typ) => setNeuerEinsatzOpen({ typ })}
             onArchiv={() => setArchivOpen(true)}
             syncState={uploadState}

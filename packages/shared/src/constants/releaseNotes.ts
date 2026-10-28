@@ -21,6 +21,15 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.1",
+    date: "2026-10-28",
+    title: "Funkstatus im Klartext",
+    bullets: [
+      "Fahrzeug-Tablet: Auf der Hauptseite und in der Kopfzeile steht der Funkstatus des eigenen Fahrzeugs im Klartext – „Frei auf Wache“, „Ausgerückt“, „Am Einsatzort“, „Sprechwunsch“ …",
+      "Florianstation und Backoffice: eigene Übersicht mit dem Funkstatus aller Fahrzeuge, auch ohne laufenden Einsatz.",
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-10-27",
     title: "ELS-Anbindung: Funkstatus, Position, Einsatzstart",

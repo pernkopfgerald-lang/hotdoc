@@ -14,7 +14,9 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import type { GeoState } from "../lib/geo";
 import { BrandLogo } from "./BrandLogo";
+import { FunkstatusBadge } from "./FunkstatusBadge";
 import { HilfeSheet } from "./HilfeSheet";
+import { useFunkstatus } from "../lib/use-funkstatus";
 
 /** Hotfix 2026-09: pro Fahrzeug eine eigene, gut unterscheidbare Farbe. */
 const FAHRZEUG_FARBE: Record<FahrzeugId, string> = {
@@ -82,6 +84,7 @@ export function Topbar({
   const [hilfeOpen, setHilfeOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(effectiveTheme());
   const [clock, setClock] = useState<string>(formatClock(new Date()));
+  const funk = useFunkstatus();
 
   useEffect(() => {
     applyTheme(theme);
@@ -216,6 +219,11 @@ export function Topbar({
           })()}
         </div>
       </div>
+
+      {/* Funkstatus des angemeldeten Fahrzeugs (Leitstelle) — auf jeder Seite sichtbar. */}
+      {funk.enabled && fahrzeugId && fahrzeugId !== "zentrale" ? (
+        <FunkstatusBadge eintrag={funk.map[fahrzeugId]} stale={funk.stale} />
+      ) : null}
 
       {geo ? <GeoChip geo={geo} /> : null}
 

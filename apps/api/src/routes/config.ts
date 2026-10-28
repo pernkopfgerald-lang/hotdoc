@@ -215,10 +215,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.6.0",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.0-release.apk",
+    currentVersion: "0.6.1",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.1-release.apk",
     releaseNotes:
-      "v0.6.0 — ELS-Anbindung: Funkstatus, Fahrzeugposition, Einsatzstart\n\n• Jede Änderung des Funkstatus (ausgerückt, am Einsatzort, Sprechwunsch, eingerückt) steht mit Uhrzeit in der Einsatzchronik.\n• Fahrzeugposition kommt aus der Leitstelle (ELS) statt vom Tablet-GPS.\n• Einsätze können automatisch aus ELS angelegt oder mit dem Alarm verknüpft werden.",
+      "v0.6.1 — Funkstatus im Klartext\n\n• Fahrzeug-Hauptseite und Kopfzeile zeigen den Funkstatus des eigenen Fahrzeugs („Frei auf Wache“, „Ausgerückt“ …).\n• Florianstation und Backoffice zeigen den Funkstatus aller Fahrzeuge.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

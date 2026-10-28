@@ -9,9 +9,14 @@ import {
   Radio,
   UploadCloud,
 } from "lucide-react";
+import type { FahrzeugId } from "@hotdoc/shared";
+import { useFunkstatus } from "../lib/use-funkstatus";
+import { FunkstatusBadge } from "./FunkstatusBadge";
 
 interface Props {
   funkrufname: string;
+  /** Angemeldetes Fahrzeug — fuer die Funkstatus-Anzeige (Leitstelle). */
+  fahrzeugId?: FahrzeugId;
   /** Quick-Action: neuer Einsatz/Übung/Lotsendienst — öffnet Modal mit Typ-Vorwahl. */
   onNeuerBericht: (typ: "manuell" | "uebung" | "lotsendienst") => void;
   /** Quick-Action: Archiv öffnen — read-only Liste der letzten Berichte. */
@@ -48,11 +53,13 @@ interface Props {
  */
 export function IdleView({
   funkrufname,
+  fahrzeugId,
   onNeuerBericht,
   onArchiv,
   syncState,
   onRetryUpload,
 }: Props) {
+  const funk = useFunkstatus();
   return (
     <div
       style={{
@@ -128,6 +135,13 @@ export function IdleView({
           >
             {funkrufname} · kein aktiver Einsatz
           </div>
+          {/* Funkstatus laut Leitstelle (ELS) im Klartext — "Frei auf Wache" usw.
+              Ohne ELS-Einrichtung bleibt die Zeile weg. */}
+          {funk.enabled && fahrzeugId && fahrzeugId !== "zentrale" ? (
+            <div style={{ marginTop: 12 }}>
+              <FunkstatusBadge gross eintrag={funk.map[fahrzeugId]} stale={funk.stale} />
+            </div>
+          ) : null}
         </div>
         <p
           style={{
