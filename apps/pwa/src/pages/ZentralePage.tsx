@@ -823,7 +823,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   /** Einsatzart-Auswahl vor dem Abschluss (Pflicht, bestimmt B26-/T26-Nummer). */
   const [einsatzartWahl, setEinsatzartWahl] = useState<{
     einsatzId: string;
-    vorschlag?: string;
+    vorschlag?: string | undefined;
     automatisch: boolean;
     weiter: (art: string) => void;
   } | null>(null);

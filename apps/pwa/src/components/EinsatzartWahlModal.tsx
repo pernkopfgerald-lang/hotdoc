@@ -5,9 +5,9 @@ import { EINSATZARTEN, kategorieFuer } from "@hotdoc/shared";
 interface Props {
   open: boolean;
   /** Bereits gesetzte bzw. automatisch vorgeschlagene Einsatzart. */
-  vorschlag?: string;
+  vorschlag?: string | undefined;
   /** true = `vorschlag` wurde automatisch aus dem Alarm abgeleitet und ist noch nicht bestaetigt. */
-  automatisch?: boolean;
+  automatisch?: boolean | undefined;
   busy?: boolean;
   error?: string | null;
   onWahl: (art: string) => void;
