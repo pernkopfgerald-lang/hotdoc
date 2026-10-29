@@ -40,6 +40,7 @@ import {
 } from "../services/els/logik.js";
 import { istLeader } from "../services/els/leader.js";
 import { dokumentiereStatus } from "../services/els/protokoll.js";
+import { schreibeVerlauf } from "../services/els/verlauf.js";
 import {
   getElsSnapshot,
   recordEventsPoll,
@@ -84,6 +85,8 @@ export async function pollUnitsOnce(): Promise<void> {
     // Statuswechsel unserer Fahrzeuge ins Einsatzprotokoll (Chronik) schreiben.
     const snap = getElsSnapshot();
     if (snap) await dokumentiereStatus(snap.status);
+    // Verlauf (Rohwerte der Leitstelle + Entscheidungen) dauerhaft in der DB ablegen.
+    await schreibeVerlauf();
     logger.debug({ anzahl: units.length }, "ELS-Einheiten aktualisiert");
   } catch (err) {
     recordUnitsPoll(errMsg(err));

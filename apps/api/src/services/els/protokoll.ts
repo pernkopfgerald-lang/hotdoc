@@ -24,6 +24,7 @@ import { FAHRZEUGE, funkstatusChronikText, type FahrzeugId } from "@hotdoc/share
 import { db } from "../../couch/client.js";
 import { logger } from "../../lib/logger.js";
 import { elsAlarmId, type FahrzeugFunkstatus } from "./logik.js";
+import { merkeVerlauf } from "./verlauf.js";
 
 /** So lange bleibt ein Fahrzeug einem Einsatz zugeordnet, auch ohne ELS-Einsatznummer. */
 const MERKUNG_MS = 12 * 60 * 60 * 1000;
@@ -44,6 +45,7 @@ const merkungen = new Map<FahrzeugId, Merkung>();
 export function resetProtokollState(): void {
   letzterStand.clear();
   merkungen.clear();
+  letzteEntscheidung.clear();
 }
 
 interface EinsatzMin {
@@ -87,6 +89,7 @@ export async function dokumentiereStatus(liste: FahrzeugFunkstatus[], jetztMs: n
       const key = `${s.status}|${s.since ?? ""}`;
       const einsatz = findeEinsatz(s, aktive, jetztMs);
       if (!einsatz) {
+        verlaufEntscheidung(s, key, s.num1 ? "wartet-auf-einsatz" : "kein-einsatz");
         // Meldet die Einheit eine ELS-Einsatznummer, zu der es noch keinen HotDoc-
         // Einsatz gibt (wird in den naechsten Sekunden verknuepft/angelegt), den
         // Stand NICHT merken: der naechste Poll holt den Eintrag nach. Ohne
@@ -98,16 +101,19 @@ export async function dokumentiereStatus(liste: FahrzeugFunkstatus[], jetztMs: n
       const zeitMs = Number.isNaN(tsMs) ? jetztMs : tsMs;
       const alarmMs = Date.parse(einsatz.alarmierungZeit ?? "");
       if (!Number.isNaN(alarmMs) && zeitMs < alarmMs - VOR_ALARM_TOLERANZ_MS) {
+        verlaufEntscheidung(s, key, "vor-alarmierung", einsatz._id);
         letzterStand.set(s.fahrzeugId, key);
         continue;
       }
       try {
         const neu = await haengeAn(einsatz._id, s, zeitMs);
+        verlaufEntscheidung(s, key, neu ? "geschrieben" : "nicht-geschrieben (bereits vorhanden / Einsatz geschlossen)", einsatz._id);
         if (neu) geschrieben += 1;
         letzterStand.set(s.fahrzeugId, key);
         if (s.status === STATUS_EINGERUECKT) merkungen.delete(s.fahrzeugId);
       } catch (err) {
         // Stand NICHT merken -> naechster Poll versucht es erneut.
+        verlaufEntscheidung(s, key, `fehler: ${err instanceof Error ? err.message : String(err)}`, einsatz._id);
         logger.warn(
           { fahrzeugId: s.fahrzeugId, err: err instanceof Error ? err.message : String(err) },
           "Funkstatus konnte nicht ins Protokoll geschrieben werden",
@@ -119,6 +125,23 @@ export async function dokumentiereStatus(liste: FahrzeugFunkstatus[], jetztMs: n
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Funkstatus-Protokoll uebersprungen");
     return 0;
   }
+}
+
+const letzteEntscheidung = new Map<string, string>();
+
+/** Haelt im ELS-Verlauf fest, was mit einem Funkstatus passiert ist (je Fahrzeug/Status/Ergebnis nur einmal). */
+function verlaufEntscheidung(s: FahrzeugFunkstatus, key: string, ergebnis: string, einsatzId?: string): void {
+  const marke = `${key}|${ergebnis}`;
+  if (letzteEntscheidung.get(s.fahrzeugId) === marke) return;
+  letzteEntscheidung.set(s.fahrzeugId, marke);
+  merkeVerlauf("protokoll", {
+    fahrzeugId: s.fahrzeugId,
+    status: s.status,
+    since: s.since ?? null,
+    num1: s.num1,
+    ergebnis,
+    ...(einsatzId ? { einsatzId } : {}),
+  });
 }
 
 function findeEinsatz(s: FahrzeugFunkstatus, aktive: EinsatzMin[], jetztMs: number): EinsatzMin | undefined {

@@ -18,6 +18,7 @@ import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { getElsPollStand, holeSnapshot, ladeZuordnung, snapshotAlterSec } from "../services/els/state.js";
 import { ordneUnitZu } from "../services/els/logik.js";
+import { leseVerlauf, VERLAUF_TAGE } from "../services/els/verlauf.js";
 
 export const elsRouter: Router = Router();
 
@@ -47,6 +48,13 @@ elsRouter.get("/api/els/status", requireAuth(), ah(async (_req, res) => {
         }))
       : [],
   });
+}));
+
+/** Verlauf der Leitstellen-Rohwerte und der HotDoc-Entscheidungen (Diagnose), bis zu VERLAUF_TAGE Tage. */
+elsRouter.get("/api/els/verlauf", requireAuth("funktionaer"), ah(async (req, res) => {
+  const tage = Number.parseInt(String(req.query.tage ?? "3"), 10);
+  const eintraege = await leseVerlauf(Number.isFinite(tage) ? tage : 3);
+  res.json({ ok: true, aufbewahrungTage: VERLAUF_TAGE, anzahl: eintraege.length, eintraege });
 }));
 
 elsRouter.get("/api/els/diagnose", requireAuth("funktionaer"), ah(async (_req, res) => {

@@ -8,6 +8,7 @@ import type { FahrzeugId } from "@hotdoc/shared";
 import { db } from "../../couch/client.js";
 import { logger } from "../../lib/logger.js";
 import { baueFahrzeugStatus, ordneUnitZu, type ElsUnit, type ElsZuordnungOverride, type FahrzeugFunkstatus } from "./logik.js";
+import { merkeVerlauf } from "./verlauf.js";
 
 export interface ElsPollStand {
   unitsLastAt: string | null;
@@ -85,7 +86,7 @@ export async function setElsUnits(units: ElsUnit[]): Promise<void> {
   const override = await ladeZuordnung();
   const status = baueFahrzeugStatus(units, override);
   const nichtZugeordnet = units.filter((u) => ordneUnitZu(u, override) === null);
-  protokolliereWechsel(snapshot, units);
+  protokolliereWechsel(snapshot, units, override);
   snapshot = { fetchedAt: new Date().toISOString(), units, status, nichtZugeordnet };
   await speichereSnapshot(snapshot);
 }
@@ -96,12 +97,36 @@ export async function setElsUnits(units: ElsUnit[]): Promise<void> {
  * liefert (die Schnittstellenbeschreibung nennt keine Werte-Tabelle). Keine
  * personenbezogenen Daten, keine Positionen.
  */
-function protokolliereWechsel(alt: ElsSnapshot | null, units: ElsUnit[]): void {
-  if (!alt) return;
+function protokolliereWechsel(alt: ElsSnapshot | null, units: ElsUnit[], override: ElsZuordnungOverride): void {
+  if (!alt) {
+    // Erster Abruf nach dem Start: Ausgangslage im Verlauf festhalten.
+    for (const u of units) {
+      merkeVerlauf("einheit", {
+        start: true,
+        unid: u.unid,
+        callname: u.callname,
+        fahrzeugId: ordneUnitZu(u, override),
+        status: { von: null, nach: u.statusFlorian },
+        unitStatus: { von: null, nach: u.unitStatus },
+        num1: { von: null, nach: u.num1 },
+        since: u.lastStatusTimestamp ?? null,
+      });
+    }
+    return;
+  }
   for (const u of units) {
     const v = alt.units.find((x) => x.unid === u.unid);
     if (!v) continue;
     if (v.statusFlorian !== u.statusFlorian || v.unitStatus !== u.unitStatus || v.num1 !== u.num1) {
+      merkeVerlauf("einheit", {
+        unid: u.unid,
+        callname: u.callname,
+        fahrzeugId: ordneUnitZu(u, override),
+        status: { von: v.statusFlorian, nach: u.statusFlorian },
+        unitStatus: { von: v.unitStatus, nach: u.unitStatus },
+        num1: { von: v.num1, nach: u.num1 },
+        since: u.lastStatusTimestamp ?? null,
+      });
       logger.info(
         {
           unid: u.unid,
