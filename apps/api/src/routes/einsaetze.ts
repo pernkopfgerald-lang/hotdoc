@@ -13,7 +13,14 @@
 import { randomUUID } from "node:crypto";
 import { Router, type Response } from "express";
 import { z } from "zod";
-import { EINSATZ_POLL_FELDER, EinsatzSchema, FahrzeugberichtSchema } from "@hotdoc/shared";
+import {
+  EINSATZ_POLL_FELDER,
+  EinsatzSchema,
+  FahrzeugberichtSchema,
+  einsatzartFehlt,
+  leiteEinsatzartAb,
+  type EinsatzartPruefDoc,
+} from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
@@ -565,6 +572,25 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
       return;
     }
   }
+  // Einsatzart ist Pflicht (ausser Uebung/Lotsendienst): sie bestimmt die Nummer
+  // (B26- vs. T26-) und den Statistik-Ablauf. Frueher fiel eine fehlende Art still
+  // auf "technisch" — ein Brand wurde so als T26-… nummeriert. Fehlt sie, versuchen
+  // wir sie aus dem Alarmtext abzuleiten; gelingt das nicht, wird der Abschluss
+  // abgelehnt und die Mannschaft waehlt die Einsatzart.
+  let abgeleiteteEinsatzart: string | undefined;
+  if (einsatzartFehlt(doc as EinsatzartPruefDoc)) {
+    abgeleiteteEinsatzart = leiteEinsatzartAb({
+      alarmText: (doc.alarmierungText as string | undefined) ?? (doc.einsatzartFreitext as string | undefined),
+    });
+    if (!abgeleiteteEinsatzart) {
+      res.status(422).json({
+        error: "einsatzart_fehlt",
+        hint: "Bitte die Einsatzart waehlen (Brand oder Technisch), sie bestimmt die Berichtsnummer.",
+      });
+      return;
+    }
+    logger.warn({ id, einsatzart: abgeleiteteEinsatzart }, "Abschluss ohne Einsatzart — aus Alarmtext abgeleitet");
+  }
   // Abschluss-Override-Hinweis: wenn noch nicht alle Fahrzeugberichte
   // abgeschlossen sind aber der Einsatzleiter trotzdem abschliesst (z. B.
   // Kdt hat das Tablet noch nicht zurueckgegeben, Funktionaer braucht den
@@ -639,7 +665,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     try {
       // U-03: einsatzTyp mitgeben — Uebungen ziehen aus dem "U"-Nummernkreis.
       berichtNummer = await vergebeBerichtNummer(
-        doc.einsatzart as string | undefined,
+        (doc.einsatzart as string | undefined) || abgeleiteteEinsatzart,
         doc.alarmierungZeit as string | undefined,
         doc.einsatzTyp as string | undefined,
       );
@@ -670,6 +696,9 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     geaendertAm: new Date().toISOString(),
     ...(overrideHinweisFromBody ? { abschlussOverrideHinweis: overrideHinweisFromBody } : {}),
     ...(berichtNummer ? { berichtNummer } : {}),
+    ...(abgeleiteteEinsatzart && !basis.einsatzart
+      ? { einsatzart: abgeleiteteEinsatzart, einsatzartAuto: true }
+      : {}),
     // Review 2026-09-04 (Entscheidung 1): offene Fahrzeugberichte bekommen
     // eine 30-Minuten-Gnadenfrist statt sofort zwangsgeschlossen zu werden —
     // schliesseOffeneFzgberNachGnadenfrist() (auto-close-stale.ts) und die
@@ -1470,6 +1499,8 @@ einsaetzeRouter.put("/api/einsaetze/:id", requireAuth("mannschaft"), ah(async (r
       safeBody[key] = body[key];
     }
   }
+  // Wird die Einsatzart gesetzt/bestaetigt, ist sie kein automatischer Vorschlag mehr.
+  if ("einsatzart" in safeBody) safeBody.einsatzartAuto = false;
   const editorNow = new Date().toISOString();
   const merged = {
     ...current,

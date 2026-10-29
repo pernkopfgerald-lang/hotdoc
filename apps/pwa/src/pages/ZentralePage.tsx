@@ -29,6 +29,7 @@ import { AboutModal } from "../components/AboutModal";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { CloseTabConfirmModal } from "../components/CloseTabConfirmModal";
+import { EinsatzartWahlModal } from "../components/EinsatzartWahlModal";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
@@ -60,6 +61,7 @@ import {
   type FahrzeugId,
   // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Listen.
   kategorieFuer,
+  einsatzartMussBestaetigtWerden,
   URSACHE_TECHNISCH,
   HAUPT_TAETIGKEIT_TECHNISCH,
   WEITERE_TAETIGKEITEN_TECHNISCH,
@@ -95,6 +97,8 @@ interface EinsatzApiDoc {
   einsatzort?: string;
   einsatzart?: string;
   einsatzartFreitext?: string;
+  /** true = Einsatzart wurde aus dem Alarm vorgeschlagen, noch nicht bestaetigt. */
+  einsatzartAuto?: boolean;
   alarmId?: string;
   alarmierungZeit?: string;
   /** Uebungskategorie (nur Uebung). */
@@ -816,6 +820,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // unabhängig vom normalen Save funktioniert und der Einsatzleiter eine
   // explizite Bestätigung sehen muss bevor der Schreibschutz aktiviert wird.
   const [abschlussConfirmOpen, setAbschlussConfirmOpen] = useState(false);
+  /** Einsatzart-Auswahl vor dem Abschluss (Pflicht, bestimmt B26-/T26-Nummer). */
+  const [einsatzartWahl, setEinsatzartWahl] = useState<{
+    einsatzId: string;
+    vorschlag?: string;
+    automatisch: boolean;
+    weiter: (art: string) => void;
+  } | null>(null);
+  const [einsatzartBusy, setEinsatzartBusy] = useState(false);
+  const [einsatzartErr, setEinsatzartErr] = useState<string | null>(null);
   const [abschlussBusy, setAbschlussBusy] = useState(false);
   const [abschlussErr, setAbschlussErr] = useState<string | null>(null);
   const [abschlussOk, setAbschlussOk] = useState<string | null>(null);
@@ -1885,6 +1898,59 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   }
 
   /**
+   * Einsatzart waehlen bzw. bestaetigen, BEVOR der Abschluss-Ablauf startet.
+   * Sie bestimmt die Berichtsnummer (B26-/T26-) und den Brand-Wizard — fehlte
+   * sie, wurde ein Brand frueher still als technischer Einsatz (T26-…) gefuehrt.
+   * `weiter` setzt den Abschluss mit der gewaehlten Art fort.
+   */
+  function fordereEinsatzart(doc: EinsatzApiDoc, weiter: (art: string) => void): void {
+    setEinsatzartErr(null);
+    setEinsatzartWahl({
+      einsatzId: doc._id,
+      vorschlag: doc.einsatzart || undefined,
+      automatisch: doc.einsatzartAuto === true,
+      weiter,
+    });
+  }
+
+  async function speichereEinsatzart(art: string): Promise<void> {
+    if (!einsatzartWahl) return;
+    const { einsatzId, weiter } = einsatzartWahl;
+    setEinsatzartBusy(true);
+    setEinsatzartErr(null);
+    // S-13: dieser PUT stempelt editorGeaendertAm — in die Eigene-PUT-Buchhaltung.
+    ownPutInFlightRef.current += 1;
+    try {
+      await apiCall(`/api/einsaetze/${encodeURIComponent(einsatzId)}`, {
+        method: "PUT",
+        body: { einsatzart: art },
+      });
+      ownPutSeqRef.current += 1;
+      let reloaded: EinsatzApiDoc | null = null;
+      try {
+        reloaded = await apiCall<EinsatzApiDoc>(`/api/einsaetze/${encodeURIComponent(einsatzId)}`);
+        const frisch = reloaded;
+        setAktiveEinsaetze((prev) => prev.map((e) => (e._id === frisch._id ? frisch : e)));
+      } catch {
+        // Reload nicht moeglich — lokal nachziehen, der naechste Poll gleicht ab.
+        setAktiveEinsaetze((prev) =>
+          prev.map((e) => (e._id === einsatzId ? { ...e, einsatzart: art, einsatzartAuto: false } : e)),
+        );
+      }
+      if (editorBasisRef.current?.einsatzId === einsatzId) {
+        editorBasisRef.current = { einsatzId, editorGeaendertAm: reloaded?.editorGeaendertAm ?? null };
+      }
+      setEinsatzartWahl(null);
+      weiter(art);
+    } catch (e) {
+      setEinsatzartErr(`Einsatzart speichern fehlgeschlagen: ${describeApiError(e)}`);
+    } finally {
+      ownPutInFlightRef.current = Math.max(0, ownPutInFlightRef.current - 1);
+      setEinsatzartBusy(false);
+    }
+  }
+
+  /**
    * Abschluss-Workflow für den Einsatzleiter.
    *
    * Voraussetzungen (vom Backend nochmal geprüft):
@@ -2020,6 +2086,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       if (e instanceof ApiError && e.status === 401) {
         setAbschlussErr(
           "Sitzung abgelaufen — bitte die Seite neu laden und erneut anmelden.",
+        );
+        return false;
+      }
+      if (e instanceof ApiError && e.status === 422 && e.message.includes("einsatzart_fehlt")) {
+        setAbschlussErr(
+          "Die Einsatzart fehlt — sie bestimmt die Berichtsnummer. Bitte „Abbrechen“ und dann erneut „Einsatz abschließen“ wählen, die Einsatzart wird dann abgefragt.",
         );
         return false;
       }
@@ -4989,13 +5061,35 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                     // OPT-5 (Audit 2026-06-03): Pfad-Wahl aus entscheideAbschlussPfad.
                     // Issue 17: Bei Brand-Einsaetzen erst den syBOS-Statistik-Wizard,
                     // dann das Confirm (handleBrandWizardComplete öffnet es danach).
-                    if (abschlussPfad === "wizard") {
-                      setBrandWizardOpen(true);
+                    // Einsatzart zuerst: sie entscheidet ueber Brand-Wizard und B26-/T26-Nummer.
+                    // Fehlt sie bzw. ist sie nur vorgeschlagen, erst waehlen/bestaetigen lassen.
+                    const weiter = (art?: string): void => {
+                      const pfad = entscheideAbschlussPfad({
+                        schreibschutz,
+                        hatEinsatzId: !!aktiverEinsatzId,
+                        busy: abschlussBusy,
+                        blockiert,
+                        istBrand: kategorieFuer(art ?? aktiverEinsatz?.einsatzart) === "brand",
+                        istUebung: einsatzTyp === "uebung",
+                        hatBrandStatistik: !!aktiverEinsatz?.brandStatistik,
+                      });
+                      if (pfad === "wizard") {
+                        setBrandWizardOpen(true);
+                        return;
+                      }
+                      if (pfad === "confirm") {
+                        openAbschlussConfirm();
+                      }
+                    };
+                    if (
+                      abschlussPfad !== "blocked" &&
+                      aktiverEinsatz &&
+                      einsatzartMussBestaetigtWerden(aktiverEinsatz)
+                    ) {
+                      fordereEinsatzart(aktiverEinsatz, weiter);
                       return;
                     }
-                    if (abschlussPfad === "confirm") {
-                      openAbschlussConfirm();
-                    }
+                    weiter();
                   }}
                   disabled={abschlussBlocked}
                   style={
@@ -5291,6 +5385,23 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
           });
           setAbschlussErr(null);
           setAbschlussOk(null);
+          // Einsatzart zuerst waehlen/bestaetigen (bestimmt Brand-Wizard + Nummer).
+          if (pfad !== "blocked" && zielDoc && einsatzartMussBestaetigtWerden(zielDoc)) {
+            fordereEinsatzart(zielDoc, (art) => {
+              const neuerPfad = entscheideAbschlussPfad({
+                schreibschutz: zielDoc.schreibschutz === true,
+                hatEinsatzId: true,
+                busy: abschlussBusy,
+                blockiert: !istManuell && offeneBerichte.length > 0,
+                istBrand: kategorieFuer(art) === "brand",
+                istUebung: zielDoc.einsatzTyp === "uebung",
+                hatBrandStatistik: !!zielDoc.brandStatistik,
+              });
+              if (neuerPfad === "wizard") setBrandWizardOpen(true);
+              else if (neuerPfad === "confirm") openAbschlussConfirm();
+            });
+            return;
+          }
           if (pfad === "wizard") {
             setBrandWizardOpen(true);
             return;
@@ -5379,6 +5490,16 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
           setPersonPickerOpen(null);
         }}
         onClose={() => setPersonPickerOpen(null)}
+      />
+
+      <EinsatzartWahlModal
+        open={einsatzartWahl !== null}
+        vorschlag={einsatzartWahl?.vorschlag}
+        automatisch={einsatzartWahl?.automatisch}
+        busy={einsatzartBusy}
+        error={einsatzartErr}
+        onWahl={(art) => void speichereEinsatzart(art)}
+        onAbbruch={() => setEinsatzartWahl(null)}
       />
 
       {abschlussConfirmOpen ? (

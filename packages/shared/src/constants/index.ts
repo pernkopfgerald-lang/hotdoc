@@ -3,6 +3,7 @@ export * from "./atemschutz.js";
 export * from "./autobahn-km.js";
 export * from "./einsatzarten.js";
 export * from "./einsatzkategorie.js";
+export * from "./einsatzart-ableitung.js";
 export * from "./fahrzeuge.js";
 export * from "./florian.js";
 export * from "./funkstatus.js";

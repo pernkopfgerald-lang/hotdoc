@@ -26,6 +26,7 @@ export const EINSATZ_POLL_FELDER = [
   "einsatzTyp",
   "einsatzart",
   "einsatzartFreitext",
+  "einsatzartAuto",
   "einsatzort",
   "alarmierungZeit",
   "alarmierungText",

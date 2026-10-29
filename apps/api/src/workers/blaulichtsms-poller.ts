@@ -25,6 +25,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { leiteEinsatzartAb } from "@hotdoc/shared";
 import {
   FLORIAN_POSITION,
   MAX_EINSATZORT_KM,
@@ -512,6 +513,9 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     koordinaten,
   });
 
+  // Einsatzart aus dem Alarmtext vorschlagen — ohne Art wurde ein Brand sonst als T26 nummeriert.
+  const artVorschlag = leiteEinsatzartAb({ alarmText: a.alarmText });
+
   const doc = {
     _id: id,
     type: "einsatz" as const,
@@ -519,6 +523,7 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     alarmId: a.alarmId,
     // V16: Gesamtliste der gemappten Alarm-IDs; alarmId bleibt die primaere.
     alarmIds: [a.alarmId],
+    ...(artVorschlag ? { einsatzart: artVorschlag, einsatzartAuto: true } : {}),
     ...(kandidat ? { moeglichesDuplikatVon: kandidat._id } : {}),
     einsatzort: einsatzortText,
     ...(adresseAutoSkippedReason ? { adresseAutoSkippedReason } : {}),

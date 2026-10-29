@@ -174,6 +174,8 @@ export const EinsatzSchema = z.object({
   // den Enum, "B2-Verkehrsunfall" aber nicht). Wir akzeptieren beides.
   einsatzart: z.union([z.enum(EINSATZARTEN), z.string()]).optional(),
   einsatzartFreitext: z.string().optional(),
+  /** true = Einsatzart wurde aus den Alarmdaten vorgeschlagen und noch nicht bestaetigt. */
+  einsatzartAuto: z.boolean().optional(),
   warnAlarmsystemNr: z.string().optional(),
   pflichtbereich: z.boolean().optional(),
   einsatzzoneEzell: z.boolean().optional(),

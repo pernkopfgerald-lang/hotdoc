@@ -49,6 +49,7 @@
  * Cron-Ausdruck: `*\/15 * * * *`.
  */
 
+import { einsatzartIstPflicht, leiteEinsatzartAb } from "@hotdoc/shared";
 import cron from "node-cron";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
@@ -141,6 +142,7 @@ interface EinsatzMin {
   alarmierungZeit?: string;
   einsatzTyp?: string;
   einsatzart?: string;
+  alarmierungText?: string;
   einsatzende?: string;
   /** AUDIT-11: bereits vergebene Berichtsnummer (Reaktivierungs-Fall). */
   berichtNummer?: string;
@@ -796,11 +798,15 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
     let berichtNummer = einsatz.berichtNummer;
     if (!berichtNummer && !istUebung) {
       try {
-        berichtNummer = await vergebeBerichtNummer(
-          einsatz.einsatzart,
-          einsatz.alarmierungZeit,
-          einsatz.einsatzTyp,
-        );
+        // Ohne gewaehlte Einsatzart aus dem Alarmtext ableiten, statt still "technisch" anzunehmen.
+        const art = einsatz.einsatzart || leiteEinsatzartAb({ alarmText: einsatz.alarmierungText });
+        if (!einsatz.einsatzart && !art && einsatzartIstPflicht(einsatz)) {
+          logger.warn(
+            { einsatzId: einsatz._id },
+            "Auto-Close: Einsatzart fehlt und ist nicht ableitbar — Nummer wird als technisch (T) vergeben",
+          );
+        }
+        berichtNummer = await vergebeBerichtNummer(art, einsatz.alarmierungZeit, einsatz.einsatzTyp);
       } catch (err) {
         logger.warn(
           { err, einsatzId: einsatz._id },

@@ -19,6 +19,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { leiteEinsatzartAb } from "@hotdoc/shared";
 import { env, hasEls } from "../config.js";
 import { db } from "../couch/client.js";
 import { logger } from "../lib/logger.js";
@@ -186,6 +187,17 @@ async function verarbeiteEvent(e: ElsEvent, docs: EinsatzDocMin[]): Promise<void
   }
 }
 
+/** Einsatzart-Vorschlag aus dem ELS-Stichwort (und ggf. dem schon vorhandenen Alarmtext). */
+function leiteElsEinsatzartAb(e: ElsEvent, vorhandenerText: string | undefined): string | undefined {
+  return leiteEinsatzartAb({
+    tycod: e.tycod,
+    subTycod: e.subTycod,
+    typ: e.typ,
+    sub: e.sub,
+    alarmText: e.alarmText || vorhandenerText,
+  });
+}
+
 /** ELS-Nummer an einem vorhandenen Einsatz vermerken + fehlende Stammdaten ergaenzen. */
 async function verknuepfe(einsatzId: string, e: ElsEvent): Promise<void> {
   for (let versuch = 1; versuch <= 2; versuch++) {
@@ -225,6 +237,15 @@ async function verknuepfe(einsatzId: string, e: ElsEvent): Promise<void> {
     const ort = typeof doc.einsatzort === "string" ? doc.einsatzort.trim() : "";
     const elsOrt = elsEinsatzort(e);
     if ((ort === "" || ort.toLowerCase() === "unbekannt") && elsOrt) patched.einsatzort = elsOrt;
+    // Einsatzart nur vorschlagen, wenn noch keine gesetzt ist (Brand wurde sonst als T26 nummeriert).
+    const hatArt = typeof doc.einsatzart === "string" && doc.einsatzart.trim() !== "";
+    if (!hatArt) {
+      const art = leiteElsEinsatzartAb(e, typeof doc.alarmierungText === "string" ? doc.alarmierungText : undefined);
+      if (art) {
+        patched.einsatzart = art;
+        patched.einsatzartAuto = true;
+      }
+    }
     try {
       await db.insert(patched);
       logger.info({ einsatzId, num1: e.num1 }, "ELS-Einsatz mit vorhandenem Einsatz verknüpft");
@@ -246,6 +267,7 @@ async function legeEinsatzAn(e: ElsEvent): Promise<{ _id: string; alarmierungZei
   const stichwort = elsStichwort(e);
   const text = e.alarmText && !stichwort.includes(e.alarmText) ? `${stichwort} – ${e.alarmText}` : stichwort;
   const hatPos = e.lat !== null && e.lng !== null;
+  const art = leiteElsEinsatzartAb(e, undefined);
 
   const doc = {
     _id: id,
@@ -253,6 +275,7 @@ async function legeEinsatzAn(e: ElsEvent): Promise<{ _id: string; alarmierungZei
     einsatzTyp: "alarm" as const,
     alarmId,
     alarmIds: [alarmId],
+    ...(art ? { einsatzart: art, einsatzartAuto: true } : {}),
     einsatzort,
     ...(hatPos
       ? {
