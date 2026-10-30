@@ -34,10 +34,8 @@ export function FunkstatusBadge({ eintrag, stale, gross = false }: Props) {
     label = "Funkstatus nicht verfügbar";
     title = "Keine aktuellen Daten von der Leitstelle (ELS)";
   } else if (!eintrag.status) {
-    // Die Leitstelle meldet für Fahrzeuge in der Wache keinen Status → "Frei auf Wache".
-    label = "Frei auf Wache";
-    ton = "ok";
-    title = "Kein Funkstatus gemeldet — Fahrzeug steht frei auf Wache (Leitstelle ELS)";
+    label = "Kein Funkstatus";
+    title = "Die Leitstelle (ELS) meldet für dieses Fahrzeug aktuell keinen Funkstatus";
   } else {
     const kurz = funkstatusKurz(eintrag.status);
     label = kurz || `Funkstatus ${eintrag.status}`;

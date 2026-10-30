@@ -7,7 +7,7 @@
  *  - ELS-Einsaetze mit bereits vorhandenen Einsaetzen abgleichen
  */
 
-import { FAHRZEUGE, haversineKm, type FahrzeugId } from "@hotdoc/shared";
+import { FAHRZEUGE, funkstatusAusUnitStatus, haversineKm, type FahrzeugId } from "@hotdoc/shared";
 
 // ─── Antworten normalisieren ─────────────────────────────────────────
 
@@ -213,7 +213,7 @@ export function ordneUnitZu(
 export interface FahrzeugFunkstatus {
   fahrzeugId: FahrzeugId;
   callname: string;
-  /** Rohwert Funkstatus (status_florianstation). */
+  /** Funkstatus-Code: Ziffer (status_florianstation) oder aus unit_status abgeleitet; unbekannte Codes roh. */
   status: string;
   unitStatus: string;
   since?: string;
@@ -236,7 +236,10 @@ export function baueFahrzeugStatus(
     const neu: FahrzeugFunkstatus = {
       fahrzeugId: id,
       callname: u.callname,
-      status: u.statusFlorian,
+      // Ziffer aus status_florianstation, falls die Leitstelle eine liefert; sonst der
+      // Code aus unit_status (FF = 1, FW = 2). Bei Fahrzeugen war status_florianstation
+      // im Test (30.10.2026) immer leer — der Status steht in unit_status.
+      status: u.statusFlorian.trim() || funkstatusAusUnitStatus(u.unitStatus),
       unitStatus: u.unitStatus,
       ...(u.lastStatusTimestamp ? { since: u.lastStatusTimestamp } : {}),
       lat: u.lat,

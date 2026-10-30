@@ -75,9 +75,8 @@ export function FunkstatusKarte() {
           const e = stand.map[id];
           const veraltet = stand.stale || !e;
           const kurz = e?.status ? funkstatusKurz(e.status) || `Funkstatus ${e.status}` : "";
-          // Kein Status von der Leitstelle = Fahrzeug steht frei auf Wache.
-          const label = veraltet ? "nicht verfügbar" : kurz || "Frei auf Wache";
-          const ton = veraltet ? "neutral" : e?.status ? funkstatusTon(e.status) : "ok";
+          const label = veraltet ? "nicht verfügbar" : kurz || "Kein Funkstatus";
+          const ton = veraltet ? "neutral" : e?.status ? funkstatusTon(e.status) : "neutral";
           const seit = !veraltet && e?.status ? hhmm(e.since) : "";
           return (
             <li key={id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>

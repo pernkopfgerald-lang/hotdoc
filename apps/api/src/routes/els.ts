@@ -11,7 +11,7 @@
  * (PUT /api/config/els-zuordnung, Backoffice).
  */
 
-import { funkstatusText } from "@hotdoc/shared";
+import { funkstatusAusUnitStatus, funkstatusText } from "@hotdoc/shared";
 import { Router } from "express";
 import { hasEls } from "../config.js";
 import { ah } from "../lib/async-handler.js";
@@ -73,8 +73,9 @@ elsRouter.get("/api/els/diagnose", requireAuth("funktionaer"), ah(async (_req, r
       sName: u.sName,
       unityp: u.unityp,
       unitStatus: u.unitStatus,
-      status: u.statusFlorian,
-      statusText: funkstatusText(u.statusFlorian),
+      status: u.statusFlorian.trim() || funkstatusAusUnitStatus(u.unitStatus),
+      statusText: funkstatusText(u.statusFlorian.trim() || funkstatusAusUnitStatus(u.unitStatus)),
+      statusFlorianstationRoh: u.statusFlorian,
       since: u.lastStatusTimestamp ?? null,
       hatPosition: u.lat !== null,
       fahrzeugId: ordneUnitZu(u, override),
