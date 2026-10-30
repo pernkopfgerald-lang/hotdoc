@@ -1,3 +1,4 @@
+import { shortCode } from "../lib/format";
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
 import { AlertTriangle, ChevronRight, Download, Info, Loader2, Lock, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -913,12 +914,3 @@ export function Setup({ onSetupDone }: Props) {
   );
 }
 
-function shortCode(id: FahrzeugId): string {
-  switch (id) {
-    case "kdo":        return "KDO";
-    case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "LFA-B";
-    case "mtf":        return "MTF";
-    case "zentrale":   return "FLORIAN";
-  }
-}

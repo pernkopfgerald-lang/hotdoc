@@ -1,3 +1,4 @@
+import { formatTime, pad, shortCode } from "../lib/format";
 import {
   Activity,
   AlertTriangle,
@@ -22,20 +23,23 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { APP_VERSION } from "../version";
 import { AboutModal } from "../components/AboutModal";
 import { ChronikTimeline, type ChronikEintrag } from "../components/ChronikTimeline";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { CloseTabConfirmModal } from "../components/CloseTabConfirmModal";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { FAHRZEUG_IDS, istEinsatzFahrzeugId } from "../lib/fahrzeuge";
+import { lazyRetry } from "../lib/lazy-retry";
+import { behalteWennGleich, inhaltGleich } from "../lib/state-equal";
 import { EinsatzartWahlModal } from "../components/EinsatzartWahlModal";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
-import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
+import type { FahrzeugPos } from "../components/FlorianMap";
 import { HandoffBanner } from "../components/HandoffBanner";
-import { HandoffModal } from "../components/HandoffModal";
 import { PersonPickerModal, type PickPerson } from "../components/PersonPickerModal";
 import { Topbar } from "../components/Topbar";
 import { VehicleSwitcherModal } from "../components/VehicleSwitcherModal";
@@ -66,9 +70,41 @@ import {
   WEITERE_TAETIGKEITEN_TECHNISCH,
 } from "@hotdoc/shared";
 // Issue 17 (Einsatz-Test 2026-06-02): Brand-Abschluss-Wizard fuer syBOS-Statistik.
-import { BrandAbschlussWizard, type BrandStatistik } from "../components/BrandAbschlussWizard";
+import type { BrandStatistik } from "../components/BrandAbschlussWizard";
 
 const HOME_POS = FLORIAN_POSITION;
+
+// Code-Splitting: Karte (Leaflet), Notfall-Uebergabe (qrcode) und der
+// Brand-Wizard werden erst beim Gebrauch nachgeladen – nicht mit der Seite.
+const FlorianMap = lazyRetry(() =>
+  import("../components/FlorianMap").then((m) => ({ default: m.FlorianMap })),
+);
+const HandoffModal = lazyRetry(() =>
+  import("../components/HandoffModal").then((m) => ({ default: m.HandoffModal })),
+);
+const BrandAbschlussWizard = lazyRetry(() =>
+  import("../components/BrandAbschlussWizard").then((m) => ({
+    default: m.BrandAbschlussWizard,
+  })),
+);
+
+/** Platzhalter in Kartengroesse, solange der Karten-Chunk nachlaedt. */
+function KartenPlatzhalter() {
+  return (
+    <div
+      style={{
+        height: 500,
+        display: "grid",
+        placeItems: "center",
+        color: "var(--fg-3)",
+        fontFamily: "var(--font-mono)",
+        fontSize: 15,
+      }}
+    >
+      Karte lädt …
+    </div>
+  );
+}
 
 interface FahrzeugberichtApiDoc {
   _id: string;
@@ -519,6 +555,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [fzgberTick, setFzgberTick] = useState(0);
   const [fzgberAktionBusy, setFzgberAktionBusy] = useState<string | null>(null);
   const [fzgberAktionErr, setFzgberAktionErr] = useState<string | null>(null);
+  /** Fahrzeug, dessen Bericht nach Rueckfrage (ConfirmDialog) entfernt werden soll. */
+  const [fzgberEntfernenConfirm, setFzgberEntfernenConfirm] = useState<FahrzeugId | null>(null);
   const [fzgberByEinsatz, setFzgberByEinsatz] = useState<
     Record<string, FahrzeugberichtApiDoc[]>
   >({});
@@ -1129,7 +1167,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         }
         bekannteAktiveRef.current = new Map(filtered.map((x) => [x._id, x]));
         if (verschwunden.length > 0) void meldeFremdGeschlossen(verschwunden);
-        setAktiveEinsaetze(filtered);
+        // Nur bei echter Aenderung setzen – der 10-s-Poll liefert sonst jedes
+        // Mal ein neues Array und rendert die ganze Seite neu.
+        setAktiveEinsaetze(behalteWennGleich(filtered));
         // Auto-Select: wenn aktuell ausgewaehlter Einsatz nicht mehr in der Liste
         // (z. B. abgeschlossen oder gewipt) → auf den ersten verbleibenden umschalten.
         setAktiverEinsatzId((prev) => {
@@ -1223,7 +1263,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               next[erg.id] = erg.items.filter((i) => i.entferntAm).map((i) => i.fahrzeugId);
             }
           }
-          return next;
+          return inhaltGleich(prev, next) ? prev : next; // kein Re-Render ohne Aenderung
         });
         setFzgberByEinsatz((prev) => {
           const next: Record<string, FahrzeugberichtApiDoc[]> = {};
@@ -1236,7 +1276,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           for (const erg of ergebnisse) {
             if (erg) next[erg.id] = erg.items.filter((i) => !i.entferntAm);
           }
-          return next;
+          return inhaltGleich(prev, next) ? prev : next; // kein Re-Render ohne Aenderung
         });
       } finally {
         inFlight = false;
@@ -1271,9 +1311,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         if (cancelled) return;
         const filtered = r.items
           .filter((p): p is { fahrzeugId: FahrzeugId; lat: number; lng: number; ts: string } =>
-            ["kdo", "tlf-a-4000", "lfa-b", "mtf"].includes(p.fahrzeugId),
+            istEinsatzFahrzeugId(p.fahrzeugId),
           );
-        setPositions(filtered);
+        setPositions(behalteWennGleich(filtered)); // nur bei echter Aenderung
       } catch {
         // Netz weg / 401 → wir behalten den letzten State, nächster Tick versucht erneut
       }
@@ -2291,20 +2331,25 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    * Mannschafts-Zahl = Slots besetzt + Fahrer + Kdt (falls eingetragen).
    * kdt-Name wird über personenMap aus syBosId aufgelöst (Fallback "—").
    */
-  /** 2026-09: Fahrzeugbericht aus dem Hauptbericht entfernen bzw. wiederherstellen. */
-  async function setzeFzgberEntfernt(fzgId: FahrzeugId, entfernen: boolean): Promise<void> {
+  /**
+   * 2026-09: Fahrzeugbericht aus dem Hauptbericht entfernen bzw. wiederherstellen.
+   * Das ENTFERNEN fragt vorher per App-Dialog (ConfirmDialog) nach – statt des
+   * blockierenden window.confirm; das Wiederherstellen laeuft ohne Rueckfrage.
+   */
+  function setzeFzgberEntfernt(fzgId: FahrzeugId, entfernen: boolean): void {
     if (!aktiverEinsatzId || schreibschutz) return;
-    const label = FAHRZEUGE[fzgId].funkrufname;
-    if (
-      entfernen &&
-      !window.confirm(
-        `Fahrzeugbericht „${label}" aus dem Hauptbericht entfernen?
-
-Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksichtigt (auch wenn das Tablet weiter synchronisiert). Du kannst es jederzeit wiederherstellen.`,
-      )
-    ) {
+    if (entfernen) {
+      setFzgberEntfernenConfirm(fzgId);
       return;
     }
+    void fuehreFzgberEntfernenAus(fzgId, false);
+  }
+
+  async function fuehreFzgberEntfernenAus(
+    fzgId: FahrzeugId,
+    entfernen: boolean,
+  ): Promise<void> {
+    if (!aktiverEinsatzId || schreibschutz) return;
     setFzgberAktionBusy(fzgId);
     setFzgberAktionErr(null);
     try {
@@ -2322,7 +2367,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
     }
   }
 
-  const FAHRZEUG_ORDER: FahrzeugId[] = ["kdo", "tlf-a-4000", "lfa-b", "mtf"];
   /**
    * S-08 (Audit R3): Schreibt das Fahrzeug gerade bei einem ANDEREN aktiven
    * Einsatz (offener Fahrzeugbericht dort)? Liefert Einsatz-ID + Ort.
@@ -2343,7 +2387,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
     }
     return null;
   }
-  const fahrzeugStatus: FahrzeugStatusEintrag[] = FAHRZEUG_ORDER.map((id) => {
+  const fahrzeugStatus: FahrzeugStatusEintrag[] = FAHRZEUG_IDS.map((id) => {
     const bericht = fahrzeugberichte.find((b) => b.fahrzeugId === id);
     if (!bericht) {
       // S-08: kein Bericht HIER — aber gebunden bei einem parallelen Einsatz?
@@ -2515,7 +2559,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
     ? (fzgberByEinsatz[duplikatVon._id] ?? [])
         .filter((b) => b.status !== "abgeschlossen")
         .map((b) =>
-          (FAHRZEUG_ORDER as string[]).includes(b.fahrzeugId)
+          (FAHRZEUG_IDS as readonly string[]).includes(b.fahrzeugId)
             ? shortCode(b.fahrzeugId as FahrzeugId)
             : b.fahrzeugId,
         )
@@ -2524,8 +2568,8 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
   // S-08 (Audit R3): Fleet-Status fuer die Lagekarte — "im_einsatz", sobald
   // das Fahrzeug IRGENDWO (aktiver ODER paralleler Einsatz) einen offenen
   // Fahrzeugbericht hat; "abgeschlossen" nur aus Sicht des aktiven Einsatzes.
-  const fleetStatus: Array<{ id: FahrzeugId; status: FahrzeugPos["status"] }> =
-    FAHRZEUG_ORDER.map((id) => {
+  const fleetStatusRaw: Array<{ id: FahrzeugId; status: FahrzeugPos["status"] }> =
+    FAHRZEUG_IDS.map((id) => {
       const irgendwoOffen =
         fahrzeugberichte.some((b) => b.fahrzeugId === id && b.status !== "abgeschlossen") ||
         aktiveEinsaetze.some((eDoc) =>
@@ -2543,6 +2587,19 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             : "wartend",
       };
     });
+  // Stabile Identitaet: fleetStatusRaw ist pro Render ein neues Array. Der
+  // Schluessel aendert sich nur, wenn sich ein Status wirklich aendert –
+  // sonst bleibt fleetStatus (und damit die Karten-Flotte) dieselbe Referenz.
+  const fleetStatusKey = fleetStatusRaw.map((f) => `${f.id}:${f.status}`).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fleetStatus = useMemo(() => fleetStatusRaw, [fleetStatusKey]);
+  // Lagekarte: Flotte nur neu bilden, wenn sich Positionen/Status aendern.
+  // Vorher entstand bei jedem Render ein neues Array -> FlorianMap ersetzte
+  // alle Marker-Icons und flog zum gewaehlten Fahrzeug zurueck.
+  const kartenFlotte = useMemo(
+    () => buildFleetForFlorianMap(positions, fleetStatus),
+    [positions, fleetStatus],
+  );
   const anderswoFzg = fahrzeugStatus.filter((f) => f.status === "anderswo");
 
   // Datum nur wenn echter Einsatz vorhanden — sonst Invalid Date.
@@ -3497,7 +3554,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           disabled={fzgberAktionBusy === f.id}
                           onClick={(ev) => {
                             ev.stopPropagation();
-                            void setzeFzgberEntfernt(f.id, !f.entfernt);
+                            setzeFzgberEntfernt(f.id, !f.entfernt);
                           }}
                           title={
                             f.entfernt
@@ -3628,7 +3685,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             <SectionHead title="Funkstatus · Fahrzeuge" />
             <section className="card">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
-                {(["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const).map((id) => (
+                {FAHRZEUG_IDS.map((id) => (
                   <div
                     key={id}
                     style={{
@@ -3663,54 +3720,56 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               {aktiverEinsatz?.koordinaten ? "Auto-Center auf Einsatzort" : "Standort Eberstalzell"}
             </span>
           </div>
-          <FlorianMap
-            {...(aktiverEinsatz?.koordinaten
-              ? {
-                  einsatzort: {
-                    lat: aktiverEinsatz.koordinaten.lat,
-                    lng: aktiverEinsatz.koordinaten.lng,
-                    label: einsatzort,
+          <Suspense fallback={<KartenPlatzhalter />}>
+            <FlorianMap
+              {...(aktiverEinsatz?.koordinaten
+                ? {
+                    einsatzort: {
+                      lat: aktiverEinsatz.koordinaten.lat,
+                      lng: aktiverEinsatz.koordinaten.lng,
+                      label: einsatzort,
+                    },
+                  }
+                : {})}
+              // EL-08 (Audit-Folge): bei Mehrfach-Lagen die Einsatzorte ALLER
+              // parallelen Einsätze als halbtransparente Pins mitzeigen —
+              // der EL sieht das gesamte Lagebild, der aktive Einsatz bleibt
+              // der kräftige Pin. (aktiveEinsaetze ist bereits Lotsendienst-
+              // bereinigt, #165.)
+              weitereEinsatzorte={aktiveEinsaetze.flatMap((eDoc) => {
+                if (eDoc._id === aktiverEinsatzId || !eDoc.koordinaten) return [];
+                const label = eDoc.einsatzort ?? eDoc.einsatzart;
+                return [
+                  {
+                    lat: eDoc.koordinaten.lat,
+                    lng: eDoc.koordinaten.lng,
+                    ...(label ? { label } : {}),
                   },
-                }
-              : {})}
-            // EL-08 (Audit-Folge): bei Mehrfach-Lagen die Einsatzorte ALLER
-            // parallelen Einsätze als halbtransparente Pins mitzeigen —
-            // der EL sieht das gesamte Lagebild, der aktive Einsatz bleibt
-            // der kräftige Pin. (aktiveEinsaetze ist bereits Lotsendienst-
-            // bereinigt, #165.)
-            weitereEinsatzorte={aktiveEinsaetze.flatMap((eDoc) => {
-              if (eDoc._id === aktiverEinsatzId || !eDoc.koordinaten) return [];
-              const label = eDoc.einsatzort ?? eDoc.einsatzart;
-              return [
-                {
-                  lat: eDoc.koordinaten.lat,
-                  lng: eDoc.koordinaten.lng,
-                  ...(label ? { label } : {}),
-                },
-              ];
-            })}
-            // S-08: Fleet-Status ueber ALLE aktiven Einsaetze (im_einsatz,
-            // sobald das Fahrzeug irgendwo einen offenen Bericht hat).
-            fahrzeuge={buildFleetForFlorianMap(positions, fleetStatus)}
-            zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
-            selectedFahrzeugId={selectedFahrzeugId}
-            onSelectFahrzeug={(id) =>
-              setSelectedFahrzeugId(id as FahrzeugId | null)
-            }
-            mannschaftByFahrzeug={Object.fromEntries(
-              fahrzeugStatus.map((f) => [
-                f.id,
-                {
-                  fahrzeugId: f.id,
-                  ...(f.fahrer ? { fahrer: f.fahrer } : {}),
-                  ...(f.kdt ? { kdt: f.kdt } : {}),
-                  mannschaft: f.mannschaftNamen,
-                },
-              ]),
-            )}
-            enablePopOut
-            defaultHeight={500}
-          />
+                ];
+              })}
+              // S-08: Fleet-Status ueber ALLE aktiven Einsaetze (im_einsatz,
+              // sobald das Fahrzeug irgendwo einen offenen Bericht hat).
+              fahrzeuge={kartenFlotte}
+              zoom={aktiverEinsatz?.koordinaten ? 16 : 14}
+              selectedFahrzeugId={selectedFahrzeugId}
+              onSelectFahrzeug={(id) =>
+                setSelectedFahrzeugId(id as FahrzeugId | null)
+              }
+              mannschaftByFahrzeug={Object.fromEntries(
+                fahrzeugStatus.map((f) => [
+                  f.id,
+                  {
+                    fahrzeugId: f.id,
+                    ...(f.fahrer ? { fahrer: f.fahrer } : {}),
+                    ...(f.kdt ? { kdt: f.kdt } : {}),
+                    mannschaft: f.mannschaftNamen,
+                  },
+                ]),
+              )}
+              enablePopOut
+              defaultHeight={500}
+            />
+          </Suspense>
         </section>
 
         {/* Editor-Bereich ist nur sichtbar bei aktivem Einsatz — Idle = nur
@@ -4695,7 +4754,10 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                           fontWeight: 600,
                           cursor: schreibschutz ? "not-allowed" : "pointer",
                           opacity: schreibschutz ? 0.55 : 1,
-                          minHeight: 32,
+                          // 44-px-Tippflaeche (Projektstandard); Chips duerfen weiter umbrechen.
+                          minHeight: 44,
+                          display: "inline-flex",
+                          alignItems: "center",
                         }}
                       >
                         {w}
@@ -4735,7 +4797,10 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                             fontWeight: 600,
                             cursor: schreibschutz ? "not-allowed" : "pointer",
                             opacity: schreibschutz ? 0.55 : 1,
-                            minHeight: 32,
+                            // 44-px-Tippflaeche (Projektstandard); Chips duerfen weiter umbrechen.
+                            minHeight: 44,
+                            display: "inline-flex",
+                            alignItems: "center",
                           }}
                         >
                           {g}
@@ -5281,7 +5346,7 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               fontWeight: 700,
               fontSize: 15.5,
               cursor: verwerfenUndo.busy ? "wait" : "pointer",
-              minHeight: 36,
+              minHeight: 44, // 44-px-Tippflaeche (Projektstandard)
               whiteSpace: "nowrap",
             }}
           >
@@ -5297,8 +5362,12 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
               color: "inherit",
               cursor: "pointer",
               padding: 4,
-              minHeight: 0,
+              // 44-px-Tippflaeche auch fuer das Schliessen-X des Undo-Hinweises.
+              minHeight: 44,
+              minWidth: 44,
               display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <X size={14} />
@@ -5306,18 +5375,22 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
         </div>
       ) : null}
 
-      <HandoffModal
-        open={handoffOpen}
-        onClose={() => setHandoffOpen(false)}
-        {...(aktiverEinsatzId ? { einsatzId: aktiverEinsatzId } : {})}
-        onClaimed={() => {
-          setHandoffOpen(false);
-          // S-06 (Audit R3): Tipparbeit flushen, BEVOR das Tablet sich
-          // ausloggt — schlaegt der Save fehl, liegt sie als Draft im
-          // localStorage (Seed-Effekt bietet sie nach dem naechsten Login an).
-          void flushEditorVorAktion().finally(() => onHandoffLogout());
-        }}
-      />
+      {handoffOpen ? (
+        <Suspense fallback={null}>
+          <HandoffModal
+            open={handoffOpen}
+            onClose={() => setHandoffOpen(false)}
+            {...(aktiverEinsatzId ? { einsatzId: aktiverEinsatzId } : {})}
+            onClaimed={() => {
+              setHandoffOpen(false);
+              // S-06 (Audit R3): Tipparbeit flushen, BEVOR das Tablet sich
+              // ausloggt — schlaegt der Save fehl, liegt sie als Draft im
+              // localStorage (Seed-Effekt bietet sie nach dem naechsten Login an).
+              void flushEditorVorAktion().finally(() => onHandoffLogout());
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       <VehicleSwitcherModal
         open={vehicleSwitcherOpen}
@@ -5329,6 +5402,27 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
           void flushEditorVorAktion().finally(() => onSwitchFahrzeug(id));
         }}
         onClose={() => setVehicleSwitcherOpen(false)}
+      />
+
+      {/* ─── Rueckfrage: Fahrzeugbericht aus dem Hauptbericht entfernen ───
+          (App-Dialog statt window.confirm, siehe setzeFzgberEntfernt) */}
+      <ConfirmDialog
+        open={fzgberEntfernenConfirm !== null}
+        title="Fahrzeugbericht entfernen?"
+        text={`Fahrzeugbericht „${
+          fzgberEntfernenConfirm ? FAHRZEUGE[fzgberEntfernenConfirm].funkrufname : ""
+        }" aus dem Hauptbericht entfernen?
+
+Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksichtigt (auch wenn das Tablet weiter synchronisiert). Du kannst es jederzeit wiederherstellen.`}
+        confirmLabel="Entfernen"
+        cancelLabel="Abbrechen"
+        danger
+        onConfirm={() => {
+          const id = fzgberEntfernenConfirm;
+          setFzgberEntfernenConfirm(null);
+          if (id) void fuehreFzgberEntfernenAus(id, true);
+        }}
+        onCancel={() => setFzgberEntfernenConfirm(null)}
       />
 
       {/* ─── Tab-Schließen-Dialog (X im Browser-Tab-Reiter) ───
@@ -5937,27 +6031,31 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
           Lookup-Adresse = einsatzort (Server normalisiert + hashed). Initial
           = bestehende brandStatistik (z. B. wenn der User schon einmal
           durchgelaufen ist und nochmal aufruft). Cancel-Pfad schreibt nichts. */}
-      <BrandAbschlussWizard
-        open={brandWizardOpen}
-        {...(aktiverEinsatz?.einsatzort
-          ? { lookupAdresse: aktiverEinsatz.einsatzort }
-          : {})}
-        initial={
-          aktiverEinsatz?.brandStatistik
-            ? (aktiverEinsatz.brandStatistik as Partial<BrandStatistik>)
-            : null
-        }
-        onCancel={() => {
-          setBrandWizardOpen(false);
-          // AUDIT-07/EL-13: Edit-Modus auch beim Abbruch zuruecksetzen —
-          // sonst wuerde der NAECHSTE regulaere Abschluss-Wizard-Durchlauf
-          // faelschlich ohne Abschluss-Confirm enden.
-          brandWizardEditModeRef.current = false;
-        }}
-        onComplete={(bs) => {
-          void handleBrandWizardComplete(bs);
-        }}
-      />
+      {brandWizardOpen ? (
+        <Suspense fallback={null}>
+          <BrandAbschlussWizard
+            open={brandWizardOpen}
+            {...(aktiverEinsatz?.einsatzort
+              ? { lookupAdresse: aktiverEinsatz.einsatzort }
+              : {})}
+            initial={
+              aktiverEinsatz?.brandStatistik
+                ? (aktiverEinsatz.brandStatistik as Partial<BrandStatistik>)
+                : null
+            }
+            onCancel={() => {
+              setBrandWizardOpen(false);
+              // AUDIT-07/EL-13: Edit-Modus auch beim Abbruch zuruecksetzen —
+              // sonst wuerde der NAECHSTE regulaere Abschluss-Wizard-Durchlauf
+              // faelschlich ohne Abschluss-Confirm enden.
+              brandWizardEditModeRef.current = false;
+            }}
+            onComplete={(bs) => {
+              void handleBrandWizardComplete(bs);
+            }}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
@@ -6449,24 +6547,4 @@ function FlorianChronikInput({
   );
 }
 
-function shortCode(id: FahrzeugId): string {
-  switch (id) {
-    case "kdo":        return "KDO";
-    case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "LFA-B";
-    case "mtf":        return "MTF";
-    case "zentrale":   return "FLORIAN";
-  }
-}
 
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return iso;
-  }
-}
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}

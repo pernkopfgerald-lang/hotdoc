@@ -215,7 +215,7 @@ export function IdleView({
                 alignItems: "center",
                 fontSize: 14,
                 fontWeight: 700,
-                minHeight: 30,
+                minHeight: 44, // 44-px-Tippflaeche (Projektstandard)
               }}
             >
               <UploadCloud size={12} />

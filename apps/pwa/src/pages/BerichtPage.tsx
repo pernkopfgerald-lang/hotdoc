@@ -1,3 +1,4 @@
+import { pad, shortCode } from "../lib/format";
 import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Loader2, Map as MapIcon, MapPin, RotateCcw, Save, Truck, UploadCloud, Users } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -6,7 +7,6 @@ import { AboutModal } from "../components/AboutModal";
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
 import { IdleView } from "../components/IdleView";
 import { HandoffBanner } from "../components/HandoffBanner";
-import { HandoffModal } from "../components/HandoffModal";
 import { AbschlussModal, type AbschlussCheck } from "../components/AbschlussModal";
 import { AlarmCard, type AlarmDaten } from "../components/AlarmCard";
 import { AuftraegeSection, type Auftrag } from "../components/AuftraegeSection";
@@ -22,7 +22,7 @@ import {
   emptySlot,
   type MannschaftSlotData,
 } from "../components/MannschaftSlot";
-import { MapCard, type Hydrant, type MapPosition, type RouteData } from "../components/MapCard";
+import type { Hydrant, MapPosition, RouteData } from "../components/MapCard";
 import { NeuerEinsatzTabletModal, PLATZHALTER_ORT_REGEX, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
 import { ArchivTabletModal } from "../components/ArchivTabletModal";
 import { PersonButton } from "../components/PersonButton";
@@ -38,6 +38,14 @@ import { lazyRetry } from "../lib/lazy-retry";
 const VorschauModal = lazyRetry(() =>
   import("../components/VorschauModal").then((m) => ({ default: m.VorschauModal })),
 );
+// Code-Splitting: Karte (Leaflet) und Notfall-Uebergabe (qrcode) erst beim
+// Gebrauch nachladen – die Karte ist ausserdem per Toggle ausblendbar.
+const MapCard = lazyRetry(() =>
+  import("../components/MapCard").then((m) => ({ default: m.MapCard })),
+);
+const HandoffModal = lazyRetry(() =>
+  import("../components/HandoffModal").then((m) => ({ default: m.HandoffModal })),
+);
 import { useGeraete } from "../lib/geraete-config";
 import { useAusruestungsRegeln } from "../lib/ausruestungs-regeln";
 import { findeRegeln, funkstatusAusChronikText, UEBUNGS_TYPEN, validiereAusruestung } from "@hotdoc/shared";
@@ -45,8 +53,9 @@ import { getDeviceId } from "../lib/device-id";
 import type { HotdocAlarmDetail } from "../lib/device-register";
 import { apiCall, ApiError, describeApiError } from "../lib/api";
 import { pollingPaused } from "../lib/visibility";
+import { behalteWennGleich } from "../lib/state-equal";
 import { setKeepAwake } from "../lib/platform";
-import { enqueueRequest, unblockRequests } from "../lib/request-outbox";
+import { dequeueRequest, enqueueRequest, unblockRequests } from "../lib/request-outbox";
 import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
 import { useSyncStatus } from "../lib/use-sync-status";
@@ -529,7 +538,11 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
     void getFahrzeugConfig().then((cfg) => setGpsErlaubt(!cfg?.viaQr));
   }, []);
   const geo = useGeolocation(gpsErlaubt);
-  const selfPos = geo.fix ? { lat: geo.fix.lat, lng: geo.fix.lng } : HOME_POS;
+  // Per useMemo auf lat/lng stabilisiert: ein neues Objekt pro Render loeste
+  // den grossen Marker-Effekt in MapCard bei JEDEM Render aus.
+  const selfLat = geo.fix ? geo.fix.lat : HOME_POS.lat;
+  const selfLng = geo.fix ? geo.fix.lng : HOME_POS.lng;
+  const selfPos = useMemo(() => ({ lat: selfLat, lng: selfLng }), [selfLat, selfLng]);
 
   // Personalliste aus /api/admin/personen — Quelle: syBOS-Sync. Keine
   // lokale Vorbelegung; der Kdt traegt die tatsaechliche Besatzung manuell ein.
@@ -1071,7 +1084,12 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           // dedupen damit wir keine Dubletten anhaengen.
           const prevIds = new Set(synced.map((e) => e.id));
           const freshAdditions = additions.filter((a) => !prevIds.has(a.id));
-          if (freshAdditions.length === 0) return synced;
+          if (freshAdditions.length === 0) {
+            // Nichts neu und kein Stammfeld geaendert → alte Liste behalten.
+            // prev.map() liefert sonst bei JEDEM 5-s-Poll ein neues Array und
+            // rendert die komplette BerichtPage neu.
+            return synced.every((e, i) => e === prev[i]) ? prev : synced;
+          }
           return [...synced, ...freshAdditions];
         });
         if (anyNewToUs && firstNewId) {
@@ -1896,7 +1914,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
             isZentrale: true,
           });
         }
-        setFleet(mapped);
+        setFleet(behalteWennGleich(mapped)); // nur bei echter Aenderung
       } catch {
         // egal — nächster Tick erneut
       }
@@ -1978,24 +1996,48 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
   useEffect(() => {
     if (!active || active.abgeschlossen) return;
     const handle = setTimeout(() => {
-      apiCall(`/api/einsaetze/${encodeURIComponent(active.id)}`, {
-        method: "PUT",
-        // #1: Koordinaten mitschicken (vom GPS-Button gesetzt), damit die
-        // Florianstation-Lagekarte ebenfalls zur korrigierten Adresse passt.
-        body: {
-          einsatzort: active.alarm.einsatzort,
-          // Hotfix 2026-09: nur bei manueller Aenderung mitschicken, damit ein
-          // unveraenderter Wert nie fremde Korrekturen ueberschreibt.
-          ...(active.uhrzeitVonHHMM || active.datumVonYMD
-            ? { alarmierungZeit: effektiveVonISO(active) }
-            : {}),
-          ...(active.alarm.koordinaten
-            ? { koordinaten: active.alarm.koordinaten }
-            : {}),
-        },
-      }).catch((err) => {
-        console.warn("[einsatz-sync] einsatzort konnte nicht synchronisiert werden:", err);
-      });
+      const einsatzId = active.id;
+      const path = `/api/einsaetze/${encodeURIComponent(einsatzId)}`;
+      const dedupeKey = `einsatz-meta:${einsatzId}`;
+      // #1: Koordinaten mitschicken (vom GPS-Button gesetzt), damit die
+      // Florianstation-Lagekarte ebenfalls zur korrigierten Adresse passt.
+      const body: Record<string, unknown> = {
+        einsatzort: active.alarm.einsatzort,
+        // Hotfix 2026-09: nur bei manueller Aenderung mitschicken, damit ein
+        // unveraenderter Wert nie fremde Korrekturen ueberschreibt.
+        ...(active.uhrzeitVonHHMM || active.datumVonYMD
+          ? { alarmierungZeit: effektiveVonISO(active) }
+          : {}),
+        ...(active.alarm.koordinaten ? { koordinaten: active.alarm.koordinaten } : {}),
+      };
+      apiCall(path, { method: "PUT", body })
+        .then(() => {
+          // Direkt angekommen → ein aelterer, noch gepufferter Stand (frueherer
+          // Fehlversuch) darf spaeter nicht mehr drueberschreiben.
+          void dequeueRequest(1, dedupeKey);
+        })
+        .catch((err) => {
+          console.warn("[einsatz-sync] einsatzort konnte nicht synchronisiert werden:", err);
+          // Vorher blieb es bei diesem console.warn – die Korrektur ging im
+          // Funkloch still verloren. Jetzt: Retry-wuerdige Fehler (kein Netz,
+          // Timeout, 5xx, 423) in die Request-Outbox (PUT ist idempotent, der
+          // dedupeKey haelt nur den juengsten Stand), und der Footer zeigt den
+          // Sync-Fehler. Client-Fehler (400/404/409/422) wuerden identisch
+          // wieder abgelehnt → nicht puffern, aber trotzdem sichtbar machen.
+          const status = err instanceof ApiError ? err.status : null;
+          const retryWuerdig =
+            !(err instanceof ApiError) ||
+            status === 0 ||
+            err.message === "timeout" ||
+            (status !== null && status >= 500) ||
+            status === 423;
+          if (retryWuerdig) {
+            void enqueueRequest(1, dedupeKey, "PUT", path, body).catch(() => {
+              /* PouchDB-Fehler — der lokale Draft bleibt als letzter Schutz */
+            });
+          }
+          setSyncErrAt((cur) => cur ?? Date.now());
+        });
     }, 1500);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2315,6 +2357,10 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       // Bericht evtl. schon abgeschlossen (423) oder Eintrag serverseitig
       // nie angekommen (404, Anlage offline) — lokal ist er ohnehin schon
       // weg; kein Outbox-Retry fuer diesen seltenen Korrektur-Fall.
+      // (Geprueft 2026-10: die request-outbox kennt nur POST/PUT, und ein
+      // gepuffertes DELETE wuerde vor einem noch gepufferten Chronik-POST
+      // desselben Eintrags laufen → der Eintrag taucht wieder auf. Daher
+      // bewusst nicht ueber die Outbox.)
     });
   }
 
@@ -3956,15 +4002,17 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
               }
             />
             {karteSichtbar ? (
-              <MapCard
-                selfPos={selfPos}
-                einsatzPos={active.einsatzPos}
-                einsatzAdresse={active.alarm.einsatzort}
-                fleet={fleet}
-                hydranten={wasserquellen}
-                showLoeschwasser={wasserquellen.length > 0}
-                {...(route ? { route } : {})}
-              />
+              <Suspense fallback={<div style={{ height: 360 }} />}>
+                <MapCard
+                  selfPos={selfPos}
+                  einsatzPos={active.einsatzPos}
+                  einsatzAdresse={active.alarm.einsatzort}
+                  fleet={fleet}
+                  hydranten={wasserquellen}
+                  showLoeschwasser={wasserquellen.length > 0}
+                  {...(route ? { route } : {})}
+                />
+              </Suspense>
             ) : null}
 
             <div className="cta-wrap">
@@ -4037,15 +4085,19 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         </button>
       </div>
 
-      <HandoffModal
-        open={handoffOpen}
-        onClose={() => setHandoffOpen(false)}
-        einsatzId={activeId}
-        onClaimed={() => {
-          setHandoffOpen(false);
-          onHandoffLogout();
-        }}
-      />
+      {handoffOpen ? (
+        <Suspense fallback={null}>
+          <HandoffModal
+            open={handoffOpen}
+            onClose={() => setHandoffOpen(false)}
+            einsatzId={activeId}
+            onClaimed={() => {
+              setHandoffOpen(false);
+              onHandoffLogout();
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       <PersonPickerModal
         open={!!pickerOpen}
@@ -4948,22 +5000,10 @@ function AutoPill({ title }: { title: string }) {
   );
 }
 
-function shortCode(id: FahrzeugId): string {
-  switch (id) {
-    case "kdo":        return "KDO";
-    case "tlf-a-4000": return "TANK";
-    case "lfa-b":      return "LFA-B";
-    case "mtf":        return "MTF";
-    case "zentrale":   return "FLORIAN";
-  }
-}
 // shortSub wurde frueher von der Inline-Fahrzeug-Chip-Reihe genutzt.
 // Mit U-04 entfernt (Reihe weg). Funktion bleibt nicht im Code, weil sie
 // sonst als toter Export im strict-TS-Build warnt.
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
 
 /** "HH:MM" der GPS-Erkennung (lokale Zeit). */
 function formatEintreffUhr(iso: string | undefined): string {

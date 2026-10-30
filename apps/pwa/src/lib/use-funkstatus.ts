@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FahrzeugId } from "@hotdoc/shared";
 import { apiCall } from "./api";
+import { istEinsatzFahrzeugId } from "./fahrzeuge";
 import { pollingPaused } from "./visibility";
 
 export interface FunkstatusEintrag {
@@ -24,7 +25,6 @@ export interface FunkstatusStand {
 
 const LEER: FunkstatusStand = { map: {}, enabled: false, stale: true, geladen: false };
 
-const FAHRZEUG_IDS: ReadonlyArray<string> = ["kdo", "tlf-a-4000", "lfa-b", "mtf"];
 
 /**
  * Funkstatus aller Fahrzeuge aus /api/els/status. Das Backend fragt ELS hoechstens
@@ -45,8 +45,8 @@ export function useFunkstatus(): FunkstatusStand {
         if (cancelled) return;
         const map: FunkstatusMap = {};
         for (const i of r.items) {
-          if (FAHRZEUG_IDS.includes(i.fahrzeugId)) {
-            map[i.fahrzeugId as FahrzeugId] = { status: i.status ?? "", since: i.since };
+          if (istEinsatzFahrzeugId(i.fahrzeugId)) {
+            map[i.fahrzeugId] = { status: i.status ?? "", since: i.since };
           }
         }
         setStand({ map, enabled: r.enabled, stale: r.stale, geladen: true });

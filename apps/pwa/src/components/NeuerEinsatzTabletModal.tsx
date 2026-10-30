@@ -690,7 +690,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                   onClick={() => setEinsatzartSuche("")}
                   aria-label="Suche löschen"
                   className="icon-btn"
-                  style={{ width: 30, height: 30, minHeight: 30 }}
+                  style={{ width: 44, height: 44, minHeight: 44 }} // 44-px-Tippflaeche
                 >
                   <X size={14} />
                 </button>
@@ -733,7 +733,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                         style={{
                           fontSize: 15,
                           padding: "6px 10px",
-                          minHeight: 32,
+                          minHeight: 44, // 44-px-Tippflaeche (Projektstandard)
                           lineHeight: 1.2,
                           gap: 4,
                           ...(active
@@ -796,7 +796,7 @@ export function NeuerEinsatzTabletModal({ open, onClose, onCreated, initialTyp }
                         // im Type-Scale. Praktisch identisch, aber token-treu.
                         fontSize: "var(--font-sm)",
                         padding: "5px 9px",
-                        minHeight: 28,
+                        minHeight: 44, // 44-px-Tippflaeche (Projektstandard)
                         lineHeight: 1.2,
                         gap: 4,
                         ...(active

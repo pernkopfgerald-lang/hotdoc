@@ -1,3 +1,4 @@
+import { pad } from "../lib/format";
 import { STICHWORT_STUFEN, type StichwortStufe } from "@hotdoc/shared";
 import { AlertTriangle, GraduationCap, MapPin, Play, Plus, Siren } from "lucide-react";
 
@@ -261,9 +262,6 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
-}
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
 }
 function formatSecs(s: number): string {
   return `${Math.floor(s / 60)}:${pad(s % 60)}`;

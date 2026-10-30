@@ -13,6 +13,9 @@
 
 import { useEffect, useState } from "react";
 import { resolveApiUrl } from "../lib/api";
+import { istEinsatzFahrzeugId } from "../lib/fahrzeuge";
+import { behalteWennGleich } from "../lib/state-equal";
+import { pollingPaused } from "../lib/visibility";
 import { FlorianMap, type FahrzeugMannschaft, type FahrzeugPos } from "../components/FlorianMap";
 import { FAHRZEUGE, FLORIAN_POSITION } from "@hotdoc/shared";
 import type { FahrzeugId } from "@hotdoc/shared";
@@ -82,13 +85,16 @@ export function FlorianMapPopout(): JSX.Element {
         if (!res.ok) return;
         const json = (await res.json()) as { items: AktiverEinsatz[] };
         if (cancelled) return;
-        setEinsatz(json.items[0] ?? null);
+        setEinsatz(behalteWennGleich(json.items[0] ?? null));
       } catch {
         // egal — Polling versucht es gleich wieder
       }
     };
     void fetchEinsatz();
-    const t = setInterval(() => void fetchEinsatz(), 5_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate
+      void fetchEinsatz();
+    }, 5_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -108,8 +114,8 @@ export function FlorianMapPopout(): JSX.Element {
         const json = (await res.json()) as { positions: PositionPing[] };
         if (cancelled) return;
         setPositions(
-          (json.positions ?? []).filter((p) =>
-            ["kdo", "tlf-a-4000", "lfa-b", "mtf"].includes(p.fahrzeugId),
+          behalteWennGleich(
+            (json.positions ?? []).filter((p) => istEinsatzFahrzeugId(p.fahrzeugId)),
           ),
         );
       } catch {
@@ -117,7 +123,10 @@ export function FlorianMapPopout(): JSX.Element {
       }
     };
     void fetchPositions();
-    const t = setInterval(() => void fetchPositions(), 3_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate
+      void fetchPositions();
+    }, 3_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -142,13 +151,16 @@ export function FlorianMapPopout(): JSX.Element {
         if (!res.ok) return;
         const json = (await res.json()) as { items: FahrzeugberichtRow[] };
         if (cancelled) return;
-        setBerichte(json.items ?? []);
+        setBerichte(behalteWennGleich(json.items ?? []));
       } catch {
         // ignore
       }
     };
     void fetchBerichte();
-    const t = setInterval(() => void fetchBerichte(), 8_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate
+      void fetchBerichte();
+    }, 8_000);
     return () => {
       cancelled = true;
       clearInterval(t);

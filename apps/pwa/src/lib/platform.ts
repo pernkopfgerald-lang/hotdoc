@@ -11,10 +11,10 @@
  *  - Geolocation-Plugin statt navigator.geolocation → bessere GPS-Genauigkeit,
  *    Foreground-Service-faehig
  *
- * Aktuell aktiv: secureSet/secureGet (Token), getNetworkStatus,
- * getDeviceInfo, configureStatusBar, hideSplashScreen, setKeepAwake.
- * Entfernt im Audit (verwaist): secureRemove, onNetworkChange,
- * onAppStateChange. Sind in der Git-History falls wir einen
+ * Aktuell aktiv: secureSet/secureGet (Token), getDeviceInfo,
+ * configureStatusBar, hideSplashScreen, setKeepAwake.
+ * Entfernt (verwaist): secureRemove, onNetworkChange, onAppStateChange,
+ * getNetworkStatus. Sind in der Git-History falls wir einen
  * Foreground-Service brauchen.
  */
 
@@ -59,33 +59,6 @@ export async function secureGet(key: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-// ─── Netzwerk-Status ──────────────────────────────────────────────────
-//
-// Anmerkung: onNetworkChange und onAppStateChange wurden im Audit als
-// verwaist entfernt (kein Konsument im PWA/Backoffice). Falls die App
-// spaeter eine Foreground-Service-Indikation oder Auto-Reconnect-Logik
-// braucht, koennen sie aus der Git-History wiederhergestellt werden.
-
-export interface NetworkStatus {
-  connected: boolean;
-  connectionType: "wifi" | "cellular" | "ethernet" | "unknown" | "none";
-}
-
-export async function getNetworkStatus(): Promise<NetworkStatus> {
-  if (isNative()) {
-    const { Network } = await import("@capacitor/network");
-    const s = await Network.getStatus();
-    return {
-      connected: s.connected,
-      connectionType: s.connectionType as NetworkStatus["connectionType"],
-    };
-  }
-  return {
-    connected: navigator.onLine,
-    connectionType: navigator.onLine ? "unknown" : "none",
-  };
 }
 
 // ─── Geraete-Info ─────────────────────────────────────────────────────

@@ -10,8 +10,6 @@ import { flushRequestOutbox } from "./lib/request-outbox";
 import { clearHandoffLocal, getHandoffInfo, isHandoffExpired } from "./lib/handoff";
 import { lazyRetry } from "./lib/lazy-retry";
 import { clearReportStates } from "./lib/report-state";
-import { BerichtPage } from "./pages/BerichtPage";
-import { ZentralePage } from "./pages/ZentralePage";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 
 // Lazy-Loaded Pages — Setup wird nur beim Erst-Login gebraucht (nicht beim
@@ -25,6 +23,17 @@ import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 const Setup = lazyRetry(() => import("./pages/Setup").then((m) => ({ default: m.Setup })));
 const FlorianMapPopout = lazyRetry(() =>
   import("./pages/FlorianMapPopout").then((m) => ({ default: m.FlorianMapPopout })),
+);
+// Code-Splitting: ein Geraet braucht nur EINE der beiden grossen Seiten
+// (Zentrale/Florianstation ODER Fahrzeugbericht). Beide statisch zu laden
+// kostete jedes Tablet/Handy den Parse-Aufwand fuer die andere mit. Die
+// Seiten werden erst gerendert, wenn der Boot (Registrierung/Setup) fertig
+// ist ("ready") – der Datenfluss beim Start aendert sich dadurch nicht.
+const ZentralePage = lazyRetry(() =>
+  import("./pages/ZentralePage").then((m) => ({ default: m.ZentralePage })),
+);
+const BerichtPage = lazyRetry(() =>
+  import("./pages/BerichtPage").then((m) => ({ default: m.BerichtPage })),
 );
 
 /**
@@ -523,12 +532,14 @@ export function App() {
   if (state.fahrzeugId === "zentrale") {
     return (
       <>
-        <ZentralePage
-          key="zentrale"
-          onSwitchFahrzeug={switchFahrzeug}
-          onResetSetup={resetSetup}
-          onHandoffLogout={tabletSelfLogout}
-        />
+        <Suspense fallback={<LazyFallback />}>
+          <ZentralePage
+            key="zentrale"
+            onSwitchFahrzeug={switchFahrzeug}
+            onResetSetup={resetSetup}
+            onHandoffLogout={tabletSelfLogout}
+          />
+        </Suspense>
         <UpdateBanner />
       </>
     );
@@ -537,13 +548,15 @@ export function App() {
   // KDO/TLF/LFA-B/MTF → einheitliche Fahrzeugbericht-Page
   return (
     <>
-      <BerichtPage
-        key={state.fahrzeugId}
-        fahrzeugId={state.fahrzeugId}
-        onSwitchFahrzeug={switchFahrzeug}
-        onResetSetup={resetSetup}
-        onHandoffLogout={tabletSelfLogout}
-      />
+      <Suspense fallback={<LazyFallback />}>
+        <BerichtPage
+          key={state.fahrzeugId}
+          fahrzeugId={state.fahrzeugId}
+          onSwitchFahrzeug={switchFahrzeug}
+          onResetSetup={resetSetup}
+          onHandoffLogout={tabletSelfLogout}
+        />
+      </Suspense>
       <UpdateBanner />
     </>
   );

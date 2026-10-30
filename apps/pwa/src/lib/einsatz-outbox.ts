@@ -17,8 +17,9 @@
  * retryt. C-05 (Audit 2026-09): 400/422 (Schema-Fehler, meist Drift nach
  * einem Deploy) werden NICHT mehr geloescht, sondern als `blocked`
  * markiert — der Body ist der einzige Traeger der Einsatz-Anlage. Der
- * Flush ueberspringt blockierte Items; unblockEinsaetze() gibt sie nach
- * einem Fix wieder frei.
+ * Flush ueberspringt blockierte Items. (Die frueheren, nirgends aufgerufenen
+ * Helfer listBlockedEinsaetze/unblockEinsaetze sind entfernt – sie stehen in
+ * der Git-History, falls eine Freigabe-Funktion gebraucht wird.)
  */
 
 import { db } from "../db/pouch";
@@ -109,28 +110,6 @@ async function markBlocked(item: OutboxItem, status: number): Promise<void> {
   }
 }
 
-/** Liefert nur die blockierten Einsatz-Anlagen (Sync-Badge / Diagnose). */
-export async function listBlockedEinsaetze(): Promise<OutboxItem[]> {
-  return (await listPending()).filter((it) => !!it.blocked);
-}
-
-/**
- * Hebt die Blockade aller Einsatz-Anlagen auf — z. B. nach einem App-Update,
- * das den Schema-Fehler behoben hat. Der naechste Flush-Tick versucht sie
- * erneut.
- */
-export async function unblockEinsaetze(): Promise<void> {
-  for (const item of await listBlockedEinsaetze()) {
-    try {
-      const fresh = (await db.get(item._id)) as OutboxItem;
-      const { blocked: _blocked, ...rest } = fresh;
-      await db.put(rest);
-    } catch {
-      // Race — naechster Tick sieht den Stand.
-    }
-  }
-}
-
 /**
  * Versucht alle wartenden Items hochzuladen. Wird vom 30 s-Cron-Worker
  * sowie sofort beim Online-Werden aufgerufen.
@@ -147,7 +126,7 @@ export async function flushOutbox(): Promise<{
     const pending = (await listPending()).filter((it) => !it.blocked).length;
     return { total: pending, ok: 0, failed: 0, pending };
   }
-  // C-05: blockierte Items ueberspringen — sie warten auf unblockEinsaetze().
+  // C-05: blockierte Items ueberspringen — sie bleiben blockiert.
   const items = (await listPending()).filter((it) => !it.blocked);
   if (items.length === 0) return { total: 0, ok: 0, failed: 0, pending: 0 };
   let ok = 0;

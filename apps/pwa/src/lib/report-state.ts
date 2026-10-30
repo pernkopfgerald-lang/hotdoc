@@ -163,7 +163,7 @@ export function listDraftEinsatzIds(fahrzeugId: FahrzeugId): string[] {
 }
 
 /** Löscht ALLE Drafts dieses Fahrzeugs — bei Setup-Reset. */
-export function clearAllDrafts(fahrzeugId: FahrzeugId): void {
+function clearAllDrafts(fahrzeugId: FahrzeugId): void {
   try {
     const prefix = `${DRAFT_PREFIX}${fahrzeugId}.`;
     const toRemove: string[] = [];

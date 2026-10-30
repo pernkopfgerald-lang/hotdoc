@@ -1,12 +1,17 @@
 import { AlertTriangle, Monitor, Smartphone, Undo2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
   getHandoffInfo,
   handoffHoursLeft,
   releaseHandoff,
   type HandoffInfo,
 } from "../lib/handoff";
-import { HandoffModal } from "./HandoffModal";
+import { lazyRetry } from "../lib/lazy-retry";
+
+// qrcode-Chunk erst laden, wenn der Reverse-QR wirklich geoeffnet wird.
+const HandoffModal = lazyRetry(() =>
+  import("./HandoffModal").then((m) => ({ default: m.HandoffModal })),
+);
 
 interface Props {
   /** Wird gerufen wenn der User „Jetzt freigeben" klickt — App entscheidet was als nächstes passiert (üblich: Setup-Screen). */
@@ -151,17 +156,21 @@ export function HandoffBanner({ onReleased }: Props) {
         </button>
       </div>
 
-      <HandoffModal
-        open={reverseQrOpen}
-        onClose={() => setReverseQrOpen(false)}
-        {...(info?.einsatzId ? { einsatzId: info.einsatzId } : {})}
-        mode="reverse"
-        onClaimed={() => {
-          // Tablet hat den QR gescannt und übernommen → Handy logged sich aus
-          setReverseQrOpen(false);
-          void release();
-        }}
-      />
+      {reverseQrOpen ? (
+        <Suspense fallback={null}>
+          <HandoffModal
+            open={reverseQrOpen}
+            onClose={() => setReverseQrOpen(false)}
+            {...(info?.einsatzId ? { einsatzId: info.einsatzId } : {})}
+            mode="reverse"
+            onClaimed={() => {
+              // Tablet hat den QR gescannt und übernommen → Handy logged sich aus
+              setReverseQrOpen(false);
+              void release();
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       {confirmOpen ? (
         <div

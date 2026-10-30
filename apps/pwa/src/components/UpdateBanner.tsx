@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { checkForUpdate } from "../lib/app-update";
 import { getTabletToken } from "../lib/api";
+import { pollingPaused } from "../lib/visibility";
 import { installApkUpdate, isApkInstallerAvailable } from "../lib/apk-installer";
 
 const DISMISS_KEY = "hotdoc.update.dismissed";
@@ -107,7 +108,10 @@ export function UpdateBanner() {
     if (!info?.available) return;
     const tick = (): void => setDraftOffen(hatOffenenDraft());
     tick();
-    const t = setInterval(tick, DRAFT_POLL_MS);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: im Standby kein localStorage-Scan
+      tick();
+    }, DRAFT_POLL_MS);
     return () => clearInterval(t);
   }, [info?.available]);
 

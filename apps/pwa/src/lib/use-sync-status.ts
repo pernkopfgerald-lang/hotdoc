@@ -20,6 +20,7 @@
 import { useEffect, useState } from "react";
 import { listPending } from "./einsatz-outbox";
 import { listPendingRequests } from "./request-outbox";
+import { pollingPaused } from "./visibility";
 
 export interface SyncStatus {
   /** Übertragungen, die auf Netz warten (Outbox-Worker reicht nach). */
@@ -57,6 +58,7 @@ export function useSyncStatus(): SyncStatus {
     };
     void tick();
     const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: Badge braucht im Standby keine Aktualisierung
       void tick();
     }, POLL_INTERVAL_MS);
     return () => {

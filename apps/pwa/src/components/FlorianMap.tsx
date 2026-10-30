@@ -1,3 +1,4 @@
+import { staleMinutes } from "../lib/format";
 import L, { type LatLngBoundsExpression, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -439,13 +440,21 @@ export function FlorianMap({
   }, [fahrzeuge, tickNow, selectedId]);
 
   // Wenn selectedId von außen geändert wird → automatisch hinfliegen.
+  // Nur bei Wechsel der Auswahl (bzw. wenn das gewählte Fahrzeug erstmals in
+  // der Liste auftaucht) – NICHT bei jedem Positions-Update, sonst springt die
+  // Karte nach jedem Poll zum Fahrzeug zurück, obwohl der User gerade schwenkt.
+  // Die Koordinaten werden deshalb über eine Ref gelesen.
+  const fahrzeugeRef = useRef(fahrzeuge);
+  fahrzeugeRef.current = fahrzeuge;
+  const selectedVorhanden =
+    selectedId !== null && fahrzeuge.some((x) => x.fahrzeugId === selectedId);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedId) return;
-    const f = fahrzeuge.find((x) => x.fahrzeugId === selectedId);
+    const f = fahrzeugeRef.current.find((x) => x.fahrzeugId === selectedId);
     if (!f) return;
     map.flyTo([f.lat, f.lng], Math.max(map.getZoom(), 16), { duration: 0.6 });
-  }, [selectedId, fahrzeuge]);
+  }, [selectedId, selectedVorhanden]);
 
   // Klick auf leere Karte → Auswahl schliessen
   useEffect(() => {
@@ -1165,13 +1174,6 @@ function wasserquelleIcon(id: string): L.Icon {
   });
 }
 
-function staleMinutes(f: FahrzeugPos, now: number): number | null {
-  if (f.isZentrale) return 0;
-  if (!f.lastSeenAt) return null;
-  const t = new Date(f.lastSeenAt).getTime();
-  if (Number.isNaN(t)) return null;
-  return Math.max(0, Math.floor((now - t) / 60_000));
-}
 
 function fahrzeugIcon(
   f: FahrzeugPos,

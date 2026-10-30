@@ -1,3 +1,4 @@
+import { pad } from "../lib/format";
 import {
   AlertTriangle,
   Archive,
@@ -511,6 +512,10 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                       style={{
                         background: "var(--warn-tint)",
                         color: "var(--warn)",
+                        // 44-px-Tippflaeche (.icon-btn hat nur 40 px)
+                        width: 44,
+                        height: 44,
+                        minHeight: 44,
                       }}
                     >
                       <RotateCcw size={14} />
@@ -523,6 +528,8 @@ export function ArchivTabletModal({ open, onClose, fahrzeugId, fahrzeugName, onR
                     onClick={() => void downloadPdf(i)}
                     aria-label="PDF öffnen"
                     title="PDF öffnen"
+                    // 44-px-Tippflaeche (.icon-btn hat nur 40 px)
+                    style={{ width: 44, height: 44, minHeight: 44 }}
                   >
                     <Download size={14} />
                   </button>
@@ -688,7 +695,4 @@ function formatDate(iso?: string): string {
   } catch {
     return "—";
   }
-}
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
 }

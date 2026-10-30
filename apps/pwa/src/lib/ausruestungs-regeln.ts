@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { AusruestungsRegel } from "@hotdoc/shared";
 import { apiCall } from "./api";
+import { behalteWennGleich } from "./state-equal";
 
 const CACHE_KEY = "hotdoc.ausruestungsregeln.v1";
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -66,7 +67,8 @@ export function useAusruestungsRegeln(): AusruestungsRegel[] {
         } catch {
           // Quota / Private-Mode — der naechste Abruf holt es erneut.
         }
-        setRegeln(clean);
+        // Nur bei echter Aenderung setzen (siehe lib/state-equal.ts).
+        setRegeln(behalteWennGleich(clean));
       } catch {
         // Offline / 401: zuletzt gecachter Stand bleibt gueltig.
       }

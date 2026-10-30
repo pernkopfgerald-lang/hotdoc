@@ -1,3 +1,4 @@
+import { formatTime } from "../lib/format";
 import { Pencil, X, Check } from "lucide-react";
 import { oeffnePdfDataUrl } from "../lib/foto";
 import { memo, useEffect, useRef, useState } from "react";
@@ -459,17 +460,6 @@ export const ChronikTimeline = memo(function ChronikTimeline({
   );
 });
 
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return iso;
-  }
-}
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
 
 /**
  * Backwards-Compat: alte Chronik-Eintraege haben einen "Auftrag begonnen: "-

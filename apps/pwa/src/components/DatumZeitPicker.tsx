@@ -1,3 +1,4 @@
+import { pad } from "../lib/format";
 import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Clock, Minus, Plus, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -9,7 +10,6 @@ import { createPortal } from "react-dom";
  * Texteingabe. Keine neue Abhaengigkeit — alles selbst gebaut.
  */
 
-const pad = (n: number): string => String(n).padStart(2, "0");
 
 const MONATE = [
   "Jänner", "Februar", "März", "April", "Mai", "Juni",

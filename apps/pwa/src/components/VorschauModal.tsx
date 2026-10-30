@@ -1,3 +1,4 @@
+import { formatTime, pad } from "../lib/format";
 import { AlertTriangle, ArrowLeft, FileText, Printer, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
@@ -535,15 +536,4 @@ function esc(s: string | undefined | null): string {
     .replace(/"/g, "&quot;");
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
 
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return iso;
-  }
-}

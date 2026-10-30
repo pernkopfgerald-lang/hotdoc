@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiCall } from "../lib/api";
+import { pollingPaused } from "../lib/visibility";
 
 interface HealthItem {
   key: string;
@@ -58,7 +59,10 @@ export function StatusBanner({ quietWhenOk = false }: Props = {}) {
       }
     };
     void load();
-    const t = setInterval(() => void load(), 60_000);
+    const t = setInterval(() => {
+      if (pollingPaused()) return; // Akku-Gate: kein Health-Poll im Standby
+      void load();
+    }, 60_000);
     return () => {
       cancelled = true;
       clearInterval(t);

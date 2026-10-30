@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import type { FahrzeugId } from "@hotdoc/shared";
 import { apiCall } from "./api";
+import { behalteWennGleich } from "./state-equal";
 import { GEAR_BY_FAHRZEUG } from "../data/gear";
 import type { GearItem } from "../components/GearChips";
 
@@ -92,7 +93,9 @@ export function useGeraete(fahrzeugId: FahrzeugId): GearItem[] {
         }
         writeCache(cleanedMap);
         const mine = cleanedMap[fahrzeugId];
-        if (mine && mine.length > 0) setItems(mine);
+        // Nur bei echter Aenderung setzen (neue Array-Referenz pro Poll
+        // wuerde die BerichtPage grundlos neu rendern).
+        if (mine && mine.length > 0) setItems(behalteWennGleich(mine));
       } catch {
         // Offline / 404 / 401: Cache + Fallback reichen.
       }

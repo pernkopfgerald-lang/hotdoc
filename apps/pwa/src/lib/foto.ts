@@ -49,7 +49,7 @@ interface FotoDocLocal {
  * Nutzt createImageBitmap (mit EXIF-Orientation-Korrektur) und fällt bei
  * älteren WebViews auf ein <img>-Element zurück.
  */
-export async function compressImage(file: File): Promise<string> {
+async function compressImage(file: File): Promise<string> {
   const { width, height, draw } = await loadDrawable(file);
   const scale = Math.min(1, MAX_EDGE_PX / Math.max(width, height));
   const w = Math.max(1, Math.round(width * scale));

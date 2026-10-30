@@ -7,13 +7,18 @@ import {
   Sun,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
 import { BrandLogo } from "./BrandLogo";
 import { FunkstatusBadge } from "./FunkstatusBadge";
-import { HilfeSheet } from "./HilfeSheet";
+import { lazyRetry } from "../lib/lazy-retry";
 import { useFunkstatus } from "../lib/use-funkstatus";
+
+// Hilfe-Center (grosser FAQ-Text) erst beim Oeffnen nachladen.
+const HilfeSheet = lazyRetry(() =>
+  import("./HilfeSheet").then((m) => ({ default: m.HilfeSheet })),
+);
 
 /** Hotfix 2026-09: pro Fahrzeug eine eigene, gut unterscheidbare Farbe. */
 const FAHRZEUG_FARBE: Record<FahrzeugId, string> = {
@@ -268,7 +273,11 @@ export function Topbar({
         <div className="meta">{formatDate(new Date())}</div>
       </div>
 
-      <HilfeSheet open={hilfeOpen} onClose={() => setHilfeOpen(false)} />
+      {hilfeOpen ? (
+        <Suspense fallback={null}>
+          <HilfeSheet open={hilfeOpen} onClose={() => setHilfeOpen(false)} />
+        </Suspense>
+      ) : null}
     </header>
   );
 }

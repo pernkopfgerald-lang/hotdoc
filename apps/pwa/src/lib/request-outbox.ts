@@ -115,6 +115,22 @@ export async function enqueueRequest(
   }
 }
 
+/**
+ * Entfernt einen gepufferten Request wieder (gleiche Parameter wie beim
+ * enqueueRequest). Gedacht fuer den Fall, dass derselbe Inhalt inzwischen
+ * direkt gesendet wurde – sonst wuerde der Flush spaeter den aelteren Stand
+ * ueber den neueren schreiben. Kein Fehler, wenn nichts gepuffert ist.
+ */
+export async function dequeueRequest(priority: number, dedupeKey: string): Promise<void> {
+  const _id = `outbox:req:${priority}:${dedupeKey}`;
+  try {
+    const doc = (await db.get(_id)) as RequestOutboxItem;
+    await db.remove(doc._id, doc._rev!);
+  } catch {
+    // nicht vorhanden / parallel entfernt — egal
+  }
+}
+
 /** Liefert die wartenden Requests, lexikografisch nach _id sortiert
  *  (= Prioritäts-Reihenfolge). */
 export async function listPendingRequests(): Promise<RequestOutboxItem[]> {
@@ -132,7 +148,7 @@ export async function listPendingRequests(): Promise<RequestOutboxItem[]> {
 }
 
 /** Liefert nur die blockierten Items (für Sync-Badge / Diagnose). */
-export async function listBlockedRequests(): Promise<RequestOutboxItem[]> {
+async function listBlockedRequests(): Promise<RequestOutboxItem[]> {
   return (await listPendingRequests()).filter((it) => !!it.blocked);
 }
 

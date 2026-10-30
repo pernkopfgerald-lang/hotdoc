@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { apiCall } from "./api";
+import { behalteWennGleich } from "./state-equal";
 
 const CACHE_KEY = "hotdoc.stammdaten.v1";
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -87,7 +88,9 @@ export function useStammdaten(): Stammdaten {
             : {}),
           ...(r.data?.bezirk ? { bezirk: r.data.bezirk } : {}),
         };
-        setData(merged);
+        // Nur bei echter Aenderung setzen – sonst rendert jeder 5-min-Poll
+        // alle Verbraucher mit einem neuen (inhaltsgleichen) Objekt neu.
+        setData(behalteWennGleich(merged));
         writeCache(merged);
       } catch {
         // Offline / 404 / 401: stille Failure — Cache + Defaults reichen.

@@ -1,3 +1,4 @@
+import { staleMinutes } from "../lib/format";
 import L, { type LatLngBoundsExpression, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -867,13 +868,6 @@ function einsatzIcon(): L.DivIcon {
  * Wie alt ist die letzte Position in Minuten? null = nie gesehen.
  * Zentrale ist fix und gibt immer 0 zurück.
  */
-function staleMinutes(f: MapPosition, now: number): number | null {
-  if (f.isZentrale) return 0;
-  if (!f.lastSeenAt) return null;
-  const t = new Date(f.lastSeenAt).getTime();
-  if (Number.isNaN(t)) return null;
-  return Math.max(0, Math.floor((now - t) / 60_000));
-}
 
 function fzgIcon(f: MapPosition, staleMin: number | null): L.DivIcon {
   const isSelf = !!f.isSelf;

@@ -28,7 +28,8 @@ export interface GeoFix {
 export interface GeoState {
   fix: GeoFix | null;
   status: GeoStatus;
-  /** Sekunden seit letztem Fix (für UI-Anzeige) */
+  /** Sekunden seit letztem Fix – wird nur beim Statuswechsel live → stale
+   *  nachgezogen (kein Konsument zeigt den laufenden Zaehler an). */
   ageSec: number;
   /** Letzte Fehlermeldung (zur Diagnose) */
   errorMessage: string | null;
@@ -122,11 +123,14 @@ export function useGeolocation(enabled: boolean = true): GeoState {
       const f = fixRef.current;
       if (!f) return;
       const age = Date.now() - f.ts;
-      setState((prev) => ({
-        ...prev,
-        ageSec: Math.floor(age / 1000),
-        status: age > STALE_MS && prev.status === "live" ? "stale" : prev.status,
-      }));
+      setState((prev) => {
+        const status: GeoStatus = age > STALE_MS && prev.status === "live" ? "stale" : prev.status;
+        // Nur bei sichtbarer Aenderung (Wechsel live → stale) ein neues State-
+        // Objekt liefern. Vorher entstand alle 5 s ein neues Objekt (nur
+        // ageSec zaehlte hoch) und rendete die ganze BerichtPage neu.
+        if (status === prev.status) return prev;
+        return { ...prev, ageSec: Math.floor(age / 1000), status };
+      });
     }, 5_000);
 
     return () => {
