@@ -33,7 +33,7 @@ import { PanelBoundary } from "../components/PanelBoundary";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { ElsZuordnungPanel } from "./ElsZuordnungPanel";
-import { FLORIAN_ADDRESS, FAHRZEUGE, type AuthResponse } from "@hotdoc/shared";
+import { FLORIAN_ADDRESS, FLORIAN_POSITION, FAHRZEUGE, type AuthResponse } from "@hotdoc/shared";
 
 // Grosse, selten gleichzeitig genutzte Bereiche werden erst beim ersten Oeffnen
 // nachgeladen (eigene Chunks): Florianstation (zieht Leaflet), Statistik,
@@ -2121,12 +2121,12 @@ function StammdatenPanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
             type="number"
             className="input num"
             step="0.0001"
-            value={data.heimkoord?.lat ?? 48.0884}
+            value={data.heimkoord?.lat ?? FLORIAN_POSITION.lat}
             onChange={(e) =>
               setData({
                 ...data,
                 heimkoord: {
-                  lng: data.heimkoord?.lng ?? 13.9586,
+                  lng: data.heimkoord?.lng ?? FLORIAN_POSITION.lng,
                   lat: Number(e.target.value),
                 },
               })
@@ -2139,12 +2139,12 @@ function StammdatenPanel({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) =
             type="number"
             className="input num"
             step="0.0001"
-            value={data.heimkoord?.lng ?? 13.9586}
+            value={data.heimkoord?.lng ?? FLORIAN_POSITION.lng}
             onChange={(e) =>
               setData({
                 ...data,
                 heimkoord: {
-                  lat: data.heimkoord?.lat ?? 48.0884,
+                  lat: data.heimkoord?.lat ?? FLORIAN_POSITION.lat,
                   lng: Number(e.target.value),
                 },
               })
