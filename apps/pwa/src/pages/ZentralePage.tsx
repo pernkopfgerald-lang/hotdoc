@@ -3412,6 +3412,10 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
                         : undefined
                     }
                     style={{
+                      // Handy: Name, Kdt, Funkstatus und Bericht-Badge passen nicht in
+                      // eine Zeile → umbrechen statt rechts abzuschneiden.
+                      flexWrap: "wrap",
+                      rowGap: 6,
                       cursor: isClickable ? "pointer" : "default",
                       borderRadius: isSelected ? "10px 10px 0 0" : undefined,
                       transition: "background 160ms ease",

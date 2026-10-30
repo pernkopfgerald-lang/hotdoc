@@ -28,6 +28,10 @@ describe("Funkstatus aus unit_status", () => {
   it("AD = Status 0 (Außer Dienst), FF = Status 1 (Frei über Funk), FW = Status 2 (Frei auf Wache)", () => {
     expect(funkstatusAusUnitStatus("AD")).toBe("0");
     expect(funkstatusKurz(funkstatusAusUnitStatus("AD"))).toBe("Außer Dienst");
+    expect(funkstatusAusUnitStatus("AU")).toBe("3");
+    expect(funkstatusKurz(funkstatusAusUnitStatus("AU"))).toBe("Ausgerückt");
+    expect(funkstatusAusUnitStatus("AE")).toBe("4");
+    expect(funkstatusKurz(funkstatusAusUnitStatus("AE"))).toBe("Am Einsatzort");
     expect(funkstatusAusUnitStatus("FF")).toBe("1");
     expect(funkstatusAusUnitStatus("FW")).toBe("2");
     expect(funkstatusAusUnitStatus(" ff ")).toBe("1");

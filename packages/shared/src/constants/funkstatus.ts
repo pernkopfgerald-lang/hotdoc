@@ -5,7 +5,9 @@
  * Quellen (Stand 30.10.2026, Test an der Wache):
  *  - `unit_status` traegt bei Fahrzeugen den Status als Buchstabencode:
  *    AD = Status 0 "Ausser Dienst", FF = Status 1 "Frei ueber Funk", FW = Status 2
- *    "Frei auf Wache" (bestaetigt mit Kommando und Tank). Weitere Codes sind noch NICHT bekannt und werden
+ *    "Frei auf Wache", AU = Status 3 "Ausgerueckt/Einsatz uebernommen", AE = Status 4
+ *    "Am Einsatzort" (bestaetigt mit Kommando und Tank, 30.10.2026; 3 und 4 ueber den
+ *    Zeitablauf der Tasten, Wortlaut der Codes nicht belegt). Weitere Codes sind noch NICHT bekannt und werden
  *    unveraendert durchgereicht (der ELS-Verlauf in der DB zeichnet sie auf).
  *  - `status_florianstation` war bei Fahrzeugen im Test immer leer; bei der
  *    Florianstation selbst liefert es 0/1 (unbesetzt/besetzt).
@@ -33,6 +35,8 @@ export const ELS_UNITSTATUS_ZU_FUNKSTATUS: Readonly<Record<string, string>> = {
   AD: "0",
   FF: "1",
   FW: "2",
+  AU: "3",
+  AE: "4",
 };
 
 /**
