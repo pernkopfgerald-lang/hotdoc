@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { clearToken, getToken } from "./api/client";
+import { useEffect, useState } from "react";
+import { clearToken, getToken, onSessionExpired } from "./api/client";
 import { Login } from "./pages/Login";
 import { Verwaltung } from "./pages/Verwaltung";
 import type { AuthResponse } from "@hotdoc/shared";
@@ -12,9 +12,28 @@ export function App() {
     if (getToken()) clearToken();
     return null;
   });
+  // Hinweis auf der Anmeldeseite, wenn der Server die Sitzung beendet hat (401).
+  const [loginHinweis, setLoginHinweis] = useState<string | null>(null);
+
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        setLoginHinweis("Sitzung abgelaufen – bitte neu anmelden.");
+        setAuth(null);
+      }),
+    [],
+  );
 
   if (!auth) {
-    return <Login onLoggedIn={setAuth} />;
+    return (
+      <Login
+        notice={loginHinweis}
+        onLoggedIn={(a) => {
+          setLoginHinweis(null);
+          setAuth(a);
+        }}
+      />
+    );
   }
   return <Verwaltung auth={auth} onLogout={() => setAuth(null)} />;
 }

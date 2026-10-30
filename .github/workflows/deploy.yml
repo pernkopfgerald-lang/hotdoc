@@ -1,6 +1,8 @@
 name: Auto-Deploy API + PWA + Backoffice
 
-# Bei jedem Push auf main werden alle drei fly-Apps redeployed:
+# Bei jedem Push auf main laeuft ZUERST der Job `check` (Build aller
+# Pakete + API-Tests). Nur wenn er gruen ist, werden die drei fly-Apps
+# redeployed:
 #   hotdoc-api          (Node-Backend)
 #   hotdoc-eberstalzell (PWA fuer Tablets, Caddy + dist/)
 #   hotdoc-backoffice   (React-Admin, Caddy + dist/)
@@ -34,9 +36,55 @@ on:
 
 jobs:
   # ───────────────────────────────────────────────────────────────
+  # Check — Build + Tests als Sperre vor jedem Deploy.
+  # Laeuft IMMER (auch bei workflow_dispatch fuer nur einen Service),
+  # damit `needs: check` die Deploy-Jobs nie versehentlich ueberspringt.
+  # Versionen passen zu den Dockerfiles (node:20.18, pnpm 9.15.9).
+  # Die API-Tests laufen ohne CouchDB (couch/client wird gemockt).
+  # ───────────────────────────────────────────────────────────────
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Wie in den Dockerfiles: kein Chromium-Download fuer puppeteer
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: pnpm installieren
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.9
+
+      - name: Node installieren
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18'
+          cache: pnpm
+
+      - name: Dependencies installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Shared bauen
+        run: pnpm --filter @hotdoc/shared build
+
+      - name: API bauen
+        run: pnpm --filter @hotdoc/api build
+
+      - name: PWA bauen
+        run: pnpm --filter @hotdoc/pwa build
+
+      - name: Backoffice bauen
+        run: pnpm --filter @hotdoc/backoffice build
+
+      - name: API-Tests
+        run: pnpm --filter @hotdoc/api test
+
+  # ───────────────────────────────────────────────────────────────
   # API — Node-Backend, dependency-armer Build, schnellster Deploy
   # ───────────────────────────────────────────────────────────────
   deploy-api:
+    needs: check
     if: ${{ github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'api' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -52,6 +100,7 @@ jobs:
   # PWA — Vite-Build im Container, Caddy serves statische dist/
   # ───────────────────────────────────────────────────────────────
   deploy-pwa:
+    needs: check
     if: ${{ github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'pwa' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -67,6 +116,7 @@ jobs:
   # Backoffice — gleicher Build-Pattern wie PWA
   # ───────────────────────────────────────────────────────────────
   deploy-backoffice:
+    needs: check
     if: ${{ github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'backoffice' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -82,7 +132,7 @@ jobs:
   # Zusammenfassung — laeuft immer am Schluss, auch wenn Teile failen
   # ───────────────────────────────────────────────────────────────
   summary:
-    needs: [deploy-api, deploy-pwa, deploy-backoffice]
+    needs: [check, deploy-api, deploy-pwa, deploy-backoffice]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -93,6 +143,7 @@ jobs:
             echo ""
             echo "| Service | Status |"
             echo "|---|---|"
+            echo "| check (Build + Tests) | ${{ needs.check.result }} |"
             echo "| hotdoc-api          | ${{ needs.deploy-api.result }} |"
             echo "| hotdoc-eberstalzell | ${{ needs.deploy-pwa.result }} |"
             echo "| hotdoc-backoffice   | ${{ needs.deploy-backoffice.result }} |"

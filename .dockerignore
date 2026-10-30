@@ -21,3 +21,14 @@ prototype/
 DEPLOY.md
 README*.md
 *.tsbuildinfo
+
+# Signing-Material + Android-Build-Artefakte: in keinem Image noetig,
+# duerfen auch nicht in den Build-Kontext hochgeladen werden.
+**/*.keystore
+**/keystore.properties
+apps/pwa/android/**/build
+apps/pwa/android/.gradle
+
+# ACHTUNG: `*.apk` und `deploy/apk/apks` hier NICHT ausschliessen —
+# fly.apk.toml baut mit dem Repo-Root als Kontext und diesem .dockerignore;
+# deploy/apk/Dockerfile kopiert die APKs aus deploy/apk/apks/.

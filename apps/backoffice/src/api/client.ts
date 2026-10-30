@@ -15,6 +15,36 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * Sitzung abgelaufen: Die Anmeldung der Funktionaere laeuft nach 8 h ab, das
+ * Backend antwortet dann mit 401 (invalid_token). Statt still weiterzupollen
+ * wird der Token verworfen und der Listener (App.tsx) zeigt wieder die Anmeldung.
+ * 403 (fehlende Rolle) ist KEIN Sitzungsende und bleibt unberuehrt.
+ */
+type SessionExpiredListener = () => void;
+let sessionExpiredListener: SessionExpiredListener | null = null;
+
+/** Registriert den (einzigen) Listener; Rueckgabe = Abmelde-Funktion. */
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListener = listener;
+  return () => {
+    if (sessionExpiredListener === listener) sessionExpiredListener = null;
+  };
+}
+
+/**
+ * Nur wenn wir mit Token gesendet haben UND es nicht der Login selbst war
+ * (dort bedeutet 401 "Passwort falsch", nicht "Sitzung abgelaufen"). Der
+ * gesendete Token muss noch der aktuelle sein — eine verspaetete 401-Antwort
+ * einer alten Sitzung darf eine frische Anmeldung nicht beenden.
+ */
+function handleUnauthorized(status: number, path: string, sentToken: string | null): void {
+  if (status !== 401 || sentToken === null || path.startsWith("/api/auth/login")) return;
+  if (getToken() !== sentToken) return;
+  clearToken();
+  sessionExpiredListener?.();
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -46,6 +76,7 @@ export async function apiCall<T>(path: string, options: RequestOptions = {}): Pr
 
   const res = await fetch(path, init);
   if (!res.ok) {
+    handleUnauthorized(res.status, path, token);
     const text = await res.text().catch(() => res.statusText);
     throw new ApiError(text || res.statusText, res.status);
   }
@@ -73,6 +104,7 @@ export async function fetchAndOpenBlob(path: string, signal?: AbortSignal): Prom
     ...(signal ? { signal } : {}),
   });
   if (!res.ok) {
+    handleUnauthorized(res.status, path, token);
     const text = await res.text().catch(() => res.statusText);
     throw new ApiError(text || res.statusText, res.status);
   }
@@ -101,6 +133,7 @@ export async function postAndOpenBlob(path: string, body: unknown): Promise<stri
     body: JSON.stringify(body),
   });
   if (!res.ok) {
+    handleUnauthorized(res.status, path, token);
     const text = await res.text().catch(() => res.statusText);
     throw new ApiError(text || res.statusText, res.status);
   }

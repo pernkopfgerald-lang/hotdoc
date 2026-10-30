@@ -1,34 +1,17 @@
 import { AlertCircle, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { listEinsaetze, manuellAnlegen, type EinsatzListItem, type EinsatzTyp } from "../api/einsaetze";
-import { berichtTitel, LifecycleBadges, TypBadge } from "../pages/Verwaltung";
+import { useState } from "react";
+import { manuellAnlegen, type EinsatzTyp } from "../api/einsaetze";
+import { useEinsatzListe, type EinsatzStatusFilter } from "../lib/useEinsatzListe";
+import { berichtTitel, LifecycleBadges, TypBadge } from "./BerichtBadges";
 import { BerichtDetail } from "./BerichtDetail";
 import { ManuellerBerichtModal } from "./ManuellerBerichtModal";
 
 export function BerichteBrowser() {
-  const [items, setItems] = useState<EinsatzListItem[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"alle" | "aktiv" | "abgeschlossen">("alle");
+  const [statusFilter, setStatusFilter] = useState<EinsatzStatusFilter>("alle");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [manuellOpen, setManuellOpen] = useState(false);
-
-  const reload = useCallback(async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      const list = await listEinsaetze(statusFilter === "alle" ? undefined : statusFilter);
-      setItems(list);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [statusFilter]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  // Server liefert max. 200 (Default) pro Abruf; "Mehr laden" haengt weitere an.
+  const { items, total, busy, loadingMore, err, reload, loadMore } = useEinsatzListe(statusFilter);
 
   async function onManuellAnlegen(input: { einsatzort: string; einsatzart?: string; grund?: string }) {
     await manuellAnlegen(input);
@@ -161,6 +144,34 @@ export function BerichteBrowser() {
               </li>
             ))
           )}
+          {total !== null && items.length > 0 ? (
+            <li style={{ padding: "8px 8px 4px", textAlign: "center" }}>
+              <span
+                style={{
+                  display: "block",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "var(--fg-3)",
+                }}
+              >
+                {items.length} von {total} geladen
+              </span>
+              {items.length < total ? (
+                <button
+                  type="button"
+                  className="chip"
+                  disabled={loadingMore}
+                  onClick={() => void loadMore()}
+                  style={{ marginTop: 8 }}
+                >
+                  {loadingMore ? "lädt …" : `Mehr laden (${total - items.length} weitere)`}
+                </button>
+              ) : null}
+            </li>
+          ) : null}
         </ul>
 
         <div>

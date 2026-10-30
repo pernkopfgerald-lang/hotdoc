@@ -57,6 +57,7 @@ import {
 import { listPersonen, personLabel, sortPersonen, type PersonItem } from "../api/personen";
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { FunkstatusKarte } from "../components/FunkstatusKarte";
+import { useSichtbarPolling } from "../lib/useSichtbarPolling";
 
 /** Feuerwehrhaus FF Eberstalzell — Solarstraße 1, 4653 Eberstalzell.
  *  Quelle: @hotdoc/shared constants/florian.ts. */
@@ -294,6 +295,56 @@ function buildFzgPatch(
   return patch;
 }
 
+/** Poll-Intervall fuer Einsatzliste + Fahrzeugberichte/Chronik. */
+const POLL_MS = 15_000;
+
+/** Verbindungsstatus je Poll-Quelle: laeuft der letzte Abruf, und wann klappte der letzte? */
+interface PollQuelle {
+  ok: boolean;
+  /** Zeitpunkt (ms) des letzten erfolgreichen Abrufs, null = noch nie. */
+  zuletzt: number | null;
+}
+type PollQuellen = Record<"liste" | "details", PollQuelle>;
+const POLL_START: PollQuellen = {
+  liste: { ok: true, zuletzt: null },
+  details: { ok: true, zuletzt: null },
+};
+
+/** "Verbindung gestoert — Stand von HH:MM" bei fehlgeschlagenem Abruf. */
+function VerbindungsHinweis({ quellen }: { quellen: PollQuellen }) {
+  const gestoert = Object.values(quellen).filter((q) => !q.ok);
+  if (gestoert.length === 0) return null;
+  // Aeltester Stand der betroffenen Quellen = so aktuell sind die Daten sicher.
+  const stand = gestoert.some((q) => q.zuletzt === null)
+    ? null
+    : Math.min(...gestoert.map((q) => q.zuletzt as number));
+  const uhrzeit =
+    stand === null
+      ? null
+      : new Date(stand).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div
+      role="status"
+      style={{
+        marginBottom: 10,
+        padding: "6px 10px",
+        borderRadius: 8,
+        background: "var(--warn-tint)",
+        color: "var(--warn)",
+        fontSize: 12,
+        fontWeight: 500,
+        border: "1px solid var(--amber-border)",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      <AlertTriangle size={13} />
+      {uhrzeit ? `Verbindung gestört – Stand von ${uhrzeit}` : "Verbindung gestört – noch kein Stand geladen"}
+    </div>
+  );
+}
+
 /** Fehlertext fuer fzgber-/Chronik-Aktionen — HTTP-Codes in Klartext. */
 function apiFehlerText(e: unknown): string {
   if (e instanceof ApiError) {
@@ -310,6 +361,16 @@ export function Florianstation() {
   const [liste, setListe] = useState<EinsatzListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Verbindungsstatus der beiden Polls (Liste, Fahrzeugberichte+Chronik).
+  const [pollQuellen, setPollQuellen] = useState<PollQuellen>(POLL_START);
+  const meldePoll = useCallback((quelle: keyof PollQuellen, ok: boolean) => {
+    setPollQuellen((prev) => {
+      const cur = prev[quelle];
+      if (ok) return { ...prev, [quelle]: { ok: true, zuletzt: Date.now() } };
+      if (!cur.ok) return prev; // schon als gestoert markiert — kein Re-Render pro Fehlschlag
+      return { ...prev, [quelle]: { ok: false, zuletzt: cur.zuletzt } };
+    });
+  }, []);
 
   // Editor-State + Save-Pipeline
   const [form, setForm] = useState<FormState | null>(null);
@@ -403,23 +464,24 @@ export function Florianstation() {
         });
       }
       setListe(list);
+      meldePoll("liste", true);
       // Auswahl nachziehen, wenn nichts oder etwas nicht mehr Gelistetes
       // gewaehlt ist (Modus-Wechsel, Auto-Abschluss durch den Worker).
       if (!selectedId || !list.some((e) => e._id === selectedId)) {
         setSelectedId(list[0]?._id ?? null);
       }
     } catch {
-      // silent
+      // Kein Toast pro Fehlschlag: der letzte Stand bleibt stehen, der
+      // Hinweis "Verbindung gestoert" in der Listenkarte zeigt es an.
+      // (Eine abgelaufene Sitzung — 401 — erledigt api/client.ts → Anmeldung.)
+      meldePoll("liste", false);
     } finally {
       setBusy(false);
     }
-  }, [selectedId, modus]);
+  }, [selectedId, modus, meldePoll]);
 
-  useEffect(() => {
-    void reload();
-    const id = setInterval(reload, 15_000);
-    return () => clearInterval(id);
-  }, [reload]);
+  // Pausiert bei verstecktem Tab, laedt beim Sichtbarwerden sofort nach.
+  useSichtbarPolling(reload, POLL_MS);
 
   // Detail laden + Form befuellen wenn sich die Auswahl aendert.
   useEffect(() => {
@@ -458,12 +520,16 @@ export function Florianstation() {
     ]);
     if (fz.status === "fulfilled") setFzgBerichte(fz.value);
     if (ch.status === "fulfilled") setChronik(ch.value);
-  }, [selectedId]);
+    // Teilweise Ergebnisse bleiben sichtbar; gestoert ist es, sobald EIN Abruf scheitert.
+    meldePoll("details", fz.status === "fulfilled" && ch.status === "fulfilled");
+  }, [selectedId, meldePoll]);
 
   useEffect(() => {
     if (!selectedId) {
       setFzgBerichte([]);
       setChronik([]);
+      // Ohne Auswahl gibt es nichts abzurufen — alte Stoerung nicht stehen lassen.
+      setPollQuellen((prev) => ({ ...prev, details: POLL_START.details }));
       return;
     }
     // Auswahl gewechselt → offene Editor-Zustaende des alten Einsatzes verwerfen.
@@ -472,18 +538,10 @@ export function Florianstation() {
     setChronikEdit(null);
     setChronikLoeschId(null);
     setChronikErr(null);
-    let cancelled = false;
-    async function tick() {
-      if (cancelled) return;
-      await loadDetails();
-    }
-    void tick();
-    const t = setInterval(tick, 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [selectedId, loadDetails]);
+  }, [selectedId]);
+
+  // Details-Poll (Fahrzeugberichte + Chronik): gleiche Sichtbarkeits-Regel.
+  useSichtbarPolling(loadDetails, POLL_MS);
 
   const selected = liste.find((e) => e._id === selectedId) ?? liste[0];
   /** D-04a: abgeschlossene Berichte sind read-only — alle Editoren gesperrt. */
@@ -730,10 +788,14 @@ export function Florianstation() {
             <div className="card-title">
               {modus === "aktiv" ? "Aktive Einsätze" : "Abgeschlossen (30 Tage)"} ({liste.length})
             </div>
-            <span className="badge ok" style={{ gap: 5 }}>
+            <span
+              className={`badge ${pollQuellen.liste.ok && pollQuellen.details.ok ? "ok" : "warn"}`}
+              style={{ gap: 5 }}
+            >
               <Activity size={11} /> Live · {busy ? "syncing" : "ready"}
             </span>
           </div>
+          <VerbindungsHinweis quellen={pollQuellen} />
           {/* D-04a: Modus-Umschalter */}
           <div className="chips" style={{ marginBottom: 10 }}>
             <ModusChip label="Aktiv" active={modus === "aktiv"} onClick={() => wechsleModus("aktiv")} />

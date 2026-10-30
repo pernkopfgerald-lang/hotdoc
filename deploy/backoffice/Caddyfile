@@ -4,6 +4,14 @@
 
   respond /healthz "ok" 200
 
+  # Sourcemaps werden nicht ausgeliefert (und im Build gar nicht erzeugt).
+  # Eigener handle VOR dem SPA-Fallback — sonst wuerde try_files eine
+  # fehlende *.map auf /index.html umschreiben und mit 200 (HTML) antworten.
+  @sourcemaps path *.map
+  handle @sourcemaps {
+    respond 404
+  }
+
   # API-Proxy zur Backend-App. Fly-internal-Netz zwischen Apps verschiedener
   # Org-Apps ist nicht freigegeben — daher über public HTTPS-URL.
   # handle (statt handle_path) erhält den Originalpfad /api/* — das Backend

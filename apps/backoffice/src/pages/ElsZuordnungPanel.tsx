@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiCall } from "../api/client";
+import { FAHRZEUG_IDS, type EchteFahrzeugId } from "../lib/fahrzeuge";
 import { getConfig, putConfig } from "../api/config";
 
 /**
@@ -9,12 +10,18 @@ import { getConfig, putConfig } from "../api/config";
  * Spalte "automatisch"; hier laesst sie sich pro Fahrzeug festlegen.
  */
 
-const FAHRZEUGE: Array<{ id: string; label: string }> = [
-  { id: "kdo", label: "KDO" },
-  { id: "tlf-a-4000", label: "TANK (TLF-A 4000)" },
-  { id: "lfa-b", label: "PUMPE (LFA-B)" },
-  { id: "mtf", label: "MTF" },
-];
+// IDs aus @hotdoc/shared (FAHRZEUG_IDS ohne "zentrale"); die Labels sind
+// UI-lokal und per Record auf Vollstaendigkeit geprueft.
+const FZG_LABEL_LANG: Record<EchteFahrzeugId, string> = {
+  kdo: "KDO",
+  "tlf-a-4000": "TANK (TLF-A 4000)",
+  "lfa-b": "PUMPE (LFA-B)",
+  mtf: "MTF",
+};
+const FAHRZEUGE: Array<{ id: EchteFahrzeugId; label: string }> = FAHRZEUG_IDS.map((id) => ({
+  id,
+  label: FZG_LABEL_LANG[id],
+}));
 
 interface DiagnoseUnit {
   unid: string;

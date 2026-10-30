@@ -5,9 +5,11 @@ import type { AuthResponse, LoginRequest } from "@hotdoc/shared";
 
 interface Props {
   onLoggedIn: (auth: AuthResponse) => void;
+  /** Neutraler Hinweis ueber dem Formular, z. B. "Sitzung abgelaufen". */
+  notice?: string | null;
 }
 
-export function Login({ onLoggedIn }: Props) {
+export function Login({ onLoggedIn, notice = null }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,6 +99,24 @@ export function Login({ onLoggedIn }: Props) {
               className="input"
             />
           </div>
+
+          {notice && !error && (
+            <div
+              role="status"
+              style={{
+                marginTop: 16,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "var(--warn-tint)",
+                color: "var(--warn)",
+                fontSize: 13,
+                fontWeight: 500,
+                border: "1px solid var(--amber-border)",
+              }}
+            >
+              {notice}
+            </div>
+          )}
 
           {error && (
             <div

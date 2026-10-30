@@ -103,11 +103,10 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
-    // "hidden" (Audit KISS P-3): Sourcemaps werden erzeugt (für die
-    // Symbolisierung der via /api/admin/client-error gemeldeten Field-
-    // Crash-Stacks), aber NICHT mehr per //# sourceMappingURL im Bundle
-    // referenziert — schlankeres, nicht selbst-exponierendes Auslieferungs-JS.
-    sourcemap: "hidden",
+    // Keine Sourcemaps im Build: sie waeren oeffentlich abrufbar (Caddy
+    // liefert *.map zusaetzlich mit 404 aus). Feld-Crash-Stacks aus
+    // /api/admin/client-error bleiben dadurch minifiziert.
+    sourcemap: false,
     commonjsOptions: {
       transformMixedEsModules: true,
     },

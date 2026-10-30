@@ -1,9 +1,9 @@
 import { Radio } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FAHRZEUGE, funkstatusKurz, funkstatusText, funkstatusTon, type FahrzeugId } from "@hotdoc/shared";
 import { apiCall } from "../api/client";
-
-const IDS = ["kdo", "tlf-a-4000", "lfa-b", "mtf"] as const satisfies ReadonlyArray<FahrzeugId>;
+import { FAHRZEUG_IDS as IDS } from "../lib/fahrzeuge";
+import { useSichtbarPolling } from "../lib/useSichtbarPolling";
 
 const TON_KLASSE = { ok: "ok", info: "rank", warn: "warn", danger: "red", neutral: "neutral" } as const;
 
@@ -29,35 +29,37 @@ export function FunkstatusKarte() {
   const [stand, setStand] = useState<Stand>({ map: {}, enabled: false, stale: true });
   const [fehler, setFehler] = useState(false);
 
+  const aktiv = useRef(true);
   useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const r = await apiCall<{
-          enabled: boolean;
-          stale: boolean;
-          items: Array<{ fahrzeugId: string; status: string; since: string | null }>;
-        }>("/api/els/status");
-        if (cancelled) return;
-        const map: Stand["map"] = {};
-        for (const i of r.items) {
-          if ((IDS as ReadonlyArray<string>).includes(i.fahrzeugId)) {
-            map[i.fahrzeugId as FahrzeugId] = { status: i.status ?? "", since: i.since };
-          }
-        }
-        setStand({ map, enabled: r.enabled, stale: r.stale });
-        setFehler(false);
-      } catch {
-        if (!cancelled) setFehler(true); // letzter Stand bleibt stehen, Hinweis in der Karte
-      }
-    };
-    void tick();
-    const t = setInterval(() => void tick(), 15000);
+    aktiv.current = true;
     return () => {
-      cancelled = true;
-      clearInterval(t);
+      aktiv.current = false;
     };
   }, []);
+
+  const tick = useCallback(async () => {
+    try {
+      const r = await apiCall<{
+        enabled: boolean;
+        stale: boolean;
+        items: Array<{ fahrzeugId: string; status: string; since: string | null }>;
+      }>("/api/els/status");
+      if (!aktiv.current) return;
+      const map: Stand["map"] = {};
+      for (const i of r.items) {
+        if ((IDS as ReadonlyArray<string>).includes(i.fahrzeugId)) {
+          map[i.fahrzeugId as FahrzeugId] = { status: i.status ?? "", since: i.since };
+        }
+      }
+      setStand({ map, enabled: r.enabled, stale: r.stale });
+      setFehler(false);
+    } catch {
+      if (aktiv.current) setFehler(true); // letzter Stand bleibt stehen, Hinweis in der Karte
+    }
+  }, []);
+
+  // Pausiert bei verstecktem Tab, laedt beim Sichtbarwerden sofort nach.
+  useSichtbarPolling(tick, 15_000);
 
   if (!stand.enabled) return null;
 

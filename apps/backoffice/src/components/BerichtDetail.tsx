@@ -21,7 +21,7 @@ import {
   type FahrzeugberichtItem,
 } from "../api/einsaetze";
 import { listPersonen, personName, type PersonItem } from "../api/personen";
-import { LifecycleBadges, TypBadge } from "../pages/Verwaltung";
+import { LifecycleBadges, TypBadge } from "./BerichtBadges";
 
 interface Props {
   id: string;

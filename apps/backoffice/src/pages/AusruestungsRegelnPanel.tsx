@@ -6,6 +6,7 @@ import {
   type AusruestungsRegel,
 } from "@hotdoc/shared";
 import { apiCall } from "../api/client";
+import { FAHRZEUG_IDS, type EchteFahrzeugId } from "../lib/fahrzeuge";
 import {
   getConfig,
   putConfig,
@@ -21,12 +22,18 @@ import {
  * zeigt nur einen Vorschlag. Ohne passende Regel gibt es keinen Check.
  */
 
-const FAHRZEUGE: Array<{ id: string; label: string }> = [
-  { id: "kdo", label: "KDO" },
-  { id: "tlf-a-4000", label: "TANK" },
-  { id: "lfa-b", label: "LFA-B" },
-  { id: "mtf", label: "MTF" },
-];
+// IDs aus @hotdoc/shared (FAHRZEUG_IDS ohne "zentrale"); Kurzlabels sind UI-lokal
+// ("LFA-B" statt shared-abk "PUMPE") und per Record auf Vollstaendigkeit geprueft.
+const FZG_KURZLABEL: Record<EchteFahrzeugId, string> = {
+  kdo: "KDO",
+  "tlf-a-4000": "TANK",
+  "lfa-b": "LFA-B",
+  mtf: "MTF",
+};
+const FAHRZEUGE: Array<{ id: EchteFahrzeugId; label: string }> = FAHRZEUG_IDS.map((id) => ({
+  id,
+  label: FZG_KURZLABEL[id],
+}));
 const FZG_LABEL: Record<string, string> = Object.fromEntries(FAHRZEUGE.map((f) => [f.id, f.label]));
 
 interface RegelnData {

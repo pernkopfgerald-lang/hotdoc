@@ -65,6 +65,44 @@ export async function listEinsaetze(status?: "aktiv" | "abgeschlossen"): Promise
   return r.items;
 }
 
+/**
+ * Eine Seite der Berichtsliste. Der Server sortiert nach alarmierungZeit
+ * absteigend (neueste zuerst), `total` = Anzahl NACH Statusfilter, VOR Paginierung
+ * (GET /api/einsaetze: limit Default 200 / Max 500, skip).
+ */
+export interface EinsatzSeite {
+  items: EinsatzListItem[];
+  total: number;
+  limit: number;
+  skip: number;
+}
+
+/** Server-Maximum fuer `limit` (MAX_LIST_LIMIT in routes/einsaetze.ts). */
+export const EINSAETZE_MAX_LIMIT = 500;
+
+export async function listEinsaetzeSeite(opts: {
+  status?: "aktiv" | "abgeschlossen";
+  skip?: number;
+  limit?: number;
+}): Promise<EinsatzSeite> {
+  const q = new URLSearchParams();
+  if (opts.status) q.set("status", opts.status);
+  if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+  if (opts.skip !== undefined && opts.skip > 0) q.set("skip", String(opts.skip));
+  const qs = q.toString();
+  const r = await apiCall<{ items?: EinsatzListItem[]; total?: number; limit?: number; skip?: number }>(
+    qs ? `/api/einsaetze?${qs}` : "/api/einsaetze",
+  );
+  const items = Array.isArray(r.items) ? r.items : [];
+  return {
+    items,
+    // Aeltere Server-Staende liefern kein total → dann ist "alles geladen" die ehrliche Annahme.
+    total: typeof r.total === "number" ? r.total : (opts.skip ?? 0) + items.length,
+    limit: typeof r.limit === "number" ? r.limit : items.length,
+    skip: typeof r.skip === "number" ? r.skip : (opts.skip ?? 0),
+  };
+}
+
 export async function getEinsatz(id: string): Promise<EinsatzListItem & Record<string, unknown>> {
   return apiCall(`/api/einsaetze/${encodeURIComponent(id)}`);
 }
