@@ -217,10 +217,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.6.2",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.2-release.apk",
+    currentVersion: "0.6.3",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.3-release.apk",
     releaseNotes:
-      "v0.6.2 — Einsatzart vor dem Abschluss, Funkstatus korrigiert\n\n• Vor dem Abschluss wird die Einsatzart gewählt bzw. bestätigt (Brand oder Technisch). Sie bestimmt die Berichtsnummer (B26-… / T26-…) und den Brand-Assistenten; HotDoc schlägt sie aus dem Alarm vor.\n• Funkstatus der Fahrzeuge korrekt: „Frei über Funk“, „Frei auf Wache“, „Außer Dienst“; Status 6 heißt Alarmierungsauftrag.\n• Die GPS-Signalanzeige in der Kopfzeile ist entfallen.",
+      "v0.6.3 — Schnellerer Start, ruhigere Karte, größere Tippflächen\n\n• Die App startet schneller: Florianstation und Fahrzeugbericht werden erst bei Bedarf geladen.\n• Lagekarte der Florianstation: Sie springt nicht mehr von selbst zum gewählten Fahrzeug zurück, wenn man sie verschiebt.\n• Größere Tippflächen bei Tätigkeiten, „Rückgängig“, „Erneut versuchen“, Einsatzart-Auswahl und im Archiv.\n• Eine korrigierte Einsatzadresse geht bei schlechtem Netz nicht mehr verloren, sie wird nachgesendet und ein Fehler wird angezeigt.\n• „Fahrzeugbericht entfernen“ fragt jetzt mit einem eigenen Dialog nach.\n• Weniger unnötiges Neuzeichnen der Seiten und weniger Netzabfragen im Hintergrund.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

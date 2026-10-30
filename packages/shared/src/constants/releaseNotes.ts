@@ -21,6 +21,19 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.3",
+    date: "2026-10-30",
+    title: "Schnellerer Start, ruhigere Karte, größere Tippflächen",
+    bullets: [
+      "Die App startet schneller: Florianstation und Fahrzeugbericht werden erst bei Bedarf geladen.",
+      "Lagekarte der Florianstation: Sie springt nicht mehr von selbst zum gewählten Fahrzeug zurück, wenn man sie verschiebt.",
+      "Größere Tippflächen bei Tätigkeiten, „Rückgängig“, „Erneut versuchen“, Einsatzart-Auswahl und im Archiv.",
+      "Eine korrigierte Einsatzadresse geht bei schlechtem Netz nicht mehr verloren, sie wird nachgesendet und ein Fehler wird angezeigt.",
+      "„Fahrzeugbericht entfernen“ fragt jetzt mit einem eigenen Dialog nach.",
+      "Weniger unnötiges Neuzeichnen der Seiten und weniger Netzabfragen im Hintergrund.",
+    ],
+  },
+  {
     version: "0.6.2",
     date: "2026-10-30",
     title: "Einsatzart vor dem Abschluss, Funkstatus korrigiert",
