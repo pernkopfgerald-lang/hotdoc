@@ -21,6 +21,16 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.2",
+    date: "2026-10-30",
+    title: "Einsatzart vor dem Abschluss, Funkstatus korrigiert",
+    bullets: [
+      "Vor dem Abschluss wird die Einsatzart gewählt bzw. bestätigt (Brand oder Technisch). Sie bestimmt die Berichtsnummer (B26-… / T26-…) und den Brand-Assistenten; HotDoc schlägt sie aus dem Alarm vor.",
+      "Funkstatus der Fahrzeuge korrekt: „Frei über Funk“, „Frei auf Wache“, „Außer Dienst“; Status 6 heißt Alarmierungsauftrag.",
+      "Die GPS-Signalanzeige in der Kopfzeile ist entfallen.",
+    ],
+  },
+  {
     version: "0.6.1",
     date: "2026-10-28",
     title: "Funkstatus im Klartext",

@@ -47,7 +47,6 @@ import { broadcastChronikEntry, fetchChronikDiff } from "../lib/chronik-sync";
 import { captureDokument, captureFoto, MAX_PDF_BYTES } from "../lib/foto";
 // AUDIT-09/KDT-06 (Audit 2026-06-12): gecachte Personalliste als Offline-Fallback.
 import { loadPersonenCache, savePersonenCache } from "../lib/personen-cache";
-import { useGeolocation } from "../lib/geo";
 import { DatumFeld, ZeitFeld } from "../components/DatumZeitPicker";
 import {
   BETEILIGTE_STELLEN as DEFAULT_BETEILIGTE_STELLEN,
@@ -485,7 +484,6 @@ function autoAbschlussGrundText(grund: string | undefined): string | null {
  */
 export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }: Props) {
   const fahrzeug = FAHRZEUGE.zentrale;
-  const geo = useGeolocation();
   const [vehicleSwitcherOpen, setVehicleSwitcherOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [aktiveEinsaetze, setAktiveEinsaetze] = useState<EinsatzApiDoc[]>([]);
@@ -2633,7 +2631,6 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
         fahrzeugId="zentrale"
         funkrufname={fahrzeug.funkrufname}
         einsatzNr={einsatzId}
-        geo={geo}
         showHilfe
         onSwitchVehicle={() => setVehicleSwitcherOpen(true)}
         onHandoff={() => setHandoffOpen(true)}

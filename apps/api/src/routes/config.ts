@@ -215,10 +215,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.6.1",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.1-release.apk",
+    currentVersion: "0.6.2",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.2-release.apk",
     releaseNotes:
-      "v0.6.1 — Funkstatus im Klartext\n\n• Fahrzeug-Hauptseite und Kopfzeile zeigen den Funkstatus des eigenen Fahrzeugs („Frei auf Wache“, „Ausgerückt“ …).\n• Florianstation und Backoffice zeigen den Funkstatus aller Fahrzeuge.",
+      "v0.6.2 — Einsatzart vor dem Abschluss, Funkstatus korrigiert\n\n• Vor dem Abschluss wird die Einsatzart gewählt bzw. bestätigt (Brand oder Technisch). Sie bestimmt die Berichtsnummer (B26-… / T26-…) und den Brand-Assistenten; HotDoc schlägt sie aus dem Alarm vor.\n• Funkstatus der Fahrzeuge korrekt: „Frei über Funk“, „Frei auf Wache“, „Außer Dienst“; Status 6 heißt Alarmierungsauftrag.\n• Die GPS-Signalanzeige in der Kopfzeile ist entfallen.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

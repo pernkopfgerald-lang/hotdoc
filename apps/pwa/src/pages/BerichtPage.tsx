@@ -3110,7 +3110,6 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       <Topbar
         fahrzeugId={fahrzeugId}
         funkrufname={fahrzeug.funkrufname}
-        geo={geo}
         onSwitchVehicle={() => setVehicleSwitcherOpen(true)}
         onHandoff={() => setHandoffOpen(true)}
         onAbout={() => setAboutOpen(true)}

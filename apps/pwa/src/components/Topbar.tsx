@@ -2,17 +2,14 @@ import {
   ArrowLeftRight,
   HelpCircle,
   Info,
-  MapPin,
   Moon,
   Smartphone,
   Sun,
-  WifiOff,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { FAHRZEUGE, type FahrzeugId } from "@hotdoc/shared";
 import { applyTheme, effectiveTheme, setThemeOverride, type Theme } from "../lib/theme";
-import type { GeoState } from "../lib/geo";
 import { BrandLogo } from "./BrandLogo";
 import { FunkstatusBadge } from "./FunkstatusBadge";
 import { HilfeSheet } from "./HilfeSheet";
@@ -32,7 +29,6 @@ interface Props {
   fahrzeugId?: FahrzeugId;
   funkrufname?: string;
   einsatzNr?: string;
-  geo?: GeoState;
   /** Optional. Wenn nicht gesetzt: aus funkrufname abgeleitet
    *  (enthaelt "Florian" → "Florian Eberstalzell", sonst "Fahrzeugbericht"). */
   mode?: "fahrzeug" | "zentrale";
@@ -74,7 +70,6 @@ export function Topbar({
   fahrzeugId,
   funkrufname,
   einsatzNr,
-  geo,
   mode,
   onSwitchVehicle,
   onHandoff,
@@ -225,8 +220,6 @@ export function Topbar({
         <FunkstatusBadge eintrag={funk.map[fahrzeugId]} stale={funk.stale} />
       ) : null}
 
-      {geo ? <GeoChip geo={geo} /> : null}
-
       {/* HILFE: Knopf-Button nur auf der Florianstation (User-Wunsch). Im
           Fahrzeug-Tablet sind die Tooltips inline an den Feldern, weil dort
           ohnehin weniger zu erklaeren ist. */}
@@ -278,56 +271,6 @@ export function Topbar({
       <HilfeSheet open={hilfeOpen} onClose={() => setHilfeOpen(false)} />
     </header>
   );
-}
-
-function GeoChip({ geo }: { geo: GeoState }) {
-  const variant = variantFor(geo.status);
-  const Icon = geo.status === "denied" || geo.status === "unavail" ? WifiOff : MapPin;
-  // D-11: Nutzersprachliche Labels — Funktionaere wollen auf einen Blick
-  // wissen ob das GPS taugt, nicht die Praezision in Metern lesen. Die
-  // Details (Genauigkeit, Alter, Block-Hinweis) wandern in den Tooltip.
-  const label =
-    geo.status === "live"
-      ? "GPS gut"
-      : geo.status === "stale"
-        ? "GPS schwach"
-        : geo.status === "loading"
-          ? "GPS sucht"
-          : geo.status === "denied"
-            ? "GPS aus"
-            : geo.status === "disabled"
-              ? "GPS aus"
-              : "GPS aus";
-  const detailTitle =
-    geo.status === "live"
-      ? `Genauigkeit ~${(geo.fix?.accuracyM ?? 0).toFixed(0)} m`
-      : geo.status === "stale"
-        ? `Letzte Position vor ${geo.ageSec}s — Signal schwach`
-        : geo.status === "loading"
-          ? "GPS-Fix wird gesucht …"
-          : geo.status === "denied"
-            ? (geo.errorMessage ?? "Standortzugriff im Browser blockiert")
-            : geo.status === "disabled"
-              ? "GPS bei QR-Zugriff deaktiviert — vermutlich nicht das Fahrzeug-Tablet"
-              : (geo.errorMessage ?? "Gerät hat kein GPS-Signal");
-  return (
-    <span className={`status-pill ${variant}`} title={detailTitle}>
-      <span className="dot" />
-      <Icon size={11} strokeWidth={2.4} />
-      <span>{label}</span>
-    </span>
-  );
-}
-
-function variantFor(status: GeoState["status"]): string {
-  switch (status) {
-    case "live":   return "ok";
-    case "stale":  return "warn";
-    case "denied":
-    case "unavail": return "danger";
-    case "loading": return "";
-    case "disabled": return "";
-  }
 }
 
 function formatClock(d: Date): string {
