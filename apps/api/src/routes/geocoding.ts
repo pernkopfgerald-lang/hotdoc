@@ -1,7 +1,7 @@
 /**
  * Reverse-Geocoding-Proxy mit Eberstalzell-Gemeinde-Erkennung.
  *
- *   GET /api/geocoding/reverse?lat=48.0884&lng=13.9586
+ *   GET /api/geocoding/reverse?lat=48.0396&lng=13.9927
  *     → { ok: true, address: "Bachstraße 5, 4653 Eberstalzell" | null,
  *         inEberstalzell: boolean,
  *         pflichtbereich?: true, einsatzzoneEzell?: true }

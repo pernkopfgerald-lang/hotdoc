@@ -7,7 +7,6 @@
 
 import type { Material, Person } from "@hotdoc/shared";
 import type {
-  SyBosAbteilungRaw,
   SyBosMaterialRaw,
   SyBosPersonRaw,
   SyBosPersUeberpruefungRaw,
@@ -122,20 +121,4 @@ function inferWatCode(raw: SyBosMaterialRaw): Material["watCode"] {
   if (/tauch/i.test(text)) return "tauch";
   if (/öl|bindemittel|generator|pumpe|leiter|säge|schaum/i.test(text)) return "gerae";
   return "sachm";
-}
-
-export interface AbteilungSummary {
-  id: number;
-  name: string;
-  ort?: string;
-}
-
-export function mapAbteilung(raw: SyBosAbteilungRaw): AbteilungSummary | null {
-  const id = coerceId(raw.ID);
-  if (id === null) return null;
-  return {
-    id,
-    name: raw.Bezeichnung ?? raw.Name,
-    ort: raw.Ort || undefined,
-  };
 }

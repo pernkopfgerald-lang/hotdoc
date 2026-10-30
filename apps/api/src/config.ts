@@ -80,10 +80,10 @@ const EnvSchema = z
       .url()
       .default("https://graphhopper.com/api/1"),
 
-    // WebPush (VAPID) — Phase 3
+    // WebPush (VAPID): nur VAPID_PUBLIC wird noch gelesen (routes/health.ts,
+    // features.webPush in /api/version). VAPID_PRIVATE/-SUBJECT und hasWebPush()
+    // waren unreferenziert und sind entfernt (Push laeuft ueber FCM).
     VAPID_PUBLIC: z.string().optional(),
-    VAPID_PRIVATE: z.string().optional(),
-    VAPID_SUBJECT: z.string().email().default("admin@ff-eberstalzell.at"),
 
     // FCM (Firebase Cloud Messaging) — Phase 2 fuer die Android-APK.
     // ACHTUNG: die alte Legacy-API (https://fcm.googleapis.com/fcm/send)
@@ -233,12 +233,4 @@ export function hasSyBos(): boolean {
 
 export function hasEls(): boolean {
   return !!(env.ELS_REGISTER_TOKEN && env.ELS_STATION_ID);
-}
-
-export function hasWasserkarte(): boolean {
-  return !!env.WASSERKARTE_ACCESS_KEY;
-}
-
-export function hasWebPush(): boolean {
-  return !!(env.VAPID_PUBLIC && env.VAPID_PRIVATE);
 }

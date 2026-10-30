@@ -19,14 +19,16 @@
  * weil potenziell sensitive Einsatz-Adressen.
  */
 
+import { FLORIAN_POSITION } from "@hotdoc/shared";
 import { Router, type RequestHandler } from "express";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
 export const geocodeRouter: Router = Router();
 
-const HOME_LAT = 48.0884;
-const HOME_LON = 13.9586;
+// WARUM FLORIAN_POSITION: die alte 48.0884/13.9586 lag ~5 km zu weit noerdlich (Heischbach).
+const HOME_LAT = FLORIAN_POSITION.lat;
+const HOME_LON = FLORIAN_POSITION.lng;
 /** Bbox = west,south,east,north — grobe Österreich-Begrenzung. */
 const AUSTRIA_BBOX = "9.5,46.3,17.2,49.0";
 

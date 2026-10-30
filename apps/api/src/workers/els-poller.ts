@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { leiteEinsatzartAb } from "@hotdoc/shared";
 import { env, hasEls } from "../config.js";
 import { db } from "../couch/client.js";
+import { MANGO_INDIZES, useIndex } from "../couch/indizes.js";
 import { logger } from "../lib/logger.js";
 import { isInEberstalzell } from "../routes/geocoding.js";
 import { pushAlarm } from "../services/fcm.js";
@@ -107,6 +108,9 @@ async function ladeEinsaetze(): Promise<EinsatzDocMin[]> {
   const ab = new Date(Date.now() - ABGLEICH_FENSTER_MS).toISOString();
   const r = await db.find({
     selector: { type: "einsatz", alarmierungZeit: { $gte: ab } },
+    // WARUM use_index: ohne Index liest CouchDB bei JEDEM Poll (alle 15 s) die
+    // komplette DB inkl. Foto-Dokumenten. Index [type, alarmierungZeit].
+    use_index: useIndex(MANGO_INDIZES.typeAlarmierungZeit),
     fields: [
       "_id",
       "status",

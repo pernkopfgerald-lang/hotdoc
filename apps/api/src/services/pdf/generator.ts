@@ -3,12 +3,55 @@
  *
  * Lazy-Init: Browser-Launch erst beim ersten Aufruf, dann wiederverwenden.
  * In production läuft puppeteer headless mit dem mitgelieferten Chromium.
+ *
+ * Leerlauf: Chromium belegt auf der 1-GB-Maschine dauerhaft Speicher, obwohl
+ * PDFs selten gebraucht werden (Abschluss, Archiv). Nach BROWSER_IDLE_MS ohne
+ * Render wird der Browser geschlossen und beim naechsten Render neu gestartet.
  */
 
 import type { Browser } from "puppeteer";
 import { logger } from "../../lib/logger.js";
 
 let browserPromise: Promise<Browser> | null = null;
+
+/** Nach so langer Zeit ohne Render wird Chromium beendet (Speicher freigeben). */
+const BROWSER_IDLE_MS = 5 * 60 * 1000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearIdleTimer(): void {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+}
+
+/**
+ * Plant das Schliessen des Browsers. Wird nach jedem beendeten Render
+ * (re-)gestartet. NIE waehrend eines Renders: laufende/wartende Renders
+ * (pendingRenders) verhindern das Schliessen, und das Referenz-Nullen von
+ * browserPromise passiert im selben Tick wie die Pruefung — ein neuer Render
+ * startet danach lazy einen frischen Browser.
+ */
+function armIdleTimer(): void {
+  clearIdleTimer();
+  if (!browserPromise) return;
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (pendingRenders > 0 || !browserPromise) return;
+    const closing = browserPromise;
+    browserPromise = null;
+    void closing
+      .then((b) => b.close())
+      .then(() => logger.info("Puppeteer-Browser nach Leerlauf geschlossen"))
+      .catch((err) => {
+        logger.warn({ err }, "Puppeteer-Browser: Schliessen nach Leerlauf fehlgeschlagen");
+      });
+  }, BROWSER_IDLE_MS);
+  // Der Timer darf den Prozess nicht am Leben halten.
+  if (typeof (idleTimer as { unref?: () => void }).unref === "function") {
+    (idleTimer as { unref: () => void }).unref();
+  }
+}
 
 /**
  * Max-Render-Timeout pro PDF (setContent + page.pdf).
@@ -20,7 +63,11 @@ const RENDER_TIMEOUT_MS = 60_000;
 
 async function getBrowser(): Promise<Browser> {
   if (browserPromise) return browserPromise;
-  browserPromise = (async () => {
+  // eigene Referenz, damit der disconnected-Handler eines ALTEN Browsers (z. B.
+  // nach dem Leerlauf-Schliessen) einen inzwischen neu gestarteten nicht
+  // wegnullt.
+  let diese: Promise<Browser> | null = null;
+  diese = browserPromise = (async () => {
     try {
       const puppeteer = await import("puppeteer");
       const browser = await puppeteer.default.launch({
@@ -35,11 +82,11 @@ async function getBrowser(): Promise<Browser> {
       // Referenz scheitern.
       browser.on("disconnected", () => {
         logger.warn("Puppeteer-Browser disconnected — wird beim naechsten Render neu gestartet");
-        browserPromise = null;
+        if (browserPromise === diese) browserPromise = null;
       });
       return browser;
     } catch (err) {
-      browserPromise = null;
+      if (browserPromise === diese) browserPromise = null;
       throw err;
     }
   })();
@@ -164,8 +211,11 @@ export async function renderPdf(html: string): Promise<Buffer> {
   // A-10: pendingRenders zaehlt laufende + wartende Renders; das finally
   // dekrementiert exakt einmal, egal ob der Render erfolgreich war.
   pendingRenders += 1;
+  clearIdleTimer();
   const result = renderChain.then(run, run).finally(() => {
     pendingRenders -= 1;
+    // Letzter Render durch -> Leerlauf-Uhr starten (nicht, solange noch einer wartet).
+    if (pendingRenders === 0) armIdleTimer();
   });
   renderChain = result.then(
     () => undefined,
@@ -175,9 +225,10 @@ export async function renderPdf(html: string): Promise<Buffer> {
 }
 
 export async function shutdownPdfGenerator(): Promise<void> {
+  clearIdleTimer();
   if (browserPromise) {
     const browser = await browserPromise;
-    await browser.close();
     browserPromise = null;
+    await browser.close();
   }
 }

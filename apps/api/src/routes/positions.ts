@@ -115,8 +115,9 @@ positionsRouter.post("/api/positions", requireAuth(), (async (req, res) => {
 
 // — GET /api/positions —
 // Florianstation und Fahrzeug-Tablets dürfen lesen (Cross-Awareness).
-// getAllPings merged persistierte Docs + RAM und filtert > 5 min alte Pings
-// (I-05). Response-Shape unveraendert (V15): { ok, items }.
+// getAllPings antwortet aus dem RAM (DB nur bei Kaltstart/leerem RAM bzw. als
+// 30-s-Sicherheitsnetz, siehe services/positions-state) und filtert > 5 min
+// alte Pings (I-05). Response-Shape unveraendert (V15): { ok, items }.
 positionsRouter.get("/api/positions", requireAuth(), ah(async (_req, res) => {
   const pings = await getAllPings();
   // Funkposition aus ELS hat Vorrang vor dem Tablet-GPS (services/els/positionen);

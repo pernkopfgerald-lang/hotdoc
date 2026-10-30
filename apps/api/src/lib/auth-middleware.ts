@@ -46,6 +46,24 @@ export function requireAuth(minRole?: Rolle) {
   };
 }
 
+/**
+ * Wie requireAuth, aber OHNE Abweisung: liefert die Session, wenn ein gueltiger
+ * Bearer-Token mitgeschickt wurde, sonst null (fehlender/ungueltiger Token ist
+ * hier kein Fehler). Fuer Routen, die fuer alle erreichbar bleiben, aber
+ * Angemeldeten mehr zeigen.
+ */
+export async function getOptionalSession(
+  req: Pick<Request, "headers">,
+  minRole?: Rolle,
+): Promise<SessionPayload | null> {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.toLowerCase().startsWith("bearer ")) return null;
+  const session = await verifySession(auth.slice(7).trim());
+  if (!session) return null;
+  if (minRole && !satisfiesRole(session.rolle, minRole)) return null;
+  return session;
+}
+
 const RANG: Record<Rolle, number> = {
   mannschaft: 1,
   einsatzleiter: 2,

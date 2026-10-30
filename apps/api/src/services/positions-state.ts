@@ -9,10 +9,18 @@
  *  - setPing schreibt synchron in die Map und upsertet fire-and-forget das
  *    Doc `position:<fahrzeugId>` (genau EIN Doc pro Fahrzeug, wird
  *    ueberschrieben — keine Historie, keine Bewegungsspur).
- *  - getAllPings liest die Docs aller Fahrzeuge per _all_docs?keys=... und
- *    merged sie mit dem RAM-State (juengster ts gewinnt); Eintraege aelter
- *    als MAX_PING_AGE_MS fallen raus. Bei CouchDB-Fehler bleibt der RAM-
- *    Stand die Antwort.
+ *  - Schreiblast: persistiert wird hoechstens alle PERSIST_MIN_INTERVAL_MS
+ *    (30 s) je Fahrzeug — der RAM-Stand bleibt bei jedem Ping aktuell. Ein
+ *    Doc pro Fahrzeug mit neuer Revision alle 3-5 s hat die DB (und die
+ *    Replikation auf die Tablets) unnoetig belastet.
+ *  - getAllPings antwortet aus dem RAM. Die Docs aller Fahrzeuge werden per
+ *    _all_docs?keys=... nur gelesen und mit dem RAM-State gemerged (juengster
+ *    ts gewinnt), wenn (a) Kaltstart/RAM leer (Neustart: "letzte bekannte
+ *    Position") oder (b) alle DB_REFRESH_INTERVAL_MS (30 s) als Sicherheitsnetz
+ *    fuer einen Mehrinstanz-Betrieb, in dem Pings an einer ANDEREN Instanz
+ *    ankommen (deren RAM wir nicht sehen, nur die persistierten Docs).
+ *    Eintraege aelter als MAX_PING_AGE_MS fallen raus. Bei CouchDB-Fehler
+ *    bleibt der RAM-Stand die Antwort.
  *
  * Datenschutz: Positionen sind PII (Standort des Fahrzeugs = Standort der
  * Mannschaft). Persistiert wird ausschliesslich der jeweils letzte Ping pro
@@ -58,6 +66,19 @@ const state = new Map<FahrzeugId, FahrzeugPing>();
  * der naechste Ping holt die _rev frisch.
  */
 const revCache = new Map<FahrzeugId, string>();
+
+/** Hoechstens so oft wird der Ping eines Fahrzeugs nach CouchDB geschrieben. */
+export const PERSIST_MIN_INTERVAL_MS = 30 * 1000;
+const lastPersistAt = new Map<FahrzeugId, number>();
+
+/**
+ * DB-Lesen in getAllPings: regulaer hoechstens alle 30 s (Mehrinstanz-
+ * Sicherheitsnetz), bei leerem RAM alle 10 s (Kaltstart/Neustart ohne Pings).
+ */
+export const DB_REFRESH_INTERVAL_MS = 30 * 1000;
+const DB_EMPTY_RETRY_INTERVAL_MS = 10 * 1000;
+let lastDbReadAt = 0;
+let dbReadInflight: Promise<void> | null = null;
 
 /** Fehler-Logs der Persistenz drosseln — sonst alle 3 s x 4 Fahrzeuge. */
 const PERSIST_WARN_INTERVAL_MS = 60 * 1000;
@@ -149,6 +170,13 @@ async function persistPing(ping: FahrzeugPing): Promise<void> {
  */
 export function setPing(ping: FahrzeugPing): void {
   state.set(ping.fahrzeugId, ping);
+  // Drosselung: nur alle PERSIST_MIN_INTERVAL_MS schreiben. Bewusst auch bei
+  // Fehlschlag KEIN Sofort-Retry beim naechsten Ping (sonst Schreib-Sturm bei
+  // DB-Problemen) — der naechste Versuch kommt nach dem Intervall.
+  const jetzt = Date.now();
+  const zuletzt = lastPersistAt.get(ping.fahrzeugId);
+  if (zuletzt !== undefined && jetzt - zuletzt < PERSIST_MIN_INTERVAL_MS) return;
+  lastPersistAt.set(ping.fahrzeugId, jetzt);
   void persistPing(ping).catch((err) => {
     warnThrottled(
       { fahrzeugId: ping.fahrzeugId, err: errMsg(err) },
@@ -158,12 +186,34 @@ export function setPing(ping: FahrzeugPing): void {
 }
 
 /**
- * Liefert die letzten bekannten Pings aller Fahrzeuge: persistierte Docs
- * und RAM gemerged (juengster ts gewinnt), aelter als MAX_PING_AGE_MS
- * aussortiert. Neuere Couch-Staende wandern in den RAM, damit dieser nach
- * einem Neustart wieder warm ist.
+ * Liefert die letzten bekannten Pings aller Fahrzeuge aus dem RAM, ergaenzt
+ * (siehe Kopfkommentar) um die persistierten Docs (juengster ts gewinnt);
+ * aelter als MAX_PING_AGE_MS aussortiert. Neuere Couch-Staende wandern in
+ * den RAM, damit dieser nach einem Neustart wieder warm ist.
  */
 export async function getAllPings(): Promise<FahrzeugPing[]> {
+  const jetzt = Date.now();
+  const seitLesen = jetzt - lastDbReadAt;
+  const sollLesen =
+    lastDbReadAt === 0 || // Kaltstart
+    seitLesen >= DB_REFRESH_INTERVAL_MS || // Mehrinstanz-Sicherheitsnetz
+    (state.size === 0 && seitLesen >= DB_EMPTY_RETRY_INTERVAL_MS); // RAM leer
+  if (sollLesen) {
+    // Parallele GETs teilen sich einen Lesevorgang.
+    if (!dbReadInflight) {
+      lastDbReadAt = jetzt;
+      dbReadInflight = mergePersistierte().finally(() => {
+        dbReadInflight = null;
+      });
+    }
+    await dbReadInflight;
+  }
+  evictOlderThan(MAX_PING_AGE_MS);
+  return [...state.values()];
+}
+
+/** Liest die persistierten Docs und merged sie in den RAM-State. Wirft nie. */
+async function mergePersistierte(): Promise<void> {
   try {
     const res = await db.fetch({ keys: PING_FAHRZEUG_IDS.map(positionDocId) });
     for (const row of res.rows) {
@@ -188,8 +238,6 @@ export async function getAllPings(): Promise<FahrzeugPing[]> {
       "Persistierte Fahrzeug-Positionen nicht lesbar — antworte aus dem RAM",
     );
   }
-  evictOlderThan(MAX_PING_AGE_MS);
-  return [...state.values()];
 }
 
 /**

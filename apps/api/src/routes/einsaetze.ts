@@ -22,6 +22,8 @@ import {
   type EinsatzartPruefDoc,
 } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
+import { MANGO_INDIZES, useIndex } from "../couch/indizes.js";
+import { alarmIdsVonEinsatz, sperreAlarme } from "../services/geloeschte-alarme.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -50,9 +52,10 @@ async function sendAbschlussMail(
   berichtNummer: string | undefined,
 ): Promise<void> {
   try {
-    const { pdf, markdown, nachbereitung } = await buildBerichtMailAnhaenge(id, doc);
-    // PDF-Dokumente aus der Chronik (Florianstation) beilegen.
-    const dokumente = await loadDokumentAnhaenge(id).catch(() => []);
+    const { pdf, markdown, nachbereitung, fotoDocs } = await buildBerichtMailAnhaenge(id, doc);
+    // PDF-Dokumente aus der Chronik (Florianstation) beilegen — aus den bereits
+    // geladenen foto:-Docs (kein zweites Laden der Base64-Payloads).
+    const dokumente = await loadDokumentAnhaenge(id, fotoDocs).catch(() => []);
     const bezeichnung =
       (doc.einsatzort as string | undefined) ||
       (doc.einsatzart as string | undefined) ||
@@ -1275,6 +1278,19 @@ einsaetzeRouter.delete(
     const doc = await getEinsatzOr404(id, res);
     if (!doc) return;
 
+    // Sperrliste VOR dem Tombstone: der BlaulichtSMS-Poller legt sonst einen
+    // geloeschten Einsatz samt neuem Push wieder an, solange der Alarm in der
+    // BlaulichtSMS-Liste steht (db.get liefert fuer Tombstones 404). Fehler hier
+    // duerfen das Loeschen nicht verhindern — nur loggen.
+    try {
+      await sperreAlarme(alarmIdsVonEinsatz(doc));
+    } catch (err) {
+      logger.warn(
+        { err, id },
+        "Alarm-Sperrliste konnte nicht aktualisiert werden — der Poller koennte den Einsatz erneut anlegen",
+      );
+    }
+
     // Cascade-Loeschung aller Fahrzeugberichte. Wir holen sie zuerst,
     // markieren mit _deleted=true und schicken im bulk insert.
     const fzgPrefix = `fzgber:${id.replace(/^einsatz:/, "")}:`;
@@ -1431,8 +1447,12 @@ const PUT_EINSATZ_ALLOWED_FIELDS = new Set<string>([
   // Position mitgeschickt, damit die Lagekarte zur Adresse passt.
   "koordinaten",
   "vidi", // wildcard prefix — siehe Loop unten
-  "fahrzeugPositionen",
-  "chronik",
+  // WARUM NICHT mehr erlaubt: "chronik" und "fahrzeugPositionen" (frueher hier).
+  // Die Chronik hat eigene append-only-Routen (POST/PUT/DELETE .../chronik) und
+  // fahrzeugPositionen schreibt kein Client; ein PUT mit diesen Keys haette die
+  // GANZE Chronik ueberschreiben koennen (Datenverlust bei veraltetem Client-
+  // Stand). Geprueft: weder PWA noch Backoffice senden sie per PUT /api/einsaetze/:id.
+  // Unbekannte Keys werden vom Loop unten stillschweigend verworfen (kein 400).
   // Issue 16 (Einsatz-Test 2026-06-02): syBOS Technisch-Statistik-Block.
   "technischeStatistik",
   // Issue 17 (Einsatz-Test 2026-06-02): syBOS Brand-Statistik-Block (vom
@@ -2251,6 +2271,13 @@ einsaetzeRouter.get(
         fahrzeugId,
         ...(statusFilter !== "alle" ? { status: statusFilter } : {}),
       },
+      // Mit Status-Filter Index [type, fahrzeugId, status], sonst [type, fahrzeugId]
+      // (ein Index ist nur nutzbar, wenn der Selektor ALLE seine Felder enthaelt).
+      use_index: useIndex(
+        statusFilter !== "alle"
+          ? MANGO_INDIZES.typeFahrzeugIdStatus
+          : MANGO_INDIZES.typeFahrzeugId,
+      ),
       limit: MEINE_FIND_LIMIT,
     });
     if (found.docs.length >= MEINE_FIND_LIMIT) {

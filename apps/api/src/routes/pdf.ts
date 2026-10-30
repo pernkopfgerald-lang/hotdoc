@@ -48,12 +48,30 @@ interface PersonDoc {
   dienstgrad?: string;
 }
 
-async function loadPerson(syBosId: number): Promise<PersonDoc | null> {
+/**
+ * Laedt mehrere Personen-Docs in EINEM Aufruf (_all_docs?keys=…) statt je
+ * Person ein db.get — ein Bericht mit 4 Fahrzeugen x 8 Mann waren sonst
+ * ~35 sequenzielle Roundtrips im PDF-Pfad. Fehlende/geloeschte Personen
+ * fehlen einfach in der Map (Aufrufer fallen wie bisher auf "Pers-<id>"
+ * zurueck); schlaegt der ganze Abruf fehl, bleibt die Map leer (wie bisher
+ * das einzelne, geschluckte db.get).
+ */
+async function loadPersonen(ids: Iterable<number>): Promise<Map<number, PersonDoc>> {
+  const out = new Map<number, PersonDoc>();
+  const uniq = [...new Set(ids)].filter((n) => typeof n === "number" && Number.isFinite(n));
+  if (uniq.length === 0) return out;
   try {
-    return (await db.get(`person:${syBosId}`)) as PersonDoc;
-  } catch {
-    return null;
+    const res = await db.fetch({ keys: uniq.map((n) => `person:${n}`) });
+    for (const row of res.rows) {
+      const doc = ("doc" in row ? row.doc : null) as PersonDoc | null | undefined;
+      if (!doc) continue; // not_found (kein doc) bzw. geloescht (doc: null)
+      const id = Number(String(row.key).slice("person:".length));
+      if (Number.isFinite(id)) out.set(id, doc);
+    }
+  } catch (err) {
+    logger.warn({ err }, "Personen-Lookup fuer PDF fehlgeschlagen — Namen fallen auf Pers-<id> zurueck");
   }
+  return out;
 }
 
 /**
@@ -94,7 +112,7 @@ async function loadFahrzeugberichte(
  * Foto-Anhang). Fehler werden geschluckt — fehlt der Anhang, ist das PDF
  * trotzdem gültig.
  */
-interface FotoDocLite {
+export interface FotoDocLite {
   fotoId: string;
   dataUrl: string;
   beschreibung?: string;
@@ -134,8 +152,16 @@ const istPdfDataUrl = (u: string): boolean => u.startsWith("data:application/pdf
  */
 export async function loadDokumentAnhaenge(
   einsatzId: string,
+  /**
+   * Bereits geladene foto:-Docs (z. B. aus buildBerichtMailAnhaenge) — spart
+   * das zweite Laden der Base64-Payloads beim Abschluss. Ohne Angabe wird wie
+   * bisher geladen.
+   */
+  fotoDocs?: FotoDocLite[],
 ): Promise<Array<{ filename: string; content: Buffer; contentType: string }>> {
-  const docs = (await loadFotoDocs(einsatzId)).filter((f) => istPdfDataUrl(f.dataUrl));
+  const docs = (fotoDocs ?? (await loadFotoDocs(einsatzId))).filter((f) =>
+    istPdfDataUrl(f.dataUrl),
+  );
   const benutzt = new Set<string>();
   return docs.map((f, i) => {
     let name = (f.dateiName ?? `Dokument-${i + 1}.pdf`).replace(/[^\w.\- äöüÄÖÜß()]/g, "_");
@@ -334,7 +360,7 @@ function applyLotsendienstOverlay(data: BerichtDaten, doc: Record<string, unknow
 async function buildBerichtDaten(
   id: string,
   doc: Record<string, unknown>,
-  opts: { ohneFotos?: boolean } = {},
+  opts: { ohneFotos?: boolean; fotoDocs?: FotoDocLite[] } = {},
 ): Promise<BerichtDaten> {
   const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
   const reaktivierungen = (
@@ -380,9 +406,21 @@ async function buildBerichtDaten(
     (doc.reservePersonIds as unknown[] | undefined) ?? []
   ).filter((id): id is number => typeof id === "number" && !eingesetztIds.has(id));
   const bereitschaft = bereitschaftIds.length;
+  // Alle benoetigten Personen (Mannschaft/Fahrer/Kdt aus eingesetztIds, Reserve,
+  // Einsatzleiter-Fallback, Bearbeiter) in EINEM Abruf laden.
+  const elFallbackId =
+    typeof doc.einsatzleiterPersonId === "number" ? doc.einsatzleiterPersonId : undefined;
+  const bearbeiterId =
+    typeof doc.bearbeiterPersonId === "number" ? doc.bearbeiterPersonId : undefined;
+  const personen = await loadPersonen([
+    ...eingesetztIds,
+    ...bereitschaftIds,
+    ...(elFallbackId !== undefined ? [elFallbackId] : []),
+    ...(bearbeiterId !== undefined ? [bearbeiterId] : []),
+  ]);
   const reserveNamen: string[] = [];
   for (const rid of bereitschaftIds) {
-    const p = await loadPerson(rid);
+    const p = personen.get(rid) ?? null;
     reserveNamen.push(
       p ? `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${rid}` : `Pers-${rid}`,
     );
@@ -426,7 +464,7 @@ async function buildBerichtDaten(
   // Inline-Thumbnails in der Chronik + Foto-Anhang-Seiten 9×12 cm).
   // D-08: Der Spickzettel (HTML ohne Bilder) laedt die Foto-Docs nicht — die
   // Base64-DataUrls sind der groesste Teil des Einsatz-Payloads.
-  const alleFotoDocs = opts.ohneFotos ? [] : await loadFotoDocs(id);
+  const alleFotoDocs = opts.ohneFotos ? [] : (opts.fotoDocs ?? (await loadFotoDocs(id)));
   // Foto-Raster nur mit Bildern; PDFs werden separat als Dokumente aufgelistet.
   const fotos: NonNullable<BerichtDaten["fotos"]> = alleFotoDocs
     .filter((f) => !istPdfDataUrl(f.dataUrl))
@@ -456,7 +494,7 @@ async function buildBerichtDaten(
     }> | undefined) ?? [];
     const mannschaftResolved: NonNullable<BerichtDaten["fahrzeugberichte"]>[number]["mannschaft"] = [];
     for (const slot of m) {
-      const p = await loadPerson(slot.personId);
+      const p = personen.get(slot.personId) ?? null;
       const name = p
         ? `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${slot.personId}`
         : `Pers-${slot.personId}`;
@@ -475,8 +513,8 @@ async function buildBerichtDaten(
     ).map((a) => (a === "HR-Anhaenger" ? "HR-Anhänger" : a === "PKW-Anhaenger" ? "PKW-Anhänger" : a));
     const fahrerId = fz.fahrerPersonId as number | undefined;
     const kdtId = fz.fahrzeugKdtPersonId as number | undefined;
-    const fahrerName = fahrerId ? await loadPerson(fahrerId) : null;
-    const kdtName = kdtId ? await loadPerson(kdtId) : null;
+    const fahrerName = fahrerId ? (personen.get(fahrerId) ?? null) : null;
+    const kdtName = kdtId ? (personen.get(kdtId) ?? null) : null;
     // v0.1.15: Ist der Kdt dieses Fahrzeugs als Einsatzleiter markiert, wird
     // sein Name für die Einsatzleiter-Box im PDF gemerkt. Erster Treffer
     // gewinnt (es sollte ohnehin nur einen geben).
@@ -559,7 +597,7 @@ async function buildBerichtDaten(
   if (!einsatzleiterName) {
     const elPersonId = doc.einsatzleiterPersonId as number | undefined;
     if (typeof elPersonId === "number") {
-      const elPerson = await loadPerson(elPersonId);
+      const elPerson = personen.get(elPersonId) ?? null;
       if (elPerson) {
         einsatzleiterName = `${elPerson.nachname ?? ""} ${elPerson.vorname ?? ""}`.trim();
         einsatzleiterPersonId = elPersonId;
@@ -569,8 +607,7 @@ async function buildBerichtDaten(
 
   // Bearbeiter (Sachbearbeiter Florianstation) — lebt als bearbeiterPersonId
   // am Einsatz-Doc und wurde bisher nie ins PDF uebernommen.
-  const bearbeiterPerson =
-    typeof doc.bearbeiterPersonId === "number" ? await loadPerson(doc.bearbeiterPersonId) : null;
+  const bearbeiterPerson = bearbeiterId !== undefined ? (personen.get(bearbeiterId) ?? null) : null;
   const bearbeiterName = bearbeiterPerson
     ? `${bearbeiterPerson.nachname ?? ""} ${bearbeiterPerson.vorname ?? ""}`.trim()
     : "";
@@ -764,17 +801,21 @@ function applyUebungOverlay(data: BerichtDaten, doc: Record<string, unknown>): v
 async function buildBerichtDatenFuerTyp(
   id: string,
   doc: Record<string, unknown>,
+  fotoDocs?: FotoDocLite[],
 ): Promise<BerichtDaten> {
   const einsatzTyp = (doc.einsatzTyp as string) ?? "alarm";
-  const data = await buildBerichtDaten(id, doc);
+  const data = await buildBerichtDaten(id, doc, fotoDocs ? { fotoDocs } : {});
   if (einsatzTyp === "lotsendienst") applyLotsendienstOverlay(data, doc);
   else if (einsatzTyp === "uebung") applyUebungOverlay(data, doc);
   return data;
 }
 
-async function resolvePerson(syBosId: unknown): Promise<ResolvedPerson | undefined> {
+function resolvePerson(
+  personen: Map<number, PersonDoc>,
+  syBosId: unknown,
+): ResolvedPerson | undefined {
   if (typeof syBosId !== "number") return undefined;
-  const p = await loadPerson(syBosId);
+  const p = personen.get(syBosId);
   if (!p) return undefined;
   const name = `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${syBosId}`;
   return { name, syBosId };
@@ -792,19 +833,34 @@ async function resolvePerson(syBosId: unknown): Promise<ResolvedPerson | undefin
 export async function buildBerichtMailAnhaenge(
   id: string,
   doc: Record<string, unknown>,
-): Promise<{ pdf: Buffer; markdown: string; nachbereitung: string }> {
-  const data = await buildBerichtDatenFuerTyp(id, doc);
+): Promise<{
+  pdf: Buffer;
+  markdown: string;
+  nachbereitung: string;
+  /**
+   * Die dabei geladenen foto:-Docs — der Aufrufer reicht sie an
+   * loadDokumentAnhaenge weiter, damit die Base64-Payloads nicht ein zweites
+   * Mal aus CouchDB geladen werden.
+   */
+  fotoDocs: FotoDocLite[];
+}> {
+  const fotoDocs = await loadFotoDocs(id);
+  const data = await buildBerichtDatenFuerTyp(id, doc, fotoDocs);
   const reserveIds = ((doc.reservePersonIds as unknown[] | undefined) ?? []).filter(
     (v): v is number => typeof v === "number",
   );
-  const [pdf, bearbeiter, reserveResolved] = await Promise.all([
+  const bearbeiterId =
+    typeof doc.bearbeiterPersonId === "number" ? doc.bearbeiterPersonId : undefined;
+  const [pdf, personen] = await Promise.all([
     renderPdf(renderHauptberichtHtml(data)),
-    resolvePerson(doc.bearbeiterPersonId),
-    Promise.all(reserveIds.map((rid) => resolvePerson(rid))),
+    loadPersonen([...reserveIds, ...(bearbeiterId !== undefined ? [bearbeiterId] : [])]),
   ]);
-  const reserve = reserveResolved.filter((p): p is ResolvedPerson => !!p);
+  const bearbeiter = resolvePerson(personen, doc.bearbeiterPersonId);
+  const reserve = reserveIds
+    .map((rid) => resolvePerson(personen, rid))
+    .filter((p): p is ResolvedPerson => !!p);
   const markdown = renderBerichtMarkdown(data, { bearbeiter, reserve });
-  return { pdf, markdown, nachbereitung: baueNachbereitungText(data) };
+  return { pdf, markdown, nachbereitung: baueNachbereitungText(data), fotoDocs };
 }
 
 // ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────
@@ -841,8 +897,16 @@ pdfRouter.get(
         atemschutzDauerMin?: number;
       }> | undefined) ?? [];
       const mannschaftResolved: FahrzeugberichtDaten["mannschaft"] = [];
+      const fahrerId = fzgber.fahrerPersonId as number | undefined;
+      const kdtId = fzgber.fahrzeugKdtPersonId as number | undefined;
+      // Mannschaft + Fahrer + Kdt in EINEM Abruf laden.
+      const personen = await loadPersonen([
+        ...mannschaftRaw.map((s) => s.personId),
+        ...(typeof fahrerId === "number" ? [fahrerId] : []),
+        ...(typeof kdtId === "number" ? [kdtId] : []),
+      ]);
       for (const slot of mannschaftRaw) {
-        const p = await loadPerson(slot.personId);
+        const p = personen.get(slot.personId) ?? null;
         const name = p
           ? `${p.nachname ?? ""} ${p.vorname ?? ""}`.trim() || `Pers-${slot.personId}`
           : `Pers-${slot.personId}`;
@@ -860,10 +924,8 @@ pdfRouter.get(
         mannschaftResolved.push(entry);
       }
 
-      const fahrerId = fzgber.fahrerPersonId as number | undefined;
-      const kdtId = fzgber.fahrzeugKdtPersonId as number | undefined;
-      const fahrerPerson = fahrerId ? await loadPerson(fahrerId) : null;
-      const kdtPerson = kdtId ? await loadPerson(kdtId) : null;
+      const fahrerPerson = fahrerId ? (personen.get(fahrerId) ?? null) : null;
+      const kdtPerson = kdtId ? (personen.get(kdtId) ?? null) : null;
 
       // Geraete-Labels aus config:geraete aufloesen — geteilter Helper
       // (AUDIT-14), Fallback auf die Roh-materialId bei unbekannten Ids.

@@ -21,6 +21,7 @@ import {
 } from "@hotdoc/shared";
 import { env } from "../config.js";
 import { db } from "../couch/client.js";
+import { MANGO_INDIZES, useIndex } from "../couch/indizes.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
@@ -251,6 +252,8 @@ async function findBenutzerByUsername(username: string): Promise<Benutzer | null
   try {
     const result = await db.find({
       selector: { type: "benutzer", username },
+      // Index [type, username] — sonst Vollscan der DB bei jedem Login.
+      use_index: useIndex(MANGO_INDIZES.typeUsername),
       limit: 1,
     });
     return (result.docs[0] as Benutzer | undefined) ?? null;

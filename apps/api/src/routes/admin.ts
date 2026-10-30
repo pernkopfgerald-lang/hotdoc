@@ -1,14 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import { runSyBosSync } from "../workers/sybos-sync.js";
-import { collectHealth } from "../services/health.js";
+import { collectHealthCached, reduziereHealthFuerOeffentlich } from "../services/health.js";
 import { loadRecentAuditEvents, writeAuditEvent, type AuditEventType } from "../services/audit.js";
 import { computeStats } from "../services/stats.js";
 import { getSyBosState } from "../services/state.js";
 import { readWorkerState } from "../services/worker-state.js";
 import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
-import { requireAuth } from "../lib/auth-middleware.js";
+import { getOptionalSession, requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 
 // C-03: Alle async-Handler laufen ueber ah(), damit eine Rejection (z. B.
@@ -21,13 +21,19 @@ export const adminRouter: Router = Router();
  * "Schnittstellen" (SchnittstellenPanel) sowie dem PWA-Login-Bildschirm
  * gepollt.
  *
- * Bleibt absichtlich öffentlich: zeigt nur "Integration X ist online/
- * offline", keine Credentials/IPs. Frontend braucht das vor dem Login
- * fuer den Status-Indikator.
+ * Bleibt absichtlich für alle erreichbar (Frontend braucht den Status-
+ * Indikator vor dem Login). Unangemeldete (und Sessions unterhalb
+ * "funktionaer", z. B. Fahrzeug-Tablets) bekommen aber nur den Zustand je
+ * Dienst — KEINE Server-Egress-IP, Fehlertexte oder Zaehler. Die volle
+ * Diagnose (Backoffice "Schnittstellen") sieht nur ein angemeldeter
+ * Funktionär/Admin. Das Ergebnis wird 15 s gecacht (siehe
+ * collectHealthCached); die Antwort haengt vom Authorization-Header ab (Vary).
  */
-adminRouter.get("/api/admin/health", ah(async (_req, res) => {
-  const health = await collectHealth();
-  res.json(health);
+adminRouter.get("/api/admin/health", ah(async (req, res) => {
+  const health = await collectHealthCached();
+  const session = await getOptionalSession(req, "funktionaer");
+  res.setHeader("Vary", "Authorization");
+  res.json(session ? health : reduziereHealthFuerOeffentlich(health));
 }));
 
 /**

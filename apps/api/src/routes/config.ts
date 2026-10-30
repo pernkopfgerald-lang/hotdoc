@@ -22,6 +22,7 @@ import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
+import { FLORIAN_POSITION } from "@hotdoc/shared";
 import { verwerfeZuordnungCache } from "../services/els/state.js";
 
 export const configRouter: Router = Router();
@@ -151,7 +152,8 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
       zentrale: "Florian Eberstalzell",
     },
     atemschutz: { maxDauerMin: 30, schritteMin: 5 },
-    heimkoord: { lat: 48.0884, lng: 13.9586 },
+    // WARUM FLORIAN_POSITION: die alte 48.0884/13.9586 lag ~5 km zu weit noerdlich.
+    heimkoord: { lat: FLORIAN_POSITION.lat, lng: FLORIAN_POSITION.lng },
     bezirk: "Wels-Land",
     feuerwehrhausAdresse: "Solarstraße 1, 4653 Eberstalzell",
   },

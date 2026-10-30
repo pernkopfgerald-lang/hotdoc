@@ -34,10 +34,12 @@ import {
 } from "@hotdoc/shared";
 import { env } from "../config.js";
 import { db } from "../couch/client.js";
+import { MANGO_INDIZES, useIndex } from "../couch/indizes.js";
 import { logger } from "../lib/logger.js";
 import { isInEberstalzell } from "../routes/geocoding.js";
 import { listAlarms, type BlaulichtAlarmData } from "../services/blaulichtsms/client.js";
 import { pushAlarm } from "../services/fcm.js";
+import { istAlarmGesperrt } from "../services/geloeschte-alarme.js";
 import { recordBlaulichtSmsPoll } from "../services/state.js";
 import { haengeWetterAn } from "../services/wetter.js";
 
@@ -314,6 +316,9 @@ async function findeDoppelalarmKandidat(neu: {
         einsatzTyp: "alarm",
         alarmierungZeit: { $gte: fensterStart },
       },
+      // Index festnageln: sonst koennte der Planer jetzt (neuer Index
+      // type-alarmierungZeit) wechseln — type-status ist hier bewaehrt.
+      use_index: useIndex(MANGO_INDIZES.typeStatus),
       limit: DOPPELALARM_FIND_LIMIT,
     });
     docs = r.docs as DoppelalarmKandidat[];
@@ -424,6 +429,19 @@ async function upsertEinsatz(a: BlaulichtAlarmData): Promise<boolean> {
     return false;
   } catch (err) {
     if (statusCode(err) !== 404) throw err;
+  }
+
+  // Ein bewusst GELOESCHTER Einsatz liefert hier ebenfalls 404 (Tombstone). Steht
+  // der Alarm noch in der BlaulichtSMS-Liste, wuerde er sonst samt neuem Push
+  // wieder angelegt — die Sperrliste (beim Loeschen gefuellt) verhindert das.
+  // Gelesen wird sie nur, wenn wirklich angelegt werden soll (kein Mehraufwand
+  // fuer bekannte Alarme).
+  if (await istAlarmGesperrt(a.alarmId)) {
+    logger.info(
+      { alarmId: a.alarmId },
+      "Alarm wurde als Einsatz geloescht — nicht erneut angelegt (Sperrliste)",
+    );
+    return false;
   }
 
   const now = new Date().toISOString();

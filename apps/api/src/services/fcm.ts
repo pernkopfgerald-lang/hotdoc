@@ -27,6 +27,21 @@ import { db } from "../couch/client.js";
 import { env } from "../config.js";
 import { logger } from "../lib/logger.js";
 
+/**
+ * Zeitlimit fuer JEDEN ausgehenden FCM-/OAuth-Request. Ohne Limit haengt ein
+ * unbeantworteter Request (Blackhole auf Googles Seite) unbegrenzt und
+ * blockiert im Alarmfall den ganzen Versand-Lauf des Pollers.
+ */
+const FCM_TIMEOUT_MS = 8000;
+
+/**
+ * Maximale Anzahl gleichzeitiger FCM-Requests je Alarm. Parallel statt
+ * nacheinander, damit das letzte Tablet nicht erst nach (Anzahl x Latenz)
+ * alarmiert wird — aber begrenzt, damit die 1-GB-Maschine und Googles
+ * Rate-Limit nicht von einem Burst ueberrannt werden.
+ */
+const FCM_MAX_PARALLEL = 10;
+
 interface DeviceDoc {
   _id: string;
   type: "device";
@@ -109,6 +124,7 @@ async function fetchAccessToken(sa: ServiceAccount): Promise<{ token: string; ex
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
       assertion: jwt,
     }).toString(),
+    signal: AbortSignal.timeout(FCM_TIMEOUT_MS),
   });
   if (!res.ok) {
     const txt = await res.text();
@@ -128,12 +144,39 @@ async function fetchAccessToken(sa: ServiceAccount): Promise<{ token: string; ex
 /** In-Memory-Cache fuer den Access-Token. */
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
+/** Laufender Token-Abruf — parallele Aufrufer teilen sich genau EINEN Request. */
+let tokenInflight: Promise<string> | null = null;
+
 async function getAccessToken(sa: ServiceAccount): Promise<string> {
   if (tokenCache && tokenCache.expiresAt > Date.now()) {
     return tokenCache.token;
   }
-  tokenCache = await fetchAccessToken(sa);
-  return tokenCache.token;
+  // WARUM: beim parallelen Versand laufen bei abgelaufenem Token mehrere
+  // Devices gleichzeitig in 401 — ohne Teilen wuerde jedes einen eigenen
+  // OAuth-Exchange anstossen.
+  if (!tokenInflight) {
+    tokenInflight = fetchAccessToken(sa)
+      .then((t) => {
+        tokenCache = t;
+        return t.token;
+      })
+      .finally(() => {
+        tokenInflight = null;
+      });
+  }
+  return tokenInflight;
+}
+
+/**
+ * Verwirft den Cache NUR, wenn er noch genau den fehlgeschlagenen Token
+ * enthaelt (ein paralleler Request kann ihn schon erneuert haben), und
+ * liefert dann einen frischen.
+ */
+async function refreshAccessToken(sa: ServiceAccount, failedToken: string): Promise<string> {
+  if (tokenCache?.token === failedToken) {
+    tokenCache = null;
+  }
+  return getAccessToken(sa);
 }
 
 /**
@@ -170,7 +213,35 @@ async function sendFcmMessage(url: string, accessToken: string, body: unknown): 
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FCM_TIMEOUT_MS),
   });
+}
+
+/**
+ * Fuehrt fn fuer alle Items aus, hoechstens `limit` gleichzeitig (Worker-Pool,
+ * kein Warten auf den langsamsten je Chunk). Ergebnis in Eingabereihenfolge,
+ * Promise.allSettled-Semantik: ein Fehler stoppt die anderen nicht.
+ */
+export async function mitBegrenzterParallelitaet<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const ergebnisse: PromiseSettledResult<R>[] = new Array(items.length);
+  let naechster = 0;
+  const worker = async (): Promise<void> => {
+    while (naechster < items.length) {
+      const i = naechster++;
+      try {
+        ergebnisse[i] = { status: "fulfilled", value: await fn(items[i] as T) };
+      } catch (reason) {
+        ergebnisse[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  const anzahl = Math.max(1, Math.min(limit, items.length));
+  await Promise.allSettled(Array.from({ length: anzahl }, () => worker()));
+  return ergebnisse;
 }
 
 /**
@@ -218,9 +289,8 @@ export async function pushAlarm(
 
   const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
 
-  let ok = 0;
-  let fail = 0;
-  for (const device of devices) {
+  /** Sendet an genau ein Device; true = versendet, false = fehlgeschlagen. */
+  const sendeAnGeraet = async (device: DeviceDoc): Promise<boolean> => {
     try {
       // FCM v1 Format — message.token (single recipient), v1-Schema fuer
       // Android-Priority + TTL.
@@ -237,19 +307,21 @@ export async function pushAlarm(
           },
         },
       };
-      let res = await sendFcmMessage(url, accessToken, body);
+      // WARUM lokal je Device: die Sends laufen parallel — ein gemeinsamer
+      // veraenderlicher Token waere eine Race-Condition zwischen den Workern.
+      let token = accessToken;
+      let res = await sendFcmMessage(url, token, body);
       if (res.status === 401) {
         // N-12: Access-Token abgelaufen/ungueltig — einmal frisch holen und
         // denselben Device-Request EINMAL wiederholen. Frueher wurde nur der
         // Cache geleert und dieses Device ging leer aus.
-        tokenCache = null;
-        accessToken = await getAccessToken(sa);
-        res = await sendFcmMessage(url, accessToken, body);
+        token = await refreshAccessToken(sa, token);
+        res = await sendFcmMessage(url, token, body);
       }
       if (!res.ok) {
         const text = await res.text();
         // 401 auch nach Retry -> Cache leeren, naechster Push holt neu
-        if (res.status === 401) {
+        if (res.status === 401 && tokenCache?.token === token) {
           tokenCache = null;
         }
         // 404 / UNREGISTERED -> Token ungueltig, Device wegputzen
@@ -260,18 +332,22 @@ export async function pushAlarm(
           { status: res.status, deviceId: device._id, body: text.slice(0, 300) },
           "FCM-Push fehlgeschlagen",
         );
-        fail++;
-        continue;
+        return false;
       }
-      ok++;
+      return true;
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : String(err), deviceId: device._id },
         "FCM-Push-Exception",
       );
-      fail++;
+      return false;
     }
-  }
+  };
+
+  const ergebnisse = await mitBegrenzterParallelitaet(devices, FCM_MAX_PARALLEL, sendeAnGeraet);
+  const ok = ergebnisse.filter((r) => r.status === "fulfilled" && r.value).length;
+  // Eine (unerwartet) abgelehnte Aufgabe zaehlt als fehlgeschlagen.
+  const fail = devices.length - ok;
   logger.info({ ok, fail, total: devices.length, fahrzeugIds }, "FCM-Push abgeschlossen");
   return { versendet: ok, fehlgeschlagen: fail, uebersprungen: 0 };
 }

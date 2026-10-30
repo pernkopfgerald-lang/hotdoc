@@ -13,7 +13,7 @@
  * - CouchDB-Stats für den Replication-Status
  */
 
-import { env, hasBlaulichtSMS, hasEls, hasSyBos, hasWasserkarte } from "../config.js";
+import { env, hasBlaulichtSMS, hasEls, hasSyBos } from "../config.js";
 import { couch, db } from "../couch/client.js";
 import { getTokenHinweis } from "./els/client.js";
 import { getElsPollStand, holeSnapshot } from "./els/state.js";
@@ -64,12 +64,70 @@ export interface HealthItem {
   metrics?: Record<string, number | string>;
 }
 
-export async function collectHealth(): Promise<{ items: HealthItem[]; checkedAt: string }> {
+export interface HealthResult {
+  items: HealthItem[];
+  checkedAt: string;
+}
+
+/** Wie lange ein Health-Ergebnis wiederverwendet wird. */
+const HEALTH_CACHE_TTL_MS = 15_000;
+let healthCache: { at: number; data: HealthResult } | null = null;
+let healthInflight: Promise<HealthResult> | null = null;
+
+/**
+ * collectHealth() mit 15-s-Cache. WARUM: der Endpoint ist oeffentlich und
+ * ungedrosselt, jeder Aufruf fuehrt echte Probes aus (Couch-GET, _active_tasks,
+ * Egress-IP, FCM-Device-Liste). Ein laufender Abruf wird von parallelen
+ * Aufrufern mitgenutzt (kein Stampede). Fehler werden nicht gecacht.
+ */
+export async function collectHealthCached(): Promise<HealthResult> {
+  if (healthCache && Date.now() - healthCache.at < HEALTH_CACHE_TTL_MS) {
+    return healthCache.data;
+  }
+  if (!healthInflight) {
+    healthInflight = collectHealth()
+      .then((data) => {
+        healthCache = { at: Date.now(), data };
+        return data;
+      })
+      .finally(() => {
+        healthInflight = null;
+      });
+  }
+  return healthInflight;
+}
+
+const OEFFENTLICHER_DETAIL: Record<HealthState, string> = {
+  ok: "Betriebsbereit",
+  warn: "Eingeschränkt",
+  error: "Gestört",
+  off: "Nicht aktiv",
+};
+
+/**
+ * Oeffentliche Sicht fuer UNANGEMELDETE Aufrufer: nur Zustand je Dienst.
+ * Entfernt Metriken (u. a. Server-Egress-IP), Fehlertexte und Zaehler.
+ * `detail` bleibt als kurzer Standardtext erhalten und `sub` als leerer String,
+ * weil die UIs beide Felder als Pflichtfelder typisieren.
+ */
+export function reduziereHealthFuerOeffentlich(h: HealthResult): HealthResult {
+  return {
+    checkedAt: h.checkedAt,
+    items: h.items.map((it) => ({
+      key: it.key,
+      name: it.name,
+      sub: "",
+      state: it.state,
+      detail: OEFFENTLICHER_DETAIL[it.state],
+    })),
+  };
+}
+
+export async function collectHealth(): Promise<HealthResult> {
   const checkedAt = new Date().toISOString();
   // wasserkarte.info wurde aus V1.0-Scope entfernt — der Hydranten-Layer wird
-  // optional in einer späteren Phase wieder aktiviert. Bis dahin bleibt
-  // `checkWasserkarte()` als Dead-Code vorhanden (nicht aufgerufen) damit
-  // die Re-Aktivierung trivial ist.
+  // optional in einer späteren Phase wieder aktiviert (dann hier einen
+  // Check ergaenzen; der Key "wasserkarte" bleibt dafuer im HealthItem-Typ).
   // I-06: Solange der RAM-State eines Workers leer ist (direkt nach
   // Neustart), ziehen wir den persistierten Stand aus `state:worker` heran.
   // Nur dann lesen — im Normalbetrieb kostet der Health-Call keinen Couch-GET.
@@ -368,32 +426,6 @@ async function checkSyBos(persisted: WorkerState | null): Promise<HealthItem> {
   };
 }
 
-/**
- * @deprecated Wasserkarte/Hydranten-Layer ist aus V1.0-Scope entfernt.
- * Wird aktuell NICHT aufgerufen — Funktion bleibt für Re-Aktivierung
- * in einer späteren Phase als Skelett bestehen.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function checkWasserkarte(): HealthItem {
-  const sub = "Hydranten-Layer";
-  if (!hasWasserkarte()) {
-    return {
-      key: "wasserkarte",
-      name: "wasserkarte.info",
-      sub,
-      state: "off",
-      detail: "Aus V1.0-Scope entfernt — Re-Aktivierung in späterer Phase.",
-    };
-  }
-  return {
-    key: "wasserkarte",
-    name: "wasserkarte.info",
-    sub,
-    state: "ok",
-    detail: "Access-Key gesetzt — Hydranten-Layer aktiv.",
-  };
-}
-
 async function checkCouch(): Promise<HealthItem> {
   const sub = "PWA ⇄ Backend · Replication";
   try {
@@ -447,5 +479,3 @@ function formatAge(hours: number): string {
   if (hours < 48) return `${hours.toFixed(1)} h`;
   return `${Math.round(hours / 24)} Tagen`;
 }
-
-export { db };

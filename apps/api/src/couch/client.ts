@@ -1,6 +1,7 @@
 import nano from "nano";
 import { env } from "../config.js";
 import { logger } from "../lib/logger.js";
+import { MANGO_INDIZES } from "./indizes.js";
 
 /**
  * CouchDB-Client für die Backend-Operations.
@@ -46,6 +47,14 @@ export async function ensureDatabase(): Promise<void> {
  *   type-status            → GET /api/einsaetze?status=aktiv (5-s-Poll),
  *                            Auto-Close-Worker (aktive + Orphan-Kandidaten)
  *   type-fahrzeugId-status → GET /api/fahrzeugberichte/meine (Tablet-Archiv)
+ *   type-fahrzeugId        → dito mit status=alle (nur Praefix)
+ *   type-alarmierungZeit   → ELS-Poller (ladeEinsaetze, alle 15 s)
+ *   type-status-einsatzende        → Auto-Close Orphan-Sweep (Regel 3)
+ *   type-status-hauptabschlussAm   → Auto-Close Gnadenfrist-Sweep
+ *   type-username          → Login (findBenutzerByUsername)
+ *
+ * Ohne passenden Index liest CouchDB bei db.find die KOMPLETTE DB inkl. der
+ * Foto-Dokumente. Die Definitionen stehen in couch/indizes.ts.
  *
  * createIndex ist idempotent (CouchDB antwortet "exists" statt Fehler).
  * Fehler werden NUR geloggt — ohne Index laeuft db.find weiterhin (Mango
@@ -53,18 +62,10 @@ export async function ensureDatabase(): Promise<void> {
  * nicht scheitern.
  */
 async function ensureMangoIndizes(): Promise<void> {
-  const indizes: Array<{ name: string; ddoc: string; fields: string[] }> = [
-    { name: "type-status", ddoc: "idx-type-status", fields: ["type", "status"] },
-    {
-      name: "type-fahrzeugId-status",
-      ddoc: "idx-type-fahrzeugId-status",
-      fields: ["type", "fahrzeugId", "status"],
-    },
-  ];
-  for (const idx of indizes) {
+  for (const idx of Object.values(MANGO_INDIZES)) {
     try {
       const r = await db.createIndex({
-        index: { fields: idx.fields },
+        index: { fields: [...idx.fields] },
         name: idx.name,
         ddoc: idx.ddoc,
       });

@@ -11,21 +11,11 @@ import { hashPassword } from "./password.js";
  * fly secrets gesetzt und der Admin loggt sich initial damit ein.
  */
 export async function bootstrapInitialAdminIfMissing(): Promise<void> {
-  try {
-    const result = await db.find({
-      selector: { type: "benutzer" },
-      limit: 1,
-    });
-    if (result.docs.length > 0) return;
-  } catch (err) {
-    // Mango-Index existiert evtl. noch nicht — wir versuchen list als Fallback.
-    const status = (err as { statusCode?: number }).statusCode;
-    if (status && status !== 404) {
-      logger.warn({ err }, "Bootstrap-Check via find fehlgeschlagen, versuche allDocs");
-    }
-    const fallback = await db.list({ startkey: "user:", endkey: "user:￰", limit: 1 });
-    if (fallback.rows.length > 0) return;
-  }
+  // WARUM list statt Mango-Scan: Benutzer-Docs haben immer die ID `user:<uuid>`
+  // (siehe unten). Ein Range-Read mit limit 1 ist O(1); der frueher genutzte
+  // Selektor {type:"benutzer"} hatte keinen Index und las die ganze DB.
+  const vorhanden = await db.list({ startkey: "user:", endkey: "user:￰", limit: 1 });
+  if (vorhanden.rows.length > 0) return;
 
   const id = `user:${randomUUID()}`;
   const passwordHash = await hashPassword(env.BOOTSTRAP_ADMIN_PASSWORD);

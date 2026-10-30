@@ -52,6 +52,7 @@
 import { einsatzartIstPflicht, leiteEinsatzartAb } from "@hotdoc/shared";
 import cron from "node-cron";
 import { db } from "../couch/client.js";
+import { MANGO_INDIZES, useIndex } from "../couch/indizes.js";
 import { logger } from "../lib/logger.js";
 import { FZGBER_ABSCHLUSS_GRACE_MS } from "../routes/einsaetze.js";
 import { writeAuditEvent } from "../services/audit.js";
@@ -461,6 +462,10 @@ export async function schliesseOffeneFzgberNachGnadenfrist(): Promise<{
         status: "abgeschlossen",
         hauptabschlussAm: { $gte: seit },
       },
+      // Index [type, status, hauptabschlussAm]; Projektion: unten werden nur
+      // _id + hauptabschlussAm gelesen (Updates laufen ueber frisches db.get).
+      use_index: useIndex(MANGO_INDIZES.typeStatusHauptabschlussAm),
+      fields: ["_id", "hauptabschlussAm"],
       limit: 200,
     });
     kandidaten = found.docs as Array<Record<string, unknown>>;
@@ -584,6 +589,10 @@ export async function runAutoCloseStale(): Promise<CloseResult> {
         status: "abgeschlossen",
         einsatzende: { $gte: iso7dAgo },
       },
+      // Index [type, status, einsatzende]; Projektion: Regel 3 braucht nur
+      // _id, status und einsatzende (Fzgber werden per ID-Prefix nachgeladen).
+      use_index: useIndex(MANGO_INDIZES.typeStatusEinsatzende),
+      fields: ["_id", "status", "einsatzende"],
       limit: ORPHAN_FIND_LIMIT,
     }),
   ]);
