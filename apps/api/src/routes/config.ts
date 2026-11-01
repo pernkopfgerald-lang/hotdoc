@@ -217,10 +217,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.6.4",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.4-release.apk",
+    currentVersion: "0.6.5",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.5-release.apk",
     releaseNotes:
-      "v0.6.4 — Personal vom Florian eintragen, Fahrzeuge laut Funk im Einsatz\n\n• Die Florianstation kann Fahrer, Fahrzeug-Kdt. und Mannschaft für jedes Fahrzeug eintragen – auch, bevor das Fahrzeug selbst einen Bericht angelegt hat.\n• Fahrzeuge, die „Ausgerückt“ oder „Am Einsatzort“ melden, gelten sofort als „Im Einsatz · laut Funk“ – auch ohne eingetragene Mannschaft (nicht mehr „Wartend“).\n• Personen aus der Reserve, die auf einem Fahrzeug einen Auftrag übernehmen, zählen nicht mehr als Reserve.\n• Karten: Fahrzeuge erscheinen jetzt auch in der externen Kartenansicht und im Backoffice, die Marker sind deckender und die Florianstation ist grün, wenn sie besetzt ist.\n• Einsatzprotokoll: „Florianstation besetzt/unbesetzt“ wird festgehalten, und meldet die Leitstelle den Einsatz als beendet, gilt das als Einsatzende.\n• Zeitangaben der Leitstelle, die älter als 12 Stunden sind, zeigen „>12 Stunden“ statt einer Uhrzeit.",
+      "v0.6.5 — Kürzerer Einsatzbericht, Sachbearbeiter Florianstation, keine PIN\n\n• Einsatzbericht (PDF): Der Hauptbericht eines Standardeinsatzes passt auf eine A4-Seite. Statusfunk (Funkstatus, Florianstation besetzt/unbesetzt) steht in kleiner Schrift als Blocksatz statt als lange Aufzählung.\n• Der Sachbearbeiter ist im Bericht als „Sachbearbeiter Florianstation“ bezeichnet – er ist nicht ausgerückt und zählt weder zu den Eingesetzten noch zur Reserve.\n• Markdown-Export: Die Reserve enthält nur noch Personen ohne Fahrzeug (wie im PDF).\n• Die PIN-Abfrage bei der Fahrzeugwahl – auch für die Florianstation – entfällt.\n• Fahrzeugansicht: Ganz unten gibt es jetzt einen Link „APK herunterladen“.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer

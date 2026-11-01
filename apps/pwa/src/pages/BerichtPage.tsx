@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, Calendar, CheckCircle2, Clipboard, Eye, Load
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { APP_VERSION } from "../version";
+import { APK_DOWNLOAD_URL } from "../lib/app-update";
 import { AboutModal } from "../components/AboutModal";
 import { AbgeschlossenView } from "../components/AbgeschlossenView";
 import { IdleView } from "../components/IdleView";
@@ -4083,6 +4084,16 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         >
           Über HotDoc · {APP_VERSION}
         </button>
+        <span className="sep">·</span>
+        <a
+          className="foot-link"
+          href={APK_DOWNLOAD_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Aktuelle HotDoc-Android-App (APK) herunterladen"
+        >
+          APK herunterladen
+        </a>
       </div>
 
       {handoffOpen ? (

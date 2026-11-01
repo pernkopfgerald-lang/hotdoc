@@ -20,6 +20,13 @@
 import { Capacitor } from "@capacitor/core";
 import { resolveApiUrl } from "./api";
 
+/**
+ * Statt versionierter Direkt-URL (die nach jedem Release veraltet) die
+ * Landing-Seite — sie liest /apk-info.json zur Laufzeit und bietet immer die
+ * aktuelle APK an.
+ */
+export const APK_DOWNLOAD_URL = "https://hotdoc-apk.fly.dev/";
+
 export interface AppVersionInfo {
   currentVersion: string;
   apkUrl: string;

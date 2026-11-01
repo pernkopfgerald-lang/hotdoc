@@ -705,6 +705,7 @@ async function buildBerichtDaten(
       atemschutzTraeger: asPersonen,
     },
     ...(reserveNamen.length > 0 ? { reserve: reserveNamen } : {}),
+    bereitschaftPersonIds: bereitschaftIds,
     eingesetzteFahrzeuge,
     chronik,
     fahrzeugberichte: fahrzeugberichteOut,
@@ -856,7 +857,11 @@ export async function buildBerichtMailAnhaenge(
     loadPersonen([...reserveIds, ...(bearbeiterId !== undefined ? [bearbeiterId] : [])]),
   ]);
   const bearbeiter = resolvePerson(personen, doc.bearbeiterPersonId);
+  // Wer inzwischen auf einem Fahrzeug ausgerueckt ist, gehoert nicht mehr zur
+  // Reserve (wie im PDF: "Bereitschaft") — sonst stimmen PDF und MD nicht ueberein.
+  const bereitschaft = data.bereitschaftPersonIds ? new Set(data.bereitschaftPersonIds) : null;
   const reserve = reserveIds
+    .filter((rid) => !bereitschaft || bereitschaft.has(rid))
     .map((rid) => resolvePerson(personen, rid))
     .filter((p): p is ResolvedPerson => !!p);
   const markdown = renderBerichtMarkdown(data, { bearbeiter, reserve });

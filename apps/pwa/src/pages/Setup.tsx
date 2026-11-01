@@ -1,25 +1,19 @@
 import { shortCode } from "../lib/format";
 import { FAHRZEUGE, FAHRZEUG_IDS, type FahrzeugId } from "@hotdoc/shared";
-import { AlertTriangle, ChevronRight, Download, Info, Loader2, Lock, Smartphone } from "lucide-react";
+import { AlertTriangle, ChevronRight, Download, Info, Loader2, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { db, getFahrzeugConfig } from "../db/pouch";
 import { AboutModal } from "../components/AboutModal";
 import { BrandLogo } from "../components/BrandLogo";
 import { hardResetLocalData } from "../components/ErrorBoundary";
 import { isNative } from "../lib/platform";
+import { APK_DOWNLOAD_URL } from "../lib/app-update";
 
 /**
- * Test-Phasen-Schutz: jedes Fahrzeug muss sich beim Klick mit PIN 1234
- * anmelden. PIN wird NICHT in der UI verraten — die Kameraden bekommen
- * sie aus der WhatsApp/Schulung. Pro Fahrzeug-Auswahl (nicht pro Tablet
- * einmalig), damit auch beim Fahrzeug-Wechsel im laufenden Test-Betrieb
- * die Eingabe wiederholt werden muss.
- *
- * Schwacher Schutz (clientseitig), aber für die geschlossene Test-Phase
- * mit FF-Kameraden ausreichend. Vor dem produktiven Live-Betrieb wandert
- * der Check in den Backend-Endpoint /api/auth/tablet/pin-register zurück.
+ * Fahrzeugwahl beim ersten Setup (alle Fahrzeuge inkl. Florian): Klick oeffnet eine Rueckfrage
+ * ("Ja, <Fahrzeug> festlegen"). Es gibt KEINE PIN mehr — der Server meldet Tablets
+ * ohnehin PIN-los an (HOTDOC_TABLET_NO_PIN); die Rueckfrage verhindert nur Fehltipps.
  */
-const SETUP_PIN = "1234";
 
 /**
  * Erkennt einen Android-Browser, der NICHT bereits die APK ist. Genau
@@ -34,12 +28,6 @@ function shouldShowApkHint(): boolean {
     return false;
   }
 }
-
-// Statt versionierter Direkt-URL (die nach jedem Release veraltet)
-// linken wir auf die Landing-Seite — die liest /apk-info.json zur Laufzeit
-// und bietet immer die aktuelle APK an. Damit broken Tablets, die diese
-// PWA-Seite gecached haben, nicht beim naechsten Release.
-const APK_DOWNLOAD_URL = "https://hotdoc-apk.fly.dev/";
 
 interface Props {
   onSetupDone: (fahrzeugId: FahrzeugId) => void;
@@ -91,15 +79,9 @@ export function Setup({ onSetupDone }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
-  /** Klick auf eine Fahrzeug-Karte oeffnet diesen Dialog. Erst nach
-   *  korrektem PIN ("1234", Test-Phasen-Schutz) wird der Backend-Call
-   *  abgeschickt. Verhindert versehentliche Einrichtung UND blockt
-   *  Fremde die zufaellig die PWA-URL kennen. */
+  /** Klick auf eine Fahrzeug-Karte oeffnet diesen Rueckfrage-Dialog; erst "Ja, festlegen"
+   *  schickt den Backend-Call ab. Verhindert versehentliche Einrichtung. */
   const [confirmFzg, setConfirmFzg] = useState<FahrzeugId | null>(null);
-  /** PIN-Eingabe im Confirm-Dialog. Beim Schliessen/Wechseln immer
-   *  geleert. Korrekter PIN-String aktiviert den "Ja, festlegen"-Button. */
-  const [confirmPin, setConfirmPin] = useState("");
-  const [confirmPinErr, setConfirmPinErr] = useState<string | null>(null);
 
   // Wenn der Boot-Check festgestellt hat, dass der vorhandene Token tot
   // war (z. B. nach Backend-Restart, JWT-Secret-Rotation oder iOS-Safari-
@@ -163,41 +145,21 @@ export function Setup({ onSetupDone }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoLogin]);
 
-  /**
-   * Fahrzeug-Klick → oeffnet Confirm-Dialog mit PIN-Eingabe.
-   * Erst nach korrektem PIN + "Ja, festlegen" wird der Backend-Call
-   * abgeschickt.
-   */
+  /** Fahrzeug-Klick → oeffnet den Rueckfrage-Dialog (kein Backend-Call). */
   function selectFahrzeug(fId: FahrzeugId) {
     setError(null);
-    setConfirmPin("");
-    setConfirmPinErr(null);
     setConfirmFzg(fId);
   }
 
-  /**
-   * Schliesst den Confirm-Dialog inkl. PIN-State-Reset.
-   */
+  /** Schliesst den Rueckfrage-Dialog. */
   function closeConfirm() {
     setConfirmFzg(null);
-    setConfirmPin("");
-    setConfirmPinErr(null);
   }
 
-  /**
-   * Backend-Registrierung — wird vom Confirm-Dialog gerufen.
-   * Prueft zuerst den PIN; bei falsch wird der Dialog mit Fehlermeldung
-   * weiter angezeigt. Erst bei korrektem PIN wird tryRegister gerufen.
-   */
+  /** Backend-Registrierung — wird vom Rueckfrage-Dialog gerufen. */
   async function confirmFahrzeugSelection(fId: FahrzeugId): Promise<void> {
-    if (confirmPin.trim() !== SETUP_PIN) {
-      setConfirmPinErr("PIN nicht korrekt — bitte erneut eingeben.");
-      setConfirmPin("");
-      return;
-    }
     setSelectedFzg(fId);
     setError(null);
-    setConfirmPinErr(null);
     setBusy(true);
     const ok = await tryRegister(fId);
     setBusy(false);
@@ -409,7 +371,7 @@ export function Setup({ onSetupDone }: Props) {
           }}
         >
           <strong style={{ color: "var(--warn)" }}>Automatische Neuanmeldung fehlgeschlagen.</strong>{" "}
-          Wähle dein Fahrzeug und gib die PIN ein.
+          Wähle dein Fahrzeug.
         </div>
       ) : null}
       {authReason && autoLogin === "kein" ? (
@@ -427,7 +389,7 @@ export function Setup({ onSetupDone }: Props) {
           }}
         >
           <strong style={{ color: "var(--info)" }}>Anmeldung abgelaufen.</strong>{" "}
-          Wähle dein Fahrzeug und gib die PIN ein — der laufende Bericht ist am Server gespeichert.
+          Wähle dein Fahrzeug — der laufende Bericht ist am Server gespeichert.
         </div>
       ) : null}
       {/* C-02: PouchDB beim Boot nicht lesbar → harter Reset ist der Weg. */}
@@ -736,73 +698,6 @@ export function Setup({ onSetupDone }: Props) {
               Später nur durch einen Funktionär änderbar.
             </p>
 
-            {/* PIN-Eingabe — Test-Phasen-Schutz pro Fahrzeug. PIN ist in
-                Schulung/WhatsApp kommuniziert, nicht hier im UI sichtbar. */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void confirmFahrzeugSelection(confirmFzg);
-              }}
-              style={{ display: "flex", flexDirection: "column", gap: 8 }}
-            >
-              <label
-                htmlFor="setup-confirm-pin"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 16.5,
-                  fontWeight: 600,
-                  color: "var(--fg)",
-                }}
-              >
-                <Lock size={14} />
-                PIN zur Bestätigung
-              </label>
-              <input
-                id="setup-confirm-pin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                autoFocus
-                value={confirmPin}
-                onChange={(e) => {
-                  setConfirmPin(e.target.value);
-                  if (confirmPinErr) setConfirmPinErr(null);
-                }}
-                maxLength={12}
-                disabled={busy}
-                style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  fontSize: 25,
-                  textAlign: "center",
-                  background: "var(--surface-2)",
-                  border: confirmPinErr
-                    ? "1px solid var(--red)"
-                    : "1px solid var(--border-strong)",
-                  borderRadius: 4,
-                  color: "var(--fg)",
-                  outline: "none",
-                }}
-              />
-            </form>
-
-            {confirmPinErr ? (
-              <div
-                role="alert"
-                style={{
-                  padding: "8px 10px",
-                  background: "var(--red-tint)",
-                  color: "var(--red)",
-                  border: "1px solid var(--red-border)",
-                  borderRadius: 4,
-                  fontSize: 15,
-                }}
-              >
-                {confirmPinErr}
-              </div>
-            ) : null}
             {error ? (
               <div
                 role="alert"
@@ -841,7 +736,8 @@ export function Setup({ onSetupDone }: Props) {
               <button
                 type="button"
                 onClick={() => void confirmFahrzeugSelection(confirmFzg)}
-                disabled={busy || confirmPin.trim().length === 0}
+                disabled={busy}
+                autoFocus
                 className="cta"
                 style={{
                   flex: 1,
@@ -849,11 +745,7 @@ export function Setup({ onSetupDone }: Props) {
                   fontSize: 16.5,
                   fontWeight: 700,
                   minHeight: 48,
-                  opacity: confirmPin.trim().length === 0 ? 0.6 : 1,
-                  cursor:
-                    busy || confirmPin.trim().length === 0
-                      ? "not-allowed"
-                      : "pointer",
+                  cursor: busy ? "wait" : "pointer",
                 }}
               >
                 {busy ? "Lege fest …" : `Ja, ${FAHRZEUGE[confirmFzg].funkrufname} festlegen`}

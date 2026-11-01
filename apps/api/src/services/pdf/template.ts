@@ -31,6 +31,11 @@ import {
 } from "./_format.js";
 import { renderFahrzeugberichtPageHtml } from "./fahrzeugbericht.js";
 import { normalizeChronikEntry } from "./chronik-adapter.js";
+import {
+  FLORIANSTATION_TEXT,
+  funkstatusAusChronikText,
+  funkstatusKurz,
+} from "@hotdoc/shared";
 
 export interface BerichtDaten {
   einsatzId: string;
@@ -138,6 +143,8 @@ export interface BerichtDaten {
   };
   /** Namen der Reserve-/Bereitschafts-Mannschaft (Florianstation, ohne bereits Ausgerueckte). */
   reserve?: string[];
+  /** personIds der Bereitschaft/Reserve (ohne bereits Ausgerueckte) — fuer den Markdown-Export. */
+  bereitschaftPersonIds?: number[];
   /** Welche Fahrzeuge sind im Einsatz (aus Fahrzeugberichten). */
   eingesetzteFahrzeuge?: Array<{ abk: string; funkrufname: string; kmGefahren: number }>;
   /** Komplette Einsatz-Chronik fuer Anhang-Seite. */
@@ -618,19 +625,18 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
             : ""
         }${
           d.reserve && d.reserve.length > 0
-            ? `<span style="font-size:8pt">ohne Fahrzeug (Reserve):</span><div style="font-size:8.5pt;color:${FILLED};margin:0 0 2pt 6pt">${d.reserve.map((n) => escape(n)).join("<br>")}</div>`
+            ? `<span style="font-size:8pt">ohne Fahrzeug (Reserve):</span><div style="font-size:8.5pt;color:${FILLED};margin:0 0 2pt 6pt;line-height:1.25">${d.reserve.map((n) => escape(n)).join(", ")}</div>`
             : ""
         }`
             : `Eingesetzt: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.eingesetzt ?? 0}</span> Personen<br>
         Bereitschaft: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.bereitschaft ?? 0}</span><br>
         ${
           d.reserve && d.reserve.length > 0
-            ? `<div style="font-size:8pt;color:${FILLED};margin:0 0 2pt 6pt">${d.reserve.map((n) => escape(n)).join("<br>")}</div>`
+            ? `<div style="font-size:8pt;color:${FILLED};margin:0 0 2pt 6pt;line-height:1.25">${d.reserve.map((n) => escape(n)).join(", ")}</div>`
             : ""
         }`
         }
-        Sonstige: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.sonstige ?? 0}</span><br>
-        AS-Träger: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTraeger ?? 0}</span>
+        Sonstige: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.sonstige ?? 0}</span> · AS-Träger: <span style="color:${FILLED};font-weight:700">${d.mannschaft?.atemschutzTraeger ?? 0}</span>
       </td>
       ${
         isUebung
@@ -660,27 +666,23 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 
   <table class="bx" style="margin-top:1mm">
     <tr>
-      <td class="lbl" style="width:50%">${isUebung ? "Übungsleiter" : "Einsatzleiter"}</td>
-      <td class="lbl">${isUebung ? "Übungsende" : "Einsatzende"}</td>
+      <td class="lbl" style="width:25%">${isUebung ? "Übungsleiter" : "Einsatzleiter"}</td>
+      <td class="lbl" style="width:25%">${isUebung ? "Übungsende" : "Einsatzende"}</td>
+      <td class="lbl" style="width:25%">Sachbearbeiter Florianstation</td>
+      <td class="lbl" style="width:25%">Unterschrift</td>
     </tr>
     <tr>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${
+      <td class="val" style="height:8mm;border-top:0.5pt dashed #888">${
         (() => {
           const leiter = isUebung ? (d.uebungsleiter ?? d.einsatzleiter) : d.einsatzleiter;
           return leiter ? `<span style="color:${FILLED};font-weight:600">${escape(leiter)}</span>` : "";
         })()
       }</td>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : `<span style="color:#888">—</span>`}</td>
-    </tr>
-    <tr>
-      <td class="lbl">Bearbeiter</td>
-      <td class="lbl">Unterschrift</td>
-    </tr>
-    <tr>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888">${
+      <td class="val" style="height:8mm;border-top:0.5pt dashed #888">${ende ? `<span style="color:${FILLED};font-weight:600">${ende}</span>` : `<span style="color:#888">—</span>`}</td>
+      <td class="val" style="height:8mm;border-top:0.5pt dashed #888">${
         d.bearbeiter ? `<span style="color:${FILLED};font-weight:600">${escape(d.bearbeiter)}</span>` : ""
       }</td>
-      <td class="val" style="height:10mm;border-top:0.5pt dashed #888"></td>
+      <td class="val" style="height:8mm;border-top:0.5pt dashed #888"></td>
     </tr>
   </table>
 
@@ -743,7 +745,7 @@ function renderWetterBlock(d: BerichtDaten): string {
   return `<table class="bx" style="margin-top:1mm">
     <tr><td class="lbl">Wetter zum Zeitpunkt der Alarmierung</td></tr>
     <tr><td class="val" style="font-size:9pt">${escape(zeile)}
-      <div style="font-size:7.5pt;color:#555;margin-top:1pt">Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${escape(formatTime(w.messzeit))}) — ${escape(w.quelle)} — ${escape(w.url)}</div>
+      <div style="font-size:7.5pt;color:#555;margin-top:1pt">Gemessen ${escape(formatTime(w.messzeit))} — ${escape(w.quelle)}</div>
     </td></tr>
   </table>`;
 }
@@ -792,14 +794,26 @@ function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
     (a, b) => new Date(a.zeitstempel).getTime() - new Date(b.zeitstempel).getTime(),
   );
 
-  // EIN Eintrag = EINE Zeile: `HH:MM Quelle: Text`. Eng gesetzt,
-  // keine Leerzeilen/Trennlinien dazwischen. Foto-Eintraege bekommen
-  // unter der Zeile ein kleines 2,5×1,9-cm-Thumbnail (4:3).
-  const zeilen = chronik
+  // Statusfunk (Funkstatus-Wechsel der Fahrzeuge, Florianstation besetzt/
+  // unbesetzt) ist bei einem Standardeinsatz die Mehrheit der Eintraege und
+  // blaeht den Bericht auf. Er wird deshalb NICHT als Aufzaehlung, sondern als
+  // ein kleiner Blocksatz-Absatz am Ende der Chronik gesetzt, damit der
+  // Hauptbericht auf eine A4-Seite passt. Alle uebrigen Eintraege (Alarm-Text,
+  // Lagemeldungen, Fotos ...) bleiben je EINE Zeile `HH:MM Quelle: Text`.
+  const florianTexte = new Set(Object.values(FLORIANSTATION_TEXT));
+  const istStatusfunk = (text: string): boolean =>
+    funkstatusAusChronikText(text) !== null || florianTexte.has(text);
+
+  const hauptEintraege = chronik.filter((c) => !istStatusfunk((c.text ?? "").trim()));
+  const funkEintraege = chronik.filter((c) => istStatusfunk((c.text ?? "").trim()));
+
+  // Foto-Eintraege bekommen unter der Zeile ein kleines 2,5×1,9-cm-Thumbnail (4:3).
+  const zeilen = hauptEintraege
     .map((c) => {
       const zeit = formatTime(c.zeitstempel);
       const quelle = c.funkrufname || c.source || "—";
-      const text = stripAuftragsPrefix(c.text ?? "");
+      // Mehrzeilige Texte (Alarmtext aus blaulichtSMS) als Fliesstext statt je Zeile.
+      const text = stripAuftragsPrefix(c.text ?? "").replace(/\s*\n\s*/g, " · ");
       const foto = c.fotoId ? fotoMap.get(c.fotoId) : undefined;
       const thumb = foto
         ? `<div style="margin:1pt 0 1.5pt"><img src="${foto}" alt="Foto" style="width:25mm;height:19mm;object-fit:cover;border:0.4pt solid #999" /></div>`
@@ -812,7 +826,23 @@ function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
     })
     .join("");
 
-  return `<div class="freitext" style="font-weight:500;font-size:8.5pt;line-height:1.25">${praeambel}${zeilen}</div>`;
+  // "12:15 Kommando 3 Ausgerückt · 12:17 Pumpe 4 Am Einsatzort · …"
+  const funkTeile = funkEintraege.map((c) => {
+    const zeit = formatTime(c.zeitstempel);
+    const text = (c.text ?? "").trim();
+    const code = funkstatusAusChronikText(text);
+    const name = (c.funkrufname || c.source || "").replace(/\s+Eberstalzell$/i, "");
+    const inhalt =
+      code !== null
+        ? `${escape(name)} <strong>${escape(code)}</strong> ${escape(funkstatusKurz(code) || text)}`
+        : escape(text);
+    return `<span style="font-family:'Courier New',monospace;color:#555">${escape(zeit)}</span> ${inhalt}`;
+  });
+  const funkBlock = funkTeile.length
+    ? `<div style="margin-top:2pt;padding-top:1.5pt;border-top:0.4pt solid #bbb;font-size:7pt;line-height:1.3;font-weight:400;text-align:justify;hyphens:auto;color:${FILLED}"><strong>Statusfunk:</strong> ${funkTeile.join(" · ")}</div>`
+    : "";
+
+  return `<div class="freitext" style="font-weight:500;font-size:8.5pt;line-height:1.25">${praeambel}${zeilen}${funkBlock}</div>`;
 }
 
 /**
@@ -1136,11 +1166,11 @@ function renderTechnischeStatistikBlock(d: BerichtDaten): string {
       .join(", ");
   };
   return /* html */ `
-  <table class="bx" style="margin-top:2mm">
-    <tr><td class="lbl" colspan="2">syBOS Technisch-Statistik (Übertrag in syBOS-Maske)</td></tr>
+  <table class="bx" style="margin-top:1mm">
+    <tr><td class="lbl" colspan="4">syBOS Technisch-Statistik (Übertrag in syBOS-Maske)</td></tr>
     <tr>
-      <td class="lbl" style="width:25%">Personenrettung</td>
-      <td class="val">
+      <td class="lbl" style="width:17%">Personenrettung</td>
+      <td class="val" colspan="3">
         Anzahl: ${vNum(ts.personenRettung?.anzahlPersonen)} ·
         Tot: ${vNum(ts.personenRettung?.tot)} ·
         Verletzt: ${vNum(ts.personenRettung?.verletzt)} ·
@@ -1149,15 +1179,18 @@ function renderTechnischeStatistikBlock(d: BerichtDaten): string {
     </tr>
     <tr>
       <td class="lbl">Tierrettung</td>
-      <td class="val">
+      <td class="val" style="width:33%">
         Groß: ${vNum(ts.tierRettung?.gross)} ·
         Klein: ${vNum(ts.tierRettung?.klein)}
       </td>
+      <td class="lbl" style="width:17%">Ursache</td>
+      <td class="val" style="width:33%">${v(ts.ursache)}</td>
     </tr>
-    <tr><td class="lbl">Ursache</td><td class="val">${v(ts.ursache)}</td></tr>
-    <tr><td class="lbl">Haupt-Tätigkeit</td><td class="val">${v(ts.hauptTaetigkeit)}</td></tr>
-    <tr><td class="lbl">Weitere Tätigkeiten</td><td class="val">${vList(ts.weitereTaetigkeiten)}</td></tr>
-    <tr><td class="lbl">Gefährliche Stoffe</td><td class="val">${vList(ts.gefaehrlicheStoffe)}</td></tr>
+    <tr>
+      <td class="lbl">Haupt-Tätigkeit</td><td class="val">${v(ts.hauptTaetigkeit)}</td>
+      <td class="lbl">Gefährl. Stoffe</td><td class="val">${vList(ts.gefaehrlicheStoffe)}</td>
+    </tr>
+    <tr><td class="lbl">Weitere Tätigkeiten</td><td class="val" colspan="3">${vList(ts.weitereTaetigkeiten)}</td></tr>
   </table>`;
 }
 
@@ -1187,7 +1220,7 @@ function renderBrandStatistikBlock(d: BerichtDaten): string {
       .join(", ");
   };
   return /* html */ `
-  <table class="bx" style="margin-top:2mm">
+  <table class="bx" style="margin-top:1mm">
     <tr><td class="lbl" colspan="2">syBOS Brand-Statistik (Übertrag in syBOS-Maske)</td></tr>
     <tr><td class="lbl" style="width:25%">Entdeckung</td><td class="val">${vList(bs.entdeckung)}</td></tr>
     <tr><td class="lbl">Ausmaß</td><td class="val">${v(bs.ausmass)}</td></tr>

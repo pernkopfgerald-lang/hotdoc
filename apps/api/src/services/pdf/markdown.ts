@@ -162,9 +162,16 @@ _Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${formatTime(d
     ].join("\n"),
   );
 
-  teile.push(h2("Sachbearbeiter & Reserve"));
-  teile.push(feld("Sachbearbeiter", person(extra.bearbeiter)));
-  teile.push(`- Reserve (${extra.reserve.length} Personen):`);
+  teile.push(h2("Sachbearbeiter Florianstation & Reserve"));
+  // Der Sachbearbeiter sitzt in der Florianstation: er ist NICHT ausgerueckt und
+  // zaehlt weder zu "Eingesetzt" noch zur Reserve/Bereitschaft.
+  teile.push(
+    feld(
+      "Sachbearbeiter Florianstation (nicht ausgerückt)",
+      person(extra.bearbeiter),
+    ),
+  );
+  teile.push(`- Reserve ohne Fahrzeug (${extra.reserve.length} Personen):`);
   teile.push(
     extra.reserve.length > 0
       ? extra.reserve.map((p) => `  - ${person(p)}`).join("\n")

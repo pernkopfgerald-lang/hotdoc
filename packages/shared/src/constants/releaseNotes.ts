@@ -21,6 +21,18 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.5",
+    date: "2026-11-01",
+    title: "Kürzerer Einsatzbericht, Sachbearbeiter Florianstation, keine PIN",
+    bullets: [
+      "Einsatzbericht (PDF): Der Hauptbericht eines Standardeinsatzes passt auf eine A4-Seite. Statusfunk (Funkstatus, Florianstation besetzt/unbesetzt) steht in kleiner Schrift als Blocksatz statt als lange Aufzählung.",
+      "Der Sachbearbeiter ist im Bericht als „Sachbearbeiter Florianstation“ bezeichnet – er ist nicht ausgerückt und zählt weder zu den Eingesetzten noch zur Reserve.",
+      "Markdown-Export: Die Reserve enthält nur noch Personen ohne Fahrzeug (wie im PDF).",
+      "Die PIN-Abfrage bei der Fahrzeugwahl – auch für die Florianstation – entfällt.",
+      "Fahrzeugansicht: Ganz unten gibt es jetzt einen Link „APK herunterladen“.",
+    ],
+  },
+  {
     version: "0.6.4",
     date: "2026-11-01",
     title: "Personal vom Florian eintragen, Fahrzeuge laut Funk im Einsatz",
