@@ -9,6 +9,8 @@ export interface FunkstatusEintrag {
   status: string;
   /** Zeitpunkt der letzten Statusaenderung (ISO), falls bekannt. */
   since: string | null;
+  /** ELS-Einsatznummer, zu der die Meldung gehoert (null: keine). */
+  num1: string | null;
 }
 
 export type FunkstatusMap = Partial<Record<FahrzeugId, FunkstatusEintrag>>;
@@ -40,13 +42,13 @@ export function useFunkstatus(): FunkstatusStand {
         const r = await apiCall<{
           enabled: boolean;
           stale: boolean;
-          items: Array<{ fahrzeugId: string; status: string; since: string | null }>;
+          items: Array<{ fahrzeugId: string; status: string; since: string | null; num1?: string | null }>;
         }>("/api/els/status");
         if (cancelled) return;
         const map: FunkstatusMap = {};
         for (const i of r.items) {
           if (istEinsatzFahrzeugId(i.fahrzeugId)) {
-            map[i.fahrzeugId] = { status: i.status ?? "", since: i.since };
+            map[i.fahrzeugId] = { status: i.status ?? "", since: i.since, num1: i.num1 ?? null };
           }
         }
         setStand({ map, enabled: r.enabled, stale: r.stale, geladen: true });

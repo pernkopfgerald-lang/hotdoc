@@ -102,6 +102,31 @@ export function funkstatusTon(code: string | undefined | null): FunkstatusTon {
 }
 
 /**
+ * Ist das Fahrzeug laut Funkstatus fest im Einsatz? 3 = Ausgerückt (Einsatz übernommen),
+ * 4 = Am Einsatzort. Ab dann gilt das Fahrzeug auch ohne eingetragene Mannschaft/Fahrer
+ * (also ohne Fahrzeugbericht) als "im Einsatz" und nicht als "wartend".
+ */
+export function funkstatusImEinsatz(code: string | undefined | null): boolean {
+  const c = String(code ?? "").trim();
+  return c === "3" || c === "4";
+}
+
+/**
+ * Gehört die Funkmeldung eines Fahrzeugs zu DIESEM Einsatz?
+ *  - Mit ELS-Einsatznummer: nur wenn der Einsatz diese Nummer (`els-<num1>`) trägt.
+ *  - Ohne Einsatznummer: nur, wenn es genau einen aktiven Einsatz gibt (sonst unklar).
+ */
+export function funkGehoertZuEinsatz(p: {
+  num1?: string | null | undefined;
+  einsatzAlarmIds: ReadonlyArray<string | undefined>;
+  einzigerAktiverEinsatz: boolean;
+}): boolean {
+  const num1 = (p.num1 ?? "").trim();
+  if (num1) return p.einsatzAlarmIds.includes(`els-${num1}`);
+  return p.einzigerAktiverEinsatz;
+}
+
+/**
  * Status der Florianstation selbst (ELS-Einheit "Feuerwehr/Florian Eberstalzell"),
  * Feld `status_florianstation`. Im Test (30.10.2026) lieferte es 0 = unbesetzt und
  * 1 = besetzt. Weitere Werte (Sprechwunsch, Alarmierungsauftrag) sind noch NICHT

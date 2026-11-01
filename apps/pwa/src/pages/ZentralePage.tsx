@@ -58,6 +58,8 @@ import {
   // Abschluss-Quittung, solange die Response keine echte Nummer liefert.
   deriveBerichtNrFromId,
   eingesetztePersonIds,
+  funkGehoertZuEinsatz,
+  funkstatusImEinsatz,
   reserveOhneEingesetzte,
   FAHRZEUGE,
   FLORIAN_POSITION,
@@ -137,6 +139,8 @@ interface EinsatzApiDoc {
   /** true = Einsatzart wurde aus dem Alarm vorgeschlagen, noch nicht bestaetigt. */
   einsatzartAuto?: boolean;
   alarmId?: string;
+  /** Alle gemappten Alarm-IDs (BlaulichtSMS + "els-<Einsatznummer>"). */
+  alarmIds?: string[];
   alarmierungZeit?: string;
   /** Uebungskategorie (nur Uebung). */
   uebungsTyp?: string;
@@ -477,6 +481,11 @@ interface FahrzeugStatusEintrag {
   /** Nur bei status "anderswo": Einsatzort + ID des parallelen Einsatzes. */
   anderswoOrt?: string;
   anderswoEinsatzId?: string;
+  /**
+   * true = "im Einsatz" nur laut Funkstatus (3 ausgerueckt / 4 am Einsatzort), es gibt
+   * noch keinen Fahrzeugbericht (Fahrer/Mannschaft noch nicht eingetragen).
+   */
+  nurFunk?: boolean;
 }
 
 /** S-08: beteiligt = hat HIER einen Fahrzeugbericht (offen oder fertig). */
@@ -2425,6 +2434,36 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
           anderswoEinsatzId: anderswo.einsatzId,
         };
       }
+      const entfernt = (entfernteByEinsatz[aktiverEinsatzId ?? ""] ?? []).includes(id);
+      // Laut Funkstatus fest im Einsatz (3 ausgerueckt / 4 am Einsatzort), aber noch kein
+      // Fahrer/keine Mannschaft eingetragen (= noch kein Fahrzeugbericht): trotzdem
+      // "im Einsatz" statt "wartend". Nicht, wenn die Florianstation den Bericht entfernt
+      // hat, und nicht bei veralteten Funkdaten.
+      const fk = funk.map[id];
+      if (
+        !entfernt &&
+        !funk.stale &&
+        fk &&
+        aktiverEinsatz &&
+        aktiverEinsatz.schreibschutz !== true &&
+        funkstatusImEinsatz(fk.status) &&
+        funkGehoertZuEinsatz({
+          num1: fk.num1,
+          einsatzAlarmIds: [aktiverEinsatz.alarmId, ...(aktiverEinsatz.alarmIds ?? [])],
+          einzigerAktiverEinsatz:
+            aktiveEinsaetze.length === 1 && (aktiverEinsatz.einsatzTyp ?? "alarm") === "alarm",
+        })
+      ) {
+        return {
+          id,
+          status: "im_einsatz" as const,
+          mannschaft: 0,
+          asAktiv: 0,
+          oelSaecke: 0,
+          mannschaftNamen: [],
+          nurFunk: true,
+        };
+      }
       return {
         id,
         status: "wartend" as const,
@@ -2432,9 +2471,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
         asAktiv: 0,
         oelSaecke: 0,
         mannschaftNamen: [],
-        ...((entfernteByEinsatz[aktiverEinsatzId ?? ""] ?? []).includes(id)
-          ? { entfernt: true }
-          : {}),
+        ...(entfernt ? { entfernt: true } : {}),
       };
     }
     const mannschaftSlots = (bericht.mannschaft ?? []).filter(
@@ -3438,7 +3475,12 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                 f.status === "abgeschlossen"
                   ? { cls: "ok", label: "Abgeschlossen", Icon: CheckCircle2 }
                   : f.status === "im_einsatz"
-                    ? { cls: "warn", label: "Im Einsatz", Icon: Activity }
+                    ? {
+                        cls: "warn",
+                        // Ohne Bericht (Fahrer/Mannschaft noch nicht eingetragen) kommt der Status vom Funk.
+                        label: f.nurFunk ? "Im Einsatz · laut Funk" : "Im Einsatz",
+                        Icon: Activity,
+                      }
                     : f.status === "anderswo"
                       ? // S-08: gebunden bei einem parallelen Einsatz — bernstein,
                         // nicht klickbar (Mannschaft gehoert zum anderen Einsatz).
@@ -5122,7 +5164,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             // S-08: "anderswo" gebundene Fahrzeuge zaehlen hier weder als
             // beteiligt noch als wartend — eigene Hinweiszeile unten.
             const beteiligte = fahrzeugStatus.filter(istBeteiligt);
-            const offene = beteiligte.filter((f) => f.status === "im_einsatz");
+            // Fahrzeuge, die nur laut Funk im Einsatz sind (noch kein Bericht), blockieren den
+            // Abschluss nicht — sonst wuerde ein haengender Funkstatus den Abschluss sperren.
+            const offene = beteiligte.filter((f) => f.status === "im_einsatz" && !f.nurFunk);
             const wartende = fahrzeugStatus.filter((f) => f.status === "wartend");
             const blockiert = !istManuellerTyp && offene.length > 0;
             // OPT-5 (Audit 2026-06-03): EINE Pfad-Entscheidung, von disabled +

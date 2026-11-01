@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  funkGehoertZuEinsatz,
+  funkstatusImEinsatz,
   funkstatusAusUnitStatus,
   funkstatusChronikText,
   funkstatusKurz,
@@ -102,5 +104,27 @@ describe("Florianstation als Einheit", () => {
     expect(baueFahrzeugStatus([parseUnit(floRoh)!])[0]).toMatchObject({ fahrzeugId: "zentrale", status: "1" });
     expect(baueFahrzeugStatus([parseUnit({ ...floRoh, status_florianstation: "" })!])[0]?.status).toBe("");
     expect(s.length).toBe(1);
+  });
+});
+
+describe("Fahrzeug laut Funk im Einsatz (auch ohne Fahrzeugbericht)", () => {
+  it("Status 3 (ausgerückt) und 4 (am Einsatzort) gelten als im Einsatz, alle anderen nicht", () => {
+    expect(funkstatusImEinsatz("3")).toBe(true);
+    expect(funkstatusImEinsatz("4")).toBe(true);
+    for (const c of ["0", "1", "2", "5", "6", "7", "8", "9", "", "AB"]) expect(funkstatusImEinsatz(c)).toBe(false);
+    expect(funkstatusImEinsatz(undefined)).toBe(false);
+  });
+
+  it("mit Einsatznummer: nur der Einsatz mit dieser Nummer", () => {
+    const ids = ["bls-1", "els-E100"];
+    expect(funkGehoertZuEinsatz({ num1: "E100", einsatzAlarmIds: ids, einzigerAktiverEinsatz: false })).toBe(true);
+    expect(funkGehoertZuEinsatz({ num1: "E999", einsatzAlarmIds: ids, einzigerAktiverEinsatz: true })).toBe(false);
+  });
+
+  it("ohne Einsatznummer: nur, wenn es genau einen aktiven Einsatz gibt", () => {
+    const ids = ["bls-1"];
+    expect(funkGehoertZuEinsatz({ num1: "", einsatzAlarmIds: ids, einzigerAktiverEinsatz: true })).toBe(true);
+    expect(funkGehoertZuEinsatz({ num1: null, einsatzAlarmIds: ids, einzigerAktiverEinsatz: false })).toBe(false);
+    expect(funkGehoertZuEinsatz({ einsatzAlarmIds: [undefined], einzigerAktiverEinsatz: true })).toBe(true);
   });
 });
