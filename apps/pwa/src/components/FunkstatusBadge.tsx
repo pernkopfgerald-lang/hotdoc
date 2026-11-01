@@ -1,5 +1,5 @@
 import { Radio } from "lucide-react";
-import { funkstatusKurz, funkstatusText, funkstatusTon, type FunkstatusTon } from "@hotdoc/shared";
+import { funkstatusKurz, funkstatusText, funkstatusTon, zeitAngabe, type FunkstatusTon } from "@hotdoc/shared";
 import type { FunkstatusEintrag } from "../lib/use-funkstatus";
 
 const TON_KLASSE: Record<FunkstatusTon, string> = {
@@ -16,13 +16,6 @@ interface Props {
   stale: boolean;
   /** "gross" fuer die Fahrzeug-Hauptseite. */
   gross?: boolean;
-}
-
-function hhmm(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
 }
 
 /** Funkstatus im Klartext ("Frei auf Wache", "Ausgerückt" …) mit Uhrzeit der letzten Änderung. */
@@ -42,7 +35,8 @@ export function FunkstatusBadge({ eintrag, stale, gross = false }: Props) {
     ton = funkstatusTon(eintrag.status);
     title = `Funkstatus ${eintrag.status}${funkstatusText(eintrag.status) ? `: ${funkstatusText(eintrag.status)}` : ""} (Leitstelle ELS)`;
   }
-  const seit = !stale && eintrag?.status ? hhmm(eintrag.since) : "";
+  // Ab 12 h keine Uhrzeit mehr ("seit 14:31" waere ohne Datum irrefuehrend) → ">12 Stunden".
+  const seit = !stale && eintrag?.status ? zeitAngabe(eintrag.since) : "";
   return (
     <span
       className={`badge ${TON_KLASSE[ton]}`}

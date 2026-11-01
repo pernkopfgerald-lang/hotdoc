@@ -11,7 +11,7 @@
  * (PUT /api/config/els-zuordnung, Backoffice).
  */
 
-import { funkstatusAusUnitStatus, funkstatusText } from "@hotdoc/shared";
+import { FLORIANSTATION_TEXT, funkstatusAusUnitStatus, funkstatusText } from "@hotdoc/shared";
 import { Router } from "express";
 import { hasEls } from "../config.js";
 import { ah } from "../lib/async-handler.js";
@@ -39,7 +39,9 @@ elsRouter.get("/api/els/status", requireAuth(), ah(async (_req, res) => {
           fahrzeugId: s.fahrzeugId,
           callname: s.callname,
           status: s.status,
-          statusText: funkstatusText(s.status),
+          // Die Florianstation hat eine eigene Bedeutung der Codes (0/1 = unbesetzt/besetzt).
+          statusText:
+            s.fahrzeugId === "zentrale" ? (FLORIANSTATION_TEXT[s.status] ?? "") : funkstatusText(s.status),
           unitStatus: s.unitStatus,
           since: s.since ?? null,
           lat: s.lat,

@@ -13,7 +13,7 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { MAP_TILES, haversineKm, type MapTileChoice } from "@hotdoc/shared";
+import { MAP_TILES, ZEIT_GRENZE_STD, haversineKm, type MapTileChoice } from "@hotdoc/shared";
 import { wasserquellePopupHtml } from "../lib/wasserquellen";
 
 // Issue 25 (Einsatz-Test 2026-06-02): Geteilter localStorage-Key zwischen
@@ -873,10 +873,13 @@ function fzgIcon(f: MapPosition, staleMin: number | null): L.DivIcon {
   const isSelf = !!f.isSelf;
   const cls = isSelf ? "fzg-self" : "fzg-other";
   const isStale = staleMin !== null && staleMin > STALE_AFTER_MIN;
-  const opacityStyle = isStale || staleMin === null ? "opacity:0.45;" : "";
+  // Nur leicht abblenden (20 % transparent) statt auf 45 % — sonst kaum zu erkennen.
+  const opacityStyle = isStale || staleMin === null ? "opacity:0.8;" : "";
   const offlineLabel =
     isStale
-      ? `<div class="fzg-offline">offline seit ${staleMin} min</div>`
+      ? `<div class="fzg-offline">${
+          staleMin > ZEIT_GRENZE_STD * 60 ? `offline >${ZEIT_GRENZE_STD} Stunden` : `offline seit ${staleMin} min`
+        }</div>`
       : staleMin === null && !f.isZentrale
         ? `<div class="fzg-offline">keine Position</div>`
         : "";

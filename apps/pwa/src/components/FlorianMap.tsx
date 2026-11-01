@@ -13,7 +13,13 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { FLORIAN_POSITION, MAP_TILES, type MapTileChoice } from "@hotdoc/shared";
+import {
+  FLORIAN_POSITION,
+  MAP_TILES,
+  ZEIT_GRENZE_STD,
+  istAelterAls,
+  type MapTileChoice,
+} from "@hotdoc/shared";
 import {
   loadWasserquellen,
   wasserquelleIconUrl,
@@ -769,7 +775,7 @@ export function FlorianMap({
               </span>
               {selectedFzg.lastSeenAt ? (
                 <span>
-                  Last seen:{" "}
+                  Zuletzt gesehen:{" "}
                   <strong style={{ color: "var(--fg-2)" }}>
                     {formatRelative(selectedFzg.lastSeenAt, tickNow)}
                   </strong>
@@ -1077,9 +1083,16 @@ function ZoomButtons({
   );
 }
 
+/** Text fuer das "offline"-Etikett am Marker; ab 12 h keine Minutenzahl mehr. */
+function offlineText(staleMin: number | null): string {
+  if (staleMin !== null && staleMin > ZEIT_GRENZE_STD * 60) return `offline >${ZEIT_GRENZE_STD} Stunden`;
+  return `offline seit ${staleMin} min`;
+}
+
 function formatRelative(iso: string, now: number): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return "—";
+  if (istAelterAls(iso, now)) return `>${ZEIT_GRENZE_STD} Stunden`;
   const min = Math.max(0, Math.floor((now - t) / 60_000));
   if (min === 0) return "gerade eben";
   if (min < 60) return `vor ${min} min`;
@@ -1187,16 +1200,19 @@ function fahrzeugIcon(
       ? "#16A34A"
       : f.status === "im_einsatz"
         ? "#D97706"
-        : "#94A3B8";
-  const bg = color + "33";
-  const opacity = isStale || noPos ? 0.45 : 1;
+        : "#64748B";
+  // Deckend statt fast durchsichtig: Fuellung 80 % (nur 20 % transparent), weisse
+  // Schrift. Vorher 20 % Deckkraft (#…33) — auf der Karte kaum zu erkennen.
+  const bg = color + "CC";
+  // "Offline"/"keine Position" nur leicht abblenden (20 % transparent), nicht auf 45 %.
+  const opacity = isStale || noPos ? 0.8 : 1;
   // Pulse-Ring fuer ausgewaehltes Fahrzeug — visualisiert was geklickt wurde
   // und welches Detail-Panel zur Karte gehoert.
   const selectedRing = isSelected
     ? `<div style="position:absolute;left:-4px;top:-4px;width:calc(100% + 8px);height:calc(100% + 8px);border-radius:99px;border:2px solid ${color};animation:fln-pulse-ring 1.4s ease-out infinite;pointer-events:none;"></div>`
     : "";
   const offlineLabel = isStale
-    ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);">offline seit ${staleMin} min</div>`
+    ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);">${offlineText(staleMin)}</div>`
     : noPos
       ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;">keine Position</div>`
       : "";
@@ -1205,9 +1221,9 @@ function fahrzeugIcon(
     className: "fln-fzg",
     html: `
       <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;opacity:${opacity};transition:opacity 200ms ease;">
-        <div style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px 4px 6px;border-radius:99px;background:${bg};border:1.5px solid ${color};color:${color};font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;${selectedShadow}">
+        <div style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px 4px 6px;border-radius:99px;background:${bg};border:1.5px solid ${color};color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;${selectedShadow}">
           ${selectedRing}
-          <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;"></span>
           <span>${f.abk}</span>
         </div>
         ${offlineLabel}

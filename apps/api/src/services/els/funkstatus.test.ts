@@ -5,7 +5,7 @@ import {
   funkstatusKurz,
   funkstatusTon,
 } from "@hotdoc/shared";
-import { baueFahrzeugStatus, parseUnit } from "./logik.js";
+import { baueFahrzeugStatus, ordneUnitZu, parseUnit } from "./logik.js";
 
 /** Funkstatus aus `unit_status` (Test an der Wache, 30.10.2026) + korrigierte Texte. */
 
@@ -74,5 +74,33 @@ describe("Funkstatus-Texte", () => {
     expect(funkstatusChronikText("0")).toBe("Funkstatus 0: Außer Dienst");
     expect(funkstatusTon("0")).toBe("warn");
     expect(funkstatusTon("6")).toBe("info");
+  });
+});
+
+describe("Florianstation als Einheit", () => {
+  const floRoh = {
+    unid: "5110500",
+    unid_long: "Feuerwehr/Florian Eberstalzell (51105)",
+    callname: "",
+    s_name: "Eberstalzell",
+    unityp: "FEUERW",
+    unit_status: "FW",
+    status_florianstation: "1",
+    lastStatusTimestamp: "2026-10-29 10:21:25",
+    num_1: "",
+  };
+
+  it("wird der Zentrale zugeordnet, Fahrzeuge behalten Vorrang", () => {
+    const flo = parseUnit(floRoh)!;
+    expect(ordneUnitZu(flo)).toBe("zentrale");
+    expect(ordneUnitZu(einheit({}))).toBe("kdo");
+  });
+
+  it("Status kommt aus status_florianstation (0/1), nicht aus unit_status", () => {
+    const s = baueFahrzeugStatus([parseUnit(floRoh)!, parseUnit({ ...floRoh, status_florianstation: "" })!]);
+    // Beide gehoeren zur Zentrale; der juengere/gleich alte gewinnt, hier genuegt der Einzelfall:
+    expect(baueFahrzeugStatus([parseUnit(floRoh)!])[0]).toMatchObject({ fahrzeugId: "zentrale", status: "1" });
+    expect(baueFahrzeugStatus([parseUnit({ ...floRoh, status_florianstation: "" })!])[0]?.status).toBe("");
+    expect(s.length).toBe(1);
   });
 });

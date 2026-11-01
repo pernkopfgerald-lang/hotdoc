@@ -20,7 +20,13 @@
  * wechselt, fehlen (die Schnittstelle liefert keine Statushistorie).
  */
 
-import { FAHRZEUGE, funkstatusChronikText, type FahrzeugId } from "@hotdoc/shared";
+import {
+  FAHRZEUGE,
+  FLORIANSTATION_TEXT,
+  florianstationChronikText,
+  funkstatusChronikText,
+  type FahrzeugId,
+} from "@hotdoc/shared";
 import { db } from "../../couch/client.js";
 import { logger } from "../../lib/logger.js";
 import { elsAlarmId, type FahrzeugFunkstatus } from "./logik.js";
@@ -55,6 +61,7 @@ interface EinsatzMin {
   alarmId?: string;
   alarmIds?: string[];
   alarmierungZeit?: string;
+  einsatzTyp?: string;
 }
 
 function statusCode(err: unknown): number | undefined {
@@ -64,7 +71,7 @@ function statusCode(err: unknown): number | undefined {
 async function ladeAktive(): Promise<EinsatzMin[]> {
   const r = await db.find({
     selector: { type: "einsatz", status: "aktiv" },
-    fields: ["_id", "status", "schreibschutz", "alarmId", "alarmIds", "alarmierungZeit"],
+    fields: ["_id", "status", "schreibschutz", "alarmId", "alarmIds", "alarmierungZeit", "einsatzTyp"],
     limit: 200,
   });
   return r.docs as EinsatzMin[];
@@ -97,8 +104,10 @@ export async function dokumentiereStatus(liste: FahrzeugFunkstatus[], jetztMs: n
         if (!s.num1) letzterStand.set(s.fahrzeugId, key);
         continue;
       }
+      // Die Florianstation meldet beim Besetzt-/Unbesetzt-Wechsel KEINEN neuen Zeitstempel
+      // (`lastStatusTimestamp` bleibt stehen) — hier gilt der Abrufzeitpunkt.
       const tsMs = Date.parse(s.since ?? "");
-      const zeitMs = Number.isNaN(tsMs) ? jetztMs : tsMs;
+      const zeitMs = s.fahrzeugId === "zentrale" || Number.isNaN(tsMs) ? jetztMs : tsMs;
       const alarmMs = Date.parse(einsatz.alarmierungZeit ?? "");
       if (!Number.isNaN(alarmMs) && zeitMs < alarmMs - VOR_ALARM_TOLERANZ_MS) {
         verlaufEntscheidung(s, key, "vor-alarmierung", einsatz._id);
@@ -155,6 +164,13 @@ function findeEinsatz(s: FahrzeugFunkstatus, aktive: EinsatzMin[], jetztMs: numb
     // Einsatznummer bekannt, aber (noch) kein HotDoc-Einsatz dazu -> abwarten.
     return undefined;
   }
+  // Florianstation ohne Einsatznummer: gehoert zum juengsten aktiven Alarm-Einsatz
+  // (ob die Station besetzt ist, ist waehrend eines Einsatzes protokollrelevant).
+  if (s.fahrzeugId === "zentrale") {
+    return aktive
+      .filter((d) => d.einsatzTyp === undefined || d.einsatzTyp === "alarm")
+      .sort((a, b) => String(b.alarmierungZeit ?? "").localeCompare(String(a.alarmierungZeit ?? "")))[0];
+  }
   const m = merkungen.get(s.fahrzeugId);
   if (!m || m.bis < jetztMs) return undefined;
   return aktive.find((d) => d._id === m.einsatzId);
@@ -166,15 +182,26 @@ async function haengeAn(einsatzId: string, s: FahrzeugFunkstatus, zeitMs: number
   for (let versuch = 1; versuch <= 2; versuch++) {
     const doc = (await db.get(einsatzId)) as Record<string, unknown>;
     if (doc.schreibschutz === true || doc.status !== "aktiv") return false;
-    const chronik = Array.isArray(doc.chronik) ? (doc.chronik as Array<{ id?: string }>) : [];
+    const chronik = Array.isArray(doc.chronik)
+      ? (doc.chronik as Array<{ id?: string; fahrzeugId?: string; source?: string; text?: string }>)
+      : [];
     if (chronik.some((e) => e.id === id)) return false;
+    const istZentrale = s.fahrzeugId === "zentrale";
+    const text = istZentrale ? florianstationChronikText(s.status) : funkstatusChronikText(s.status);
+    if (istZentrale) {
+      // Keine Dopplung nach einem Neustart (der Merkzettel im RAM ist dann leer) und
+      // "unbesetzt" nur, wenn die Station zuvor als besetzt protokolliert war.
+      const letzte = [...chronik].reverse().find((e) => e.fahrzeugId === "zentrale" && e.source === "fahrzeug");
+      if (letzte?.text === text) return false;
+      if (s.status === "0" && letzte?.text !== FLORIANSTATION_TEXT["1"]) return false;
+    }
     const eintrag = {
       id,
       zeitstempel: new Date(zeitMs).toISOString(),
       funkrufname: FAHRZEUGE[s.fahrzeugId].funkrufname,
       fahrzeugId: s.fahrzeugId,
       source: "fahrzeug" as const,
-      text: funkstatusChronikText(s.status),
+      text,
       empfangenAm: new Date().toISOString(),
     };
     try {

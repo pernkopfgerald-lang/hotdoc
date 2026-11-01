@@ -58,6 +58,7 @@ import { listPersonen, personLabel, sortPersonen, type PersonItem } from "../api
 import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { FunkstatusKarte } from "../components/FunkstatusKarte";
 import { useSichtbarPolling } from "../lib/useSichtbarPolling";
+import { usePositionPings } from "../lib/usePositionPings";
 
 /** Feuerwehrhaus FF Eberstalzell — Solarstraße 1, 4653 Eberstalzell.
  *  Quelle: @hotdoc/shared constants/florian.ts. */
@@ -385,6 +386,24 @@ export function Florianstation() {
 
   // Rechte Spalte: echte Fahrzeugberichte des ausgewaehlten Einsatzes
   const [fzgBerichte, setFzgBerichte] = useState<FahrzeugberichtItem[]>([]);
+  // Live-Positionen der Fahrzeuge fuer die Karte (ELS-Funkposition, sonst Tablet-GPS).
+  const pings = usePositionPings();
+  const karteFahrzeuge = useMemo<FahrzeugPos[]>(() => {
+    const statusJe = new Map<string, FahrzeugPos["status"]>();
+    for (const b of fzgBerichte) {
+      statusJe.set(fzgIdVon(b), b.status === "abgeschlossen" ? "abgeschlossen" : "im_einsatz");
+    }
+    const fahrzeuge: FahrzeugPos[] = pings.map((p) => ({
+      fahrzeugId: p.fahrzeugId,
+      funkrufname: FAHRZEUGE[p.fahrzeugId as FahrzeugId]?.funkrufname ?? p.fahrzeugId,
+      abk: FAHRZEUGE[p.fahrzeugId as FahrzeugId]?.abk ?? p.fahrzeugId.toUpperCase(),
+      lat: p.lat,
+      lng: p.lng,
+      status: statusJe.get(p.fahrzeugId) ?? "wartend",
+      lastSeenAt: p.ts,
+    }));
+    return [...zentraleMarker(), ...fahrzeuge];
+  }, [pings, fzgBerichte]);
   const [fzgEdits, setFzgEdits] = useState<Record<string, FzgEditState>>({});
   const [fzgSaving, setFzgSaving] = useState<string | null>(null);
   const [fzgErr, setFzgErr] = useState<Record<string, string>>({});
@@ -869,7 +888,7 @@ export function Florianstation() {
                   },
                 }
               : {})}
-            fahrzeuge={zentraleMarker()}
+            fahrzeuge={karteFahrzeuge}
             zoom={selected ? 16 : 14}
           />
         </section>

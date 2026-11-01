@@ -34,6 +34,9 @@ export function mitElsVorrang<T extends PingLike>(
   const alter = jetztMs - Date.parse(els.fetchedAt);
   if (!Number.isFinite(alter) || alter > ELS_POSITION_MAX_ALTER_MS) return items;
   for (const s of els.status) {
+    // Die Florianstation steht fix am Feuerwehrhaus (Kartenmarker der Oberflaechen),
+    // ihre Einheit ist kein Fahrzeug-Ping.
+    if (s.fahrzeugId === "zentrale") continue;
     if (s.lat === null || s.lng === null) continue;
     const el: MitQuelle<PingLike> = {
       fahrzeugId: s.fahrzeugId,

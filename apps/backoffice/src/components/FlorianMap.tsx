@@ -2,6 +2,7 @@ import L, { type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { Crosshair, Maximize2, Minimize2 } from "lucide-react";
+import { FLORIAN_POSITION, ZEIT_GRENZE_STD } from "@hotdoc/shared";
 
 export interface FahrzeugPos {
   fahrzeugId: string;
@@ -26,7 +27,8 @@ interface Props {
   zoom?: number;
 }
 
-const HOME = { lat: 48.0884, lng: 13.9586 };
+/** Feuerwehrhaus (Kartenmitte ohne Einsatzort) — aus @hotdoc/shared, nicht von Hand (alter Wert lag ~5 km zu weit noerdlich). */
+const HOME = FLORIAN_POSITION;
 
 /**
  * Florianstation-Karte (Backoffice-Variante) — read-only Übersicht aller
@@ -295,11 +297,13 @@ function fahrzeugIcon(f: FahrzeugPos, staleMin: number | null): L.DivIcon {
       ? "#16A34A"
       : f.status === "im_einsatz"
         ? "#D97706"
-        : "#94A3B8";
-  const bg = color + "33";
-  const opacity = isStale || noPos ? 0.45 : 1;
+        : "#64748B";
+  // Deckend statt fast durchsichtig: 80 % Fuellung (nur 20 % transparent), weisse Schrift.
+  // Vorher 20 % Deckkraft (#...33) — kaum zu erkennen.
+  const bg = color + "CC";
+  const opacity = isStale || noPos ? 0.8 : 1;
   const offlineLabel = isStale
-    ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);">offline seit ${staleMin} min</div>`
+    ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);">${staleMin !== null && staleMin > ZEIT_GRENZE_STD * 60 ? `offline >${ZEIT_GRENZE_STD} Stunden` : `offline seit ${staleMin} min`}</div>`
     : noPos
       ? `<div style="margin-left:4px;margin-top:2px;padding:1px 6px;border-radius:99px;background:#fff;border:1px solid #cbd5e1;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#64748b;letter-spacing:0.04em;white-space:nowrap;">keine Position</div>`
       : "";
@@ -315,7 +319,7 @@ function fahrzeugIcon(f: FahrzeugPos, staleMin: number | null): L.DivIcon {
           border-radius:99px;
           background:${bg};
           border:1.5px solid ${color};
-          color:${color};
+          color:#fff;
           font-family:'JetBrains Mono', monospace;
           font-size:10px;
           font-weight:700;
@@ -324,7 +328,7 @@ function fahrzeugIcon(f: FahrzeugPos, staleMin: number | null): L.DivIcon {
           white-space:nowrap;
           box-shadow:0 2px 8px rgba(15,23,42,0.18);
         ">
-          <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:#fff;"></span>
           ${f.abk}
         </div>
         ${offlineLabel}

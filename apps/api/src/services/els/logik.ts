@@ -207,6 +207,10 @@ export function ordneUnitZu(
     const voll = normName(FAHRZEUGE[id].funkrufname);
     if (namen.some((n) => n.length >= 3 && voll.startsWith(n))) return id;
   }
+  // Die Florianstation ist in ELS die Einheit ohne Funkrufnamen, aber mit
+  // `unid_long` "Feuerwehr/Florian Eberstalzell (51105)". Fahrzeuge haben oben
+  // Vorrang; erst danach gilt diese Einheit als "zentrale".
+  if (normName(unit.unidLong).includes(normName(FAHRZEUGE.zentrale.funkrufname))) return "zentrale";
   return null;
 }
 
@@ -239,7 +243,9 @@ export function baueFahrzeugStatus(
       // Ziffer aus status_florianstation, falls die Leitstelle eine liefert; sonst der
       // Code aus unit_status (FF = 1, FW = 2). Bei Fahrzeugen war status_florianstation
       // im Test (30.10.2026) immer leer — der Status steht in unit_status.
-      status: u.statusFlorian.trim() || funkstatusAusUnitStatus(u.unitStatus),
+      // Florianstation: nur status_florianstation (0 unbesetzt / 1 besetzt); ihr
+      // unit_status (FW/EÜ …) ist kein Fahrzeug-Funkstatus.
+      status: u.statusFlorian.trim() || (id === "zentrale" ? "" : funkstatusAusUnitStatus(u.unitStatus)),
       unitStatus: u.unitStatus,
       ...(u.lastStatusTimestamp ? { since: u.lastStatusTimestamp } : {}),
       lat: u.lat,

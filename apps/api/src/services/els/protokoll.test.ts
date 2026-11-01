@@ -177,3 +177,59 @@ describe("Statusfunk ins Einsatzprotokoll", () => {
     await expect(dokumentiereStatus([st()], T0 + 90_000)).resolves.toBe(0);
   });
 });
+
+describe("Florianstation im Einsatzprotokoll", () => {
+  const flo = (status: string, over: Partial<FahrzeugFunkstatus> = {}): FahrzeugFunkstatus => ({
+    fahrzeugId: "zentrale",
+    callname: "",
+    status,
+    unitStatus: "FW",
+    // Der Zeitstempel der Station aendert sich beim Besetzt-Wechsel NICHT (alt)
+    since: new Date(T0 - 24 * 3600_000).toISOString(),
+    lat: null,
+    lng: null,
+    num1: "",
+    ...over,
+  });
+
+  it("schreibt 'besetzt' auch ohne Einsatznummer in den juengsten aktiven Einsatz (Abrufzeit statt altem Zeitstempel)", async () => {
+    einsatz();
+    const n = await dokumentiereStatus([flo("1")], T0 + 120_000);
+    expect(n).toBe(1);
+    expect(chronik()).toHaveLength(1);
+    expect(chronik()[0]).toMatchObject({
+      fahrzeugId: "zentrale",
+      funkrufname: "Florian Eberstalzell",
+      source: "fahrzeug",
+      text: "Florianstation besetzt",
+      zeitstempel: new Date(T0 + 120_000).toISOString(),
+    });
+  });
+
+  it("'unbesetzt' nur, wenn die Station zuvor als besetzt protokolliert war", async () => {
+    einsatz();
+    await dokumentiereStatus([flo("0")], T0 + 60_000); // Ruhezustand: nichts zu beenden
+    expect(chronik()).toHaveLength(0);
+    await dokumentiereStatus([flo("1")], T0 + 120_000);
+    await dokumentiereStatus([flo("0")], T0 + 180_000);
+    expect(chronik().map((c) => c.text)).toEqual(["Florianstation besetzt", "Florianstation unbesetzt"]);
+  });
+
+  it("keine Dopplung nach einem Neustart (RAM leer, gleicher Status)", async () => {
+    einsatz();
+    await dokumentiereStatus([flo("1")], T0 + 120_000);
+    resetProtokollState();
+    await dokumentiereStatus([flo("1")], T0 + 240_000);
+    expect(chronik()).toHaveLength(1);
+  });
+
+  it("ohne aktiven Einsatz wird nichts geschrieben", async () => {
+    expect(await dokumentiereStatus([flo("1")], T0 + 120_000)).toBe(0);
+  });
+
+  it("unbekannter Statuscode erscheint mit Rohwert", async () => {
+    einsatz();
+    await dokumentiereStatus([flo("7")], T0 + 120_000);
+    expect(chronik()[0]?.text).toBe("Florianstation Status 7");
+  });
+});

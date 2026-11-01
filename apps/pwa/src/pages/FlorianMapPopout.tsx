@@ -111,12 +111,12 @@ export function FlorianMapPopout(): JSX.Element {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
-        const json = (await res.json()) as { positions: PositionPing[] };
+        // WICHTIG: GET /api/positions liefert { ok, items } (nicht "positions") — mit dem
+        // falschen Feld blieb die Liste leer und die Karte zeigte nie ein Fahrzeug.
+        const json = (await res.json()) as { items?: PositionPing[] };
         if (cancelled) return;
         setPositions(
-          behalteWennGleich(
-            (json.positions ?? []).filter((p) => istEinsatzFahrzeugId(p.fahrzeugId)),
-          ),
+          behalteWennGleich((json.items ?? []).filter((p) => istEinsatzFahrzeugId(p.fahrzeugId))),
         );
       } catch {
         // ignore

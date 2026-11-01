@@ -1,6 +1,6 @@
 import { Radio } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FAHRZEUGE, funkstatusKurz, funkstatusText, funkstatusTon, type FahrzeugId } from "@hotdoc/shared";
+import { FAHRZEUGE, funkstatusKurz, funkstatusText, funkstatusTon, zeitAngabe, type FahrzeugId } from "@hotdoc/shared";
 import { apiCall } from "../api/client";
 import { FAHRZEUG_IDS as IDS } from "../lib/fahrzeuge";
 import { useSichtbarPolling } from "../lib/useSichtbarPolling";
@@ -16,12 +16,6 @@ interface Stand {
   map: Partial<Record<FahrzeugId, Eintrag>>;
   enabled: boolean;
   stale: boolean;
-}
-
-function hhmm(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
 }
 
 /** Funkstatus aller Fahrzeuge laut Leitstelle (ELS), im Klartext. Aktualisiert alle 15 s. */
@@ -79,7 +73,8 @@ export function FunkstatusKarte() {
           const kurz = e?.status ? funkstatusKurz(e.status) || `Funkstatus ${e.status}` : "";
           const label = veraltet ? "nicht verfügbar" : kurz || "Kein Funkstatus";
           const ton = veraltet ? "neutral" : e?.status ? funkstatusTon(e.status) : "neutral";
-          const seit = !veraltet && e?.status ? hhmm(e.since) : "";
+          // Ab 12 h keine Uhrzeit mehr, sondern ">12 Stunden".
+          const seit = !veraltet && e?.status ? zeitAngabe(e.since) : "";
           return (
             <li key={id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 14, fontWeight: 600 }}>{FAHRZEUGE[id].funkrufname}</span>

@@ -101,6 +101,23 @@ export function funkstatusTon(code: string | undefined | null): FunkstatusTon {
   }
 }
 
+/**
+ * Status der Florianstation selbst (ELS-Einheit "Feuerwehr/Florian Eberstalzell"),
+ * Feld `status_florianstation`. Im Test (30.10.2026) lieferte es 0 = unbesetzt und
+ * 1 = besetzt. Weitere Werte (Sprechwunsch, Alarmierungsauftrag) sind noch NICHT
+ * bekannt und werden mit dem Rohwert angezeigt.
+ */
+export const FLORIANSTATION_TEXT: Readonly<Record<string, string>> = {
+  "0": "Florianstation unbesetzt",
+  "1": "Florianstation besetzt",
+};
+
+/** Chronik-Zeile fuer einen Statuswechsel der Florianstation. */
+export function florianstationChronikText(code: string): string {
+  const c = String(code).trim();
+  return FLORIANSTATION_TEXT[c] ?? `Florianstation Status ${c}`;
+}
+
 /** Chronik-Zeile fuer einen Statuswechsel: "Funkstatus 4: Am Einsatzort eingetroffen". */
 export function funkstatusChronikText(code: string): string {
   const c = String(code).trim();
