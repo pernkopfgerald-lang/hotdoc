@@ -16,6 +16,7 @@ import { resolveApiUrl } from "../lib/api";
 import { istEinsatzFahrzeugId } from "../lib/fahrzeuge";
 import { behalteWennGleich } from "../lib/state-equal";
 import { pollingPaused } from "../lib/visibility";
+import { useFunkstatus } from "../lib/use-funkstatus";
 import { FlorianMap, type FahrzeugMannschaft, type FahrzeugPos } from "../components/FlorianMap";
 import { FAHRZEUGE, FLORIAN_POSITION } from "@hotdoc/shared";
 import type { FahrzeugId } from "@hotdoc/shared";
@@ -61,6 +62,7 @@ function shortCode(id: FahrzeugId): string {
 }
 
 export function FlorianMapPopout(): JSX.Element {
+  const funk = useFunkstatus();
   const [einsatz, setEinsatz] = useState<AktiverEinsatz | null>(null);
   const [positions, setPositions] = useState<PositionPing[]>([]);
   const [berichte, setBerichte] = useState<FahrzeugberichtRow[]>([]);
@@ -221,6 +223,8 @@ export function FlorianMapPopout(): JSX.Element {
     lng: FLORIAN_POSITION.lng,
     status: einsatz ? "im_einsatz" : "wartend",
     isZentrale: true,
+    // Besetzt-Status der Florianstation (ELS): besetzt = gruen, nicht orange.
+    ...(funk.florianBesetzt !== null ? { besetzt: funk.florianBesetzt } : {}),
   });
 
   // Mannschafts-Mapping je Fahrzeug

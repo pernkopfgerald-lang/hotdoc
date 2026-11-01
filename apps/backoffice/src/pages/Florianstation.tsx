@@ -59,6 +59,7 @@ import { FlorianMap, type FahrzeugPos } from "../components/FlorianMap";
 import { FunkstatusKarte } from "../components/FunkstatusKarte";
 import { useSichtbarPolling } from "../lib/useSichtbarPolling";
 import { usePositionPings } from "../lib/usePositionPings";
+import { useFlorianBesetzt } from "../lib/useFlorianBesetzt";
 
 /** Feuerwehrhaus FF Eberstalzell — Solarstraße 1, 4653 Eberstalzell.
  *  Quelle: @hotdoc/shared constants/florian.ts. */
@@ -71,7 +72,7 @@ const ABGESCHLOSSEN_FENSTER_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Florianstation-Pin (fix am Geraetehaus) als Map-Basis. Andere Fahrzeuge
  *  werden via /api/positions live eingespeist. */
-function zentraleMarker(): FahrzeugPos[] {
+function zentraleMarker(besetzt: boolean | null = null): FahrzeugPos[] {
   return [
     {
       fahrzeugId: "zentrale",
@@ -81,6 +82,7 @@ function zentraleMarker(): FahrzeugPos[] {
       lat: HOME.lat,
       lng: HOME.lng,
       isZentrale: true,
+      ...(besetzt !== null ? { besetzt } : {}),
     },
   ];
 }
@@ -388,6 +390,7 @@ export function Florianstation() {
   const [fzgBerichte, setFzgBerichte] = useState<FahrzeugberichtItem[]>([]);
   // Live-Positionen der Fahrzeuge fuer die Karte (ELS-Funkposition, sonst Tablet-GPS).
   const pings = usePositionPings();
+  const florianBesetzt = useFlorianBesetzt();
   const karteFahrzeuge = useMemo<FahrzeugPos[]>(() => {
     const statusJe = new Map<string, FahrzeugPos["status"]>();
     for (const b of fzgBerichte) {
@@ -402,8 +405,8 @@ export function Florianstation() {
       status: statusJe.get(p.fahrzeugId) ?? "wartend",
       lastSeenAt: p.ts,
     }));
-    return [...zentraleMarker(), ...fahrzeuge];
-  }, [pings, fzgBerichte]);
+    return [...zentraleMarker(florianBesetzt), ...fahrzeuge];
+  }, [pings, fzgBerichte, florianBesetzt]);
   const [fzgEdits, setFzgEdits] = useState<Record<string, FzgEditState>>({});
   const [fzgSaving, setFzgSaving] = useState<string | null>(null);
   const [fzgErr, setFzgErr] = useState<Record<string, string>>({});

@@ -137,6 +137,14 @@ export const FLORIANSTATION_TEXT: Readonly<Record<string, string>> = {
   "1": "Florianstation besetzt",
 };
 
+/** Ist die Florianstation besetzt? "1" = besetzt, "0" = unbesetzt, sonst (unbekannt/keine Daten) null. */
+export function florianstationBesetzt(code: string | undefined | null): boolean | null {
+  const c = String(code ?? "").trim();
+  if (c === "1") return true;
+  if (c === "0") return false;
+  return null;
+}
+
 /** Chronik-Zeile fuer einen Statuswechsel der Florianstation. */
 export function florianstationChronikText(code: string): string {
   const c = String(code).trim();

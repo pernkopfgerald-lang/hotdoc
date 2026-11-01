@@ -98,6 +98,8 @@ export interface FahrzeugPos {
   status: "im_einsatz" | "wartend" | "abgeschlossen";
   /** Florian Eberstalzell — fix am Feuerwehrhaus, nie stale. */
   isZentrale?: boolean;
+  /** Nur Zentrale: Florianstation besetzt (gruen) / unbesetzt (grau); undefined = unbekannt. */
+  besetzt?: boolean | undefined;
   /** ISO-Zeitstempel des letzten Positions-Updates. */
   lastSeenAt?: string;
 }
@@ -1195,12 +1197,17 @@ function fahrzeugIcon(
 ): L.DivIcon {
   const isStale = staleMin !== null && staleMin > STALE_AFTER_MIN;
   const noPos = staleMin === null && !f.isZentrale;
+  // Florianstation: nach Besetzt-Status (gruen = besetzt), nicht nach Einsatzstatus (orange).
   const color =
-    f.status === "abgeschlossen"
-      ? "#16A34A"
-      : f.status === "im_einsatz"
-        ? "#D97706"
-        : "#64748B";
+    f.isZentrale && f.besetzt !== undefined
+      ? f.besetzt
+        ? "#16A34A"
+        : "#64748B"
+      : f.status === "abgeschlossen"
+        ? "#16A34A"
+        : f.status === "im_einsatz"
+          ? "#D97706"
+          : "#64748B";
   // Deckend statt fast durchsichtig: Fuellung 80 % (nur 20 % transparent), weisse
   // Schrift. Vorher 20 % Deckkraft (#…33) — auf der Karte kaum zu erkennen.
   const bg = color + "CC";

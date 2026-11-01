@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { FahrzeugId } from "@hotdoc/shared";
+import { florianstationBesetzt, type FahrzeugId } from "@hotdoc/shared";
 import { apiCall } from "./api";
 import { istEinsatzFahrzeugId } from "./fahrzeuge";
 import { pollingPaused } from "./visibility";
@@ -23,9 +23,11 @@ export interface FunkstatusStand {
   stale: boolean;
   /** Mindestens eine Antwort ist da. */
   geladen: boolean;
+  /** Florianstation besetzt (true) / unbesetzt (false); null = unbekannt oder Daten veraltet. */
+  florianBesetzt: boolean | null;
 }
 
-const LEER: FunkstatusStand = { map: {}, enabled: false, stale: true, geladen: false };
+const LEER: FunkstatusStand = { map: {}, enabled: false, stale: true, geladen: false, florianBesetzt: null };
 
 
 /**
@@ -51,7 +53,14 @@ export function useFunkstatus(): FunkstatusStand {
             map[i.fahrzeugId] = { status: i.status ?? "", since: i.since, num1: i.num1 ?? null };
           }
         }
-        setStand({ map, enabled: r.enabled, stale: r.stale, geladen: true });
+        const flo = r.items.find((i) => i.fahrzeugId === "zentrale");
+        setStand({
+          map,
+          enabled: r.enabled,
+          stale: r.stale,
+          geladen: true,
+          florianBesetzt: r.stale || !flo ? null : florianstationBesetzt(flo.status),
+        });
       } catch {
         // Netz weg / 401: letzter Stand bleibt, naechster Tick versucht es erneut
       }

@@ -35,6 +35,7 @@ import { FAHRZEUG_IDS, istEinsatzFahrzeugId } from "../lib/fahrzeuge";
 import { lazyRetry } from "../lib/lazy-retry";
 import { behalteWennGleich, inhaltGleich } from "../lib/state-equal";
 import { EinsatzartWahlModal } from "../components/EinsatzartWahlModal";
+import { FahrzeugPersonalEditor } from "../components/FahrzeugPersonalEditor";
 import { StatusBanner } from "../components/StatusBanner";
 import { EinsatzTabs, type EinsatzTabSummary } from "../components/EinsatzTabs";
 import { NeuerEinsatzTabletModal, type EinsatzTyp } from "../components/NeuerEinsatzTabletModal";
@@ -58,6 +59,9 @@ import {
   // Abschluss-Quittung, solange die Response keine echte Nummer liefert.
   deriveBerichtNrFromId,
   eingesetztePersonIds,
+  entferneMannschaft,
+  fuegeMannschaftHinzu,
+  type MannschaftsEintrag,
   funkGehoertZuEinsatz,
   funkstatusImEinsatz,
   reserveOhneEingesetzte,
@@ -330,6 +334,8 @@ function buildFleetForFlorianMap(
     id: FahrzeugId;
     status: "wartend" | "im_einsatz" | "abgeschlossen";
   }>,
+  /** Florianstation besetzt (true) / unbesetzt (false) / unbekannt (null). */
+  florianBesetzt: boolean | null,
 ): FahrzeugPos[] {
   const statusById = new Map(fahrzeugStatus.map((f) => [f.id, f.status]));
   const fleet: FahrzeugPos[] = positions.map((p) => ({
@@ -350,6 +356,7 @@ function buildFleetForFlorianMap(
     lng: HOME_POS.lng,
     status: "wartend",
     isZentrale: true,
+    ...(florianBesetzt !== null ? { besetzt: florianBesetzt } : {}),
   });
   return fleet;
 }
@@ -473,6 +480,10 @@ interface FahrzeugStatusEintrag {
   fahrer?: string;
   kdt?: string;
   mannschaftNamen: string[];
+  /** Personen-IDs zu fahrer/kdt/mannschaftNamen (gleiche Reihenfolge) — fuer die Bearbeitung. */
+  fahrerId?: number;
+  kdtId?: number;
+  mannschaftIds?: number[];
   asAktiv: number;
   oelSaecke: number;
   anhaenger?: string[];
@@ -565,6 +576,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [entfernteByEinsatz, setEntfernteByEinsatz] = useState<Record<string, string[]>>({});
   const [fzgberTick, setFzgberTick] = useState(0);
   const [fzgberAktionBusy, setFzgberAktionBusy] = useState<string | null>(null);
+  /** Personal-Auswahl fuer ein Fahrzeug (Florianstation traegt Fahrer/Kdt/Mannschaft ein). */
+  const [personalPicker, setPersonalPicker] = useState<{
+    fzgId: FahrzeugId;
+    rolle: "fahrer" | "kdt" | "mannschaft";
+  } | null>(null);
+  const [personalBusy, setPersonalBusy] = useState(false);
+  const [personalErr, setPersonalErr] = useState<string | null>(null);
   const [fzgberAktionErr, setFzgberAktionErr] = useState<string | null>(null);
   /** Fahrzeug, dessen Bericht nach Rueckfrage (ConfirmDialog) entfernt werden soll. */
   const [fzgberEntfernenConfirm, setFzgberEntfernenConfirm] = useState<FahrzeugId | null>(null);
@@ -2398,6 +2416,66 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   }
 
   /**
+   * Florianstation traegt Personal fuer ein Fahrzeug ein (Fahrer, Fahrzeug-Kdt,
+   * Mannschaft). Schreibt NUR die geaenderten Felder per PUT; der Server legt den
+   * Fahrzeugbericht an, falls es noch keinen gibt (das Fahrzeug gilt dann als im
+   * Einsatz). Die Mannschaft wird aus dem FRISCHEN Bericht gebaut, damit parallel am
+   * Tablet eingetragene Personen und Atemschutz-Angaben erhalten bleiben.
+   * Fahrer/Kdt lassen sich ersetzen, aber nicht leeren (kann der Server nicht).
+   */
+  async function schreibePersonal(
+    fzgId: FahrzeugId,
+    aenderung:
+      | { art: "fahrer"; personId: number }
+      | { art: "kdt"; personId: number }
+      | { art: "mannschaft-hinzu"; personIds: number[] }
+      | { art: "mannschaft-entfernen"; personId: number },
+  ): Promise<void> {
+    if (!aktiverEinsatzId || schreibschutz) return;
+    const einsatzPfad = encodeURIComponent(aktiverEinsatzId);
+    setPersonalBusy(true);
+    setPersonalErr(null);
+    try {
+      const patch: Record<string, unknown> = {};
+      if (aenderung.art === "fahrer") {
+        patch.fahrerPersonId = aenderung.personId;
+      } else if (aenderung.art === "kdt") {
+        patch.fahrzeugKdtPersonId = aenderung.personId;
+      } else {
+        const frisch = await apiCall<{ items: FahrzeugberichtApiDoc[] }>(
+          `/api/einsaetze/${einsatzPfad}/fahrzeugberichte`,
+        );
+        const aktuell = (frisch.items.find((b) => b.fahrzeugId === fzgId && !b.entferntAm)?.mannschaft ??
+          []) as MannschaftsEintrag[];
+        if (aenderung.art === "mannschaft-hinzu") {
+          const r = fuegeMannschaftHinzu(
+            aktuell,
+            aenderung.personIds,
+            FAHRZEUGE[fzgId].besatzung.mannschaftsplaetzeZusaetzlich,
+          );
+          patch.mannschaft = r.mannschaft;
+          if (r.nichtUntergebracht.length > 0) {
+            setPersonalErr(
+              `${r.nichtUntergebracht.length} Person(en) hatten keinen freien Platz und wurden nicht eingetragen.`,
+            );
+          }
+        } else {
+          patch.mannschaft = entferneMannschaft(aktuell, aenderung.personId);
+        }
+      }
+      await apiCall(`/api/einsaetze/${einsatzPfad}/fahrzeugbericht/${encodeURIComponent(fzgId)}`, {
+        method: "PUT",
+        body: patch,
+      });
+      setFzgberTick((t) => t + 1);
+    } catch (err) {
+      setPersonalErr(`Personal eintragen fehlgeschlagen: ${describeApiError(err)}`);
+    } finally {
+      setPersonalBusy(false);
+    }
+  }
+
+  /**
    * S-08 (Audit R3): Schreibt das Fahrzeug gerade bei einem ANDEREN aktiven
    * Einsatz (offener Fahrzeugbericht dort)? Liefert Einsatz-ID + Ort.
    */
@@ -2503,6 +2581,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       mannschaft: headcount,
       ...(fahrerName ? { fahrer: fahrerName } : {}),
       ...(kdtName ? { kdt: kdtName } : {}),
+      ...(fahrerId ? { fahrerId } : {}),
+      ...(kdtId ? { kdtId } : {}),
+      mannschaftIds: mannschaftSlots.map((m) => m.personId),
       mannschaftNamen,
       asAktiv,
       oelSaecke: bericht.oelbindemittelSaecke ?? 0,
@@ -2655,8 +2736,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   // Vorher entstand bei jedem Render ein neues Array -> FlorianMap ersetzte
   // alle Marker-Icons und flog zum gewaehlten Fahrzeug zurueck.
   const kartenFlotte = useMemo(
-    () => buildFleetForFlorianMap(positions, fleetStatus),
-    [positions, fleetStatus],
+    () => buildFleetForFlorianMap(positions, fleetStatus, funk.florianBesetzt),
+    [positions, fleetStatus, funk.florianBesetzt],
   );
   const anderswoFzg = fahrzeugStatus.filter((f) => f.status === "anderswo");
 
@@ -2666,6 +2747,15 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     ? `${pad(datum.getDate())}.${pad(datum.getMonth() + 1)}.${datum.getFullYear()}`
     : "—";
 
+  // Fahrzeug, fuer das gerade Personal ausgewaehlt wird (Auswahl-Dialog unten).
+  const personalFzg = personalPicker
+    ? fahrzeugStatus.find((f) => f.id === personalPicker.fzgId)
+    : undefined;
+  const personalGewaehlt = new Set<number>([
+    ...(personalFzg?.fahrerId !== undefined ? [personalFzg.fahrerId] : []),
+    ...(personalFzg?.kdtId !== undefined ? [personalFzg.kdtId] : []),
+    ...(personalFzg?.mannschaftIds ?? []),
+  ]);
   const aggregateMannschaft = fahrzeugStatus.reduce((sum, f) => sum + f.mannschaft, 0);
   const abgeschlossenCount = fahrzeugStatus.filter((f) => f.status === "abgeschlossen").length;
   const aktivCount = fahrzeugStatus.filter((f) => f.status === "im_einsatz").length;
@@ -3492,7 +3582,13 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       : { cls: "neutral", label: "Wartend", Icon: Lock };
               const Icon = badge.Icon;
               const isSelected = selectedFahrzeugId === f.id;
-              const isClickable = istBeteiligt(f);
+              // Hat das Fahrzeug einen ECHTEN Bericht (nicht nur "im Einsatz laut Funk")?
+              const hatEchtenBericht = istBeteiligt(f) && !f.nurFunk;
+              // Florianstation darf Personal eintragen, solange der Einsatz offen ist.
+              const kannPersonal = !schreibschutz && !f.entfernt && f.status !== "anderswo";
+              // Aufklappbar: Fahrzeug mit Bericht/Funk-Einsatz ODER eines, dem Personal
+              // zugewiesen werden kann (auch "wartend", legt den Bericht beim ersten Eintrag an).
+              const isClickable = istBeteiligt(f) || kannPersonal;
               const toggleSelect = (): void => {
                 if (!isClickable) return;
                 const next = isSelected ? null : f.id;
@@ -3611,7 +3707,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                       {/* 2026-09: Loeschen-Knopf (Rueckmeldung Mannschaft): ein
                           versehentlich bearbeitetes Fahrzeug soll sich aus dem
                           Hauptbericht entfernen lassen. */}
-                      {(isClickable || f.entfernt) && !schreibschutz ? (
+                      {(hatEchtenBericht || f.entfernt) && !schreibschutz ? (
                         <button
                           type="button"
                           disabled={fzgberAktionBusy === f.id}
@@ -3665,6 +3761,39 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                         fontSize: 15.5,
                         }}
                     >
+                      {kannPersonal ? (
+                        <FahrzeugPersonalEditor
+                          fahrer={f.fahrer}
+                          kdt={f.kdt}
+                          mannschaft={(f.mannschaftIds ?? []).map((personId, i) => ({
+                            personId,
+                            name: f.mannschaftNamen[i] ?? `Pers-ID ${personId}`,
+                          }))}
+                          freiePlaetze={Math.max(
+                            0,
+                            FAHRZEUGE[f.id].besatzung.mannschaftsplaetzeZusaetzlich -
+                              (f.mannschaftIds?.length ?? 0),
+                          )}
+                          busy={personalBusy}
+                          fehler={personalErr}
+                          onFahrer={() => {
+                            setPersonalErr(null);
+                            setPersonalPicker({ fzgId: f.id, rolle: "fahrer" });
+                          }}
+                          onKdt={() => {
+                            setPersonalErr(null);
+                            setPersonalPicker({ fzgId: f.id, rolle: "kdt" });
+                          }}
+                          onHinzufuegen={() => {
+                            setPersonalErr(null);
+                            setPersonalPicker({ fzgId: f.id, rolle: "mannschaft" });
+                          }}
+                          onEntferne={(personId) =>
+                            void schreibePersonal(f.id, { art: "mannschaft-entfernen", personId })
+                          }
+                        />
+                      ) : (
+                      <>
                       <span
                         style={{
                           fontFamily: "var(--font-mono)",
@@ -3715,6 +3844,8 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                           </span>
                         )}
                       </div>
+                      </>
+                      )}
                       {f.asAktiv > 0 ? (
                         <>
                           <span
@@ -5610,6 +5741,52 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
             busy: false,
           });
         }}
+      />
+
+      {/* ─── PersonPicker: Fahrer / Fahrzeug-Kdt. / Mannschaft eines Fahrzeugs ─── */}
+      <PersonPickerModal
+        open={personalPicker !== null}
+        title={
+          personalPicker?.rolle === "fahrer"
+            ? "Fahrer wählen"
+            : personalPicker?.rolle === "kdt"
+              ? "Fahrzeug-Kdt. wählen"
+              : "Mannschaft hinzufügen"
+        }
+        subtitle={
+          personalPicker
+            ? `${FAHRZEUGE[personalPicker.fzgId].funkrufname} · ${FAHRZEUGE[personalPicker.fzgId].besatzung.typ}`
+            : ""
+        }
+        personen={personen}
+        bereitsGewaehlt={personalGewaehlt}
+        onSelect={(p) => {
+          const ziel = personalPicker;
+          setPersonalPicker(null);
+          if (!ziel) return;
+          if (ziel.rolle === "fahrer") void schreibePersonal(ziel.fzgId, { art: "fahrer", personId: p.syBosId });
+          else if (ziel.rolle === "kdt") void schreibePersonal(ziel.fzgId, { art: "kdt", personId: p.syBosId });
+        }}
+        multiple={personalPicker?.rolle === "mannschaft"}
+        onSelectMultiple={(people) => {
+          const ziel = personalPicker;
+          setPersonalPicker(null);
+          if (!ziel || people.length === 0) return;
+          void schreibePersonal(ziel.fzgId, {
+            art: "mannschaft-hinzu",
+            personIds: people.map((p) => p.syBosId),
+          });
+        }}
+        maxSelect={
+          personalPicker?.rolle === "mannschaft"
+            ? Math.max(
+                0,
+                FAHRZEUGE[personalPicker.fzgId].besatzung.mannschaftsplaetzeZusaetzlich -
+                  (personalFzg?.mannschaftIds?.length ?? 0),
+              )
+            : undefined
+        }
+        onClose={() => setPersonalPicker(null)}
       />
 
       {/* ─── PersonPicker für Bearbeiter ODER Reserve ─── */}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  florianstationBesetzt,
   funkGehoertZuEinsatz,
   funkstatusImEinsatz,
   funkstatusAusUnitStatus,
@@ -126,5 +127,16 @@ describe("Fahrzeug laut Funk im Einsatz (auch ohne Fahrzeugbericht)", () => {
     expect(funkGehoertZuEinsatz({ num1: "", einsatzAlarmIds: ids, einzigerAktiverEinsatz: true })).toBe(true);
     expect(funkGehoertZuEinsatz({ num1: null, einsatzAlarmIds: ids, einzigerAktiverEinsatz: false })).toBe(false);
     expect(funkGehoertZuEinsatz({ einsatzAlarmIds: [undefined], einzigerAktiverEinsatz: true })).toBe(true);
+  });
+});
+
+describe("Florianstation besetzt/unbesetzt", () => {
+  it("1 = besetzt (gruen), 0 = unbesetzt, alles andere unbekannt", () => {
+    expect(florianstationBesetzt("1")).toBe(true);
+    expect(florianstationBesetzt("0")).toBe(false);
+    expect(florianstationBesetzt(" 1 ")).toBe(true);
+    expect(florianstationBesetzt("")).toBeNull();
+    expect(florianstationBesetzt("5")).toBeNull();
+    expect(florianstationBesetzt(undefined)).toBeNull();
   });
 });
