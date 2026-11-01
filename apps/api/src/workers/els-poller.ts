@@ -30,6 +30,7 @@ import { holeEventsRoh, holeUnitsRoh } from "../services/els/client.js";
 import {
   elsAlarmId,
   elsEinsatzort,
+  elsEventBeendet,
   elsEventRelevant,
   elsStichwort,
   findeKandidat,
@@ -132,11 +133,13 @@ export async function pollEventsOnce(): Promise<void> {
   eventsInFlight = true;
   try {
     if (!(await istLeader())) return;
-    const events = (await holeEventsRoh())
+    const alle = (await holeEventsRoh())
       .map(parseEvent)
-      .filter((e): e is ElsEvent => e !== null)
-      .filter(elsEventRelevant);
+      .filter((e): e is ElsEvent => e !== null);
+    const events = alle.filter(elsEventRelevant);
     recordEventsPoll(events.length, null);
+    // Von der Leitstelle als beendet gemeldet -> Einsatzende im Protokoll des Einsatzes.
+    await uebernimmEinsatzende(alle.filter(elsEventBeendet));
     if (events.length === 0) return;
 
     const docs = await ladeEinsaetze();
@@ -153,6 +156,84 @@ export async function pollEventsOnce(): Promise<void> {
   } finally {
     eventsInFlight = false;
   }
+}
+
+/** num1 der ELS-Einsaetze, deren Ende schon uebernommen wurde (RAM; die Chronik-ID verhindert Doppelungen auch nach einem Neustart). */
+const endeUebernommen = new Set<string>();
+/** Aeltere Meldungen ueber ein beendetes Event werden nicht mehr beachtet. */
+const ENDE_MAX_ALTER_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Meldet die Leitstelle einen Einsatz als beendet (`free_time`), wird das als Einsatzende
+ * in den verknuepften, noch AKTIVEN HotDoc-Einsatz uebernommen: Chronik-Eintrag zur Zeit
+ * des Endes und `einsatzende` (nur, wenn dort noch keins steht — eine Eingabe der
+ * Mannschaft/Florianstation bleibt). Wirft nie.
+ */
+async function uebernimmEinsatzende(beendete: ElsEvent[]): Promise<void> {
+  const jetzt = Date.now();
+  const offen = beendete.filter(
+    (e) => !endeUebernommen.has(e.num1) && jetzt - Date.parse(e.freeTime ?? "") < ENDE_MAX_ALTER_MS,
+  );
+  if (offen.length === 0) return;
+  try {
+    const docs = await ladeEinsaetze();
+    for (const e of offen) {
+      const id = elsAlarmId(e.num1);
+      const doc = docs.find((d) => d.alarmId === id || (d.alarmIds ?? []).includes(id));
+      if (!doc) continue;
+      if (doc.status !== "aktiv") {
+        endeUebernommen.add(e.num1); // schon abgeschlossen: nichts mehr zu tun
+        continue;
+      }
+      try {
+        if (await setzeEinsatzende(doc._id, e)) {
+          logger.info({ einsatzId: doc._id, num1: e.num1, ende: e.freeTime }, "ELS: Einsatzende ins Protokoll uebernommen");
+        }
+        endeUebernommen.add(e.num1);
+      } catch (err) {
+        logger.warn({ num1: e.num1, err: errMsg(err) }, "ELS: Einsatzende konnte nicht uebernommen werden");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err: errMsg(err) }, "ELS: Einsatzende-Abgleich fehlgeschlagen");
+  }
+}
+
+/** Schreibt Chronik-Eintrag + Einsatzende. true = neu geschrieben. */
+async function setzeEinsatzende(einsatzId: string, e: ElsEvent): Promise<boolean> {
+  const zeit = e.freeTime as string;
+  const eintragsId = `els-${e.num1}-ende`;
+  for (let versuch = 1; versuch <= 2; versuch++) {
+    const doc = (await db.get(einsatzId)) as Record<string, unknown>;
+    if (doc.status !== "aktiv" || doc.schreibschutz === true) return false;
+    const chronik = Array.isArray(doc.chronik) ? (doc.chronik as Array<{ id?: string }>) : [];
+    if (chronik.some((c) => c.id === eintragsId)) return false;
+    const hatEnde = typeof doc.einsatzende === "string" && doc.einsatzende !== "";
+    const patched: Record<string, unknown> = {
+      ...doc,
+      chronik: [
+        ...chronik,
+        {
+          id: eintragsId,
+          zeitstempel: zeit,
+          fahrzeugId: "blaulichtsms",
+          typ: "auto-blaulichtsms",
+          transkript: "Einsatzende laut Leitstelle (ELS): Einsatz als beendet gemeldet",
+          transkriptStatus: "verfuegbar",
+        },
+      ],
+      ...(hatEnde ? {} : { einsatzende: zeit }),
+      geaendertAm: new Date().toISOString(),
+    };
+    try {
+      await db.insert(patched);
+      return true;
+    } catch (err) {
+      if (statusCode(err) === 409 && versuch === 1) continue;
+      throw err;
+    }
+  }
+  return false;
 }
 
 async function verarbeiteEvent(e: ElsEvent, docs: EinsatzDocMin[]): Promise<void> {

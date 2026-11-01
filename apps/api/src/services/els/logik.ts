@@ -407,6 +407,16 @@ export function elsEventRelevant(e: ElsEvent): boolean {
   return !!e.firstDispatchTime;
 }
 
+/**
+ * Hat die Leitstelle diesen Einsatz als beendet gemeldet (`free_time`)? Nicht: Leitstellen-
+ * Uebungen und als "nicht veroeffentlichen" markierte. Das Ende wird als Einsatzende ins
+ * Protokoll des verknuepften HotDoc-Einsatzes uebernommen (workers/els-poller).
+ */
+export function elsEventBeendet(e: ElsEvent): boolean {
+  if (e.exercise || e.notPublish) return false;
+  return !!e.freeTime;
+}
+
 /** Ist die Wartezeit (Gnadenfrist fuer BlaulichtSMS) seit der Alarmierung abgelaufen? */
 export function graceAbgelaufen(e: ElsEvent, graceSec: number, jetztMs: number = Date.now()): boolean {
   const t = Date.parse(e.firstDispatchTime ?? "");

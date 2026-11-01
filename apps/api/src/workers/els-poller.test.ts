@@ -316,3 +316,70 @@ describe("ELS-Poller: Einheiten", () => {
     expect(state.getElsPollStand().unitsLastError).toBe("timeout");
   });
 });
+
+describe("ELS-Poller: Einsatzende aus der Leitstelle", () => {
+  const ende = (): string => jetztMinus(60); // Ortszeit ohne Zone, wie ELS liefert
+  const einsatz = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+    vorhandenerEinsatz({ alarmIds: ["bls-1", "els-E100"], ...over });
+  const doc = (): { einsatzende?: string; chronik: Array<{ id: string; zeitstempel: string; transkript: string }> } =>
+    docs.get("einsatz:bls-1") as never;
+
+  it("uebernimmt free_time als Einsatzende und schreibt einen Chronik-Eintrag", async () => {
+    docs.set("einsatz:bls-1", einsatz());
+    holeEventsRoh.mockResolvedValue([eventRoh({ free_time: ende() })]);
+    const { poller } = await lade();
+    await poller.pollEventsOnce();
+    const d = doc();
+    expect(d.einsatzende).toBeDefined();
+    expect(Math.abs(Date.parse(d.einsatzende as string) - (Date.now() - 60_000))).toBeLessThan(5_000);
+    expect(d.chronik).toHaveLength(1);
+    expect(d.chronik[0]).toMatchObject({
+      id: "els-E100-ende",
+      transkript: "Einsatzende laut Leitstelle (ELS): Einsatz als beendet gemeldet",
+    });
+    expect(d.chronik[0]?.zeitstempel).toBe(d.einsatzende);
+  });
+
+  it("schreibt nichts doppelt (zweiter Abruf, auch nach Neustart)", async () => {
+    docs.set("einsatz:bls-1", einsatz());
+    holeEventsRoh.mockResolvedValue([eventRoh({ free_time: ende() })]);
+    const a = await lade();
+    await a.poller.pollEventsOnce();
+    await a.poller.pollEventsOnce();
+    expect(doc().chronik).toHaveLength(1);
+    const b = await lade(); // Neustart: RAM leer
+    await b.poller.pollEventsOnce();
+    expect(doc().chronik).toHaveLength(1);
+  });
+
+  it("eine vorhandene Eingabe (Einsatzende) bleibt, der Chronik-Eintrag kommt trotzdem", async () => {
+    docs.set("einsatz:bls-1", einsatz({ einsatzende: "2026-10-27T13:30:00.000Z" }));
+    holeEventsRoh.mockResolvedValue([eventRoh({ free_time: ende() })]);
+    const { poller } = await lade();
+    await poller.pollEventsOnce();
+    expect(doc().einsatzende).toBe("2026-10-27T13:30:00.000Z");
+    expect(doc().chronik).toHaveLength(1);
+  });
+
+  it("abgeschlossener Einsatz bleibt unveraendert", async () => {
+    docs.set("einsatz:bls-1", einsatz({ status: "abgeschlossen", schreibschutz: true }));
+    holeEventsRoh.mockResolvedValue([eventRoh({ free_time: ende() })]);
+    const { poller } = await lade();
+    await poller.pollEventsOnce();
+    expect(doc().einsatzende).toBeUndefined();
+    expect(doc().chronik).toHaveLength(0);
+  });
+
+  it("Leitstellen-Uebung und Event ohne passenden Einsatz: nichts passiert, nichts wird angelegt", async () => {
+    docs.set("einsatz:bls-1", einsatz());
+    holeEventsRoh.mockResolvedValue([
+      eventRoh({ num_1: "E100", exercise: "Y", free_time: ende() }),
+      eventRoh({ num_1: "E999", free_time: ende() }),
+    ]);
+    const { poller } = await lade();
+    await poller.pollEventsOnce();
+    expect(doc().einsatzende).toBeUndefined();
+    expect(doc().chronik).toHaveLength(0);
+    expect(einsatzAnzahl()).toBe(1);
+  });
+});

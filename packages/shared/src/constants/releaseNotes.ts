@@ -21,6 +21,19 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.4",
+    date: "2026-11-01",
+    title: "Personal vom Florian eintragen, Fahrzeuge laut Funk im Einsatz",
+    bullets: [
+      "Die Florianstation kann Fahrer, Fahrzeug-Kdt. und Mannschaft für jedes Fahrzeug eintragen – auch, bevor das Fahrzeug selbst einen Bericht angelegt hat.",
+      "Fahrzeuge, die „Ausgerückt“ oder „Am Einsatzort“ melden, gelten sofort als „Im Einsatz · laut Funk“ – auch ohne eingetragene Mannschaft (nicht mehr „Wartend“).",
+      "Personen aus der Reserve, die auf einem Fahrzeug einen Auftrag übernehmen, zählen nicht mehr als Reserve.",
+      "Karten: Fahrzeuge erscheinen jetzt auch in der externen Kartenansicht und im Backoffice, die Marker sind deckender und die Florianstation ist grün, wenn sie besetzt ist.",
+      "Einsatzprotokoll: „Florianstation besetzt/unbesetzt“ wird festgehalten, und meldet die Leitstelle den Einsatz als beendet, gilt das als Einsatzende.",
+      "Zeitangaben der Leitstelle, die älter als 12 Stunden sind, zeigen „>12 Stunden“ statt einer Uhrzeit.",
+    ],
+  },
+  {
     version: "0.6.3",
     date: "2026-10-30",
     title: "Schnellerer Start, ruhigere Karte, größere Tippflächen",

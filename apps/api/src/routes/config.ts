@@ -217,10 +217,10 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   // gespeichertes Doc im Backoffice, damit kuenftige Releases nicht wieder
   // stillschweigend hinter diesem Default zurueckbleiben.
   "app-version": {
-    currentVersion: "0.6.3",
-    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.3-release.apk",
+    currentVersion: "0.6.4",
+    apkUrl: "https://hotdoc-apk.fly.dev/hotdoc-v0.6.4-release.apk",
     releaseNotes:
-      "v0.6.3 — Schnellerer Start, ruhigere Karte, größere Tippflächen\n\n• Die App startet schneller: Florianstation und Fahrzeugbericht werden erst bei Bedarf geladen.\n• Lagekarte der Florianstation: Sie springt nicht mehr von selbst zum gewählten Fahrzeug zurück, wenn man sie verschiebt.\n• Größere Tippflächen bei Tätigkeiten, „Rückgängig“, „Erneut versuchen“, Einsatzart-Auswahl und im Archiv.\n• Eine korrigierte Einsatzadresse geht bei schlechtem Netz nicht mehr verloren, sie wird nachgesendet und ein Fehler wird angezeigt.\n• „Fahrzeugbericht entfernen“ fragt jetzt mit einem eigenen Dialog nach.\n• Weniger unnötiges Neuzeichnen der Seiten und weniger Netzabfragen im Hintergrund.",
+      "v0.6.4 — Personal vom Florian eintragen, Fahrzeuge laut Funk im Einsatz\n\n• Die Florianstation kann Fahrer, Fahrzeug-Kdt. und Mannschaft für jedes Fahrzeug eintragen – auch, bevor das Fahrzeug selbst einen Bericht angelegt hat.\n• Fahrzeuge, die „Ausgerückt“ oder „Am Einsatzort“ melden, gelten sofort als „Im Einsatz · laut Funk“ – auch ohne eingetragene Mannschaft (nicht mehr „Wartend“).\n• Personen aus der Reserve, die auf einem Fahrzeug einen Auftrag übernehmen, zählen nicht mehr als Reserve.\n• Karten: Fahrzeuge erscheinen jetzt auch in der externen Kartenansicht und im Backoffice, die Marker sind deckender und die Florianstation ist grün, wenn sie besetzt ist.\n• Einsatzprotokoll: „Florianstation besetzt/unbesetzt“ wird festgehalten, und meldet die Leitstelle den Einsatz als beendet, gilt das als Einsatzende.\n• Zeitangaben der Leitstelle, die älter als 12 Stunden sind, zeigen „>12 Stunden“ statt einer Uhrzeit.",
     minSupported: "0.1.30",
   },
   // Issue 16 (Einsatz-Test 2026-06-02): Gefaehrliche-Stoffe-Liste fuer
