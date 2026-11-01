@@ -57,6 +57,8 @@ import {
   // AUDIT-07/EL-11a (Audit 2026-06-12): Fallback-Berichtsnummer fuer die
   // Abschluss-Quittung, solange die Response keine echte Nummer liefert.
   deriveBerichtNrFromId,
+  eingesetztePersonIds,
+  reserveOhneEingesetzte,
   FAHRZEUGE,
   FLORIAN_POSITION,
   SONSTIGE_FF as DEFAULT_SONSTIGE_FF,
@@ -645,6 +647,25 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
   const [downloadBusy, setDownloadBusy] = useState<"pdf" | "spick" | null>(null);
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
+
+  /**
+   * Personen, die im aktiven Einsatz gerade auf einem Fahrzeug eingesetzt sind
+   * (Mannschaft, Fahrer, Fahrzeug-Kdt; entfernte Fahrzeugberichte zaehlen nicht).
+   * Wer als Reserve erfasst wurde und spaeter einen Auftrag uebernimmt (auf ein
+   * weiteres Fahrzeug steigt), ist damit AKTIV und nicht mehr Reserve — dieselbe
+   * Regel wie im Bericht-PDF (routes/pdf.ts, "Bereitschaft").
+   */
+  const eingesetztIds = useMemo(
+    () => eingesetztePersonIds(aktiverEinsatzId ? (fzgberByEinsatz[aktiverEinsatzId] ?? []) : []),
+    [fzgberByEinsatz, aktiverEinsatzId],
+  );
+  /** Reserve, die noch wirklich Reserve ist (gespeicherte Liste minus inzwischen Eingesetzte). */
+  const reserveOffen = useMemo(
+    () => reserveOhneEingesetzte(editor.reservePersonIds, eingesetztIds),
+    [editor.reservePersonIds, eingesetztIds],
+  );
+  /** Anzahl der gespeicherten Reserve-Personen, die inzwischen auf einem Fahrzeug aktiv sind. */
+  const reserveAktivGeworden = editor.reservePersonIds.length - reserveOffen.length;
   const [editorDirty, setEditorDirty] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
@@ -3020,9 +3041,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   {aggregateMannschaft}
                   <span className="unit">Pers.</span>
                   {/* Reserve (bei Uebungen = Teilnehmer ohne Fahrzeug) sichtbar machen */}
-                  {editor.reservePersonIds.length > 0 ? (
+                  {reserveOffen.length > 0 ? (
                     <span className="unit">
-                      {" "}+ {editor.reservePersonIds.length} {einsatzTyp === "uebung" ? "ohne Fzg." : "Reserve"}
+                      {" "}+ {reserveOffen.length} {einsatzTyp === "uebung" ? "ohne Fzg." : "Reserve"}
                     </span>
                   ) : null}
                 </div>
@@ -3794,7 +3815,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
               Bearbeiter / Reserve
             </div>
             <span className="card-meta">
-              <span className="num">{editor.reservePersonIds.length}</span> in Reserve
+              <span className="num">{reserveOffen.length}</span> in Reserve
             </span>
           </div>
 
@@ -3881,9 +3902,9 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
             <div className="caption" style={{ marginTop: 6, marginBottom: 2 }}>
               Reserve · zur Verfügung gestanden, nicht ausgerückt
             </div>
-            {editor.reservePersonIds.length > 0 ? (
+            {reserveOffen.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {editor.reservePersonIds.map((pid) => (
+                {reserveOffen.map((pid) => (
                   <div key={pid} className="person filled">
                     <span className="avatar color-c">
                       {initials(personenMap.get(pid) ?? "")}
@@ -3918,9 +3939,16 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
                   padding: "4px 2px",
                 }}
               >
-                Keine Reserve-Personen erfasst.
+                {reserveAktivGeworden > 0 ? "Keine Reserve mehr — alle sind im Einsatz." : "Keine Reserve-Personen erfasst."}
               </div>
             )}
+            {reserveAktivGeworden > 0 ? (
+              <div style={{ fontSize: 14.5, color: "var(--fg-3)", padding: "2px 2px 0" }}>
+                {reserveAktivGeworden === 1
+                  ? "1 Person aus der Reserve ist inzwischen auf einem Fahrzeug im Einsatz und zählt nicht mehr als Reserve."
+                  : `${reserveAktivGeworden} Personen aus der Reserve sind inzwischen auf einem Fahrzeug im Einsatz und zählen nicht mehr als Reserve.`}
+              </div>
+            ) : null}
             {!schreibschutz ? (
               <button
                 type="button"
@@ -5558,6 +5586,8 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
           personPickerOpen === "reserve"
             ? new Set([
                 ...editor.reservePersonIds,
+                // Wer schon auf einem Fahrzeug eingesetzt ist, ist aktiv und gehoert nicht in die Reserve.
+                ...eingesetztIds,
                 ...(editor.bearbeiterPersonId !== null
                   ? [editor.bearbeiterPersonId]
                   : []),
