@@ -4,6 +4,8 @@ import {
   TARIFORDNUNG_2026,
   euroText,
   findeTarifPosition,
+  type TarifEinstellungen,
+  normalisiereTarifEinstellungen,
   type VerrechnungEingaben,
   type VerrechnungErgebnis,
   type VerrechnungFzgEingabe,
@@ -11,6 +13,7 @@ import {
   type VerrechnungsArt,
 } from "@hotdoc/shared";
 import { getVerrechnung, speichereVerrechnung, vorschauVerrechnung } from "../api/verrechnung";
+import { getConfig } from "../api/config";
 
 /**
  * Verrechnung nach Feuerwehr-Tarifordnung 2026 im Bericht-Detail.
@@ -76,6 +79,15 @@ export function VerrechnungPanel({ einsatzId, fahrzeuge, staplerEingesetzt, darf
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const vorschauSeq = useRef(0);
+  const [preisliste, setPreisliste] = useState<TarifEinstellungen["verbrauchsliste"]>([]);
+
+  useEffect(() => {
+    void getConfig<Partial<TarifEinstellungen>>("tarifordnung")
+      .then((r) => setPreisliste(normalisiereTarifEinstellungen(r.data).verbrauchsliste))
+      .catch(() => {
+        /* Preisliste optional — ohne sie bleibt die manuelle Erfassung */
+      });
+  }, []);
 
   useEffect(() => {
     let abgebrochen = false;
@@ -322,6 +334,18 @@ export function VerrechnungPanel({ einsatzId, fahrzeuge, staplerEingesetzt, darf
           {(eingaben.verbrauch ?? []).map((v) => {
             const upd = (patch: Partial<typeof v>) =>
               setEingaben({ ...eingaben, verbrauch: (eingaben.verbrauch ?? []).map((x) => (x.id === v.id ? { ...x, ...patch } : x)) });
+            if (v.listeId) {
+              return (
+                <div key={v.id} style={{ display: "grid", gridTemplateColumns: "1fr 100px 160px auto", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 13 }}><span style={{ fontFamily: "var(--font-mono)", color: "var(--fg-3)" }}>{v.pos}</span> {v.text}</span>
+                  <input className="input num" placeholder="Menge" inputMode="decimal" value={v.menge ?? ""} onChange={(ev) => { const n = zahl(ev.target.value); const { menge: _m, ...rest } = v; void _m; setEingaben({ ...eingaben, verbrauch: (eingaben.verbrauch ?? []).map((x) => (x.id === v.id ? (n && n > 0 ? { ...rest, menge: n } : rest) : x)) }); }} />
+                  <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Preis aus Preisliste (Menge × Preis)</span>
+                  <button type="button" className="add-btn" aria-label="Entfernen" onClick={() => setEingaben({ ...eingaben, verbrauch: (eingaben.verbrauch ?? []).filter((x) => x.id !== v.id) })}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              );
+            }
             return (
               <div key={v.id} style={{ display: "grid", gridTemplateColumns: "230px 1fr 110px auto", gap: 8 }}>
                 <select className="input" value={v.pos} onChange={(ev) => upd({ pos: ev.target.value as typeof v.pos })}>
@@ -338,10 +362,29 @@ export function VerrechnungPanel({ einsatzId, fahrzeuge, staplerEingesetzt, darf
             );
           })}
         </div>
-        <button type="button" className="cta" style={{ width: "auto", marginTop: 8, padding: "6px 12px", fontSize: 12, background: "transparent", color: "var(--info)", border: "1px solid var(--info)" }}
-          onClick={() => setEingaben({ ...eingaben, verbrauch: [...(eingaben.verbrauch ?? []), { id: neueId(), pos: "14.04", text: "" }] })}>
-          <Plus size={14} /> Verbrauchsmaterial hinzufügen
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          {preisliste.length > 0 ? (
+            <select
+              className="input"
+              style={{ maxWidth: 320 }}
+              value=""
+              onChange={(ev) => {
+                const e = preisliste.find((x) => x.id === ev.target.value);
+                if (!e) return;
+                setEingaben({ ...eingaben, verbrauch: [...(eingaben.verbrauch ?? []), { id: neueId(), pos: e.pos, text: e.text, listeId: e.id, menge: 1 }] });
+              }}
+            >
+              <option value="">+ aus Preisliste wählen …</option>
+              {preisliste.map((e) => (
+                <option key={e.id} value={e.id}>{e.text} · {euroText(e.preis)} / {e.einheit}</option>
+              ))}
+            </select>
+          ) : null}
+          <button type="button" className="cta" style={{ width: "auto", padding: "6px 12px", fontSize: 12, background: "transparent", color: "var(--info)", border: "1px solid var(--info)" }}
+            onClick={() => setEingaben({ ...eingaben, verbrauch: [...(eingaben.verbrauch ?? []), { id: neueId(), pos: "14.04", text: "" }] })}>
+            <Plus size={14} /> Verbrauchsmaterial manuell
+          </button>
+        </div>
 
         <h4 style={{ margin: "16px 0 4px", fontSize: 13 }}>Bemerkung (erscheint auf dem Verrechnungsblatt)</h4>
         <textarea className="input" rows={2} style={{ width: "100%", resize: "vertical" }} value={eingaben.bemerkung ?? ""} onChange={(ev) => { const { bemerkung: _b, ...rest } = eingaben; void _b; setEingaben(ev.target.value ? { ...rest, bemerkung: ev.target.value } : rest); }} />
@@ -360,7 +403,8 @@ function VorschauTabelle({ e }: { e: VerrechnungErgebnis }) {
   const td = { padding: "4px 6px", fontSize: 12.5, borderBottom: "1px solid var(--border)", verticalAlign: "top" as const };
   return (
     <div>
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{e.artText}</div>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{e.artText}</div>
+      <div style={{ fontSize: 12, color: "var(--fg-2)", marginBottom: 6 }}>{e.gebuehrenText}</div>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>

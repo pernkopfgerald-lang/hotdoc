@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  GEBUEHREN_TEXT_STANDARD,
   TARIFORDNUNG_2026,
+  TARIF_STANDARD_EINSTELLUNGEN,
   abrechnungsStunden,
   baueVerrechnung,
   berechnePosition,
@@ -207,13 +209,7 @@ describe("Verrechnungsblatt", () => {
       ...basis,
       fahrzeuge: [],
       oelbindemittelSaecke: 3,
-      einstellungen: {
-        fahrzeugTarif: {},
-        anhaengerTarif: {},
-        staplerTarif: "2.20",
-        preise: {},
-        verbrauchspreise: { oelbindemittelSack: 12.5 },
-      },
+      einstellungen: { ...TARIF_STANDARD_EINSTELLUNGEN, fahrzeugTarif: {}, anhaengerTarif: {}, verbrauchspreise: { oelbindemittelSack: 12.5 } },
     });
     expect(ok.zeilen[0]?.betrag).toBe(37.5);
     expect(ok.hatOffenePositionen).toBe(false);
@@ -231,14 +227,47 @@ describe("Verrechnungsblatt", () => {
     const r = baueVerrechnung({
       ...basis,
       fahrzeuge: [fzg("kdo", "Kommando", "12:00", "13:00", [])],
-      einstellungen: {
-        fahrzeugTarif: { kdo: "2.01" },
-        anhaengerTarif: {},
-        staplerTarif: "2.20",
-        preise: { "2.01": { satzStunde: 70 } },
-        verbrauchspreise: {},
-      },
+      einstellungen: { ...TARIF_STANDARD_EINSTELLUNGEN, fahrzeugTarif: { kdo: "2.01" }, anhaengerTarif: {}, preise: { "2.01": { satzStunde: 70 } } },
     });
     expect(r.zeilen[0]?.betrag).toBe(70);
+  });
+});
+
+describe("Gebuehrenhinweis und Preisliste Verbrauchsmaterial", () => {
+  const basis = { alarmierungZeit: "2026-11-01T11:11:00.000Z", einsatzende: "2026-11-01T13:00:00.000Z", fahrzeuge: [] as VerrechnungFahrzeug[] };
+
+  it("Standardtext nennt Tarifordnung und Gemeinderatsbeschluss; Platzhalter-Datum loest eine Warnung aus", () => {
+    const r = baueVerrechnung({ ...basis });
+    expect(r.gebuehrenText).toBe(GEBUEHREN_TEXT_STANDARD);
+    expect(r.gebuehrenText).toContain("Tarifordnung");
+    expect(r.gebuehrenText).toContain("Gemeinderatsbeschluss der Gemeinde Eberstalzell");
+    expect(r.warnungen.join(" ")).toContain("Datum des Gemeinderatsbeschlusses fehlt");
+  });
+
+  it("editierter Text mit Datum wird uebernommen, keine Warnung mehr", () => {
+    const text = "Gebühren gemäß Tarifordnung 2026 sowie Gemeinderatsbeschluss Gemeinde Eberstalzell vom 18.12.2025";
+    const r = baueVerrechnung({ ...basis, einstellungen: { ...TARIF_STANDARD_EINSTELLUNGEN, gebuehrenText: text } });
+    expect(r.gebuehrenText).toBe(text);
+    expect(r.warnungen.join(" ")).not.toContain("Gemeinderatsbeschlusses");
+  });
+
+  it("Verbrauchsmaterial aus der Preisliste: Betrag = Menge × Preis", () => {
+    const r = baueVerrechnung({
+      ...basis,
+      eingaben: { verbrauch: [{ id: "v", pos: "14.04", text: "Bindemittel", listeId: "l1", menge: 4 }] },
+      einstellungen: {
+        ...TARIF_STANDARD_EINSTELLUNGEN,
+        verbrauchsliste: [{ id: "l1", pos: "14.04", text: "Bindemittel", einheit: "Sack", preis: 12.5 }],
+      },
+    });
+    expect(r.zeilen[0]).toMatchObject({ gruppe: "verbrauch", betrag: 50 });
+    expect(r.zeilen[0]?.mengeText).toContain("4 Sack");
+    expect(r.zeilen[0]?.tarifText).toContain("12,50 / Sack");
+  });
+
+  it("geloeschter Preislisten-Eintrag: Warnung statt Absturz", () => {
+    const r = baueVerrechnung({ ...basis, eingaben: { verbrauch: [{ id: "v", pos: "14.04", text: "X", listeId: "weg" }] } });
+    expect(r.warnungen.join(" ")).toContain("Preisliste nicht mehr vorhanden");
+    expect(r.zeilen[0]?.betrag).toBeNull();
   });
 });

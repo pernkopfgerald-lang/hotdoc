@@ -265,6 +265,18 @@ export function validiereTarifordnungConfig(roh: unknown): { ok: true; data: Tar
       }
     }
   }
+  if (d.gebuehrenText.length > 600) return { ok: false, fehler: "Gebührenhinweis zu lang (max. 600 Zeichen)" };
+  if (d.verbrauchsliste.length > 200) return { ok: false, fehler: "Zu viele Einträge in der Verbrauchsmaterial-Preisliste" };
+  const ids = new Set<string>();
+  for (const e of d.verbrauchsliste) {
+    if (!/^14\.0[1-4]$/.test(e.pos)) return { ok: false, fehler: `Verbrauchsmaterial "${e.text}": Position muss 14.01–14.04 sein` };
+    if (!e.text?.trim() || e.text.length > 120) return { ok: false, fehler: "Verbrauchsmaterial: Bezeichnung fehlt oder zu lang" };
+    if (typeof e.preis !== "number" || !Number.isFinite(e.preis) || e.preis < 0 || e.preis > 100000) {
+      return { ok: false, fehler: `Verbrauchsmaterial "${e.text}": ungültiger Preis` };
+    }
+    if (ids.has(e.id)) return { ok: false, fehler: "Doppelte ID in der Preisliste" };
+    ids.add(e.id);
+  }
   const ps = d.verbrauchspreise.oelbindemittelSack;
   if (ps !== undefined && (typeof ps !== "number" || !Number.isFinite(ps) || ps < 0 || ps > 100000)) {
     return { ok: false, fehler: "Ungueltiger Preis Oelbindemittel" };

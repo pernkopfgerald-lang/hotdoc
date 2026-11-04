@@ -32,6 +32,7 @@ export const VerrechnungVerbrauchSchema = z.object({
   text: z.string().min(1).max(200),
   menge: z.number().positive().max(100000).optional(),
   betrag: z.number().min(0).max(1_000_000).optional(),
+  listeId: z.string().min(1).max(40).optional(),
 });
 
 export const VerrechnungEingabenSchema = z.object({

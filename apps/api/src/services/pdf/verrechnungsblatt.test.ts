@@ -61,6 +61,18 @@ describe("Verrechnungsblatt im Einsatzbericht", () => {
     expect(renderHauptberichtHtml({ ...basis, verrechnung: verrechnung("nicht-hoheitlich") } as BerichtDaten)).toContain("Nicht-hoheitlicher Einsatz");
   });
 
+  it("druckt den Gebuehrenhinweis (Tarifordnung + Gemeinderatsbeschluss) am Blatt", () => {
+    const v = baueVerrechnung({
+      fahrzeuge: [],
+      einstellungen: { ...TARIF_STANDARD_EINSTELLUNGEN, gebuehrenText: "Gebühren gemäß Tarifordnung sowie Gemeinderatsbeschluss Gemeinde Eberstalzell vom 18.12.2025" },
+    });
+    const html = renderHauptberichtHtml({ ...basis, verrechnung: v } as BerichtDaten);
+    expect(html).toContain("Rechtsgrundlage der Gebühren");
+    expect(html).toContain("Gemeinderatsbeschluss Gemeinde Eberstalzell vom 18.12.2025");
+    const md = renderBerichtMarkdown({ ...basis, verrechnung: v } as BerichtDaten, { bearbeiter: undefined, reserve: [] });
+    expect(md).toContain("Gemeinderatsbeschluss Gemeinde Eberstalzell vom 18.12.2025");
+  });
+
   it("nennt den Grundsatz: verlastete Geraete werden nicht gesondert verrechnet", () => {
     const html = renderHauptberichtHtml({ ...basis, verrechnung: verrechnung() } as BerichtDaten);
     expect(html).toContain("nicht gesondert verrechnet");
@@ -104,6 +116,12 @@ describe("config:tarifordnung — Validierung", () => {
   it("lehnt negative Preise ab", () => {
     expect(validiereTarifordnungConfig({ preise: { "2.01": { satzStunde: -1 } } }).ok).toBe(false);
     expect(validiereTarifordnungConfig({ verbrauchspreise: { oelbindemittelSack: -3 } }).ok).toBe(false);
+  });
+  it("validiert Preisliste und Gebuehrenhinweis", () => {
+    expect(validiereTarifordnungConfig({ verbrauchsliste: [{ id: "a", pos: "14.04", text: "Sand", einheit: "kg", preis: 1.2 }] }).ok).toBe(true);
+    expect(validiereTarifordnungConfig({ verbrauchsliste: [{ id: "a", pos: "2.04", text: "x", einheit: "kg", preis: 1 }] }).ok).toBe(false);
+    expect(validiereTarifordnungConfig({ verbrauchsliste: [{ id: "a", pos: "14.04", text: "x", einheit: "kg", preis: -1 }] }).ok).toBe(false);
+    expect(validiereTarifordnungConfig({ gebuehrenText: "x".repeat(601) }).ok).toBe(false);
   });
   it("normalisiert fehlende Teile mit den Standardwerten", () => {
     const r = validiereTarifordnungConfig({ preise: { "2.01": { satzStunde: 70 } } });

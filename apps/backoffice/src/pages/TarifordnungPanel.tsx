@@ -2,6 +2,7 @@ import { Euro, RotateCcw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   FAHRZEUGE,
+  GEBUEHREN_TEXT_STANDARD,
   TARIFORDNUNG_2026,
   TARIFORDNUNG_JAHR,
   TARIFORDNUNG_STAND,
@@ -13,6 +14,7 @@ import {
   type PreisUeberschreibung,
   type TarifEinstellungen,
   type TarifPosition,
+  type VerbrauchListenEintrag,
 } from "@hotdoc/shared";
 import { getConfig, putConfig } from "../api/config";
 import { FAHRZEUG_IDS } from "../lib/fahrzeuge";
@@ -65,7 +67,6 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
   const [dirty, setDirty] = useState(false);
   const [suche, setSuche] = useState("");
   const [gruppe, setGruppe] = useState<number | "alle">("alle");
-  const [preiseBearbeiten, setPreiseBearbeiten] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -179,6 +180,40 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
 
       <section className="card">
         <div className="card-head">
+          <div className="card-title">Gebührenhinweis am Verrechnungsblatt</div>
+        </div>
+        <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--fg-2)", lineHeight: 1.5 }}>
+          Dieser Text wird auf <strong>jedem Verrechnungsblatt</strong> als „Rechtsgrundlage der Gebühren“ angedruckt (und im
+          Markdown-Export geführt). Trage hier Tarifordnung und das <strong>Datum des Gemeinderatsbeschlusses</strong> ein.
+        </p>
+        <textarea
+          className="input"
+          rows={3}
+          maxLength={600}
+          style={{ width: "100%", resize: "vertical" }}
+          value={cfg.gebuehrenText}
+          onChange={(e) => setCfg({ ...cfg, gebuehrenText: e.target.value })}
+        />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 6, fontSize: 12.5, flexWrap: "wrap" }}>
+          {/_{2,}/.test(cfg.gebuehrenText) ? (
+            <span style={{ color: "var(--warn)" }}>
+              Das Datum ist noch ein Platzhalter („__.__.____“) – bitte durch das Datum des Gemeinderatsbeschlusses ersetzen.
+            </span>
+          ) : (
+            <span style={{ color: "var(--ok)" }}>Text vollständig</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setCfg({ ...cfg, gebuehrenText: GEBUEHREN_TEXT_STANDARD })}
+            style={{ marginLeft: "auto", border: 0, background: "transparent", color: "var(--info)", cursor: "pointer", fontSize: 12.5, textDecoration: "underline" }}
+          >
+            Standardtext einsetzen
+          </button>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-head">
           <div className="card-title">Zuordnung der Fahrzeuge zu den Tarifpositionen (Tarif A, Pkt. 2)</div>
         </div>
         <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--fg-2)" }}>
@@ -230,6 +265,53 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
             }}
           />
         </label>
+
+        <h4 style={{ margin: "18px 0 6px", fontSize: 13 }}>Preisliste Verbrauchsmaterial</h4>
+        <p style={{ margin: "0 0 8px", fontSize: 12.5, color: "var(--fg-3)" }}>
+          Hier hinterlegte Artikel (mit Preis je Einheit) kannst du im Bericht direkt auswählen – Menge × Preis wird berechnet.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {cfg.verbrauchsliste.map((e) => {
+            const upd = (patch: Partial<VerbrauchListenEintrag>) =>
+              setCfg({ ...cfg, verbrauchsliste: cfg.verbrauchsliste.map((x) => (x.id === e.id ? { ...x, ...patch } : x)) });
+            return (
+              <div key={e.id} style={{ display: "grid", gridTemplateColumns: "210px 1fr 90px 110px auto", gap: 8 }}>
+                <select className="input" value={e.pos} onChange={(ev) => upd({ pos: ev.target.value as VerbrauchListenEintrag["pos"] })}>
+                  <option value="14.01">14.01 Kraftstoffe, Öle, Reinigung</option>
+                  <option value="14.02">14.02 Pölzmaterial</option>
+                  <option value="14.03">14.03 Atemschutzmaterial</option>
+                  <option value="14.04">14.04 Sonstiges</option>
+                </select>
+                <input className="input" placeholder="Bezeichnung (z. B. Diesel)" value={e.text} onChange={(ev) => upd({ text: ev.target.value })} />
+                <input className="input" placeholder="Einheit" value={e.einheit} onChange={(ev) => upd({ einheit: ev.target.value })} />
+                <input
+                  key={`${e.id}-${e.preis}`}
+                  className="input num"
+                  placeholder="Preis €"
+                  inputMode="decimal"
+                  defaultValue={String(e.preis).replace(".", ",")}
+                  onBlur={(ev) => upd({ preis: parseZahl(ev.target.value) ?? 0 })}
+                />
+                <button type="button" className="add-btn" aria-label="Entfernen" onClick={() => setCfg({ ...cfg, verbrauchsliste: cfg.verbrauchsliste.filter((x) => x.id !== e.id) })}>
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          className="cta"
+          style={{ width: "auto", marginTop: 8, padding: "6px 12px", fontSize: 12, background: "transparent", color: "var(--info)", border: "1px solid var(--info)" }}
+          onClick={() =>
+            setCfg({
+              ...cfg,
+              verbrauchsliste: [...cfg.verbrauchsliste, { id: `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, pos: "14.01", text: "", einheit: "Stk.", preis: 0 }],
+            })
+          }
+        >
+          + Artikel hinzufügen
+        </button>
       </section>
 
       <section className="card">
@@ -237,10 +319,6 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
           <div className="card-title">Tarifverzeichnis · Anlage I (Tarif A–E)</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {ueberschriebene > 0 ? <span className="badge neutral">{ueberschriebene} Preis(e) überschrieben</span> : null}
-            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
-              <input type="checkbox" checked={preiseBearbeiten} onChange={(e) => setPreiseBearbeiten(e.target.checked)} />
-              Preise bearbeiten
-            </label>
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
@@ -257,11 +335,11 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
             ))}
           </select>
         </div>
-        {preiseBearbeiten ? (
-          <p style={{ margin: "0 0 8px", fontSize: 12.5, color: "var(--warn)" }}>
-            Nur bei einer neuen Tarifordnung ändern. Geänderte Preise sind markiert und lassen sich zurücksetzen.
-          </p>
-        ) : null}
+        <p style={{ margin: "0 0 8px", fontSize: 12.5, color: "var(--fg-2)" }}>
+          Alle Preise sind direkt editierbar (z. B. wenn der Gemeinderat abweichende Sätze beschließt oder eine neue
+          Tarifordnung gilt). Geänderte Preise sind farbig markiert und lassen sich mit dem Pfeil auf den Wert der
+          Tarifordnung zurücksetzen. Mit „Speichern“ gelten sie sofort für alle Verrechnungsblätter.
+        </p>
         <div style={{ overflowX: "auto", maxHeight: 520, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead style={{ position: "sticky", top: 0, background: "var(--surface-3)" }}>
@@ -281,8 +359,9 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
                 const feld = (k: keyof PreisUeberschreibung, label: string) => {
                   const wert = w[k];
                   if (wert === undefined) return null;
-                  return preiseBearbeiten ? (
+                  return (
                     <input
+                      key={`${p.pos}-${k}-${wert}`}
                       className="input num"
                       style={{ width: 92, textAlign: "right", ...(o?.[k] !== undefined ? { borderColor: "var(--warn)" } : {}) }}
                       title={label}
@@ -290,8 +369,6 @@ export function TarifordnungPanel({ onDirtyChange }: { onDirtyChange?: (dirty: b
                       defaultValue={String(wert).replace(".", ",")}
                       onBlur={(e) => setPreis(p.pos, k, parseZahl(e.target.value))}
                     />
-                  ) : (
-                    <span style={{ fontFamily: "var(--font-mono)" }}>{euroText(wert)}</span>
                   );
                 };
                 return (

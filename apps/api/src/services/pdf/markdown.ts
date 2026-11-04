@@ -332,6 +332,7 @@ _Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${formatTime(d
     const v = d.verrechnung;
     teile.push(h2(`Verrechnung — Feuerwehr-Tarifordnung ${v.tarifJahr}`));
     teile.push(feld("Verrechnungsart", v.artText));
+    teile.push(feld("Rechtsgrundlage der Gebühren", v.gebuehrenText));
     teile.push("");
     teile.push("| Pos. | Leistung | Dauer / Menge | Tarif | Betrag (EUR) |");
     teile.push("|---|---|---|---|---:|");

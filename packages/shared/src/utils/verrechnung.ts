@@ -42,6 +42,22 @@ export interface PreisUeberschreibung {
   mindestbetrag?: number;
 }
 
+/** Eintrag der pflegbaren Preisliste fuer Verbrauchsmaterial (Tarif D, Tagespreise). */
+export interface VerbrauchListenEintrag {
+  id: string;
+  /** 14.01 Kraftstoffe/Oele, 14.02 Poelzmaterial, 14.03 Atemschutz, 14.04 Sonstiges. */
+  pos: "14.01" | "14.02" | "14.03" | "14.04";
+  text: string;
+  /** Einheit fuer die Anzeige, z. B. "Sack", "Liter", "Stk." */
+  einheit: string;
+  /** Preis je Einheit in EURO (Tagespreis). */
+  preis: number;
+}
+
+/** Vorbelegung des Gebuehrenhinweises am Verrechnungsblatt (im Backoffice editierbar). */
+export const GEBUEHREN_TEXT_STANDARD =
+  "Gebühren gemäß Feuerwehr-Tarifordnung 2026 (Oö. Landes-Feuerwehrverband, Richtlinie 6.3.006) sowie Gemeinderatsbeschluss der Gemeinde Eberstalzell vom __.__.____";
+
 /** Konfiguration (Backoffice "Tarifordnung") — config:tarifordnung. */
 export interface TarifEinstellungen {
   /** Fahrzeug-Id → Tarifposition (Anlage I, Tarif A, Pkt. 2), z. B. "lfa-b": "2.04". */
@@ -54,6 +70,13 @@ export interface TarifEinstellungen {
   preise: Record<string, PreisUeberschreibung>;
   /** Tagespreise fuer Verbrauchsmaterial (Tarif D), die wir kennen. */
   verbrauchspreise: { oelbindemittelSack?: number };
+  /** Pflegbare Preisliste fuer Verbrauchsmaterial (Auswahl im Bericht, Preis je Einheit). */
+  verbrauchsliste: VerbrauchListenEintrag[];
+  /**
+   * Gebuehrenhinweis, der am Verrechnungsblatt angedruckt wird — Rechtsgrundlage
+   * (Tarifordnung + Gemeinderatsbeschluss mit Datum). Im Backoffice editierbar.
+   */
+  gebuehrenText: string;
 }
 
 export const TARIF_STANDARD_EINSTELLUNGEN: TarifEinstellungen = {
@@ -71,6 +94,8 @@ export const TARIF_STANDARD_EINSTELLUNGEN: TarifEinstellungen = {
   staplerTarif: "2.20",
   preise: {},
   verbrauchspreise: {},
+  verbrauchsliste: [],
+  gebuehrenText: GEBUEHREN_TEXT_STANDARD,
 };
 
 /** Einstellungen aus einem (evtl. unvollstaendigen) config-Doc auffuellen. */
@@ -83,6 +108,9 @@ export function normalisiereTarifEinstellungen(roh: unknown): TarifEinstellungen
     staplerTarif: typeof r.staplerTarif === "string" && r.staplerTarif ? r.staplerTarif : s.staplerTarif,
     preise: { ...(r.preise ?? {}) },
     verbrauchspreise: { ...(r.verbrauchspreise ?? {}) },
+    verbrauchsliste: Array.isArray(r.verbrauchsliste) ? r.verbrauchsliste.filter((e) => e && typeof e.id === "string") : [],
+    gebuehrenText:
+      typeof r.gebuehrenText === "string" && r.gebuehrenText.trim() ? r.gebuehrenText.trim() : s.gebuehrenText,
   };
 }
 
@@ -120,6 +148,8 @@ export interface VerrechnungVerbrauch {
   menge?: number;
   /** Gesamtbetrag in EURO (nach Tagespreis). */
   betrag?: number;
+  /** Verweis auf die Preisliste (config:tarifordnung.verbrauchsliste): Betrag = Menge × Preis. */
+  listeId?: string;
 }
 
 export interface VerrechnungEingaben {
@@ -179,6 +209,8 @@ export interface VerrechnungErgebnis {
   art: VerrechnungsArt | null;
   /** Ueberschrift fuer das Verrechnungsblatt. */
   artText: string;
+  /** Rechtsgrundlage am Blatt: Tarifordnung + Gemeinderatsbeschluss (Backoffice-Text). */
+  gebuehrenText: string;
   zeilen: VerrechnungsZeile[];
   /** Summe aller erfassten Betraege (offene Positionen zaehlen 0). */
   summe: number;
@@ -557,13 +589,17 @@ export function baueVerrechnung(input: VerrechnungInput): VerrechnungErgebnis {
   }
   for (const v of eing.verbrauch ?? []) {
     const t = pos(v.pos);
+    const eintrag = v.listeId ? cfg.verbrauchsliste.find((e) => e.id === v.listeId) : undefined;
+    if (v.listeId && !eintrag) warnungen.push(`Verbrauchsmaterial „${v.text}“: Eintrag der Preisliste nicht mehr vorhanden.`);
+    const menge = v.menge && v.menge > 0 ? v.menge : eintrag ? 1 : undefined;
+    const betrag = v.betrag !== undefined ? v.betrag : eintrag && menge !== undefined ? eintrag.preis * menge : undefined;
     zeilen.push({
       gruppe: "verbrauch",
       pos: v.pos,
       text: `${v.text}${t ? ` (${t.bezeichnung})` : ""}`,
-      mengeText: v.menge && v.menge > 0 ? `${dezimal(v.menge)} Stk./Einh.` : "nach Verbrauch",
-      tarifText: "nach Tagespreis",
-      betrag: v.betrag !== undefined ? runde(v.betrag) : null,
+      mengeText: menge !== undefined ? `${dezimal(menge)} ${eintrag?.einheit ?? "Stk./Einh."}` : "nach Verbrauch",
+      tarifText: eintrag ? `${euroText(eintrag.preis)} / ${eintrag.einheit} (Tagespreis)` : "nach Tagespreis",
+      betrag: betrag !== undefined ? runde(betrag) : null,
     });
   }
 
@@ -572,6 +608,9 @@ export function baueVerrechnung(input: VerrechnungInput): VerrechnungErgebnis {
   if (offen) warnungen.push("Mindestens eine Position hat noch keinen Betrag (nach Aufwand/Tagespreis) – Summe ist vorläufig.");
   if (zeilen.length === 0) warnungen.push("Keine verrechenbaren Leistungen erfasst.");
   if (!art) warnungen.push("Verrechnungsart (hoheitlich / nicht-hoheitlich) ist noch nicht festgelegt.");
+  if (/_{2,}/.test(cfg.gebuehrenText)) {
+    warnungen.push("Gebührenhinweis: Datum des Gemeinderatsbeschlusses fehlt noch (Backoffice → Tarifordnung).");
+  }
 
   const artText =
     art === "hoheitlich"
@@ -584,6 +623,7 @@ export function baueVerrechnung(input: VerrechnungInput): VerrechnungErgebnis {
     tarifJahr: 2026,
     art,
     artText,
+    gebuehrenText: cfg.gebuehrenText,
     zeilen,
     summe,
     hatOffenePositionen: offen,

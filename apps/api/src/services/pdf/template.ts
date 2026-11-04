@@ -373,7 +373,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     /* Verrechnungsblatt (Tarifordnung) */
     table.vb { width: 100%; border-collapse: collapse; border: 1pt solid #000; margin-top: 3mm; font-size: 8pt; }
     table.vb th { background: #f0f0f0; font-size: 7.5pt; font-weight: 700; text-align: left; padding: 2pt 4pt; border: 0.5pt solid #000; }
-    table.vb td { border: 0.5pt solid #000; padding: 2pt 4pt; vertical-align: top; }
+    table.vb td { border: 0.5pt solid #000; padding: 1.5pt 4pt; vertical-align: top; }
     table.vb tr.vb-gr td { background: #e8eef9; font-weight: 700; font-size: 8pt; color: ${FILLED}; }
     table.vb td.r, table.vb th.r { text-align: right; white-space: nowrap; }
     table.vb td.pos { font-family: 'Courier New', monospace; white-space: nowrap; }
@@ -913,7 +913,7 @@ function renderVerrechnungsblatt(d: BerichtDaten): string {
       : "";
 
   const warn = v.warnungen.length
-    ? `<div style="margin-top:3mm;padding:4pt 6pt;border:0.6pt solid #b45309;background:#fffbeb;font-size:8pt;line-height:1.35">
+    ? `<div style="margin-top:2mm;padding:3pt 6pt;border:0.6pt solid #b45309;background:#fffbeb;font-size:8pt;line-height:1.35">
          <b>Prüfhinweise zur Erfassung</b>
          <ul style="margin:2pt 0 0;padding-left:12pt">${v.warnungen.map((w) => `<li>${escape(w)}</li>`).join("")}</ul>
        </div>`
@@ -942,6 +942,8 @@ function renderVerrechnungsblatt(d: BerichtDaten): string {
     </tr>
     <tr><td class="lbl" colspan="2">Verrechnungsart</td></tr>
     <tr><td class="val" colspan="2" style="font-size:10.5pt;font-weight:700;color:${artFarbe}">${escape(v.artText)}</td></tr>
+    <tr><td class="lbl" colspan="2">Rechtsgrundlage der Gebühren</td></tr>
+    <tr><td class="val" colspan="2" style="font-size:9.5pt;font-weight:600">${escape(v.gebuehrenText)}</td></tr>
   </table>
 
   <table class="vb">
@@ -961,11 +963,11 @@ function renderVerrechnungsblatt(d: BerichtDaten): string {
 
   ${warn}
 
-  <div style="margin-top:3mm;font-size:7pt;color:#333;line-height:1.3">
+  <div style="margin-top:2mm;font-size:7pt;color:#333;line-height:1.25">
     <b>Grundsätze der Verrechnung</b>
     <ul style="margin:2pt 0 0;padding-left:12pt">${v.hinweise.map((h) => `<li>${escape(h)}</li>`).join("")}</ul>
   </div>
-  ${d.verrechnungBemerkung ? `<div style="margin-top:3mm;font-size:8.5pt"><b>Bemerkung:</b> ${escape(d.verrechnungBemerkung)}</div>` : ""}
+  ${d.verrechnungBemerkung ? `<div style="margin-top:2mm;font-size:8pt"><b>Bemerkung:</b> ${escape(d.verrechnungBemerkung)}</div>` : ""}
 </div>`;
 }
 
