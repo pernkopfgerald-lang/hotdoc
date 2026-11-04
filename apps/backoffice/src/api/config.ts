@@ -15,7 +15,9 @@ export type ConfigKey =
   // Ausruestungs-Check beim Abschluss (Regeln Stichwort → Fahrzeug → Geraete).
   | "ausruestungs-regeln"
   // ELS-Schnittstelle: manuelle Zuordnung ELS-Einheit → Fahrzeug.
-  | "els-zuordnung";
+  | "els-zuordnung"
+  // Feuerwehr-Tarifordnung: Fahrzeug→Tarifposition, Preise, Verbrauchspreise.
+  | "tarifordnung";
 
 export interface StringListData {
   items: string[];

@@ -16,3 +16,5 @@ export * from "./releaseNotes.js";
 // Issue 16/17 (Einsatz-Test 2026-06-02): syBOS Statistik-Konstanten
 export * from "./sybos-statistik-technisch.js";
 export * from "./sybos-statistik-brand.js";
+// Feuerwehr-Tarifordnung 2026 (Oö. LFV, Richtlinie 6.3.006)
+export * from "./tarifordnung.js";

@@ -12,6 +12,7 @@
  * routes/pdf.ts::buildBerichtMailAnhaenge) — kein Zweit-Mapping, kein Drift.
  */
 
+import { euroText } from "@hotdoc/shared";
 import { wetterZeile, type BerichtDaten } from "./template.js";
 import { formatDateTime, formatTime } from "./_format.js";
 
@@ -325,6 +326,30 @@ _Automatische Wetterdaten zum Zeitpunkt der Alarmierung (gemessen ${formatTime(d
     }
   } else {
     teile.push("(keine Fotos)");
+  }
+
+  if (d.verrechnung) {
+    const v = d.verrechnung;
+    teile.push(h2(`Verrechnung — Feuerwehr-Tarifordnung ${v.tarifJahr}`));
+    teile.push(feld("Verrechnungsart", v.artText));
+    teile.push("");
+    teile.push("| Pos. | Leistung | Dauer / Menge | Tarif | Betrag (EUR) |");
+    teile.push("|---|---|---|---|---:|");
+    for (const z of v.zeilen) {
+      teile.push(
+        `| ${z.pos} | ${md(z.text)}${z.hinweis ? ` (${md(z.hinweis)})` : ""} | ${md(z.mengeText)} | ${md(z.tarifText)} | ${z.betrag === null ? "offen" : euroText(z.betrag)} |`,
+      );
+    }
+    teile.push("");
+    teile.push(feld("Summe gemäß Tarifordnung (EUR)", `${euroText(v.summe)}${v.hatOffenePositionen ? " (vorläufig, Positionen offen)" : ""}`));
+    if (v.warnungen.length > 0) {
+      teile.push("");
+      teile.push("Prüfhinweise:");
+      for (const w of v.warnungen) teile.push(`- ${w}`);
+    }
+    teile.push("");
+    teile.push("Grundsätze:");
+    for (const h of v.hinweise) teile.push(`- ${h}`);
   }
 
   return teile.join("\n") + "\n";

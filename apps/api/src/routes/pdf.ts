@@ -11,7 +11,7 @@
  */
 
 import { Router } from "express";
-import { deriveBerichtNrFromId } from "@hotdoc/shared";
+import { deriveBerichtNrFromId, type VerrechnungEingaben, type VerrechnungErgebnis } from "@hotdoc/shared";
 import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
@@ -30,6 +30,7 @@ import {
 } from "../services/pdf/fahrzeugbericht.js";
 import { istInhaltlichLeer } from "../workers/phantom-fzgber-cleanup.js";
 import { renderBerichtMarkdown, type ResolvedPerson } from "../services/pdf/markdown.js";
+import { berechneVerrechnung, ladeTarifEinstellungen } from "../services/verrechnung.js";
 import { wetterGueltig } from "../services/wetter.js";
 import { baueNachbereitungText } from "../services/nachbereitung.js";
 import {
@@ -724,7 +725,31 @@ async function buildBerichtDaten(
       : {}),
   };
 
+  // Verrechnungsblatt (Tarifordnung): immer berechnen — hoheitlich oder nicht.
+  // Uebungen werden nicht verrechnet (intern).
+  if (einsatzTyp !== "uebung") {
+    const eingaben = doc.verrechnung as VerrechnungEingaben | undefined;
+    data.verrechnung = berechneVerrechnung(data, eingaben, await ladeTarifEinstellungen());
+    if (eingaben?.bemerkung) data.verrechnungBemerkung = eingaben.bemerkung;
+  }
+
   return data;
+}
+
+/**
+ * Verrechnungsblatt eines Einsatzes berechnen (Backoffice-Vorschau/GET).
+ * `eingabenOverride` rechnet mit noch nicht gespeicherten Eingaben (Vorschau);
+ * ohne Override zaehlen die am Einsatz gespeicherten.
+ */
+export async function berechneVerrechnungFuerEinsatz(
+  id: string,
+  doc: Record<string, unknown>,
+  eingabenOverride?: VerrechnungEingaben,
+): Promise<VerrechnungErgebnis | null> {
+  const daten = await buildBerichtDaten(id, doc, { ohneFotos: true });
+  if (!daten.verrechnung) return null;
+  if (!eingabenOverride) return daten.verrechnung;
+  return berechneVerrechnung(daten, eingabenOverride, await ladeTarifEinstellungen());
 }
 
 /**

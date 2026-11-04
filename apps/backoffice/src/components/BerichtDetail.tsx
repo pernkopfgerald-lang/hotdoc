@@ -22,6 +22,8 @@ import {
 } from "../api/einsaetze";
 import { listPersonen, personName, type PersonItem } from "../api/personen";
 import { LifecycleBadges, TypBadge } from "./BerichtBadges";
+import { FAHRZEUGE } from "@hotdoc/shared";
+import { VerrechnungPanel } from "./VerrechnungPanel";
 
 interface Props {
   id: string;
@@ -620,6 +622,23 @@ export function BerichtDetail({ id, onChange, onDeleted }: Props) {
             ))}
           </ul>
         </section>
+      )}
+
+      {/* Verrechnung nach Feuerwehr-Tarifordnung: das Verrechnungsblatt steht
+          am Ende JEDES Einsatzberichts (hoheitlich oder nicht). Uebungen werden
+          nicht verrechnet. */}
+      {doc.einsatzTyp !== "uebung" && (
+        <VerrechnungPanel
+          einsatzId={id}
+          fahrzeuge={fzgBerichte.map((b) => {
+            const fid = fzgKennung(b);
+            const cfg = (FAHRZEUGE as Record<string, { funkrufname: string } | undefined>)[fid];
+            return { id: fid, label: cfg?.funkrufname ?? fid };
+          })}
+          staplerEingesetzt={(doc as { staplerEingesetzt?: unknown }).staplerEingesetzt === true}
+          darfSchreiben
+          onGespeichert={onChange}
+        />
       )}
 
       <footer style={{ marginTop: 20, display: "flex", gap: 10, flexWrap: "wrap" }}>

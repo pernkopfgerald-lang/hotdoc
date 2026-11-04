@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { EINSATZARTEN } from "../constants/einsatzarten.js";
+import { VerrechnungEingabenSchema } from "./verrechnung.schema.js";
 
 /**
  * Einsatz — zentral angelegt aus BlaulichtSMS-Alarm, ergänzt durch Hauptbericht-Felder.
@@ -143,6 +144,8 @@ export const EinsatzSchema = z.object({
 
   /** Audit-Trail aller Reaktivierungen nach Abschluss (FR-14). */
   reaktivierungen: z.array(ReaktivierungSchema).default([]),
+  /** Verrechnung nach Tarifordnung (nur ueber PUT /api/einsaetze/:id/verrechnung beschreibbar). */
+  verrechnung: VerrechnungEingabenSchema.optional(),
   /** Wird automatisch true bei status=abgeschlossen, false bei Reaktivierung. */
   schreibschutz: z.boolean().default(false),
 

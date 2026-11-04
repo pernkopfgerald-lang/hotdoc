@@ -22,7 +22,13 @@ import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
-import { FLORIAN_POSITION } from "@hotdoc/shared";
+import {
+  FLORIAN_POSITION,
+  TARIF_STANDARD_EINSTELLUNGEN,
+  findeTarifPosition,
+  normalisiereTarifEinstellungen,
+  type TarifEinstellungen,
+} from "@hotdoc/shared";
 import { verwerfeZuordnungCache } from "../services/els/state.js";
 
 export const configRouter: Router = Router();
@@ -46,6 +52,9 @@ const KEYS = [
   // ELS-Schnittstelle: manuelle Zuordnung ELS-Einheit (unid oder callname) →
   // Fahrzeug. Default leer = automatische Zuordnung ueber Rufname/Kuerzel.
   "els-zuordnung",
+  // Feuerwehr-Tarifordnung: Fahrzeug→Tarifposition, Preis-Ueberschreibungen,
+  // Verbrauchspreise (Verrechnungsblatt am Ende des Einsatzberichts).
+  "tarifordnung",
 ] as const;
 type ConfigKey = (typeof KEYS)[number];
 
@@ -235,7 +244,33 @@ const DEFAULTS: Record<ConfigKey, Record<string, unknown>> = {
   "els-zuordnung": {
     fahrzeuge: {} as Record<string, string>,
   },
+  tarifordnung: TARIF_STANDARD_EINSTELLUNGEN as unknown as Record<string, unknown>,
 };
+
+/**
+ * Prueft/normalisiert config:tarifordnung. Fahrzeug-/Anhaenger-/Stapler-Tarife
+ * muessen existierende Positionen der Anlage I sein, Preise nicht negativ.
+ * Liefert die bereinigte Konfiguration oder eine Fehlermeldung.
+ */
+export function validiereTarifordnungConfig(roh: unknown): { ok: true; data: TarifEinstellungen } | { ok: false; fehler: string } {
+  const d = normalisiereTarifEinstellungen(roh);
+  for (const [k, nr] of [...Object.entries(d.fahrzeugTarif), ...Object.entries(d.anhaengerTarif), ["stapler", d.staplerTarif] as const]) {
+    if (!findeTarifPosition(nr)) return { ok: false, fehler: `Unbekannte Tarifposition "${nr}" bei "${k}"` };
+  }
+  for (const [nr, o] of Object.entries(d.preise)) {
+    if (!findeTarifPosition(nr)) return { ok: false, fehler: `Preis-Ueberschreibung fuer unbekannte Position "${nr}"` };
+    for (const [feld, v] of Object.entries(o)) {
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1_000_000) {
+        return { ok: false, fehler: `Ungueltiger Betrag bei ${nr}.${feld}` };
+      }
+    }
+  }
+  const ps = d.verbrauchspreise.oelbindemittelSack;
+  if (ps !== undefined && (typeof ps !== "number" || !Number.isFinite(ps) || ps < 0 || ps > 100000)) {
+    return { ok: false, fehler: "Ungueltiger Preis Oelbindemittel" };
+  }
+  return { ok: true, data: d };
+}
 
 function isValidKey(k: string): k is ConfigKey {
   return (KEYS as readonly string[]).includes(k);
@@ -284,7 +319,15 @@ configRouter.put("/api/config/:key", requireAuth("funktionaer"), ah(async (req, 
   }
   // tablet-pins-Änderung verlangt mindestens funktionaer (admin via Rang-OK)
   // — der Auth-Guard oben deckt das ab.
-  const data: Record<string, unknown> = req.body?.data ?? {};
+  let data: Record<string, unknown> = req.body?.data ?? {};
+  if (key === "tarifordnung") {
+    const v = validiereTarifordnungConfig(data);
+    if (!v.ok) {
+      res.status(400).json({ error: "invalid_tarifordnung", message: v.fehler });
+      return;
+    }
+    data = v.data as unknown as Record<string, unknown>;
+  }
   const id = `config:${key}`;
   let _rev: string | undefined;
   try {

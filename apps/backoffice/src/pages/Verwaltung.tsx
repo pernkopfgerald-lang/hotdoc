@@ -1,4 +1,4 @@
-import { Printer, LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Siren, Flame, Pencil, Download, Trash2, Info, Droplets, Upload, QrCode } from "lucide-react";
+import { Printer, LogOut, FileText, Users, Settings, Activity, Truck, Wrench, RefreshCw, Archive, Hash, BookOpen, Signal, Plus, X, AlertTriangle, CheckCircle2, History, Smartphone, Monitor, LogIn, ArrowRightLeft, Undo2, BarChart3, Siren, Flame, Pencil, Download, Trash2, Info, Droplets, Upload, QrCode, Euro } from "lucide-react";
 import { AboutPanel } from "../components/AboutPanel";
 import {
   listDevices,
@@ -33,6 +33,7 @@ import { PanelBoundary } from "../components/PanelBoundary";
 import { BrandLogo } from "../components/BrandLogo";
 import { EditableChip } from "../components/EditableChip";
 import { ElsZuordnungPanel } from "./ElsZuordnungPanel";
+import { TarifordnungPanel } from "./TarifordnungPanel";
 import { FLORIAN_ADDRESS, FLORIAN_POSITION, FAHRZEUGE, type AuthResponse } from "@hotdoc/shared";
 
 // Grosse, selten gleichzeitig genutzte Bereiche werden erst beim ersten Oeffnen
@@ -203,6 +204,7 @@ type Tab =
   | "sonstige-ff"
   | "gefaehrliche-stoffe"
   | "ausruestungs-check"
+  | "tarifordnung"
   | "stammdaten"
   | "devices"
   | "qr-sticker"
@@ -281,6 +283,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
         { key: "sonstige-ff", label: "Sonstige FF", icon: <Flame size={15} /> },
         { key: "gefaehrliche-stoffe", label: "Gefährliche Stoffe", icon: <AlertTriangle size={15} /> },
         { key: "ausruestungs-check", label: "Ausrüstungs-Check", icon: <CheckCircle2 size={15} /> },
+        { key: "tarifordnung", label: "Tarifordnung", icon: <Euro size={15} /> },
       ],
     },
     {
@@ -460,6 +463,7 @@ export function Verwaltung({ auth, onLogout }: Props) {
               />
             )}
             {tab === "ausruestungs-check" && <AusruestungsRegelnPanel onDirtyChange={setPanelDirty} />}
+            {tab === "tarifordnung" && <TarifordnungPanel onDirtyChange={setPanelDirty} />}
             {tab === "stammdaten" && <StammdatenPanel onDirtyChange={setPanelDirty} />}
             {tab === "devices" && <DevicesPanel />}
             {tab === "qr-sticker" && <QrStickerPanel />}

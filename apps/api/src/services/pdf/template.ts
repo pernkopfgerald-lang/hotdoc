@@ -33,8 +33,11 @@ import { renderFahrzeugberichtPageHtml } from "./fahrzeugbericht.js";
 import { normalizeChronikEntry } from "./chronik-adapter.js";
 import {
   FLORIANSTATION_TEXT,
+  euroText,
   funkstatusAusChronikText,
   funkstatusKurz,
+  type VerrechnungErgebnis,
+  type VerrechnungsGruppe,
 } from "@hotdoc/shared";
 
 export interface BerichtDaten {
@@ -145,6 +148,14 @@ export interface BerichtDaten {
   reserve?: string[];
   /** personIds der Bereitschaft/Reserve (ohne bereits Ausgerueckte) — fuer den Markdown-Export. */
   bereitschaftPersonIds?: number[];
+  /**
+   * Verrechnung nach Feuerwehr-Tarifordnung (Verrechnungsblatt am Ende des
+   * Berichts). Wird fuer Einsatz/manuell/Lotsendienst IMMER berechnet — egal ob
+   * hoheitlich oder nicht-hoheitlich; die Art steht nur in der Ueberschrift.
+   */
+  verrechnung?: VerrechnungErgebnis;
+  /** Freitext-Bemerkung zur Verrechnung (Backoffice). */
+  verrechnungBemerkung?: string;
   /** Welche Fahrzeuge sind im Einsatz (aus Fahrzeugberichten). */
   eingesetzteFahrzeuge?: Array<{ abk: string; funkrufname: string; kmGefahren: number }>;
   /** Komplette Einsatz-Chronik fuer Anhang-Seite. */
@@ -359,6 +370,16 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
     table.bx .lbl { background: #f0f0f0; font-size: 7.5pt; font-weight: 600; padding: 1.5pt 4pt; }
     table.bx .val { font-size: 9pt; padding: 2pt 4pt 3pt; }
     table.bx .val.big { font-size: 10pt; font-weight: 600; color: ${FILLED}; }
+    /* Verrechnungsblatt (Tarifordnung) */
+    table.vb { width: 100%; border-collapse: collapse; border: 1pt solid #000; margin-top: 3mm; font-size: 8pt; }
+    table.vb th { background: #f0f0f0; font-size: 7.5pt; font-weight: 700; text-align: left; padding: 2pt 4pt; border: 0.5pt solid #000; }
+    table.vb td { border: 0.5pt solid #000; padding: 2pt 4pt; vertical-align: top; }
+    table.vb tr.vb-gr td { background: #e8eef9; font-weight: 700; font-size: 8pt; color: ${FILLED}; }
+    table.vb td.r, table.vb th.r { text-align: right; white-space: nowrap; }
+    table.vb td.pos { font-family: 'Courier New', monospace; white-space: nowrap; }
+    table.vb .sub { font-size: 7pt; color: #444; margin-top: 1pt; }
+    table.vb tr.vb-sum td { font-weight: 800; font-size: 10pt; background: #f7f7f7; }
+    .vb-offen { color: #92400e; font-weight: 700; }
     .cb { display: inline-block; }
     .cb-row td { padding: 2pt 4pt; font-size: 8.5pt; }
     .cb-row .cb { margin-right: 3pt; }
@@ -694,6 +715,7 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 </div>
 
 ${renderFahrzeugberichtSeiten(d)}
+${renderVerrechnungsblatt(d)}
 ${renderFotoAnhang(d)}
 
 </body>
@@ -843,6 +865,108 @@ function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
     : "";
 
   return `<div class="freitext" style="font-weight:500;font-size:8.5pt;line-height:1.25">${praeambel}${zeilen}${funkBlock}</div>`;
+}
+
+/**
+ * Verrechnungsblatt (Feuerwehr-Tarifordnung 2026): letzte Seite des Berichts
+ * vor dem Foto-Anhang. Wird fuer JEDEN Einsatz (alarm/manuell/Lotsendienst)
+ * ausgegeben — hoheitlich oder nicht-hoheitlich: die Kosten gemaess
+ * Tarifordnung stehen immer im Blatt, die Verrechnungsart nur in der
+ * Ueberschrift. Auf Fahrzeugen verlastete Geraete erscheinen NICHT als
+ * eigene Position (Tarifordnung Pkt. 2 Abs. 6) — dazu der feste Hinweis unten.
+ */
+function renderVerrechnungsblatt(d: BerichtDaten): string {
+  const v = d.verrechnung;
+  if (!v || d.istUebung === true) return "";
+  const FILLED = "#1e3a8a";
+  const GRUPPEN: Array<[VerrechnungsGruppe, string]> = [
+    ["fahrzeuge", "Fahrzeuge und Anhänger · Tarif A, Pkt. 2"],
+    ["mannschaft", "Mannschaft · Tarif A, Pos. 1.01"],
+    ["zusatz", "Zusatzleistungen · zusätzlich mitgeführte Geräte · Tarif A/B/C"],
+    ["verbrauch", "Verbrauchsmaterial · Tarif D (nach Tagespreis, getrennt vorgeschrieben)"],
+  ];
+  const betragZelle = (b: number | null): string =>
+    b === null ? `<span class="vb-offen">offen</span>` : escape(euroText(b));
+  const zeilenHtml = GRUPPEN.map(([g, titel]) => {
+    const z = v.zeilen.filter((x) => x.gruppe === g);
+    if (z.length === 0) return "";
+    const zwischen = z.reduce((sum, x) => sum + (x.betrag ?? 0), 0);
+    return (
+      `<tr class="vb-gr"><td colspan="4">${escape(titel)}</td><td class="r">${escape(euroText(zwischen))}</td></tr>` +
+      z
+        .map(
+          (x) => `<tr>
+        <td class="pos">${escape(x.pos)}</td>
+        <td>${escape(x.text)}${x.hinweis ? `<div class="sub">${escape(x.hinweis)}</div>` : ""}</td>
+        <td>${escape(x.mengeText)}</td>
+        <td>${escape(x.tarifText)}</td>
+        <td class="r">${betragZelle(x.betrag)}</td>
+      </tr>`,
+        )
+        .join("")
+    );
+  }).join("");
+
+  const leer =
+    v.zeilen.length === 0
+      ? `<tr><td colspan="5" style="padding:6pt;color:#555">Keine verrechenbaren Leistungen erfasst.</td></tr>`
+      : "";
+
+  const warn = v.warnungen.length
+    ? `<div style="margin-top:3mm;padding:4pt 6pt;border:0.6pt solid #b45309;background:#fffbeb;font-size:8pt;line-height:1.35">
+         <b>Prüfhinweise zur Erfassung</b>
+         <ul style="margin:2pt 0 0;padding-left:12pt">${v.warnungen.map((w) => `<li>${escape(w)}</li>`).join("")}</ul>
+       </div>`
+    : "";
+
+  const artFarbe = v.art === "nicht-hoheitlich" ? "#14532d" : v.art === "hoheitlich" ? FILLED : "#92400e";
+
+  return /* html */ `
+<div class="page">
+  <div class="hd">
+    <div class="hd-l">${renderBrandLogo()}</div>
+    <div class="hd-r">
+      <div class="hd-title">Verrechnungsblatt</div>
+      ${d.berichtsNummer ? `<div style="font-size:11pt;font-weight:700;margin-top:2pt">Berichts-Nr <b>${escape(d.berichtsNummer)}</b></div>` : ""}
+      <div style="font-family:'Courier New',monospace;font-size:8pt;font-weight:600;margin-top:2pt;color:#555">
+        Feuerwehr-Tarifordnung ${v.tarifJahr} (Oö. LFV, Richtlinie 6.3.006)
+      </div>
+    </div>
+  </div>
+
+  <table class="bx">
+    <tr><td class="lbl" style="width:60%">Einsatzort</td><td class="lbl">Datum und Uhrzeit</td></tr>
+    <tr>
+      <td class="val" style="color:${FILLED};font-weight:600">${escape(d.einsatzort)}</td>
+      <td class="val" style="color:${FILLED};font-weight:600">${escape(formatDate(d.alarmierungZeit))} · ${escape(formatTime(d.alarmierungZeit))}</td>
+    </tr>
+    <tr><td class="lbl" colspan="2">Verrechnungsart</td></tr>
+    <tr><td class="val" colspan="2" style="font-size:10.5pt;font-weight:700;color:${artFarbe}">${escape(v.artText)}</td></tr>
+  </table>
+
+  <table class="vb">
+    <tr>
+      <th style="width:9%">Pos.</th>
+      <th>Leistung</th>
+      <th style="width:25%">Dauer / Menge</th>
+      <th style="width:19%">Tarif (EURO)</th>
+      <th class="r" style="width:12%">Betrag (EURO)</th>
+    </tr>
+    ${zeilenHtml}${leer}
+    <tr class="vb-sum">
+      <td colspan="4" class="r">Summe gemäß Tarifordnung${v.hatOffenePositionen ? " (vorläufig – Positionen offen)" : ""}</td>
+      <td class="r">${escape(euroText(v.summe))}</td>
+    </tr>
+  </table>
+
+  ${warn}
+
+  <div style="margin-top:3mm;font-size:7pt;color:#333;line-height:1.3">
+    <b>Grundsätze der Verrechnung</b>
+    <ul style="margin:2pt 0 0;padding-left:12pt">${v.hinweise.map((h) => `<li>${escape(h)}</li>`).join("")}</ul>
+  </div>
+  ${d.verrechnungBemerkung ? `<div style="margin-top:3mm;font-size:8.5pt"><b>Bemerkung:</b> ${escape(d.verrechnungBemerkung)}</div>` : ""}
+</div>`;
 }
 
 /**

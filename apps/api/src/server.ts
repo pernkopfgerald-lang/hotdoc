@@ -11,6 +11,7 @@ import { adminRouter } from "./routes/admin.js";
 import { audioRouter } from "./routes/audio.js";
 import { authRouter } from "./routes/auth.js";
 import { configRouter } from "./routes/config.js";
+import { verrechnungRouter } from "./routes/verrechnung.js";
 import { devicesRouter } from "./routes/devices.js";
 import { devRouter } from "./routes/dev.js";
 import { einsaetzeRouter } from "./routes/einsaetze.js";
@@ -129,6 +130,7 @@ async function main(): Promise<void> {
   app.use(adminRouter);
   app.use(configRouter);
   app.use(einsaetzeRouter);
+  app.use(verrechnungRouter);
   // Issue 17 (Einsatz-Test 2026-06-02): Objekt-Datenbank-Routes.
   app.use(objekteRouter);
   app.use(wasserquellenRouter);

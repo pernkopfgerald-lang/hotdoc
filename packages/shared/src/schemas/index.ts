@@ -6,3 +6,4 @@ export * from "./foto.schema.js";
 export * from "./hydrant.schema.js";
 export * from "./material.schema.js";
 export * from "./person.schema.js";
+export * from "./verrechnung.schema.js";
