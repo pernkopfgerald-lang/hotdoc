@@ -52,7 +52,7 @@ async function sendAbschlussMail(
   berichtNummer: string | undefined,
 ): Promise<void> {
   try {
-    const { pdf, markdown, nachbereitung, fotoDocs } = await buildBerichtMailAnhaenge(id, doc);
+    const { pdf, verrechnungPdf, markdown, nachbereitung, fotoDocs } = await buildBerichtMailAnhaenge(id, doc);
     // PDF-Dokumente aus der Chronik (Florianstation) beilegen — aus den bereits
     // geladenen foto:-Docs (kein zweites Laden der Base64-Payloads).
     const dokumente = await loadDokumentAnhaenge(id, fotoDocs).catch(() => []);
@@ -65,7 +65,9 @@ async function sendAbschlussMail(
       to: ABSCHLUSS_MAIL_EMPFAENGER,
       subject: `Einsatzbericht ${nummer} — ${bezeichnung}`,
       text:
-        `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}) als PDF sowie als Markdown-Datei zur automatisierten Weiterverarbeitung.\n\n` +
+        `Im Anhang der abgeschlossene Bericht ${nummer} (${bezeichnung}) als PDF` +
+        (verrechnungPdf ? ", das Verrechnungsblatt gemäß Tarifordnung als eigene PDF" : "") +
+        ` sowie als Markdown-Datei zur automatisierten Weiterverarbeitung.\n\n` +
         (nachbereitung ? `${nachbereitung}\n\n` : "") +
         (dokumente.length > 0
           ? `DOKUMENTE aus der Einsatzchronik (im Anhang): ${dokumente.map((x) => x.filename).join(", ")}\n\n`
@@ -73,6 +75,9 @@ async function sendAbschlussMail(
         "Automatisch von HotDoc versendet.",
       attachments: [
         { filename: `${nummer}.pdf`, content: pdf, contentType: "application/pdf" },
+        ...(verrechnungPdf
+          ? [{ filename: `${nummer}-Verrechnungsblatt.pdf`, content: verrechnungPdf, contentType: "application/pdf" }]
+          : []),
         { filename: `${nummer}.md`, content: markdown, contentType: "text/markdown; charset=utf-8" },
         ...dokumente,
       ],

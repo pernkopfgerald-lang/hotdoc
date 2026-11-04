@@ -119,6 +119,9 @@ export function normalisiereTarifEinstellungen(roh: unknown): TarifEinstellungen
 export interface VerrechnungFzgEingabe {
   /** Dauer manuell festlegen (Minuten) statt Fahrzeugzeit von/bis. */
   minuten?: number;
+  /** Zeitraum mit DATUM festlegen (ISO) — haben Vorrang vor Fahrzeugzeit und Minuten. */
+  zeitVon?: string;
+  zeitBis?: string;
   /** Nur bereitgestellt, nicht eingesetzt → 60 % (§ 2 Abs. 7). */
   nurBereitgestellt?: boolean;
   /** War nicht erforderlich → nicht verrechnen (§ 2 Abs. 10). */
@@ -408,6 +411,8 @@ function fahrzeugMinuten(
   ein: VerrechnungFzgEingabe | undefined,
   input: VerrechnungInput,
 ): { minuten: number | undefined; quelle: "eingabe" | "fahrzeug" | "einsatz" | "fehlt" } {
+  const eingabeZeitraum = minutenZwischen(ein?.zeitVon, ein?.zeitBis);
+  if (eingabeZeitraum !== undefined && eingabeZeitraum > 0) return { minuten: eingabeZeitraum, quelle: "eingabe" };
   if (ein?.minuten !== undefined && ein.minuten > 0) return { minuten: Math.round(ein.minuten), quelle: "eingabe" };
   const fz = minutenZwischen(f.zeitVon, f.zeitBis);
   if (fz !== undefined && fz > 0) return { minuten: fz, quelle: "fahrzeug" };
@@ -483,7 +488,8 @@ export function baueVerrechnung(input: VerrechnungInput): VerrechnungErgebnis {
 
     // Personen-Spanne: Start = Fahrzeug-von (sonst 0), Ende = Start + Fahrzeugdauer.
     if (minuten !== undefined) {
-      const von = f.zeitVon ? Date.parse(f.zeitVon) : NaN;
+      const vonRef = fe?.zeitVon && fe?.zeitBis && minutenZwischen(fe.zeitVon, fe.zeitBis) ? fe.zeitVon : f.zeitVon;
+      const von = vonRef ? Date.parse(vonRef) : NaN;
       const startMs = Number.isNaN(von) ? 0 : von;
       const endeMs = startMs + minuten * 60000;
       for (const pr of f.personen) {

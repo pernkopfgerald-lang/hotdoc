@@ -715,7 +715,6 @@ export function renderHauptberichtHtml(d: BerichtDaten): string {
 </div>
 
 ${renderFahrzeugberichtSeiten(d)}
-${renderVerrechnungsblatt(d)}
 ${renderFotoAnhang(d)}
 
 </body>
@@ -868,9 +867,23 @@ function renderMeldungEinsatzleitungInhalt(d: BerichtDaten): string {
 }
 
 /**
- * Verrechnungsblatt (Feuerwehr-Tarifordnung 2026): letzte Seite des Berichts
- * vor dem Foto-Anhang. Wird fuer JEDEN Einsatz (alarm/manuell/Lotsendienst)
- * ausgegeben — hoheitlich oder nicht-hoheitlich: die Kosten gemaess
+ * Verrechnungsblatt als EIGENES Dokument (eigene PDF-Datei in der Info-Mail,
+ * eigener Download im Backoffice) — es wird NICHT an das PDF des
+ * Einsatzberichts angehaengt. Nutzt Kopf/CSS des Berichts, enthaelt aber nur
+ * die Blatt-Seite. Leer, wenn es kein Blatt gibt (Uebung).
+ */
+export function renderVerrechnungsblattHtml(d: BerichtDaten): string | null {
+  const blatt = renderVerrechnungsblatt(d);
+  if (!blatt) return null;
+  const voll = renderHauptberichtHtml({ ...d, fahrzeugberichte: [], fotos: [], dokumente: [] });
+  const i = voll.indexOf("<body>");
+  if (i < 0) return null;
+  return voll.slice(0, i + "<body>".length) + "\n" + blatt + "\n</body>\n</html>";
+}
+
+/**
+ * Verrechnungsblatt (Feuerwehr-Tarifordnung 2026): wird fuer JEDEN Einsatz
+ * (alarm/manuell/Lotsendienst) als eigenes Dokument erzeugt — hoheitlich oder nicht-hoheitlich: die Kosten gemaess
  * Tarifordnung stehen immer im Blatt, die Verrechnungsart nur in der
  * Ueberschrift. Auf Fahrzeugen verlastete Geraete erscheinen NICHT als
  * eigene Position (Tarifordnung Pkt. 2 Abs. 6) — dazu der feste Hinweis unten.

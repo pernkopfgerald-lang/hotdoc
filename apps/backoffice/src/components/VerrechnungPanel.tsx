@@ -13,6 +13,7 @@ import {
   type VerrechnungsArt,
 } from "@hotdoc/shared";
 import { getVerrechnung, speichereVerrechnung, vorschauVerrechnung } from "../api/verrechnung";
+import { fetchAndOpenBlob } from "../api/client";
 import { getConfig } from "../api/config";
 
 /**
@@ -64,6 +65,21 @@ const VERBRAUCH_POS: Array<{ pos: "14.01" | "14.02" | "14.03" | "14.04"; label: 
 
 function neueId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** ISO → Wert fuer <input type="datetime-local"> (lokale Zeit, "YYYY-MM-DDTHH:mm"). */
+function isoZuLokal(iso: string | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function lokalZuIso(v: string): string | undefined {
+  if (!v) return undefined;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
 function zahl(v: string): number | undefined {
@@ -204,6 +220,15 @@ export function VerrechnungPanel({ einsatzId, fahrzeuge, staplerEingesetzt, darf
       >
         <Euro size={12} /> Verrechnung · Feuerwehr-Tarifordnung 2026
         <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            className="cta"
+            onClick={() => void fetchAndOpenBlob(`/api/einsaetze/${encodeURIComponent(einsatzId)}/verrechnung/pdf`).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))}
+            style={{ width: "auto", padding: "6px 12px", fontSize: 12, background: "transparent", color: "var(--info)", border: "1px solid var(--info)" }}
+            title="Verrechnungsblatt als eigene PDF öffnen (liegt der Info-Mail als eigener Anhang bei)"
+          >
+            Verrechnungsblatt (PDF)
+          </button>
           {saved ? <span className="badge ok">gespeichert</span> : dirty ? <span className="badge neutral">ungespeichert</span> : null}
           {darfSchreiben ? (
             <button
@@ -257,7 +282,8 @@ export function VerrechnungPanel({ einsatzId, fahrzeuge, staplerEingesetzt, darf
             {fzgListe.map((f) => {
               const e = eingaben.fahrzeuge?.[f.id] ?? {};
               return (
-                <div key={f.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px,1fr) auto auto 130px", gap: 10, alignItems: "center", fontSize: 13 }}>
+                <div key={f.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(110px,1fr) auto auto 130px", gap: 10, alignItems: "center", fontSize: 13 }}>
                   <strong>{f.label}</strong>
                   <label style={{ display: "flex", gap: 6, alignItems: "center" }} title="Nicht für den Einsatz erforderlich – nicht verrechnen (Pkt. 2 Abs. 10)">
                     <input type="checkbox" checked={e.nichtErforderlich === true} onChange={(ev) => aendereFzg(f.id, { nichtErforderlich: ev.target.checked })} />
@@ -278,6 +304,26 @@ export function VerrechnungPanel({ einsatzId, fahrzeuge, staplerEingesetzt, darf
                       aendereFzg(f.id, { minuten: n !== undefined && n >= 1 ? Math.round(n) : undefined });
                     }}
                   />
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12, color: "var(--fg-3)" }}>
+                  Zeitraum mit Datum:
+                  <input
+                    type="datetime-local"
+                    className="input"
+                    style={{ width: 210 }}
+                    value={isoZuLokal(e.zeitVon)}
+                    onChange={(ev) => aendereFzg(f.id, { zeitVon: lokalZuIso(ev.target.value) })}
+                  />
+                  bis
+                  <input
+                    type="datetime-local"
+                    className="input"
+                    style={{ width: 210 }}
+                    value={isoZuLokal(e.zeitBis)}
+                    onChange={(ev) => aendereFzg(f.id, { zeitBis: lokalZuIso(ev.target.value) })}
+                  />
+                  <span>(leer = Fahrzeugzeit aus dem Bericht)</span>
+                </div>
                 </div>
               );
             })}

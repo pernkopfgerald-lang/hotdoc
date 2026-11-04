@@ -163,6 +163,9 @@ interface EinsatzInstance {
    *  leer ist — wenn der Kdt schon manuell eingetragen hat, ueberschreibt
    *  der Abschluss seine Eingabe nicht. */
   uhrzeitBisHHMM: string;
+  /** Manuell gesetztes Datum ("YYYY-MM-DD") der "Uhrzeit bis". Leer = gleicher Tag
+   *  wie der Beginn (Datum von), bei Ende vor dem Beginn der Folgetag (ueber Mitternacht). */
+  datumBisYMD: string;
   /** Hotfix 2026-09: manuell gesetzte "Uhrzeit von" (HH:MM, gleicher Tag wie
    *  die Alarmierung). Leer = automatisch die Alarmierungs-/Anlagezeit.
    *  Betrifft NUR dieses Fahrzeug (zeit.von im Fahrzeugbericht) — die
@@ -253,6 +256,9 @@ function mergeDraftIntoInstance(
   }
   if (typeof draft.uhrzeitBisHHMM === "string") {
     merged.uhrzeitBisHHMM = draft.uhrzeitBisHHMM;
+  }
+  if (typeof draft.datumBisYMD === "string") {
+    merged.datumBisYMD = draft.datumBisYMD;
   }
   if (typeof draft.uhrzeitVonHHMM === "string") {
     merged.uhrzeitVonHHMM = draft.uhrzeitVonHHMM;
@@ -790,6 +796,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         chronik: [],
         abgeschlossen: null,
         uhrzeitBisHHMM: "",
+        datumBisYMD: "",
         uhrzeitVonHHMM: "",
         datumVonYMD: "",
         kmManualOverride: null,
@@ -903,6 +910,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
         chronik: [],
         abgeschlossen: persisted,
         uhrzeitBisHHMM: "",
+        datumBisYMD: "",
         uhrzeitVonHHMM: "",
         datumVonYMD: "",
         kmManualOverride: null,
@@ -1596,6 +1604,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 }));
               // Uhrzeit bis aus ISO zurueckparsen falls gesetzt.
               let uhrzeitBis = x.uhrzeitBisHHMM;
+              let datumBis = x.datumBisYMD;
               if (mine.zeit?.bis) {
                 try {
                   const d = new Date(mine.zeit.bis);
@@ -1603,6 +1612,14 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                     uhrzeitBis = `${String(d.getHours()).padStart(2, "0")}:${String(
                       d.getMinutes(),
                     ).padStart(2, "0")}`;
+                    // Datum nur merken, wenn es NICHT der Tag des Beginns ist
+                    // (sonst bleibt "gleicher Tag" automatisch).
+                    const ymd = (dt: Date) =>
+                      `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+                    const vonRef = new Date(mine.zeit?.von ?? x.alarm.alarmierungZeit);
+                    if (!x.datumBisYMD && !Number.isNaN(vonRef.getTime()) && ymd(d) !== ymd(vonRef)) {
+                      datumBis = ymd(d);
+                    }
                   }
                 } catch {
                   // ignorieren — Default bleibt leer
@@ -1642,6 +1659,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                 oelSaecke: mine.oelbindemittelSaecke ?? 0,
                 auftraege: restoredAufts,
                 uhrzeitBisHHMM: uhrzeitBis,
+                datumBisYMD: datumBis,
               };
             }),
           );
@@ -2517,9 +2535,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
       // Wenn der Kdt die "Uhrzeit bis" schon manuell gesetzt hat,
       // respektieren wir das — der Abschluss soll seine Eingabe nicht
       // ueberschreiben. Andernfalls Zeitpunkt des Abschluss-Klicks.
-      const bisISO = einsatz.uhrzeitBisHHMM
-        ? hhmmToISOAt(einsatz.alarm.alarmierungZeit, einsatz.uhrzeitBisHHMM)
-        : now;
+      const bisISO = einsatz.uhrzeitBisHHMM ? effektiveBisISO(einsatz) : now;
 
       const body = {
         zeit: {
@@ -2797,10 +2813,7 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
           von: effektiveVonISO(einsatz),
           ...(einsatz.uhrzeitBisHHMM
             ? {
-                bis: hhmmToISOAt(
-                  einsatz.alarm.alarmierungZeit,
-                  einsatz.uhrzeitBisHHMM,
-                ),
+                bis: effektiveBisISO(einsatz),
               }
             : {}),
         },
@@ -3459,6 +3472,63 @@ export function BerichtPage({ fahrzeugId, onSwitchFahrzeug, onResetSetup, onHand
                     {active.uhrzeitBisHHMM
                       ? "Wird beim Abschluss nicht mehr überschrieben."
                       : "leer = aktuelle Zeit beim Abschluss übernehmen"}
+                  </div>
+                </div>
+              </div>
+              {/* "Datum bis": Standard = gleicher Tag wie der Beginn. Noetig, wenn ein
+                  Einsatz (z. B. Lotsendienst) nachtraeglich erfasst wird oder ueber
+                  mehrere Tage geht — sonst kaeme "heute" bzw. der Alarmtag. */}
+              <div className="grid-3" style={{ gap: 14, marginTop: 14 }}>
+                <div className="field">
+                  <label className="caption">Datum bis</label>
+                  <div className={`input-row${active.datumBisYMD ? " filled" : ""}`}>
+                    <DatumFeld
+                      value={
+                        active.datumBisYMD ||
+                        active.datumVonYMD ||
+                        `${datum.getFullYear()}-${pad(datum.getMonth() + 1)}-${pad(datum.getDate())}`
+                      }
+                      onChange={(v) => patchActive((x) => ({ ...x, datumBisYMD: v }))}
+                      disabled={!!active.abgeschlossen}
+                    />
+                    {active.datumBisYMD ? (
+                      <>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            color: "var(--info)",
+                            background: "var(--info-tint)",
+                            border: "1px solid var(--blue-border)",
+                            borderRadius: 6,
+                            padding: "2px 6px",
+                            marginRight: 4,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          manuell geändert
+                        </span>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          aria-label="Datum zurücksetzen"
+                          title="Zurück auf: gleicher Tag wie der Beginn"
+                          disabled={!!active.abgeschlossen}
+                          onClick={() => patchActive((x) => ({ ...x, datumBisYMD: "" }))}
+                          style={{ width: 44, height: 44, minHeight: 44 }}
+                        >
+                          <span style={{ fontSize: 17.5, lineHeight: 1 }}>×</span>
+                        </button>
+                      </>
+                    ) : (
+                      <AutoPill title="Gleicher Tag wie der Beginn (Datum oben)" />
+                    )}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 14, color: "var(--fg-3)", lineHeight: 1.4 }}>
+                    {active.uhrzeitBisHHMM && new Date(effektiveBisISO(active)).getTime() < new Date(effektiveVonISO(active)).getTime()
+                      ? "Achtung: Das Ende liegt vor dem Beginn."
+                      : "leer = gleicher Tag wie der Beginn"}
                   </div>
                 </div>
               </div>
@@ -4954,24 +5024,29 @@ function effektiveVonISO(e: {
   return base.toISOString();
 }
 
-function hhmmToISOAt(alarmierungISO: string, hhmm: string): string {
-  try {
-    const base = new Date(alarmierungISO);
-    if (Number.isNaN(base.getTime())) return alarmierungISO;
-    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
-    if (!m) return alarmierungISO;
-    const h = Math.min(23, Math.max(0, Number(m[1])));
-    const min = Math.min(59, Math.max(0, Number(m[2])));
-    const out = new Date(base);
-    out.setHours(h, min, 0, 0);
-    if (out.getTime() < base.getTime()) {
-      // Einsatz ueber Mitternacht — naechster Tag
-      out.setDate(out.getDate() + 1);
-    }
-    return out.toISOString();
-  } catch {
-    return alarmierungISO;
-  }
+/**
+ * "Uhrzeit bis" als ISO. Datum = explizit gewaehltes "Datum bis", sonst der TAG
+ * DES BEGINNS (Datum von bzw. Alarmtag) — nicht "heute" und nicht stur der
+ * Alarmtag. Liegt die Uhrzeit dann vor dem Beginn, ist es der Folgetag
+ * (Einsatz ueber Mitternacht). Ohne Uhrzeit bis: Beginn.
+ */
+function effektiveBisISO(e: {
+  alarm: { alarmierungZeit: string };
+  uhrzeitVonHHMM: string;
+  datumVonYMD: string;
+  uhrzeitBisHHMM: string;
+  datumBisYMD: string;
+}): string {
+  const vonISO = effektiveVonISO(e);
+  const von = new Date(vonISO);
+  const t = /^(\d{1,2}):(\d{2})$/.exec(e.uhrzeitBisHHMM.trim());
+  if (Number.isNaN(von.getTime()) || !t) return vonISO;
+  const out = new Date(von);
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e.datumBisYMD.trim());
+  if (d) out.setFullYear(Number(d[1]), Number(d[2]) - 1, Number(d[3]));
+  out.setHours(Math.min(23, Number(t[1])), Math.min(59, Number(t[2])), 0, 0);
+  if (!d && out.getTime() < von.getTime()) out.setDate(out.getDate() + 1);
+  return out.toISOString();
 }
 
 /** Abschnitts-Kopf; `action` (E-13) sitzt rechts — z. B. "Karte anzeigen". */

@@ -2,6 +2,7 @@
  * Verrechnung nach Feuerwehr-Tarifordnung (Backoffice).
  *
  *  GET  /api/einsaetze/:id/verrechnung          gespeicherte Eingaben + berechnetes Blatt
+ *  GET  /api/einsaetze/:id/verrechnung/pdf      Verrechnungsblatt als EIGENE PDF
  *  POST /api/einsaetze/:id/verrechnung/vorschau Blatt fuer NOCH NICHT gespeicherte Eingaben
  *  PUT  /api/einsaetze/:id/verrechnung          Eingaben speichern (nur Funktionaer)
  *
@@ -18,7 +19,7 @@ import { db } from "../couch/client.js";
 import { ah } from "../lib/async-handler.js";
 import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
-import { berechneVerrechnungFuerEinsatz } from "./pdf.js";
+import { berechneVerrechnungFuerEinsatz, buildVerrechnungPdfBuffer } from "./pdf.js";
 
 export const verrechnungRouter: Router = Router();
 
@@ -45,6 +46,18 @@ verrechnungRouter.get("/api/einsaetze/:id/verrechnung", requireAuth(), ah(async 
   if (!doc) return void res.status(404).json({ error: "not_found" });
   const ergebnis = await berechneVerrechnungFuerEinsatz(id, doc);
   res.json({ ok: true, eingaben: (doc.verrechnung as VerrechnungEingaben | undefined) ?? {}, ergebnis });
+}));
+
+verrechnungRouter.get("/api/einsaetze/:id/verrechnung/pdf", requireAuth(), ah(async (req, res) => {
+  const id = einsatzId(req.params.id);
+  if (!id) return void res.status(400).json({ error: "invalid_id" });
+  const doc = await ladeEinsatz(id);
+  if (!doc) return void res.status(404).json({ error: "not_found" });
+  const pdf = await buildVerrechnungPdfBuffer(id, doc);
+  if (!pdf) return void res.status(404).json({ error: "keine_verrechnung", hint: "Uebungen werden nicht verrechnet." });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="Verrechnungsblatt-${id.replace(/[^a-z0-9-]/gi, "_")}.pdf"`);
+  res.send(pdf);
 }));
 
 verrechnungRouter.post("/api/einsaetze/:id/verrechnung/vorschau", requireAuth("funktionaer"), ah(async (req, res) => {

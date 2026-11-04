@@ -18,7 +18,7 @@ import { requireAuth } from "../lib/auth-middleware.js";
 import { logger } from "../lib/logger.js";
 import { renderPdf } from "../services/pdf/generator.js";
 import {
-  renderHauptberichtHtml,
+  renderHauptberichtHtml, renderVerrechnungsblattHtml,
   renderSpickzettelHtml,
   type BerichtDaten,
 } from "../services/pdf/template.js";
@@ -737,6 +737,18 @@ async function buildBerichtDaten(
 }
 
 /**
+ * Verrechnungsblatt als eigenes PDF (Backoffice-Download). null bei Uebungen.
+ */
+export async function buildVerrechnungPdfBuffer(
+  id: string,
+  doc: Record<string, unknown>,
+): Promise<Buffer | null> {
+  const daten = await buildBerichtDaten(id, doc, { ohneFotos: true });
+  const html = renderVerrechnungsblattHtml(daten);
+  return html ? renderPdf(html) : null;
+}
+
+/**
  * Verrechnungsblatt eines Einsatzes berechnen (Backoffice-Vorschau/GET).
  * `eingabenOverride` rechnet mit noch nicht gespeicherten Eingaben (Vorschau);
  * ohne Override zaehlen die am Einsatz gespeicherten.
@@ -861,6 +873,8 @@ export async function buildBerichtMailAnhaenge(
   doc: Record<string, unknown>,
 ): Promise<{
   pdf: Buffer;
+  /** Verrechnungsblatt als EIGENE PDF (nicht im Einsatzbericht); null bei Uebungen. */
+  verrechnungPdf: Buffer | null;
   markdown: string;
   nachbereitung: string;
   /**
@@ -890,7 +904,11 @@ export async function buildBerichtMailAnhaenge(
     .map((rid) => resolvePerson(personen, rid))
     .filter((p): p is ResolvedPerson => !!p);
   const markdown = renderBerichtMarkdown(data, { bearbeiter, reserve });
-  return { pdf, markdown, nachbereitung: baueNachbereitungText(data), fotoDocs };
+  // Verrechnungsblatt: eigene PDF-Datei (nach dem Bericht rendern — die
+  // Render-Kette ist begrenzt, kein Parallel-Lauf noetig).
+  const blattHtml = renderVerrechnungsblattHtml(data);
+  const verrechnungPdf = blattHtml ? await renderPdf(blattHtml) : null;
+  return { pdf, verrechnungPdf, markdown, nachbereitung: baueNachbereitungText(data), fotoDocs };
 }
 
 // ─── GET /api/einsaetze/:id/fahrzeugbericht/:fzgId/pdf ─────────

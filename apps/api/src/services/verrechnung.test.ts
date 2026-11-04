@@ -271,3 +271,27 @@ describe("Gebuehrenhinweis und Preisliste Verbrauchsmaterial", () => {
     expect(r.zeilen[0]?.betrag).toBeNull();
   });
 });
+
+describe("Zeitraum mit Datum ueberschreiben (z. B. nachtraeglich erfasster Lotsendienst)", () => {
+  it("zeitVon/zeitBis mit Datum haben Vorrang vor der Fahrzeugzeit", () => {
+    // Fahrzeugzeit faelschlich ueber 3 Tage (heute als Ende) → korrigiert auf 1.11. 13:00–15:15
+    const f: VerrechnungFahrzeug = {
+      fahrzeugId: "mtf",
+      bezeichnung: "MTF",
+      zeitVon: "2026-11-01T12:00:00.000Z",
+      zeitBis: "2026-11-04T14:15:00.000Z",
+      personen: [{ key: "a", name: "A" }],
+      anhaenger: [],
+    };
+    const falsch = baueVerrechnung({ fahrzeuge: [f] });
+    const richtig = baueVerrechnung({
+      fahrzeuge: [f],
+      eingaben: { fahrzeuge: { mtf: { zeitVon: "2026-11-01T12:00:00.000Z", zeitBis: "2026-11-01T14:15:00.000Z" } } },
+    });
+    // 2 Std. 15 Min. → 2,5 Std. × 96,50 = 241,25 (statt Pauschale bei 3 Tagen)
+    expect(richtig.zeilen[0]?.betrag).toBe(241.25);
+    expect(falsch.zeilen[0]?.betrag).toBeGreaterThan(richtig.zeilen[0]?.betrag ?? 0);
+    expect(richtig.zeilen.find((z) => z.gruppe === "mannschaft")?.betrag).toBe(86);
+  });
+});
+

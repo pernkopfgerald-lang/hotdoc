@@ -12,6 +12,8 @@ const posNr = z.string().regex(/^\d{1,2}\.\d{2}$/, "Tarifposition im Format 2.04
 
 export const VerrechnungFzgEingabeSchema = z.object({
   minuten: z.number().int().min(1).max(60 * 24 * 14).optional(),
+  zeitVon: z.string().datetime({ offset: true }).optional(),
+  zeitBis: z.string().datetime({ offset: true }).optional(),
   nurBereitgestellt: z.boolean().optional(),
   nichtErforderlich: z.boolean().optional(),
   bemerkung: z.string().max(300).optional(),
