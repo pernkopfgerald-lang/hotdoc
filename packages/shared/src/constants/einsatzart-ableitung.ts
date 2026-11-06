@@ -56,6 +56,7 @@ const TECHNISCH_ARTEN: ReadonlyArray<readonly [RegExp, Einsatzart]> = [
   [/wasserschaden|wasserrohrbruch|wassergebrechen/, "Wasserschaden"],
   [/auspumpen|pumparbeiten/, "Pumparbeiten"],
   [/höhenrett|hoehenrett/, "Höhenrettungseins."],
+  [/wassertransport/, "Wassertransport"],
   [/tierrettung/, "Tierrettung"],
   [/sturmschaden|\bsturm\b|umgestürzt/, "Sturm"],
 ];

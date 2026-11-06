@@ -33,6 +33,7 @@ export const EINSATZARTEN = [
   "VU Aufräumarbeiten",
   "Höhenrettungseins.",
   "Bienen / Wespen",
+  "Wassertransport",
 ] as const;
 
 export type Einsatzart = (typeof EINSATZARTEN)[number];

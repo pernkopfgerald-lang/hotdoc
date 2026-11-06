@@ -47,6 +47,7 @@ export const EINSATZART_KATEGORIE: Record<Einsatzart, Einsatzkategorie> = {
   "VU Aufräumarbeiten":    "technisch",
   "Höhenrettungseins.":    "technisch",
   "Bienen / Wespen":       "technisch",
+  "Wassertransport":       "technisch",
 };
 
 /** Liefert die Kategorie zu einer Einsatzart (default = technisch). */

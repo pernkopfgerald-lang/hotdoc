@@ -11,6 +11,8 @@ interface Props {
   busy?: boolean;
   error?: string | null;
   onWahl: (art: string) => void;
+  /** Maske ohne Auswahl ueberspringen und mit dem Abschluss weitermachen. */
+  onUeberspringen: () => void;
   onAbbruch: () => void;
 }
 
@@ -24,7 +26,7 @@ const TECHNISCH_ARTEN = EINSATZARTEN.filter((a) => kategorieFuer(a) === "technis
  * und den Abschluss-Ablauf (Brand-Statistik-Assistent). Fehlt sie, galt frueher
  * still "technisch"; jetzt muss die Mannschaft sie bewusst waehlen.
  */
-export function EinsatzartWahlModal({ open, vorschlag, automatisch, busy, error, onWahl, onAbbruch }: Props) {
+export function EinsatzartWahlModal({ open, vorschlag, automatisch, busy, error, onWahl, onUeberspringen, onAbbruch }: Props) {
   const [auswahl, setAuswahl] = useState<string>("");
 
   useEffect(() => {
@@ -149,6 +151,27 @@ export function EinsatzartWahlModal({ open, vorschlag, automatisch, busy, error,
               {kategorie === "brand" ? "Brandbericht (B-Nummer)" : "Technischer Bericht (T-Nummer)"}
             </span>
           ) : null}
+          <button
+            type="button"
+            onClick={onUeberspringen}
+            disabled={busy}
+            title={
+              vorschlag
+                ? "Vorschlag unverändert übernehmen"
+                : "Ohne Einsatzart abschließen — der Bericht wird als technischer Bericht (T-Nummer) geführt"
+            }
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border-strong)",
+              color: "var(--fg-2)",
+              padding: "10px 16px",
+              borderRadius: 4,
+              fontWeight: 600,
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >
+            {vorschlag ? "Ohne Bestätigung weiter" : "Ohne Einsatzart weiter"}
+          </button>
           <button
             type="button"
             onClick={onAbbruch}

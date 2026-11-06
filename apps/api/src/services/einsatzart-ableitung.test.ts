@@ -41,6 +41,11 @@ describe("leiteEinsatzartAb", () => {
     expect(leiteEinsatzartAb({ tycod: "T2-VU", typ: "Verkehrsunfall" })).toBeUndefined();
   });
 
+  it("Wassertransport ist eine technische Einsatzart (T-Nummer) und wird erkannt", () => {
+    expect(kategorieFuer("Wassertransport")).toBe("technisch");
+    expect(leiteEinsatzartAb({ tycod: "T1-WAS", typ: "Wassertransport" })).toBe("Wassertransport");
+  });
+
   it("ein T-Code mit Brand-Wort im Text bleibt technisch (Code entscheidet)", () => {
     expect(leiteEinsatzartAb({ tycod: "T2-PER", typ: "Personenrettung", alarmText: "Person mit Brandverletzung" })).toBeUndefined();
   });

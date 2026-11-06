@@ -909,8 +909,10 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
     einsatzId: string;
     vorschlag?: string | undefined;
     automatisch: boolean;
-    weiter: (art: string) => void;
+    weiter: (art?: string | undefined) => void;
   } | null>(null);
+  /** Einsatz, dessen Einsatzart-Abfrage uebersprungen wurde → Abschluss sendet ohneEinsatzart. */
+  const einsatzartUebersprungenRef = useRef<string | null>(null);
   const [einsatzartBusy, setEinsatzartBusy] = useState(false);
   const [einsatzartErr, setEinsatzartErr] = useState<string | null>(null);
   const [abschlussBusy, setAbschlussBusy] = useState(false);
@@ -1989,7 +1991,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
    * sie, wurde ein Brand frueher still als technischer Einsatz (T26-…) gefuehrt.
    * `weiter` setzt den Abschluss mit der gewaehlten Art fort.
    */
-  function fordereEinsatzart(doc: EinsatzApiDoc, weiter: (art: string) => void): void {
+  function fordereEinsatzart(doc: EinsatzApiDoc, weiter: (art?: string | undefined) => void): void {
     setEinsatzartErr(null);
     setEinsatzartWahl({
       einsatzId: doc._id,
@@ -1997,6 +1999,19 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       automatisch: doc.einsatzartAuto === true,
       weiter,
     });
+  }
+
+  /**
+   * Einsatzart-Maske ohne Auswahl ueberspringen. Ein vorhandener Vorschlag bleibt
+   * unveraendert; ohne Vorschlag schliesst der Bericht ohne Einsatzart ab
+   * (technischer Bericht, T-Nummer).
+   */
+  function ueberspringeEinsatzart(): void {
+    if (!einsatzartWahl) return;
+    const { einsatzId, vorschlag, weiter } = einsatzartWahl;
+    einsatzartUebersprungenRef.current = einsatzId;
+    setEinsatzartWahl(null);
+    weiter(vorschlag);
   }
 
   async function speichereEinsatzart(art: string): Promise<void> {
@@ -2084,6 +2099,7 @@ export function ZentralePage({ onSwitchFahrzeug, onResetSetup, onHandoffLogout }
       // ignoriert wenn das Backend sie noch nicht kennt.
       const body: Record<string, unknown> = {};
       if (overrideGrund) body.abschlussOverrideHinweis = overrideGrund;
+      if (einsatzartUebersprungenRef.current === aktiverEinsatzId) body.ohneEinsatzart = true;
       // AUDIT-07/EL-11a: /abschluss liefert seit AUDIT-11 die echte
       // Berichtsnummer mit — Fallback fuer Altstaende: deriveBerichtNrFromId.
       const resp = await apiCall<{
@@ -5844,7 +5860,11 @@ Mannschaft, Geräte und Texte dieses Fahrzeugs werden dann nicht mehr berücksic
         automatisch={einsatzartWahl?.automatisch}
         busy={einsatzartBusy}
         error={einsatzartErr}
-        onWahl={(art) => void speichereEinsatzart(art)}
+        onWahl={(art) => {
+          einsatzartUebersprungenRef.current = null;
+          void speichereEinsatzart(art);
+        }}
+        onUeberspringen={ueberspringeEinsatzart}
         onAbbruch={() => setEinsatzartWahl(null)}
       />
 

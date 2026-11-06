@@ -549,6 +549,9 @@ const AbschlussBodySchema = z.object({
    *  Wunsch veraltet (er wuerde die Nach-Reaktivierungs-Arbeit ungesehen
    *  wegsperren) → 409 stale_abschluss. Optional fuer Backwards-Compat. */
   clientTs: z.string().datetime().optional(),
+  /** Die Mannschaft hat die Einsatzart-Abfrage bewusst uebersprungen: Abschluss
+   *  ohne Einsatzart (zaehlt als technischer Bericht, T-Nummer) statt 422. */
+  ohneEinsatzart: z.boolean().optional(),
 });
 einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), ah(async (req, res) => {
   const id = decodeURIComponent(String(req.params.id));
@@ -558,7 +561,7 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     res.status(400).json({ error: "invalid_body", details: bodyParsed.error.flatten() });
     return;
   }
-  const { abschlussOverrideHinweis: overrideHinweisFromBody, clientTs } = bodyParsed.data;
+  const { abschlussOverrideHinweis: overrideHinweisFromBody, clientTs, ohneEinsatzart } = bodyParsed.data;
   const doc = await getEinsatzOr404(id, res);
   if (!doc) return;
   if (doc.status === "abgeschlossen") {
@@ -590,14 +593,19 @@ einsaetzeRouter.post("/api/einsaetze/:id/abschluss", requireAuth("mannschaft"), 
     abgeleiteteEinsatzart = leiteEinsatzartAb({
       alarmText: (doc.alarmierungText as string | undefined) ?? (doc.einsatzartFreitext as string | undefined),
     });
-    if (!abgeleiteteEinsatzart) {
+    if (!abgeleiteteEinsatzart && ohneEinsatzart) {
+      // Bewusst ohne Einsatzart: weder ableiten noch ablehnen — der Bericht bleibt
+      // ohne Art und wird als technischer Bericht (T-Nummer) gefuehrt.
+      logger.info({ id }, "Abschluss ohne Einsatzart (von der Mannschaft uebersprungen)");
+    } else if (!abgeleiteteEinsatzart) {
       res.status(422).json({
         error: "einsatzart_fehlt",
         hint: "Bitte die Einsatzart waehlen (Brand oder Technisch), sie bestimmt die Berichtsnummer.",
       });
       return;
+    } else {
+      logger.warn({ id, einsatzart: abgeleiteteEinsatzart }, "Abschluss ohne Einsatzart — aus Alarmtext abgeleitet");
     }
-    logger.warn({ id, einsatzart: abgeleiteteEinsatzart }, "Abschluss ohne Einsatzart — aus Alarmtext abgeleitet");
   }
   // Abschluss-Override-Hinweis: wenn noch nicht alle Fahrzeugberichte
   // abgeschlossen sind aber der Einsatzleiter trotzdem abschliesst (z. B.
