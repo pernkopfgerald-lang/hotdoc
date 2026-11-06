@@ -21,6 +21,17 @@ export interface ReleaseEntry {
 
 export const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    version: "0.6.6",
+    date: "2026-11-06",
+    title: "Wassertransport, Abschluss ohne Einsatzart, Datum bis",
+    bullets: [
+      "Neue Einsatzart „Wassertransport“ (technischer Bericht).",
+      "Beim Abschluss kann die Einsatzart-Abfrage übersprungen werden („Ohne Einsatzart weiter“) – der Bericht wird dann als technischer Bericht geführt.",
+      "Bericht: Bei der Dauer gibt es jetzt zusätzlich „Datum bis“, z. B. für nachträglich erfasste oder mehrtägige Einsätze.",
+      "Backoffice: Verrechnungsblatt nach Feuerwehr-Tarifordnung 2026 – liegt der Info-Mail als eigene PDF bei.",
+    ],
+  },
+  {
     version: "0.6.5",
     date: "2026-11-01",
     title: "Kürzerer Einsatzbericht, Sachbearbeiter Florianstation, keine PIN",
